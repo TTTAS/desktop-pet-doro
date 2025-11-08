@@ -1,0 +1,2 @@
+- (idle) Idle | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif (+2 variants)
+- (walking) Walking | GIF: C:\Users\KHUser\Desktop\doro\res\action\walking.gif
