@@ -24,7 +24,9 @@ from .chat_orchestrator import ChatOrchestrator
 from .movement_manager import MovementManager
 from .models import MoveStateSettings, StateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
-from .state_manager import StateManager
+from .state_models import State, StateChangeEvent
+from .state_repository import GifRepository, MoveStateRepository, StateRepository
+from .state_service import StateService
 from .theme import ensure_application_theme
 from .utils import safe_float as _safe_float, safe_int as _safe_int
 
@@ -101,7 +103,25 @@ class DoroWindow(QtWidgets.QWidget):
         self._movement_step_px = 60
         self._default_move_state_key = "walking"
         self._move_state_defs: dict[str, MoveStateSettings] = {}
-        self._state_manager = StateManager(self)
+
+        # OLD architecture (DISABLED - testing new architecture)
+        # self._state_manager = StateManager(self)
+
+        # NEW architecture - state management without Window coupling
+        self._gif_repo = GifRepository(STATE_DIR)
+        self._state_repo = StateRepository(STATE_DIR / "states.json")
+        self._move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
+        self._state_service = StateService(
+            self._state_repo,
+            self._move_repo,
+            self._gif_repo,
+            STATE_DIR / "state_list.txt",
+        )
+
+        # Connect state change events
+        self._state_service.on_state_changed = self._on_state_changed
+        self._state_service.on_states_modified = self._on_states_modified
+
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self)
         self._sizing_in_progress = False
@@ -149,9 +169,18 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_cursor_overridden = False
         self._companion_prompts = self._load_companion_prompts()
 
-        self._state_manager.init_states()
-        self._state_manager.init_move_states()
-        self._state_manager.restore_state_from_config()
+        # Initialize state system (NEW architecture)
+        self._state_service.initialize(default_gif_path=self._default_idle_gif)
+
+        # Restore last state from QSettings
+        saved_state_key = self._config.value("current_state", "idle")
+        if not self._state_service.set_state(saved_state_key):
+            self._state_service.set_state("idle")
+
+        # OLD initialization (keeping temporarily for compatibility)
+        # self._state_manager.init_states()
+        # self._state_manager.init_move_states()
+        # self._state_manager.restore_state_from_config()
 
         # self._companion_timer = QtCore.QTimer(self)
         # self._companion_timer.setInterval(10000)
@@ -450,7 +479,10 @@ class DoroWindow(QtWidgets.QWidget):
 
         states_menu = menu.addMenu("States")
         for key in self._visible_state_keys():
-            state = self._state_defs[key]
+            # NEW: Get state from StateService
+            state = self._state_service.states.get(key)
+            if not state:
+                continue
             label = state.label or key
             action = states_menu.addAction(label)
             action.setCheckable(True)
@@ -463,7 +495,7 @@ class DoroWindow(QtWidgets.QWidget):
         remove_action = states_menu.addAction("Remove current state")
         remove_action.setEnabled(
             bool(self._current_state_key)
-            and self._current_state_key not in self._protected_state_keys
+            and not self._state_service.states.is_protected(self._current_state_key)
         )
         remove_action.triggered.connect(self._remove_current_state)
 
@@ -627,6 +659,54 @@ class DoroWindow(QtWidgets.QWidget):
         shadow.setColor(QtGui.QColor(4, 7, 20, opacity))
         widget.setGraphicsEffect(shadow)
     # --- State helpers ---------------------------------------------------
+
+    # NEW: Event callbacks from StateService
+    def _on_state_changed(self, event: StateChangeEvent) -> None:
+        """
+        Handle state change events from StateService.
+
+        This replaces the old pattern where StateManager directly called Window methods.
+        """
+        state = event.new_state
+
+        # Update current state tracking (for compatibility with old code)
+        self._current_state_key = event.new_key
+        self._state_list_text = self._state_service._write_state_list()
+
+        # Pick and load random GIF variant
+        gif_resource_id = self._state_service.pick_random_variant(event.new_key)
+        if gif_resource_id:
+            gif_path = self._gif_repo.get_path(gif_resource_id)
+            if gif_path:
+                self._load_gif(str(gif_path))
+
+        # Apply visual config
+        visual = state.visual
+        self._amplitude = visual.bob_amplitude
+        self._scale_amp = visual.scale_amplitude
+        self._fill_colors = (
+            QtGui.QColor(visual.gradient_top),
+            QtGui.QColor(visual.gradient_mid),
+            QtGui.QColor(visual.gradient_bottom),
+        )
+        self._cheek_alpha = visual.cheeks_alpha
+        self._blush_base = QtGui.QColor(visual.blush_color)
+        self._eye_color = QtGui.QColor(visual.eye_color)
+        self._bubble_visible = visual.bubble_visible
+        self._bubble_alpha = visual.bubble_alpha
+        self._name_tag = state.name_tag
+
+        # Persist to QSettings
+        self._config.setValue("current_state", event.new_key)
+
+        # Trigger repaint
+        self.update()
+
+    def _on_states_modified(self) -> None:
+        """Handle state list modifications (add/remove states)."""
+        self._state_list_text = self._state_service._write_state_list()
+
+    # OLD: State helpers delegating to old StateManager (to be removed)
     def _init_states(self):
         self._state_manager.init_states()
 
@@ -637,10 +717,12 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_manager.init_move_states()
 
     def _is_movement_only_state(self, key: str) -> bool:
-        return self._state_manager.is_movement_only_state(key)
+        # NEW: Use StateService
+        return self._state_service.move_states.is_movement_only(key)
 
     def _visible_state_keys(self) -> list[str]:
-        return self._state_manager.visible_state_keys()
+        # NEW: Use StateService
+        return self._state_service.visible_state_keys()
 
     def _register_move_state(
         self,
@@ -826,19 +908,25 @@ class DoroWindow(QtWidgets.QWidget):
             self._active_gif_path = chosen
 
     def _set_state(self, key: str):
-        self._state_manager.set_state(key)
+        # NEW: Use StateService
+        self._state_service.set_state(key)
 
     def _reset_state_overrides(self):
-        self._state_manager.reset_state_overrides()
+        # OLD: No equivalent needed - states are immutable
+        pass
 
     def _load_state_gif(self):
-        self._state_manager.load_state_gif()
+        # NEW: Show GIF manager dialog
+        from .state_dialogs import show_state_gif_manager
+        show_state_gif_manager(self._state_service, parent=self)
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
-        return self._state_manager.set_state_gif_from_path(key, source_path)
+        # NEW: Use StateService
+        return self._state_service.set_primary_gif(key, Path(source_path))
 
     def _add_state_gif_variant_from_path(self, key: str, source_path: str) -> bool:
-        return self._state_manager.add_state_gif_variant_from_path(key, source_path)
+        # NEW: Use StateService
+        return self._state_service.add_gif_variant(key, Path(source_path))
 
     def _remove_state_gif_variant(
         self,
@@ -847,7 +935,8 @@ class DoroWindow(QtWidgets.QWidget):
         *,
         parent: QtWidgets.QWidget | None = None,
     ) -> bool:
-        return self._state_manager.remove_state_gif_variant(key, variant_path, parent=parent)
+        # NEW: variant_path is now a resource_id
+        return self._state_service.remove_gif_variant(key, variant_path)
 
     def _write_state_list(self):
         if not self._state_defs:
@@ -907,16 +996,31 @@ class DoroWindow(QtWidgets.QWidget):
         print(output)
 
     def _show_state_gif_collection(self, state_key: str, *, parent: QtWidgets.QWidget | None = None):
-        self._state_manager.show_state_gif_collection(state_key, parent=parent)
+        # NEW: Use dialog
+        from .state_dialogs import show_gif_variant_dialog
+        show_gif_variant_dialog(self._state_service, state_key, parent=parent or self)
 
     def _show_state_gif_manager(self):
-        self._state_manager.show_state_gif_manager()
+        # NEW: Use dialog
+        from .state_dialogs import show_state_gif_manager
+        show_state_gif_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        self._state_manager.show_move_gif_manager()
+        # TODO: Implement move GIF manager with new architecture
+        QtWidgets.QMessageBox.information(
+            self,
+            "Move GIF Manager",
+            "Move states not yet migrated to new architecture.\nComing soon!",
+        )
 
     def _clear_state_gif(self):
-        self._state_manager.clear_state_gif(self._current_state_key or "")
+        # NEW: Clear primary GIF for current state
+        if self._current_state_key:
+            state = self._state_service.states.get(self._current_state_key)
+            if state and state.primary_gif_id:
+                self._gif_repo.delete(state.primary_gif_id)
+                updated = state.with_changes(primary_gif_id=None)
+                self._state_service.states.add(updated)
 
     def _load_click_actions(self) -> list[str]:
         path = getattr(self, "_click_actions_path", None)
@@ -981,17 +1085,16 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _find_state_for_action(self, action: str) -> str | None:
         normalized = self._normalize_state_token(action)
-        if not normalized or not self._state_defs:
+        if not normalized:
             return None
 
+        # Check aliases
         alias_target = ACTION_ALIASES.get(normalized)
-        if (
-            alias_target
-            and alias_target in self._state_defs
-            and not self._is_movement_only_state(alias_target)
-        ):
-            return alias_target
+        if alias_target and self._state_service.states.get(alias_target):
+            if not self._is_movement_only_state(alias_target):
+                return alias_target
 
+        # Try various normalized forms
         candidates = {
             normalized,
             normalized.replace(" ", "_"),
@@ -1002,13 +1105,14 @@ class DoroWindow(QtWidgets.QWidget):
             candidates.add(sanitized)
 
         for candidate in candidates:
-            if candidate in self._state_defs and not self._is_movement_only_state(candidate):
-                return candidate
+            if self._state_service.states.get(candidate):
+                if not self._is_movement_only_state(candidate):
+                    return candidate
 
-        for key, settings in self._state_defs.items():
-            label = (settings.label or "").strip().lower()
-            if label and label == normalized and not self._is_movement_only_state(key):
-                return key
+        # Try matching by label
+        result = self._state_service.find_state_by_label(normalized)
+        if result and not self._is_movement_only_state(result):
+            return result
 
         return None
 
@@ -1189,8 +1293,9 @@ class DoroWindow(QtWidgets.QWidget):
             self._save_state_settings()
 
     def _add_state(self, checked: bool = False) -> str | None:
-        del checked
-        return self._state_manager.add_state()
+        # NEW: Use dialog
+        from .state_dialogs import show_add_state_dialog
+        return show_add_state_dialog(self._state_service, parent=self)
 
     def _remove_state_by_key(
         self,
@@ -1199,34 +1304,62 @@ class DoroWindow(QtWidgets.QWidget):
         confirm: bool = True,
         parent: QtWidgets.QWidget | None = None,
     ) -> bool:
-        return self._state_manager.remove_state_by_key(key, confirm=confirm, parent=parent)
+        # NEW: Use StateService with confirmation
+        if confirm:
+            state = self._state_service.states.get(key)
+            if not state:
+                return False
+
+            reply = QtWidgets.QMessageBox.question(
+                parent or self,
+                "Remove state",
+                f"Remove state '{state.label}'?",
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                return False
+
+        return self._state_service.remove_state(key)
 
     def _remove_current_state(self):
-        self._state_manager.remove_current_state()
+        # NEW: Remove current state
+        if self._current_state_key:
+            self._remove_state_by_key(self._current_state_key, confirm=True)
 
     def _save_state_settings(self):
-        self._state_manager.save_state_settings()
+        # NEW: State persistence handled automatically by StateService
+        pass
 
     def _state_settings_to_dict(self, settings: StateSettings) -> dict:
-        return self._state_manager.state_settings_to_dict(settings)
+        # OLD: Compatibility shim (should not be needed)
+        return self._state_repo.state_settings_to_dict(settings)
 
     def _state_settings_from_dict(self, key: str, data: dict) -> StateSettings:
-        return self._state_manager.state_settings_from_dict(key, data)
+        # OLD: Compatibility shim (should not be needed)
+        return self._state_repo.state_settings_from_dict(key, data)
 
     def _persist_state_definitions(self):
-        self._state_manager.persist_state_definitions()
+        # NEW: Persistence handled by StateService
+        self._state_service.state_repo.save_all(
+            self._state_service.states._states,
+            self._state_service.states._protected_keys,
+        )
 
     def _state_storage_token(self, key: str) -> str:
-        return self._state_manager._state_storage_token(key)
+        # NEW: Use GifRepository sanitize logic
+        return self._gif_repo._sanitize_key(key)
 
     def _state_storage_path_for_key(self, key: str) -> Path:
-        return self._state_manager.state_storage_path_for_key(key)
+        # NEW: Use GifRepository
+        return self._gif_repo._primary_path(key)
 
     def _state_variants_dir_for_key(self, key: str) -> Path:
-        return self._state_manager.state_variants_dir_for_key(key)
+        # NEW: Use GifRepository
+        return self._gif_repo._variant_dir(key)
 
     def _move_storage_path_for_key(self, key: str) -> Path:
-        return self._state_manager.move_storage_path_for_key(key)
+        # NEW: Use GifRepository for move GIFs
+        return self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / f"{self._gif_repo._sanitize_key(key)}.gif"
 
     def _apply_move_gif_update(self, action_key: str):
         normalized = (action_key or "").strip().lower()
