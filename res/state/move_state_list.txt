@@ -1,0 +1,2 @@
+[2025-11-10 00:10:05] 可使用的移動狀態為:
+- (walking) Walking | direction: any | state: walking | GIF: C:\Users\KHUser\Desktop\doro\res\ACTION\MOVE\walking.gif

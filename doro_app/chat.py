@@ -1,0 +1,132 @@
+"""Chat-related helpers such as payload building and HTTP requests."""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+
+
+def build_messages_for_mistral_instruct(system_prompt: str, user_text: str) -> list[dict]:
+    """Fold system content into first user message for Mistral instruct-compatible backends."""
+    first_user = f"<<SYS>>\n{system_prompt.strip()}\n<</SYS>>\n\n{user_text.strip()}"
+    return [
+        {"role": "user", "content": first_user}
+    ]
+
+
+def resolve_chat_endpoint(server_url: str, endpoint_path: str) -> str:
+    base = (server_url or "").strip()
+    if not base:
+        return ""
+    base = base.rstrip("/")
+    path = (endpoint_path or "").strip() or "/v1/chat/completions"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{base}{path}"
+
+
+def perform_chat_request(
+    url: str,
+    payload: dict,
+    timeout_seconds: int,
+) -> tuple[str | None, str | None]:
+    try:
+        request_bytes = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=request_bytes,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            body = exc.read()
+            if body:
+                decoded = body.decode("utf-8", errors="replace").strip()
+                if decoded:
+                    detail = decoded
+        except Exception:  # noqa: BLE001
+            pass
+        reason = exc.reason or ""
+        combined = reason
+        if detail:
+            snippet = detail if len(detail) <= 200 else f"{detail[:197]}..."
+            combined = f"{reason} | {snippet}" if reason else snippet
+        return None, f"HTTP error {exc.code}: {combined or 'Bad Request'}"
+    except urllib.error.URLError as exc:
+        return None, f"Network error: {exc.reason}"
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        return None, f"Invalid JSON response: {exc}"
+
+    assistant_text = ChatResponseParser.extract_assistant_text(payload)
+    return assistant_text, None
+
+
+class ChatResponseParser:
+    """Parse text out of heterogeneous chat completion payloads."""
+
+    @staticmethod
+    def extract_assistant_text(payload: dict) -> str | None:
+        """Best-effort extraction of assistant text from assorted response schemas."""
+
+        def _from_message_content(msg_obj: dict) -> str | None:
+            content = msg_obj.get("content")
+            if isinstance(content, str):
+                return content.strip() or None
+            if isinstance(content, list):
+                parts = []
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get("type") == "text" and isinstance(item.get("text"), str):
+                            parts.append(item["text"])
+                        elif isinstance(item.get("content"), str):
+                            parts.append(item["content"])
+                joined = "\n".join(p.strip() for p in parts if p and p.strip())
+                return joined or None
+            return None
+
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0] if isinstance(choices[0], dict) else {}
+            message = first.get("message") or {}
+            if isinstance(message, dict):
+                text = _from_message_content(message)
+                if text:
+                    return text
+            if isinstance(first.get("text"), str) and first["text"].strip():
+                return first["text"].strip()
+            delta = first.get("delta") or {}
+            if isinstance(delta, dict):
+                delta_content = delta.get("content")
+                if isinstance(delta_content, str) and delta_content.strip():
+                    return delta_content.strip()
+                if isinstance(delta_content, list):
+                    parts = []
+                    for item in delta_content:
+                        if isinstance(item, dict):
+                            if item.get("type") == "text" and isinstance(item.get("text"), str):
+                                parts.append(item["text"])
+                            elif isinstance(item.get("content"), str):
+                                parts.append(item["content"])
+                    joined = "\n".join(p.strip() for p in parts if p and p.strip())
+                    if joined:
+                        return joined
+
+        for key in ("content", "response", "message"):
+            val = payload.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            if isinstance(val, dict):
+                text = _from_message_content(val)
+                if text:
+                    return text
+        return None

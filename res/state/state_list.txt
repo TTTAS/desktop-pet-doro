@@ -1,2 +1,5 @@
-- (idle) Idle | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif (+2 variants)
-- (walking) Walking | GIF: C:\Users\KHUser\Desktop\doro\res\action\walking.gif
+[2025-11-10 00:10:05] 可使用的狀態為:
+- (idle) Idle | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif (+2 variants)
+
+移動專用狀態:
+- (walking) Walking | type: movement (any) | GIF: C:\Users\KHUser\Desktop\doro\res\ACTION\MOVE\walking.gif
