@@ -27,6 +27,7 @@ from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_
 from .state_manager import StateManager
 from .theme import ensure_application_theme
 from .utils import safe_float as _safe_float, safe_int as _safe_int
+from .ui import ChatSettingsDialog, ContextMenuManager, WindowRenderer
 
 
 class DoroWindow(QtWidgets.QWidget):
@@ -48,8 +49,6 @@ class DoroWindow(QtWidgets.QWidget):
         # Animation clock
         self._t = 0.0
         self._timer = QtCore.QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(16)  # ~60 FPS
 
         # Appearance/animation parameters (populated in _init_states)
         self._state_defs: dict[str, StateSettings] = {}
@@ -104,6 +103,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_manager = StateManager(self)
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self)
+        self._renderer = WindowRenderer(self, self._bubble_controller, self._movement)
+        self._timer.timeout.connect(self._renderer.tick)
+        self._timer.start(16)  # ~60 FPS
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
@@ -136,7 +138,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_controller.apply_persisted_config(
             BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
         )
-        self._apply_window_preferred_size()
+        self.apply_window_preferred_size()
 
         self._chat_controller = ChatController(
             self._config,
@@ -146,6 +148,8 @@ class DoroWindow(QtWidgets.QWidget):
             parent=self,
         )
         self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement)
+        self._chat_settings = ChatSettingsDialog(self, self._chat_controller)
+        self._context_menu = ContextMenuManager(self, self._chat_settings)
         self._chat_cursor_overridden = False
         self._companion_prompts = self._load_companion_prompts()
 
@@ -171,18 +175,6 @@ class DoroWindow(QtWidgets.QWidget):
             self.move(g.right() - self.width() - 40, g.bottom() - self.height() - 120)
 
         self.setWindowTitle("doro")
-
-    # --- Animation -------------------------------------------------------
-    def _tick(self):
-        now = time.monotonic()
-        dt = now - getattr(self, "_last_tick_time", now)
-        self._last_tick_time = now
-        if dt < 0.0:
-            dt = 0.0
-        dt = min(dt, 0.1)
-        self._movement.process_active_movement(dt)
-        self._t += dt
-        self.update()
 
     # --- Interaction -----------------------------------------------------
     def mousePressEvent(self, e: QtGui.QMouseEvent):
@@ -252,6 +244,59 @@ class DoroWindow(QtWidgets.QWidget):
         self._mark_user_activity()
         super().keyPressEvent(e)
 
+    # --- Public accessors ------------------------------------------------
+
+    @property
+    def state_definitions(self) -> dict[str, StateSettings]:
+        return self._state_defs
+
+    @property
+    def current_state_key(self) -> str:
+        return self._current_state_key
+
+    @property
+    def protected_state_keys(self) -> set[str]:
+        return self._protected_state_keys
+
+    @property
+    def state_settings(self) -> StateSettings | None:
+        return self._state_settings
+
+    @property
+    def default_idle_gif_exists(self) -> bool:
+        return self._default_idle_gif.is_file()
+
+    @property
+    def chat_orchestrator(self) -> ChatOrchestrator:
+        return self._chat_orchestrator
+
+    @property
+    def chat_controller(self) -> ChatController:
+        return self._chat_controller
+
+    @property
+    def state_manager(self) -> StateManager:
+        return self._state_manager
+
+    @property
+    def movement_manager(self) -> MovementManager:
+        return self._movement
+
+    def visible_state_keys(self) -> list[str]:
+        return self._state_manager.visible_state_keys()
+
+    @property
+    def bubble_offset(self) -> QtCore.QPointF:
+        return self._bubble_offset
+
+    @property
+    def movement_step_px(self) -> int:
+        return self._movement_step_px
+
+    @property
+    def default_move_state_key(self) -> str:
+        return self._default_move_state_key
+
     def _sprite_center(self) -> QtCore.QPointF:
         base_x = self.width() / 2.0 + getattr(self, "_sprite_offset_x", 0.0)
         half_w = max(20.0, self._sprite_size.width() / 2.0)
@@ -281,14 +326,18 @@ class DoroWindow(QtWidgets.QWidget):
             base_y = anchor_top + half_h
         return QtCore.QPointF(base_x, base_y)
 
-    def _mark_user_activity(self):
+    def mark_user_activity(self):
         self._last_user_activity = time.monotonic()
+
+    _mark_user_activity = mark_user_activity
 
     def _clamp_bubble_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
         return self._bubble_controller.clamp_offset(candidate)
 
-    def _apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
+    def apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
         self._bubble_controller.apply_offset(candidate, persist=persist)
+
+    _apply_bubble_offset = apply_bubble_offset
 
     def _set_bubble_scale(self, value: float, *, persist: bool = False):
         self._bubble_controller.set_scale(value, persist=persist)
@@ -309,7 +358,7 @@ class DoroWindow(QtWidgets.QWidget):
             screen = QtWidgets.QApplication.primaryScreen()
         return screen.availableGeometry() if screen else QtCore.QRect(0, 0, 1920, 1080)
 
-    def _clamp_window_position(self, desired: QtCore.QPoint) -> QtCore.QPoint:
+    def clamp_window_position(self, desired: QtCore.QPoint) -> QtCore.QPoint:
         geo = self.frameGeometry()
         rect = self._available_screen_geometry()
         max_x = rect.left() + max(0, rect.width() - geo.width())
@@ -320,7 +369,9 @@ class DoroWindow(QtWidgets.QWidget):
         clamped_y = max(min_y, min(max_y, desired.y()))
         return QtCore.QPoint(clamped_x, clamped_y)
 
-    def _move_window_to(self, point: QtCore.QPoint):
+    _clamp_window_position = clamp_window_position
+
+    def move_window_to(self, point: QtCore.QPoint):
         if not isinstance(point, QtCore.QPoint):
             return
         current = self.frameGeometry().topLeft()
@@ -339,34 +390,7 @@ class DoroWindow(QtWidgets.QWidget):
         except Exception:
             pass
 
-    def _compute_panel_size_hint(self) -> tuple[float, float]:
-        text = (self._bubble_text or "").strip()
-        sprite_w = max(120.0, float(self._sprite_size.width()))
-        panel_width = max(160.0, sprite_w)
-        available_text_width = max(80.0, panel_width - 56.0)
-
-        font = QtGui.QFont()
-        font.setPointSizeF(12.0)
-        font.setWeight(QtGui.QFont.Weight.Bold)
-        metrics = QtGui.QFontMetrics(font)
-
-        if text:
-            flags = int(
-                QtCore.Qt.AlignmentFlag.AlignLeft
-                | QtCore.Qt.AlignmentFlag.AlignTop
-            )
-            flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
-            text_rect = metrics.boundingRect(
-                QtCore.QRect(0, 0, int(round(available_text_width)), 4000),
-                flags,
-                text,
-            )
-            text_height = float(text_rect.height())
-        else:
-            text_height = float(metrics.lineSpacing())
-
-        panel_height = max(80.0, text_height + 56.0)
-        return panel_width, panel_height
+    _move_window_to = move_window_to
 
     def _normalize_state_token(self, token: str) -> str:
         raw = (token or "").strip()
@@ -396,222 +420,26 @@ class DoroWindow(QtWidgets.QWidget):
     def _end_bubble_transform(self) -> bool:
         return self._bubble_controller.end_transform()
 
-    def _apply_window_preferred_size(self):
-        sprite_w = max(120.0, float(self._sprite_size.width()))
-        sprite_h = max(120.0, float(self._sprite_size.height()))
-        panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
-        self._panel_width_hint = panel_w_hint
-        self._panel_height_hint = panel_h_hint
+    def reset_animation_clock(self) -> None:
+        self._renderer.reset_clock()
 
-        desired_w = max(
-            380,
-            int(round(max(sprite_w + 120.0, panel_w_hint + 48.0))),
-        )
-        desired_h = max(
-            320,
-            int(round(sprite_h + panel_h_hint + 120.0)),
-        )
-        current_size = self.size()
-        min_size = self.minimumSize()
-        min_changed = (
-            min_size.width() != desired_w or min_size.height() != desired_h
-        )
-        needs_resize = (
-            current_size.width() < desired_w or current_size.height() < desired_h
-        )
+    def apply_window_preferred_size(self):
+        self._renderer.apply_window_preferred_size()
 
-        if min_changed or needs_resize:
-            self._sizing_in_progress = True
-            try:
-                if min_changed:
-                    self.setMinimumSize(desired_w, desired_h)
-                if needs_resize:
-                    self.resize(
-                        max(current_size.width(), desired_w),
-                        max(current_size.height(), desired_h),
-                    )
-            finally:
-                self._sizing_in_progress = False
-        self.update()
+    _apply_window_preferred_size = apply_window_preferred_size
 
-    def _update_sprite_size_hint(self, movie: QtGui.QMovie | None):
-        if movie and movie.isValid():
-            rect = movie.frameRect()
-            if rect.width() > 0 and rect.height() > 0:
-                self._sprite_size = rect.size()
-                self._apply_window_preferred_size()
-                return
-        self._sprite_size = QtCore.QSize(200, 200)
-        self._apply_window_preferred_size()
+    def update_sprite_size_hint(self, movie: QtGui.QMovie | None):
+        self._renderer.update_sprite_size_hint(movie)
+
+    _update_sprite_size_hint = update_sprite_size_hint
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
-        self._mark_user_activity()
-        menu = QtWidgets.QMenu(self)
-
-        states_menu = menu.addMenu("States")
-        for key in self._visible_state_keys():
-            state = self._state_defs[key]
-            label = state.label or key
-            action = states_menu.addAction(label)
-            action.setCheckable(True)
-            action.setChecked(key == self._current_state_key)
-            action.triggered.connect(lambda checked, s=key: self._set_state(s))
-
-        edit_states_action = states_menu.addAction("Edit states")
-        edit_states_action.triggered.connect(self._show_state_gif_manager)
-
-        remove_action = states_menu.addAction("Remove current state")
-        remove_action.setEnabled(
-            bool(self._current_state_key)
-            and self._current_state_key not in self._protected_state_keys
-        )
-        remove_action.triggered.connect(self._remove_current_state)
-
-        actions_menu = menu.addMenu("Actions")
-        edit_actions_action = actions_menu.addAction("Edit actions")
-        edit_actions_action.triggered.connect(self._show_move_gif_manager)
-
-        menu.addSeparator()
-
-        top_action = QtGui.QAction("Stay on top", self)
-        top_action.setCheckable(True)
-        is_top = bool(self.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint)
-        top_action.setChecked(is_top)
-
-        def toggle_top():
-            f = self.windowFlags()
-            if bool(f & QtCore.Qt.WindowType.WindowStaysOnTopHint):
-                f &= ~QtCore.Qt.WindowType.WindowStaysOnTopHint
-            else:
-                f |= QtCore.Qt.WindowType.WindowStaysOnTopHint
-            self.setWindowFlags(f)
-            self.show()  # re-apply flags
-
-        top_action.triggered.connect(toggle_top)
-        menu.addAction(top_action)
-
-        visuals_menu = menu.addMenu("State visuals")
-        bubble_action = visuals_menu.addAction("Show message panel")
-        bubble_action.setCheckable(True)
-        bubble_action.setChecked(bool(self._state_settings and self._state_settings.bubble_visible))
-        bubble_action.triggered.connect(self._toggle_bubble)
-
-        gif_action = visuals_menu.addAction("Load GIF")
-        gif_action.triggered.connect(self._load_state_gif)
-
-        clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-        clear_gif_action.setEnabled(self._default_idle_gif.is_file())
-        clear_gif_action.triggered.connect(self._clear_state_gif)
-
-        name_tag_action = visuals_menu.addAction("Rename pet")
-        name_tag_action.triggered.connect(self._rename_pet)
-
-        chat_menu = menu.addMenu("Chat")
-        ask_action = chat_menu.addAction("Ask Doro")
-        ask_action.setEnabled(not self._chat_orchestrator.is_inflight)
-        ask_action.triggered.connect(self._prompt_chat)
-
-        edit_prompt_action = chat_menu.addAction("Edit prompt")
-        edit_prompt_action.triggered.connect(self._edit_chat_prompt)
-
-        clear_history_action = chat_menu.addAction("Clear conversation history")
-        clear_history_action.setEnabled(self._chat_controller.has_history)
-        clear_history_action.triggered.connect(self._clear_chat_history)
-
-        configure_menu = chat_menu.addMenu("Configure")
-
-        server_action = configure_menu.addAction("Set server URL")
-        server_action.triggered.connect(self._configure_chat_server)
-
-        model_action = configure_menu.addAction("Set model name")
-        model_action.triggered.connect(self._configure_chat_model)
-
-        endpoint_action = configure_menu.addAction("Set endpoint path")
-        endpoint_action.triggered.connect(self._configure_chat_endpoint)
-
-        temperature_action = configure_menu.addAction("Set temperature")
-        temperature_action.triggered.connect(self._configure_chat_temperature)
-
-        timeout_action = configure_menu.addAction("Set timeout (seconds)")
-        timeout_action.triggered.connect(self._configure_chat_timeout)
-
-        menu.addSeparator()
-        quit_action = QtGui.QAction("Exit doro", self)
-        quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
-        menu.addAction(quit_action)
-
-        restart_action = QtGui.QAction("Restart doro", self)
-        restart_action.triggered.connect(self._restart_app)
-        menu.addAction(restart_action)
-
-        menu.exec(e.globalPos())
+        self._context_menu.exec(e)
 
     # --- Painting --------------------------------------------------------
-    def paintEvent(self, _):
-        p = QtGui.QPainter(self)
-        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-
-        bob = 0.0
-        scale = 1.0
-
-        sprite_center = self._sprite_center()
-        p.save()
-        p.translate(sprite_center.x(), sprite_center.y() + bob)
-        p.scale(scale, scale)
-
-        if self._gif_movie and not self._gif_movie.currentPixmap().isNull():
-            pixmap = self._gif_movie.currentPixmap()
-            p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
-            p.drawPixmap(0, 0, pixmap)
-        else:
-            p.translate(-90, -90)
-
-            path = QtGui.QPainterPath(QtCore.QPointF(90, 20))
-            path.cubicTo(50, 20, 30, 50, 30, 90)
-            path.cubicTo(30, 130, 50, 160, 90, 160)
-            path.cubicTo(130, 160, 150, 130, 150, 90)
-            path.cubicTo(150, 50, 130, 20, 90, 20)
-
-            fill = QtGui.QLinearGradient(QtCore.QPointF(90, 20), QtCore.QPointF(90, 160))
-            fill.setColorAt(0.0, self._fill_colors[0])
-            fill.setColorAt(0.4, self._fill_colors[1])
-            fill.setColorAt(1.0, self._fill_colors[2])
-
-            p.setPen(QtGui.QPen(QtGui.QColor("#FF5C9ED6"), 3))
-            p.setBrush(QtGui.QBrush(fill))
-            p.drawPath(path)
-
-            if self._cheek_alpha > 0:
-                blush = QtGui.QColor(self._blush_base)
-                blush.setAlpha(int(self._cheek_alpha))
-                p.setBrush(blush)
-                p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.drawEllipse(QtCore.QRectF(55, 85, 18, 10))
-                p.drawEllipse(QtCore.QRectF(107, 85, 18, 10))
-
-            p.setBrush(self._eye_color)
-            p.drawEllipse(QtCore.QRectF(70, 70, 10, 14))
-            p.drawEllipse(QtCore.QRectF(100, 70, 10, 14))
-
-            self._draw_mouth(p)
-
-        p.restore()
-
-        panel_should_draw = (
-            (self._bubble_visible or self._bubble_text_show_override)
-            and self._bubble_alpha > 0
-            and bool((self._bubble_text or "").strip())
-        )
-        if panel_should_draw:
-            alpha = min(max(int(self._bubble_alpha), 0), 255)
-            self._draw_text_panel(p, alpha)
-        else:
-            self._panel_rect_cache = None
-
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setWeight(QtGui.QFont.Weight.Bold)
-        p.setFont(font)
+    def paintEvent(self, event: QtGui.QPaintEvent):
+        del event  # unused
+        self._renderer.paint()
 
     def _apply_card_shadow(
         self,
@@ -673,106 +501,13 @@ class DoroWindow(QtWidgets.QWidget):
             path = self._state_settings.gif_path or ""
             self._config.setValue(f"state/{self._current_state_key}/gif_path", path)
 
-    def _apply_state_settings(self):
-        if self._state_settings is None:
-            return
-        self._amplitude = float(self._state_settings.bob_amplitude)
-        self._scale_amp = float(self._state_settings.scale_amplitude)
-        self._fill_colors = tuple(
-            QtGui.QColor(color)
-            for color in (
-                self._state_settings.gradient_top,
-                self._state_settings.gradient_mid,
-                self._state_settings.gradient_bottom,
-            )
-        )
-        self._cheek_alpha = float(self._state_settings.cheeks_alpha)
-        self._blush_base = QtGui.QColor(self._state_settings.blush_color)
-        self._eye_color = QtGui.QColor(self._state_settings.eye_color)
-        self._bubble_visible = bool(self._state_settings.bubble_visible)
-        self._bubble_alpha = float(self._state_settings.bubble_alpha)
-        self._name_tag = self._state_settings.name_tag
-        def _canonical_if_exists(path_str: str | None) -> str | None:
-            if not path_str:
-                return None
-            try:
-                path_obj = Path(path_str)
-            except (TypeError, ValueError):
-                return None
-            if not path_obj.is_file():
-                return None
-            try:
-                return str(path_obj.resolve())
-            except OSError:
-                return str(path_obj)
+    def apply_state_settings(self):
+        self._renderer.apply_state_settings()
 
-        primary_existing = _canonical_if_exists(self._state_settings.gif_path)
-        active_existing = _canonical_if_exists(self._active_gif_path)
+    _apply_state_settings = apply_state_settings
 
-        gif_path = active_existing or primary_existing
-        if gif_path is None:
-            if self._default_idle_gif.is_file():
-                try:
-                    default_path = str(self._default_idle_gif.resolve())
-                except OSError:
-                    default_path = str(self._default_idle_gif)
-                gif_path = default_path
-                self._state_settings.gif_path = default_path
-                primary_existing = default_path
-                active_existing = None
-            else:
-                self._state_settings.gif_path = None
-
-        if gif_path:
-            if primary_existing and gif_path == primary_existing:
-                if self._state_settings.gif_path != primary_existing:
-                    self._state_settings.gif_path = primary_existing
-                self._active_gif_path = None
-            else:
-                self._active_gif_path = active_existing if active_existing else None
-        else:
-            self._active_gif_path = None
-
-        self._load_gif(gif_path)
-
-    def _load_gif(self, path: str | None):
-        if self._gif_movie:
-            try:
-                self._gif_movie.frameChanged.disconnect(self._on_movie_frame_changed)
-            except (RuntimeError, TypeError):
-                pass
-            self._gif_movie.stop()
-            self._gif_movie = None
-
-        if not path:
-            self._update_sprite_size_hint(None)
-            return
-
-        path_obj = Path(path)
-        if not path_obj.is_file():
-            self._update_sprite_size_hint(None)
-            return
-
-        movie = QtGui.QMovie(str(path_obj))
-        if not movie.isValid():
-            self._update_sprite_size_hint(None)
-            return
-
-        movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-        movie.frameChanged.connect(self._on_movie_frame_changed)
-        movie.start()
-        self._gif_movie = movie
-        self._update_sprite_size_hint(movie)
-
-    def _on_movie_frame_changed(self, _frame: int):
-        if self._gif_movie:
-            pixmap = self._gif_movie.currentPixmap()
-            if not pixmap.isNull():
-                frame_size = pixmap.size()
-                if frame_size != self._sprite_size:
-                    self._sprite_size = QtCore.QSize(frame_size)
-                    self._apply_window_preferred_size()
-        self.update()
+    def _on_movie_frame_changed(self, frame: int):
+        self._renderer.on_movie_frame_changed(frame)
 
     def _select_state_gif_variant(self, key: str):
         if self._state_settings is None:
@@ -825,14 +560,18 @@ class DoroWindow(QtWidgets.QWidget):
         else:
             self._active_gif_path = chosen
 
-    def _set_state(self, key: str):
+    def set_state(self, key: str):
         self._state_manager.set_state(key)
+
+    _set_state = set_state
 
     def _reset_state_overrides(self):
         self._state_manager.reset_state_overrides()
 
-    def _load_state_gif(self):
+    def load_state_gif(self):
         self._state_manager.load_state_gif()
+
+    _load_state_gif = load_state_gif
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
         return self._state_manager.set_state_gif_from_path(key, source_path)
@@ -915,8 +654,20 @@ class DoroWindow(QtWidgets.QWidget):
     def _show_move_gif_manager(self):
         self._state_manager.show_move_gif_manager()
 
-    def _clear_state_gif(self):
+    def clear_state_gif(self):
         self._state_manager.clear_state_gif(self._current_state_key or "")
+
+    _clear_state_gif = clear_state_gif
+
+    def load_gif(self, path: str | None):
+        self._renderer.load_gif(path)
+
+    _load_gif = load_gif
+
+    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        return self._state_manager.resolve_move_state(key)
+
+    _resolve_move_state = resolve_move_state
 
     def _load_click_actions(self) -> list[str]:
         path = getattr(self, "_click_actions_path", None)
@@ -979,7 +730,7 @@ class DoroWindow(QtWidgets.QWidget):
             return
         self._chat_orchestrator.send_message(message)
 
-    def _find_state_for_action(self, action: str) -> str | None:
+    def find_state_for_action(self, action: str) -> str | None:
         normalized = self._normalize_state_token(action)
         if not normalized or not self._state_defs:
             return None
@@ -1012,7 +763,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         return None
 
-    def _set_busy_cursor(self, enabled: bool):
+    _find_state_for_action = find_state_for_action
+
+    def set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
             self._chat_cursor_overridden = True
@@ -1020,7 +773,9 @@ class DoroWindow(QtWidgets.QWidget):
             QtWidgets.QApplication.restoreOverrideCursor()
             self._chat_cursor_overridden = False
 
-    def _prompt_chat(self):
+    _set_busy_cursor = set_busy_cursor
+
+    def prompt_chat(self):
         if self._chat_orchestrator.is_inflight:
             QtWidgets.QMessageBox.information(
                 self,
@@ -1028,7 +783,7 @@ class DoroWindow(QtWidgets.QWidget):
                 "I'm already replying, please wait a little bit.",
             )
             return
-        self._mark_user_activity()
+        self.mark_user_activity()
         prompt, ok = QtWidgets.QInputDialog.getMultiLineText(
             self,
             "Chat with Doro",
@@ -1042,9 +797,11 @@ class DoroWindow(QtWidgets.QWidget):
             return
         self._chat_orchestrator.send_message(cleaned)
 
-    def _clear_chat_history(self):
+    _prompt_chat = prompt_chat
+
+    def clear_chat_history(self):
         if not self._chat_controller.has_history:
-            self._clear_bubble_text()
+            self.clear_chat_message()
             return
         reply = QtWidgets.QMessageBox.question(
             self,
@@ -1055,9 +812,11 @@ class DoroWindow(QtWidgets.QWidget):
         if reply != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         self._chat_controller.clear_history()
-        self._clear_bubble_text()
+        self.clear_chat_message()
 
-    def _edit_chat_prompt(self):
+    _clear_chat_history = clear_chat_history
+
+    def edit_chat_prompt(self):
         descriptive_path = str(self._prompt_file_path)
         current = self._chat_controller.system_prompt or ""
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
@@ -1084,95 +843,18 @@ class DoroWindow(QtWidgets.QWidget):
                 "Edit Doro prompt",
                 f"Failed to write prompt file:\n{exc}",
             )
-            return
 
-    def _configure_chat_server(self):
-        current = self._chat_controller.server_url or ""
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat server URL",
-            "Base server URL (e.g. http://127.0.0.1:1234):",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        new_url = text.strip()
-        if not new_url:
-            QtWidgets.QMessageBox.warning(self, "Chat server URL", "URL cannot be empty.")
-            return
-        self._chat_controller.set_server_url(new_url)
+    _edit_chat_prompt = edit_chat_prompt
 
-    def _configure_chat_model(self):
-        current = self._chat_controller.model or ""
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat model name",
-            "Model identifier:",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        cleaned = text.strip()
-        if not cleaned:
-            QtWidgets.QMessageBox.warning(self, "Chat model name", "Model name cannot be empty.")
-            return
-        self._chat_controller.set_model(cleaned)
-
-    def _configure_chat_endpoint(self):
-        current = self._chat_controller.endpoint_path or "/v1/chat/completions"
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat endpoint path",
-            "Endpoint path on the server:",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        cleaned = text.strip()
-        if not cleaned:
-            QtWidgets.QMessageBox.warning(self, "Chat endpoint path", "Endpoint path cannot be empty.")
-            return
-        if not cleaned.startswith("/"):
-            cleaned = f"/{cleaned}"
-        self._chat_controller.set_endpoint_path(cleaned)
-
-    def _configure_chat_temperature(self):
-        value, ok = QtWidgets.QInputDialog.getDouble(
-            self,
-            "Chat temperature",
-            "Sampling temperature:",
-            float(self._chat_controller.temperature),
-            0.0,
-            2.0,
-            decimals=2,
-        )
-        if not ok:
-            return
-        self._chat_controller.set_temperature(value)
-
-    def _configure_chat_timeout(self):
-        value, ok = QtWidgets.QInputDialog.getInt(
-            self,
-            "Chat timeout",
-            "Request timeout in seconds:",
-            int(self._chat_controller.timeout_seconds),
-            5,
-            120,
-        )
-        if not ok:
-            return
-        self._chat_controller.set_timeout_seconds(value)
-
-    def _toggle_bubble(self, checked: bool):
+    def toggle_bubble(self, checked: bool):
         if self._state_settings is None:
             return
         self._bubble_controller.set_visible(checked)
         self._save_state_settings()
 
-    def _rename_pet(self):
+    _toggle_bubble = toggle_bubble
+
+    def rename_pet(self):
         if self._state_settings is None:
             return
         text, ok = QtWidgets.QInputDialog.getText(
@@ -1184,9 +866,11 @@ class DoroWindow(QtWidgets.QWidget):
         )
         if ok and text.strip():
             self._state_settings.name_tag = text.strip()
-            self._apply_state_settings()
+            self.apply_state_settings()
             self.update()
             self._save_state_settings()
+
+    _rename_pet = rename_pet
 
     def _add_state(self, checked: bool = False) -> str | None:
         del checked
@@ -1485,7 +1169,7 @@ class DoroWindow(QtWidgets.QWidget):
         p.restore()
         self._panel_rect_cache = QtCore.QRectF(panel_rect)
 
-    def _set_bubble_text(
+    def show_chat_message(
         self,
         text: str,
         override_visibility: bool = True,
@@ -1493,15 +1177,21 @@ class DoroWindow(QtWidgets.QWidget):
         auto_hide: bool = True,
         hide_delay_ms: int | None = None,
     ):
-        self._bubble_controller.set_text(
+        self._renderer.set_bubble_text(
             text,
             override_visibility=override_visibility,
             auto_hide=auto_hide,
             hide_delay_ms=hide_delay_ms,
         )
-        self._apply_window_preferred_size()
 
-        def _classify_action_token(self, token: str, *, strict: bool = True):
+    _set_bubble_text = show_chat_message
+
+    def clear_chat_message(self):
+        self._renderer.clear_bubble_text()
+
+    _clear_bubble_text = clear_chat_message
+
+    def _classify_action_token(self, token: str, *, strict: bool = True):
             """
             解析括號指令：
             - (state: <key>) -> ("state", <key>)
@@ -1539,20 +1229,6 @@ class DoroWindow(QtWidgets.QWidget):
                 return ("state", state_key)
             return None
         
-    def _clear_bubble_text(self):
-        self._bubble_controller.clear_text()
-
-    def _draw_mouth(self, p: QtGui.QPainter):
-        pen = QtGui.QPen(QtGui.QColor(51, 51, 51))
-        pen.setWidthF(2)
-        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-        p.setPen(pen)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        mouth = QtGui.QPainterPath()
-        mouth.moveTo(80, 95)
-        mouth.cubicTo(90, 105, 100, 105, 110, 95)
-        p.drawPath(mouth)
     def _release_single_instance_locks_safely(self):
         """Release possible single-instance locks safely."""
         # QLockFile 常見做法
@@ -1583,12 +1259,12 @@ class DoroWindow(QtWidgets.QWidget):
                     pass
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        self._set_busy_cursor(False)
+        self.set_busy_cursor(False)
         timer = getattr(self, "_companion_timer", None)
         if isinstance(timer, QtCore.QTimer):
             timer.stop()
         super().closeEvent(event)
-    def _restart_app(self):
+    def restart_app(self):
         """Restart doro *without* external helper script."""
         app = QtWidgets.QApplication.instance()
         if app is None:
@@ -1641,6 +1317,8 @@ class DoroWindow(QtWidgets.QWidget):
             QtCore.QTimer.singleShot(50, app.quit)
         else:
             QtWidgets.QMessageBox.warning(self, "Restart", "Failed to relaunch doro. Please restart manually.")
+
+    _restart_app = restart_app
 
     def _build_self_launch_command(self) -> list[str] | None:
         """Return argv for relaunching this app."""

@@ -47,26 +47,26 @@ class ChatOrchestrator(QtCore.QObject):
             if not silent and error_message:
                 QtWidgets.QMessageBox.warning(self._window, "Chat", error_message)
             return False
-        self._window._mark_user_activity()
+        self._window.mark_user_activity()
         return True
 
     # ------------------------------------------------------------------ Controller callbacks
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
-        self._window._set_bubble_text("Thinking...", auto_hide=False)
-        self._window._set_busy_cursor(True)
+        self._window.show_chat_message("Thinking...", auto_hide=False)
+        self._window.set_busy_cursor(True)
 
     def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
-            self._window._set_bubble_text(display_text)
+            self._window.show_chat_message(display_text)
         else:
             fallback = assistant_text.strip()
             if fallback:
-                self._window._set_bubble_text(fallback, override_visibility=True)
+                self._window.show_chat_message(fallback, override_visibility=True)
             else:
-                self._window._clear_bubble_text()
-        self._window._set_busy_cursor(False)
+                self._window.clear_chat_message()
+        self._window.set_busy_cursor(False)
 
     def _on_request_failed(self, error_message: str, was_auto: bool):
         if not was_auto:
@@ -75,14 +75,14 @@ class ChatOrchestrator(QtCore.QObject):
                 "Chat",
                 error_message or "Failed to reach the chat server.",
             )
-        self._window._set_busy_cursor(False)
+        self._window.set_busy_cursor(False)
         fallback_text = (
             error_message.strip()
             if error_message and error_message.strip()
             else "I could not reach the chat server."
         )
         if not was_auto:
-            self._window._set_bubble_text(fallback_text, auto_hide=False)
+            self._window.show_chat_message(fallback_text, auto_hide=False)
 
     # ------------------------------------------------------------------ Response processing
 
@@ -95,16 +95,16 @@ class ChatOrchestrator(QtCore.QObject):
                 if self._movement.handle_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
-                state_key = self._window._find_state_for_action(token)
+                state_key = self._window.find_state_for_action(token)
                 if state_key:
-                    action_kind, directions = self._window._state_manager.action_profile_for_state(state_key)
+                    action_kind, directions = self._window.state_manager.action_profile_for_state(state_key)
                     if action_kind == "movement" and not directions:
                         self._movement.record_manual_report(
                             f"Movement state '{state_key}' 未設定方向，請更新 move_state_list。"
                         )
                         continue
-                    if state_key != self._window._current_state_key:
-                        self._window._set_state(state_key)
+                    if state_key != self._window.current_state_key:
+                        self._window.set_state(state_key)
                     continue
 
             direction = self._movement.parse_movement_token(token)

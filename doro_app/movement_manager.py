@@ -21,7 +21,7 @@ class MovementManager:
 
     def __init__(self, window: DoroWindow):
         self._window = window
-        self._state_manager = window._state_manager
+        self._state_manager = window.state_manager
         self._active_movement: MovementRequest | None = None
         self._movement_remaining = 0.0
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -35,7 +35,7 @@ class MovementManager:
     # ------------------------------------------------------------------ Public API
 
     def instruction_text(self) -> str:
-        step = max(12, int(getattr(self._window, "_movement_step_px", 60)))
+        step = max(12, int(self._window.movement_step_px))
         return (
             "輸出格式提醒：\n"
             "  • 狀態請以括號標註，例如 (HAPPY) 文字內容。\n"
@@ -91,9 +91,9 @@ class MovementManager:
                 or params.get("movestate")
                 or params.get("移動狀態")
             )
-            move_state_key, move_state_settings = window._resolve_move_state(move_state_param)
+            move_state_key, move_state_settings = window.resolve_move_state(move_state_param)
             if move_state_settings is None:
-                move_state_key, move_state_settings = window._resolve_move_state(window._default_move_state_key)
+                move_state_key, move_state_settings = window.resolve_move_state(window.default_move_state_key)
 
             direction_vec = None
             if direction_key:
@@ -110,7 +110,7 @@ class MovementManager:
             if direction_vec is None:
                 return True
 
-            step_default = window._movement_step_px
+            step_default = window.movement_step_px
             if distance_param not in (None, ""):
                 distance_val = abs(float(_safe_float(distance_param, float(step_default))))
             elif move_state_settings and move_state_settings.default_distance is not None:
@@ -126,7 +126,7 @@ class MovementManager:
             extra_dx = self._extra_dx(direction_vec)
             if extra_dx:
                 target_guess.setX(target_guess.x() + extra_dx)
-            target = window._clamp_window_position(target_guess)
+            target = window.clamp_window_position(target_guess)
             actual_dx = target.x() - current.x()
             actual_dy = target.y() - current.y()
             actual_distance = math.hypot(actual_dx, actual_dy)
@@ -159,11 +159,11 @@ class MovementManager:
 
         if action_lower == "face":
             dir_hint = params.get("dir", "").strip().lower()
-            bubble_offset = window._bubble_offset
+            bubble_offset = window.bubble_offset
             if dir_hint in ("left", "l", "左"):
-                window._apply_bubble_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             elif dir_hint in ("right", "r", "右"):
-                window._apply_bubble_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             return True
         return True
 
@@ -180,10 +180,10 @@ class MovementManager:
         window = self._window
         current_pos = window.frameGeometry().topLeft()
         desired = QtCore.QPoint(round(current_pos.x() + step_dx), round(current_pos.y() + step_dy))
-        clamped = window._clamp_window_position(desired)
+        clamped = window.clamp_window_position(desired)
         actual_dx = clamped.x() - current_pos.x()
         actual_dy = clamped.y() - current_pos.y()
-        window._move_window_to(clamped)
+        window.move_window_to(clamped)
 
         moved_distance = math.hypot(actual_dx, actual_dy)
         remaining = self._movement_remaining - moved_distance
@@ -196,16 +196,16 @@ class MovementManager:
         dx, dy = direction
         if dx == 0 and dy == 0:
             return None
-        step = max(12, int(getattr(self._window, "_movement_step_px", 60)))
+        step = max(12, int(self._window.movement_step_px))
         current = self._window.frameGeometry().topLeft()
         target = QtCore.QPoint(round(current.x() + dx * step), round(current.y() + dy * step))
         extra_dx = self._extra_dx((dx, dy))
         if extra_dx:
             target.setX(target.x() + extra_dx)
-        clamped = self._window._clamp_window_position(target)
+        clamped = self._window.clamp_window_position(target)
         actual_dx = clamped.x() - current.x()
         actual_dy = clamped.y() - current.y()
-        self._window._move_window_to(clamped)
+        self._window.move_window_to(clamped)
         direction_vector = (actual_dx, actual_dy)
         direction_label = self._direction_label(direction_vector)
         return self._format_move_report(clamped, direction_label, actual_dx, actual_dy)
@@ -288,8 +288,8 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_pending_report = None
         self._movement_direction_key = None
-        if self._movement_previous_state and self._movement_previous_state in window._state_defs:
-            if window._current_state_key != self._movement_previous_state:
+        if self._movement_previous_state and self._movement_previous_state in window.state_definitions:
+            if window.current_state_key != self._movement_previous_state:
                 self._state_manager.set_state(self._movement_previous_state)
         self._movement_previous_state = None
 
@@ -389,19 +389,19 @@ class MovementManager:
         self._movement_start_pos = window.frameGeometry().topLeft()
         self._movement_direction_key = self._direction_slug(direction)
         self._movement_pending_report = report
-        self._movement_previous_state = window._current_state_key
-        window._last_tick_time = time.monotonic()
+        self._movement_previous_state = window.current_state_key
+        window.reset_animation_clock()
         self._set_movement_state(
             direction,
             speed_name,
             move_state=move_state,
-            prefer_walking=move_state_name == window._default_move_state_key,
+            prefer_walking=move_state_name == window.default_move_state_key,
         )
         self._active_movement = MovementRequest(
             direction=direction,
             distance_px=distance,
             speed_px_per_s=speed_value,
-            state_key=window._current_state_key,
+            state_key=window.current_state_key,
             move_state=move_state_name,
         )
 
@@ -420,16 +420,16 @@ class MovementManager:
             state_manager.write_state_list()
         slug = self._direction_slug(direction)
         random_state = state_manager.pick_random_state_for_direction(slug)
-        if move_state and move_state.state_key in window._state_defs:
+        if move_state and move_state.state_key in window.state_definitions:
             desired_key = move_state.state_key
         else:
             if random_state:
                 desired_key = random_state
-            elif (prefer_walking or walking_available) and "walking" in window._state_defs:
+            elif (prefer_walking or walking_available) and "walking" in window.state_definitions:
                 desired_key = "walking"
             else:
                 desired_key = self._infer_state_for_movement(direction, speed_name)
-        if desired_key and desired_key in window._state_defs and desired_key != window._current_state_key:
+        if desired_key and desired_key in window.state_definitions and desired_key != window.current_state_key:
             state_manager.set_state(desired_key)
 
     def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
@@ -446,7 +446,7 @@ class MovementManager:
             f"move_{speed_name}",
         ]
         for key in candidates:
-            if key in window._state_defs:
+            if key in window.state_definitions:
                 return key
         return None
 
