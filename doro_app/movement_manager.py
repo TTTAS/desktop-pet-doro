@@ -288,7 +288,7 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_pending_report = None
         self._movement_direction_key = None
-        if self._movement_previous_state and self._movement_previous_state in window._state_defs:
+        if self._movement_previous_state and window._state_service.states.get(self._movement_previous_state):
             if window._current_state_key != self._movement_previous_state:
                 self._state_manager.set_state(self._movement_previous_state)
         self._movement_previous_state = None
@@ -420,16 +420,16 @@ class MovementManager:
             state_manager.write_state_list()
         slug = self._direction_slug(direction)
         random_state = state_manager.pick_random_state_for_direction(slug)
-        if move_state and move_state.state_key in window._state_defs:
+        if move_state and window._state_service.states.get(move_state.state_key):
             desired_key = move_state.state_key
         else:
             if random_state:
                 desired_key = random_state
-            elif (prefer_walking or walking_available) and "walking" in window._state_defs:
+            elif (prefer_walking or walking_available) and window._state_service.states.get("walking"):
                 desired_key = "walking"
             else:
                 desired_key = self._infer_state_for_movement(direction, speed_name)
-        if desired_key and desired_key in window._state_defs and desired_key != window._current_state_key:
+        if desired_key and window._state_service.states.get(desired_key) and desired_key != window._current_state_key:
             state_manager.set_state(desired_key)
 
     def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
@@ -446,7 +446,7 @@ class MovementManager:
             f"move_{speed_name}",
         ]
         for key in candidates:
-            if key in window._state_defs:
+            if window._state_service.states.get(key):
                 return key
         return None
 

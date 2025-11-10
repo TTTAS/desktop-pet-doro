@@ -748,74 +748,57 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_manager.restore_state_from_config()
 
     def _persist_current_state(self):
+        """Persist current state to QSettings. State data is handled by StateService."""
         if not self._current_state_key:
             return
         self._config.setValue("current_state", self._current_state_key)
-        if self._state_settings:
-            path = self._state_settings.gif_path or ""
-            self._config.setValue(f"state/{self._current_state_key}/gif_path", path)
 
     def _apply_state_settings(self):
-        if self._state_settings is None:
+        """
+        Apply current state settings from StateService.
+
+        This is a legacy method kept for compatibility. New code should use
+        _on_state_changed() event handler instead.
+        """
+        if not self._current_state_key:
             return
-        self._amplitude = float(self._state_settings.bob_amplitude)
-        self._scale_amp = float(self._state_settings.scale_amplitude)
-        self._fill_colors = tuple(
-            QtGui.QColor(color)
-            for color in (
-                self._state_settings.gradient_top,
-                self._state_settings.gradient_mid,
-                self._state_settings.gradient_bottom,
-            )
+
+        state = self._state_service.states.get(self._current_state_key)
+        if not state:
+            return
+
+        # Apply visual config
+        visual = state.visual
+        self._amplitude = visual.bob_amplitude
+        self._scale_amp = visual.scale_amplitude
+        self._fill_colors = (
+            QtGui.QColor(visual.gradient_top),
+            QtGui.QColor(visual.gradient_mid),
+            QtGui.QColor(visual.gradient_bottom),
         )
-        self._cheek_alpha = float(self._state_settings.cheeks_alpha)
-        self._blush_base = QtGui.QColor(self._state_settings.blush_color)
-        self._eye_color = QtGui.QColor(self._state_settings.eye_color)
-        self._bubble_visible = bool(self._state_settings.bubble_visible)
-        self._bubble_alpha = float(self._state_settings.bubble_alpha)
-        self._name_tag = self._state_settings.name_tag
-        def _canonical_if_exists(path_str: str | None) -> str | None:
-            if not path_str:
-                return None
+        self._cheek_alpha = visual.cheeks_alpha
+        self._blush_base = QtGui.QColor(visual.blush_color)
+        self._eye_color = QtGui.QColor(visual.eye_color)
+        self._bubble_visible = visual.bubble_visible
+        self._bubble_alpha = visual.bubble_alpha
+        self._name_tag = state.name_tag
+
+        # Load GIF variant
+        gif_resource_id = self._state_service.pick_random_variant(self._current_state_key)
+        if gif_resource_id:
+            gif_path = self._gif_repo.get_path(gif_resource_id)
+            if gif_path:
+                self._load_gif(str(gif_path))
+                return
+
+        # Fallback to default idle GIF
+        if self._default_idle_gif.is_file():
             try:
-                path_obj = Path(path_str)
-            except (TypeError, ValueError):
-                return None
-            if not path_obj.is_file():
-                return None
-            try:
-                return str(path_obj.resolve())
+                self._load_gif(str(self._default_idle_gif.resolve()))
             except OSError:
-                return str(path_obj)
-
-        primary_existing = _canonical_if_exists(self._state_settings.gif_path)
-        active_existing = _canonical_if_exists(self._active_gif_path)
-
-        gif_path = active_existing or primary_existing
-        if gif_path is None:
-            if self._default_idle_gif.is_file():
-                try:
-                    default_path = str(self._default_idle_gif.resolve())
-                except OSError:
-                    default_path = str(self._default_idle_gif)
-                gif_path = default_path
-                self._state_settings.gif_path = default_path
-                primary_existing = default_path
-                active_existing = None
-            else:
-                self._state_settings.gif_path = None
-
-        if gif_path:
-            if primary_existing and gif_path == primary_existing:
-                if self._state_settings.gif_path != primary_existing:
-                    self._state_settings.gif_path = primary_existing
-                self._active_gif_path = None
-            else:
-                self._active_gif_path = active_existing if active_existing else None
+                self._load_gif(str(self._default_idle_gif))
         else:
-            self._active_gif_path = None
-
-        self._load_gif(gif_path)
+            self._load_gif(None)
 
     def _load_gif(self, path: str | None):
         if self._gif_movie:
@@ -857,55 +840,26 @@ class DoroWindow(QtWidgets.QWidget):
         self.update()
 
     def _select_state_gif_variant(self, key: str):
-        if self._state_settings is None:
-            self._active_gif_path = None
-            return
-        settings = self._state_settings
-        candidates: list[str] = []
-        for path in settings.gif_variants:
+        """
+        Select and load a random GIF variant for the given state.
+
+        This is a legacy method. New code should use StateService.pick_random_variant().
+        """
+        gif_resource_id = self._state_service.pick_random_variant(key)
+        if gif_resource_id:
+            gif_path = self._gif_repo.get_path(gif_resource_id)
+            if gif_path:
+                self._active_gif_path = str(gif_path)
+                return
+
+        # Fallback to default idle GIF
+        if self._default_idle_gif.is_file():
             try:
-                candidate = Path(path)
-            except TypeError:
-                continue
-            if candidate.is_file():
-                try:
-                    resolved = str(candidate.resolve())
-                except OSError:
-                    resolved = str(candidate)
-                if resolved not in candidates:
-                    candidates.append(resolved)
-        base_path = settings.gif_path
-        base_resolved: str | None = None
-        if base_path:
-            try:
-                base_candidate = Path(base_path)
-            except TypeError:
-                base_candidate = None
-            if base_candidate and base_candidate.is_file():
-                try:
-                    base_resolved = str(base_candidate.resolve())
-                except OSError:
-                    base_resolved = str(base_candidate)
-                if base_resolved not in candidates:
-                    candidates.insert(0, base_resolved)
-        chosen: str | None
-        if candidates:
-            chosen = random.choice(candidates)
-        elif base_resolved:
-            chosen = base_resolved
-        elif self._default_idle_gif.is_file():
-            try:
-                chosen = str(self._default_idle_gif.resolve())
+                self._active_gif_path = str(self._default_idle_gif.resolve())
             except OSError:
-                chosen = str(self._default_idle_gif)
+                self._active_gif_path = str(self._default_idle_gif)
         else:
-            chosen = None
-        if chosen and not Path(chosen).is_file():
-            chosen = None
-        if chosen and base_resolved and chosen == base_resolved:
             self._active_gif_path = None
-        else:
-            self._active_gif_path = chosen
 
     def _set_state(self, key: str):
         # NEW: Use StateService
@@ -1366,109 +1320,76 @@ class DoroWindow(QtWidgets.QWidget):
         return self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / f"{self._gif_repo._sanitize_key(key)}.gif"
 
     def _apply_move_gif_update(self, action_key: str):
+        """
+        Update GIF for a movement action.
+
+        This is called when a move GIF is changed and needs to update the
+        corresponding display state.
+        """
         normalized = (action_key or "").strip().lower()
         if not normalized:
             return
+
+        # Get move state settings (still using old structure)
         move_settings = self._move_state_defs.get(normalized)
         if move_settings is None:
             return
+
+        # Get GIF path for this move
         target_path = self._move_storage_path_for_key(normalized)
         if not target_path.is_file():
             return
-        try:
-            resolved = str(target_path.resolve())
-        except OSError:
-            resolved = str(target_path)
+
+        # Update corresponding display state
         state_key = move_settings.state_key
-        state_settings = self._state_defs.get(state_key)
-        if state_settings:
-            if state_settings.gif_path != resolved:
-                state_settings.gif_path = resolved
-            self._update_state_variants(state_key)
-            if self._current_state_key == state_key and self._state_settings is not None:
-                self._state_settings.gif_path = resolved
-                self._active_gif_path = None
+        state = self._state_service.states.get(state_key)
+        if not state:
+            return
+
+        # Set the move GIF as the primary GIF for this state
+        if self._state_service.set_primary_gif(state_key, target_path):
+            # Refresh state list
+            self._write_state_list()
+            self._write_move_state_list()
+
+            # If this is the current state, trigger update
+            if state_key == self._current_state_key:
                 self._apply_state_settings()
                 self.update()
-            # Persist gif path for the underlying state
-            self._config.setValue(f"state/{state_key}/gif_path", resolved)
-        self._write_state_list()
-        self._write_move_state_list()
-        if state_key == self._current_state_key:
-            self._persist_current_state()
-        else:
-            self._persist_state_definitions()
 
     def _update_state_variants(self, key: str):
-        settings = self._state_defs.get(key)
-        if settings is None:
-            return
-        variants: list[str] = []
-        primary = settings.gif_path
-        if primary:
-            try:
-                primary_path = Path(primary)
-                if primary_path.is_file():
-                    variants.append(str(primary_path.resolve()))
-            except OSError:
-                pass
-        variants_dir = self._state_variants_dir_for_key(key)
-        if variants_dir.is_dir():
-            for path in sorted(variants_dir.glob("*.gif")):
-                try:
-                    resolved = str(path.resolve())
-                except OSError:
-                    continue
-                if resolved not in variants and Path(resolved).is_file():
-                    variants.append(resolved)
-        settings.gif_variants = variants
+        """
+        Refresh GIF variants for a state.
+
+        This is a legacy method. StateService handles variant management automatically.
+        """
+        self._state_service._refresh_gif_variants(key)
 
     def _ensure_local_gif_for_state(self, key: str):
-        settings = self._state_defs.get(key)
-        if settings is None:
+        """
+        Ensure a state has a GIF assigned.
+
+        This is a legacy method. GifRepository now handles all GIF storage
+        automatically through store_gif().
+        """
+        state = self._state_service.states.get(key)
+        if not state:
             return
+
+        # If state already has a GIF, nothing to do
+        if state.primary_gif_id:
+            return
+
+        # Special handling for walking state
         if key == "walking":
             walking_source = self._move_storage_dir / "walking.gif"
             if walking_source.is_file():
-                settings.gif_path = str(walking_source.resolve())
-            elif self._default_idle_gif.is_file():
-                # 如果沒有步行資源，就改用預設 idle 圖保持顯示
-                settings.gif_path = str(self._default_idle_gif.resolve())
-            else:
-                settings.gif_path = None
-            self._update_state_variants(key)
-            return
-        current_path = settings.gif_path
-        assigned = False
-        if current_path:
-            src = Path(current_path)
-            if src.is_file():
-                dest = self._state_storage_path_for_key(key)
-                try:
-                    if src.resolve() == dest.resolve():
-                        settings.gif_path = str(dest.resolve())
-                        assigned = True
-                except OSError:
-                    pass
-                try:
-                    shutil.copy2(src, dest)
-                except OSError:
-                    pass
-                else:
-                    try:
-                        settings.gif_path = str(dest.resolve())
-                    except OSError:
-                        settings.gif_path = str(dest)
-                    assigned = True
-        if not assigned:
-            if self._default_idle_gif.is_file():
-                try:
-                    settings.gif_path = str(self._default_idle_gif.resolve())
-                except OSError:
-                    settings.gif_path = str(self._default_idle_gif)
-            else:
-                settings.gif_path = None
-        self._update_state_variants(key)
+                self._state_service.set_primary_gif(key, walking_source)
+                return
+
+        # Fallback to default idle GIF if available
+        if self._default_idle_gif.is_file():
+            self._state_service.set_primary_gif(key, self._default_idle_gif)
 
     # --- Chat panel rendering --------------------------------------
     def _draw_text_panel(self, p: QtGui.QPainter, alpha: int):
