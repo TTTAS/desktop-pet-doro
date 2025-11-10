@@ -21,7 +21,6 @@ class MovementManager:
 
     def __init__(self, window: DoroWindow):
         self._window = window
-        self._state_manager = window._state_manager
         self._active_movement: MovementRequest | None = None
         self._movement_remaining = 0.0
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -77,7 +76,6 @@ class MovementManager:
             action_lower = "move"
 
         window = self._window
-        state_manager = self._state_manager
         if action_lower in base_moves:
             dx_param = params.get("dx")
             dy_param = params.get("dy")
@@ -290,7 +288,7 @@ class MovementManager:
         self._movement_direction_key = None
         if self._movement_previous_state and window._state_service.states.get(self._movement_previous_state):
             if window._current_state_key != self._movement_previous_state:
-                self._state_manager.set_state(self._movement_previous_state)
+                window._state_service.set_state(self._movement_previous_state)
         self._movement_previous_state = None
 
     def _format_move_report(self, pos: QtCore.QPoint, direction_label: str | None, dx: int, dy: int) -> str:
@@ -414,23 +412,27 @@ class MovementManager:
         prefer_walking: bool = False,
     ):
         window = self._window
-        state_manager = self._state_manager
-        walking_available, walking_added = state_manager.ensure_walking_state_available()
-        if walking_added:
-            state_manager.write_state_list()
+
+        # Check if walking state exists
+        walking_available = window._state_service.states.get("walking") is not None
+
+        # Determine desired state for movement
         slug = self._direction_slug(direction)
-        random_state = state_manager.pick_random_state_for_direction(slug)
+
         if move_state and window._state_service.states.get(move_state.state_key):
             desired_key = move_state.state_key
         else:
-            if random_state:
-                desired_key = random_state
-            elif (prefer_walking or walking_available) and window._state_service.states.get("walking"):
+            # TODO: Implement pick_random_state_for_direction in StateService
+            # For now, prefer walking or infer from movement
+            if prefer_walking and walking_available:
                 desired_key = "walking"
             else:
                 desired_key = self._infer_state_for_movement(direction, speed_name)
+                if not desired_key and walking_available:
+                    desired_key = "walking"
+
         if desired_key and window._state_service.states.get(desired_key) and desired_key != window._current_state_key:
-            state_manager.set_state(desired_key)
+            window._state_service.set_state(desired_key)
 
     def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
         window = self._window
