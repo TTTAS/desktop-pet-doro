@@ -24,7 +24,6 @@ from .chat_orchestrator import ChatOrchestrator
 from .movement_manager import MovementManager
 from .models import MoveStateSettings, StateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
-from .state_manager import StateManager  # OLD - to be removed
 from .state_models import State, StateChangeEvent
 from .state_repository import GifRepository, MoveStateRepository, StateRepository
 from .state_service import StateService
