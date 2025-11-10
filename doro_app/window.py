@@ -708,13 +708,16 @@ class DoroWindow(QtWidgets.QWidget):
 
     # OLD: State helpers delegating to old StateManager (to be removed)
     def _init_states(self):
-        self._state_manager.init_states()
+        """Legacy method - state initialization now handled by StateService.initialize()"""
+        pass
 
     def _load_custom_states(self):
-        self._state_manager._load_custom_states()
+        """Legacy method - custom states loaded automatically by StateService"""
+        pass
 
     def _init_move_states(self):
-        self._state_manager.init_move_states()
+        """Legacy method - move states loaded automatically by StateService"""
+        pass
 
     def _is_movement_only_state(self, key: str) -> bool:
         # NEW: Use StateService
@@ -733,19 +736,38 @@ class DoroWindow(QtWidgets.QWidget):
         default_distance: float | None = None,
         default_speed: str | None = None,
     ):
-        return self._state_manager.register_move_state(
-            key,
-            state_key=state_key,
-            direction=direction,
-            default_distance=default_distance,
-            default_speed=default_speed,
-        )
+        """Legacy method - move state registration now handled by StateService"""
+        # TODO: Implement using StateService.move_states.add() if needed
+        pass
 
     def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        return self._state_manager.resolve_move_state(key)
+        """
+        Resolve movement state configuration.
+
+        Legacy method - converts new MoveState to old MoveStateSettings format.
+        """
+        if not key:
+            return None, None
+
+        normalized = key.strip().lower()
+        move_state = self._state_service.move_states.get(normalized)
+
+        if not move_state:
+            return None, None
+
+        # Convert MoveState to MoveStateSettings for compatibility
+        settings = MoveStateSettings(
+            state_key=move_state.state_key,
+            direction=move_state.direction,
+            default_distance=move_state.default_distance,
+            default_speed=move_state.default_speed,
+        )
+
+        return normalized, settings
 
     def _restore_state_from_config(self):
-        self._state_manager.restore_state_from_config()
+        """Legacy method - state restoration now handled in __init__"""
+        pass
 
     def _persist_current_state(self):
         """Persist current state to QSettings. State data is handled by StateService."""
