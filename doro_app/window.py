@@ -53,10 +53,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._timer.timeout.connect(self._tick)
         self._timer.start(16)  # ~60 FPS
 
-        # Appearance/animation parameters (populated in _init_states)
-        self._state_defs: dict[str, StateSettings] = {}
-        self._protected_state_keys: set[str] = set()
-        self._state_settings: StateSettings | None = None
+        # Appearance/animation parameters
+        # OLD state data removed - now managed by StateService
         self._active_gif_path: str | None = None
         self._current_state_key: str = ""
         self._state_list_text: str = ""
@@ -525,7 +523,9 @@ class DoroWindow(QtWidgets.QWidget):
         visuals_menu = menu.addMenu("State visuals")
         bubble_action = visuals_menu.addAction("Show message panel")
         bubble_action.setCheckable(True)
-        bubble_action.setChecked(bool(self._state_settings and self._state_settings.bubble_visible))
+        # NEW: Get from StateService
+        current_state = self._state_service.states.current()
+        bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
         bubble_action.triggered.connect(self._toggle_bubble)
 
         gif_action = visuals_menu.addAction("Load GIF")
@@ -939,34 +939,12 @@ class DoroWindow(QtWidgets.QWidget):
         return self._state_service.remove_gif_variant(key, variant_path)
 
     def _write_state_list(self):
-        if not self._state_defs:
-            return
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        lines = [f"[{timestamp}] 可使用的狀態為:"]
-        visible_keys = sorted(self._visible_state_keys())
-        for key in visible_keys:
-            state = self._state_defs[key]
-            label = state.label or key
-            gif_hint = state.gif_path or "(no GIF)"
-            variants_count = 0
-            if state.gif_variants:
-                unique_variants = []
-                for path in state.gif_variants:
-                    if path and path not in unique_variants:
-                        unique_variants.append(path)
-                variants_count = max(0, len(unique_variants) - (1 if state.gif_path else 0))
-            if variants_count > 0:
-                gif_hint = f"{gif_hint} (+{variants_count} variants)"
-            lines.append(f"- ({key}) {label} | GIF: {gif_hint}")
-        output = "\n".join(lines) + "\n"
-        self._state_list_text = output.strip()
-        try:
-            self._state_list_path.write_text(output, encoding="utf-8")
-        except OSError:
-            pass
-        print(output)
+        # NEW: Delegate to StateService
+        self._state_list_text = self._state_service._write_state_list()
 
     def _write_move_state_list(self):
+        # TODO: Move states not yet fully migrated
+        # This will be replaced when movement system is refactored
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"[{timestamp}] 可使用的移動狀態為:"]
         if not self._move_state_defs:
@@ -977,13 +955,15 @@ class DoroWindow(QtWidgets.QWidget):
                 direction = (move_settings.direction or "any").strip() or "any"
                 direction = direction.lower()
                 state_key = move_settings.state_key
-                state_settings = self._state_defs.get(state_key)
-                label = state_settings.label if state_settings else state_key
-                gif_hint = (
-                    state_settings.gif_path
-                    if state_settings and state_settings.gif_path
-                    else "(no GIF)"
-                )
+                # NEW: Get state from StateService
+                state = self._state_service.states.get(state_key)
+                label = state.label if state else state_key
+                # NEW: Get GIF from StateService
+                gif_hint = "(no GIF)"
+                if state and state.primary_gif_id:
+                    gif_path = self._gif_repo.get_path(state.primary_gif_id)
+                    if gif_path:
+                        gif_hint = str(gif_path)
                 lines.append(
                     f"- ({key}) {label} | direction: {direction} | state: {state_key} | GIF: {gif_hint}"
                 )
@@ -1271,26 +1251,50 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_controller.set_timeout_seconds(value)
 
     def _toggle_bubble(self, checked: bool):
-        if self._state_settings is None:
+        # NEW: Update through StateService
+        if not self._current_state_key:
             return
+        current_state = self._state_service.states.get(self._current_state_key)
+        if not current_state:
+            return
+
+        updated = current_state.with_visual(bubble_visible=checked)
+        self._state_service.states.add(updated)
+        self._state_service.state_repo.save_all(
+            self._state_service.states._states,
+            self._state_service.states._protected_keys,
+        )
+
+        # Update UI
+        self._bubble_visible = checked
         self._bubble_controller.set_visible(checked)
-        self._save_state_settings()
 
     def _rename_pet(self):
-        if self._state_settings is None:
+        # NEW: Update through StateService
+        if not self._current_state_key:
             return
+        current_state = self._state_service.states.get(self._current_state_key)
+        if not current_state:
+            return
+
         text, ok = QtWidgets.QInputDialog.getText(
             self,
             "Rename pet",
             "Name tag:",
             QtWidgets.QLineEdit.EchoMode.Normal,
-            self._state_settings.name_tag,
+            current_state.name_tag,
         )
         if ok and text.strip():
-            self._state_settings.name_tag = text.strip()
-            self._apply_state_settings()
+            updated = current_state.with_changes(name_tag=text.strip())
+            self._state_service.states.add(updated)
+            self._state_service.state_repo.save_all(
+                self._state_service.states._states,
+                self._state_service.states._protected_keys,
+            )
+
+            # Update local cache
+            self._name_tag = text.strip()
             self.update()
-            self._save_state_settings()
 
     def _add_state(self, checked: bool = False) -> str | None:
         # NEW: Use dialog
