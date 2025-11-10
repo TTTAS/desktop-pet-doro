@@ -105,8 +105,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._default_move_state_key = "walking"
         self._move_state_defs: dict[str, MoveStateSettings] = {}
 
-        # OLD architecture (keeping for compatibility during migration)
-        self._state_manager = StateManager(self)
+        # OLD architecture (DISABLED - testing new architecture)
+        # self._state_manager = StateManager(self)
 
         # NEW architecture - state management without Window coupling
         self._gif_repo = GifRepository(STATE_DIR)
@@ -1007,8 +1007,12 @@ class DoroWindow(QtWidgets.QWidget):
         show_state_gif_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        # OLD: Keep using old StateManager for now (move states not fully migrated)
-        self._state_manager.show_move_gif_manager()
+        # TODO: Implement move GIF manager with new architecture
+        QtWidgets.QMessageBox.information(
+            self,
+            "Move GIF Manager",
+            "Move states not yet migrated to new architecture.\nComing soon!",
+        )
 
     def _clear_state_gif(self):
         # NEW: Clear primary GIF for current state
