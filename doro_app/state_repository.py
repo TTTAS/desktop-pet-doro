@@ -104,6 +104,63 @@ class GifRepository:
                 variants.append(resource_id)
         return variants
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Path Utilities
+    # ═══════════════════════════════════════════════════════════
+
+    def get_state_storage_path(self, state_key: str) -> Path:
+        """
+        Get the primary storage path for a state's GIF.
+
+        Args:
+            state_key: State identifier
+
+        Returns:
+            Path where the primary GIF should be stored
+        """
+        return self._primary_path(state_key)
+
+    def get_state_variants_dir(self, state_key: str) -> Path:
+        """
+        Get the directory for a state's GIF variants.
+
+        Args:
+            state_key: State identifier
+
+        Returns:
+            Path to variants directory
+        """
+        return self._variant_dir(state_key)
+
+    def get_move_storage_path(self, move_key: str) -> Path:
+        """
+        Get the storage path for a movement action's GIF.
+
+        Args:
+            move_key: Movement action key (e.g., "walking", "running")
+
+        Returns:
+            Path where the move GIF should be stored
+        """
+        safe_key = self._sanitize_key(move_key)
+        return self.storage_dir.parent / "ACTION" / "MOVE" / f"{safe_key}.gif"
+
+    def sanitize_filename(self, key: str) -> str:
+        """
+        Sanitize a key for safe use in filenames.
+
+        Args:
+            key: Raw key string
+
+        Returns:
+            Sanitized filename-safe string
+        """
+        return self._sanitize_key(key)
+
+    # ═══════════════════════════════════════════════════════════
+    # Private Implementation
+    # ═══════════════════════════════════════════════════════════
+
     def _primary_path(self, state_key: str) -> Path:
         """Get primary GIF path for a state."""
         safe_key = self._sanitize_key(state_key)

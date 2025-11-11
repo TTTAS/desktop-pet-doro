@@ -1316,20 +1316,20 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service.save_states()
 
     def _state_storage_token(self, key: str) -> str:
-        # NEW: Use GifRepository sanitize logic
-        return self._gif_repo._sanitize_key(key)
+        # NEW: Use GifRepository public API
+        return self._gif_repo.sanitize_filename(key)
 
     def _state_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository
-        return self._gif_repo._primary_path(key)
+        # NEW: Use GifRepository public API
+        return self._gif_repo.get_state_storage_path(key)
 
     def _state_variants_dir_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository
-        return self._gif_repo._variant_dir(key)
+        # NEW: Use GifRepository public API
+        return self._gif_repo.get_state_variants_dir(key)
 
     def _move_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository for move GIFs
-        return self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / f"{self._gif_repo._sanitize_key(key)}.gif"
+        # NEW: Use GifRepository public API
+        return self._gif_repo.get_move_storage_path(key)
 
     def _apply_move_gif_update(self, action_key: str):
         """
