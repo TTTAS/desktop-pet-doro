@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import random
@@ -10,7 +9,6 @@ import re
 import shutil
 import sys
 import time
-from dataclasses import asdict, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -22,7 +20,7 @@ from .bubble_controller import BubbleConfig, BubbleController
 from .chat_controller import ChatController
 from .chat_orchestrator import ChatOrchestrator
 from .movement_manager import MovementManager
-from .models import MoveStateSettings, StateSettings
+from .models import MoveStateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from .state_models import State, StateChangeEvent
 from .state_repository import GifRepository, MoveStateRepository, StateRepository
@@ -103,9 +101,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._default_move_state_key = "walking"
         # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
 
-        # OLD architecture (DISABLED - testing new architecture)
-        # self._state_manager = StateManager(self)
-
         # NEW architecture - state management without Window coupling
         self._gif_repo = GifRepository(STATE_DIR)
         self._state_repo = StateRepository(STATE_DIR / "states.json")
@@ -175,16 +170,6 @@ class DoroWindow(QtWidgets.QWidget):
         saved_state_key = self._config.value("current_state", "idle")
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
-
-        # OLD initialization (keeping temporarily for compatibility)
-        # self._state_manager.init_states()
-        # self._state_manager.init_move_states()
-        # self._state_manager.restore_state_from_config()
-
-        # self._companion_timer = QtCore.QTimer(self)
-        # self._companion_timer.setInterval(10000)
-        # self._companion_timer.timeout.connect(self._on_companion_timeout)
-        # self._companion_timer.start()
 
         # Drag move support
         self._drag_pos: QtCore.QPoint | None = None
@@ -1313,18 +1298,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Remove current state
         if self._current_state_key:
             self._remove_state_by_key(self._current_state_key, confirm=True)
-
-    def _save_state_settings(self):
-        # NEW: State persistence handled automatically by StateService
-        pass
-
-    def _state_settings_to_dict(self, settings: StateSettings) -> dict:
-        # OLD: Compatibility shim (should not be needed)
-        return self._state_repo.state_settings_to_dict(settings)
-
-    def _state_settings_from_dict(self, key: str, data: dict) -> StateSettings:
-        # OLD: Compatibility shim (should not be needed)
-        return self._state_repo.state_settings_from_dict(key, data)
 
     def _persist_state_definitions(self):
         # NEW: Persistence handled by StateService
