@@ -681,6 +681,46 @@ class DoroWindow(QtWidgets.QWidget):
         """Save all states to disk (public API)."""
         return self._state_service.save_states()
 
+    # ═══════════════════════════════════════════════════════════
+    # Public Movement API - Window Operations
+    # ═══════════════════════════════════════════════════════════
+
+    def get_state_service(self):
+        """Get the state service (public API)."""
+        return self._state_service
+
+    def get_movement_step_px(self) -> int:
+        """Get the default movement step in pixels (public API)."""
+        return self._movement_step_px
+
+    def get_default_move_state_key(self) -> str:
+        """Get the default movement state key (public API)."""
+        return self._default_move_state_key
+
+    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
+        """Clamp window position to stay on screen (public API)."""
+        return self._clamp_window_position(pos)
+
+    def move_window_to(self, pos: QtCore.QPoint):
+        """Move window to position (public API)."""
+        self._move_window_to(pos)
+
+    def update_last_tick_time(self, time_value: float):
+        """Update last tick time (public API)."""
+        self._last_tick_time = time_value
+
+    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        """Resolve movement state configuration (public API)."""
+        return self._resolve_move_state(key)
+
+    def get_bubble_offset(self) -> QtCore.QPointF:
+        """Get current bubble offset (public API)."""
+        return self._bubble_offset
+
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
+        """Apply bubble offset (public API)."""
+        self._apply_bubble_offset(offset, persist=persist)
+
     def get_gif_path(self, resource_id: str) -> Optional[Path]:
         """Get GIF file path from resource ID (public API)."""
         return self._gif_repo.get_path(resource_id)

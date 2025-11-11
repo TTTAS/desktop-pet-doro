@@ -105,6 +105,21 @@ class StateService:
         """Get all movement state keys."""
         return self._move_states.all_keys()
 
+    def find_move_states_by_direction(self, direction_slug: str) -> list[MoveState]:
+        """Find all movement states that support the given direction."""
+        return self._move_states.find_by_direction(direction_slug)
+
+    def get_default_movement_state(self) -> Optional[str]:
+        """Get the default movement state key (usually 'walking')."""
+        # Try to find 'walking' state
+        if self.get_state("walking"):
+            return "walking"
+        # Fall back to any move state with direction="any"
+        for move_state in self._move_states.find_by_direction("any"):
+            if self.get_state(move_state.state_key):
+                return move_state.state_key
+        return None
+
     def find_state_by_label(self, label_query: str) -> Optional[str]:
         """Find a state key by searching labels (case-insensitive)."""
         query_lower = label_query.lower().strip()
