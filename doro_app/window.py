@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
@@ -574,8 +575,9 @@ class DoroWindow(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        bob = 0.0
-        scale = 1.0
+        # Apply bob (vertical oscillation) and scale (breathing) animations
+        bob = self._amplitude * math.sin(self._t * 2.0)
+        scale = 1.0 + self._scale_amp * math.sin(self._t * 1.5)
 
         sprite_center = self._sprite_center()
         p.save()
