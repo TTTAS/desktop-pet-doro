@@ -55,7 +55,7 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         visible_keys = sorted(self.service.visible_state_keys())
 
         for row, key in enumerate(visible_keys):
-            state = self.service.states.get(key)
+            state = self.service.get_state(key)
             if not state:
                 continue
 
@@ -132,13 +132,12 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
     def _on_clear_gif(self, state_key: str):
         """Handle Clear GIF button click."""
-        state = self.service.states.get(state_key)
+        state = self.service.get_state(state_key)
         if not state or not state.primary_gif_id:
             return
 
         self.service.gif_repo.delete(state.primary_gif_id)
-        updated = state.with_changes(primary_gif_id=None)
-        self.service.states.add(updated)
+        self.service.update_state(state_key, primary_gif_id=None)
         self._populate()
 
 
@@ -218,7 +217,7 @@ class GifVariantDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.list_widget.clear()
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state:
             return
 
@@ -303,12 +302,11 @@ class GifVariantDialog(QtWidgets.QDialog):
             return
 
         resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state:
             return
 
-        updated = state.with_changes(primary_gif_id=resource_id)
-        self.service.states.add(updated)
+        self.service.update_state(self.state_key, primary_gif_id=resource_id)
         self._populate()
 
     def _on_remove_variant(self):
@@ -318,7 +316,7 @@ class GifVariantDialog(QtWidgets.QDialog):
             return
 
         resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state or resource_id == state.primary_gif_id:
             QtWidgets.QMessageBox.information(
                 self,
@@ -362,11 +360,11 @@ class AddStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Add state", "Key cannot be empty.")
             return
 
-        if self.service.states.get(key):
+        if self.service.get_state(key):
             QtWidgets.QMessageBox.warning(self, "Add state", "A state with this key already exists.")
             return
 
-        if self.service.move_states.is_movement_only(key):
+        if self.service.is_movement_only_state(key):
             QtWidgets.QMessageBox.warning(self, "Add state", "This key is reserved for movement animations.")
             return
 

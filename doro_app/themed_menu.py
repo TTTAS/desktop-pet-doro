@@ -108,11 +108,6 @@ class DoroMenu(QtWidgets.QMenu):
             image: url(none);
         }}
 
-        QMenu::indicator:non-exclusive:checked::after {{
-            content: "✓";
-            color: white;
-        }}
-
         QMenu::right-arrow {{
             width: 12px;
             height: 12px;

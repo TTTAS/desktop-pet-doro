@@ -53,6 +53,15 @@ class StateService:
         self.on_states_modified: Optional[Callable[[], None]] = None
 
     # ═══════════════════════════════════════════════════════════
+    # Public API - Repository Access
+    # ═══════════════════════════════════════════════════════════
+
+    @property
+    def gif_repo(self) -> GifRepository:
+        """Access to GIF repository for path and storage operations."""
+        return self._gif_repo
+
+    # ═══════════════════════════════════════════════════════════
     # Public API - Query Methods
     # ═══════════════════════════════════════════════════════════
 
