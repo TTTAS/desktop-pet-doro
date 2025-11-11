@@ -100,7 +100,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._sprite_anchor_top: float | None = None
         self._movement_step_px = 60
         self._default_move_state_key = "walking"
-        self._move_state_defs: dict[str, MoveStateSettings] = {}
+        # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
 
         # OLD architecture (DISABLED - testing new architecture)
         # self._state_manager = StateManager(self)
@@ -921,30 +921,39 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_list_text = self._state_service._write_state_list()
 
     def _write_move_state_list(self):
-        # TODO: Move states not yet fully migrated
-        # This will be replaced when movement system is refactored
+        """Write movement state list (NEW: uses StateService)."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lines = [f"[{timestamp}] 可使用的移動狀態為:"]
-        if not self._move_state_defs:
+
+        # NEW: Get movement states from StateService
+        move_keys = self._state_service.all_move_state_keys()
+        if not move_keys:
             lines.append("- (none) 無移動專用狀態")
         else:
-            for key in sorted(self._move_state_defs.keys()):
-                move_settings = self._move_state_defs[key]
-                direction = (move_settings.direction or "any").strip() or "any"
+            for key in sorted(move_keys):
+                move_state = self._state_service.get_move_state(key)
+                if not move_state:
+                    continue
+
+                direction = (move_state.direction or "any").strip() or "any"
                 direction = direction.lower()
-                state_key = move_settings.state_key
-                # NEW: Get state from StateService
+                state_key = move_state.state_key
+
+                # Get state information from StateService
                 state = self._state_service.get_state(state_key)
                 label = state.label if state else state_key
-                # NEW: Get GIF from StateService
+
+                # Get GIF information
                 gif_hint = "(no GIF)"
                 if state and state.primary_gif_id:
                     gif_path = self._gif_repo.get_path(state.primary_gif_id)
                     if gif_path:
                         gif_hint = str(gif_path)
+
                 lines.append(
                     f"- ({key}) {label} | direction: {direction} | state: {state_key} | GIF: {gif_hint}"
                 )
+
         output = "\n".join(lines) + "\n"
         self._move_state_list_text = output.strip()
         try:
@@ -1342,9 +1351,9 @@ class DoroWindow(QtWidgets.QWidget):
         if not normalized:
             return
 
-        # Get move state settings (still using old structure)
-        move_settings = self._move_state_defs.get(normalized)
-        if move_settings is None:
+        # NEW: Get move state from StateService
+        move_state = self._state_service.get_move_state(normalized)
+        if not move_state:
             return
 
         # Get GIF path for this move
@@ -1353,7 +1362,7 @@ class DoroWindow(QtWidgets.QWidget):
             return
 
         # Update corresponding display state
-        state_key = move_settings.state_key
+        state_key = move_state.state_key
         state = self._state_service.get_state(state_key)
         if not state:
             return

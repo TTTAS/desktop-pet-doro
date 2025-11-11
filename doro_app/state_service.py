@@ -92,6 +92,10 @@ class StateService:
         """Get a movement state by key."""
         return self._move_states.get(key)
 
+    def all_move_state_keys(self) -> list[str]:
+        """Get all movement state keys."""
+        return self._move_states.all_keys()
+
     def find_state_by_label(self, label_query: str) -> Optional[str]:
         """Find a state key by searching labels (case-insensitive)."""
         query_lower = label_query.lower().strip()
