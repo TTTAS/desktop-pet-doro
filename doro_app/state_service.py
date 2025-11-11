@@ -210,7 +210,7 @@ class StateService:
         self._ensure_walking_state()
 
         # Write initial state list
-        self._write_state_list()
+        self.write_state_list()
 
     def _ensure_walking_state(self) -> None:
         """Ensure a default walking movement state exists."""
@@ -262,7 +262,7 @@ class StateService:
         # Load GIF variants if needed
         state = self._states.get(key)
         if state:
-            self._refresh_gif_variants(key)
+            self.refresh_gif_variants(key)
 
         # Emit event
         if self.on_state_changed and state:
@@ -307,7 +307,7 @@ class StateService:
 
         self._states.add(new_state)
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
-        self._write_state_list()
+        self.write_state_list()
 
         if self.on_states_modified:
             self.on_states_modified()
@@ -334,7 +334,7 @@ class StateService:
             self._gif_repo.delete(variant_id)
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
-        self._write_state_list()
+        self.write_state_list()
 
         if self.on_states_modified:
             self.on_states_modified()
@@ -384,7 +384,7 @@ class StateService:
 
         updated = state.with_changes(primary_gif_id=resource_id)
         self._states.add(updated)
-        self._refresh_gif_variants(state_key)
+        self.refresh_gif_variants(state_key)
 
         # Emit change if current
         if self._states._current_key == state_key and self.on_state_changed:
@@ -408,7 +408,7 @@ class StateService:
         if not resource_id:
             return False
 
-        self._refresh_gif_variants(state_key)
+        self.refresh_gif_variants(state_key)
         return True
 
     def remove_gif_variant(self, state_key: str, resource_id: str) -> bool:
@@ -416,10 +416,10 @@ class StateService:
         if not self._gif_repo.delete(resource_id):
             return False
 
-        self._refresh_gif_variants(state_key)
+        self.refresh_gif_variants(state_key)
         return True
 
-    def _refresh_gif_variants(self, state_key: str) -> None:
+    def refresh_gif_variants(self, state_key: str) -> None:
         """Refresh variant list for a state from filesystem."""
         state = self._states.get(state_key)
         if not state:
@@ -473,7 +473,7 @@ class StateService:
         )
         self._move_states.add(move_state)
         self._move_repo.save_all(self._move_states._items)
-        self._write_state_list()
+        self.write_state_list()
         return move_state
 
     def remove_move_state(self, key: str) -> bool:
@@ -482,7 +482,7 @@ class StateService:
             return False
 
         self._move_repo.save_all(self._move_states._items)
-        self._write_state_list()
+        self.write_state_list()
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:
@@ -526,7 +526,7 @@ class StateService:
     # Persistence
     # ═══════════════════════════════════════════════════════════
 
-    def _write_state_list(self) -> str:
+    def write_state_list(self) -> str:
         """Write state summary for LLM context."""
         return self._state_list_writer.write(
             self._states._items,

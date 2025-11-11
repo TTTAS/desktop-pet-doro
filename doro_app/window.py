@@ -308,7 +308,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_controller.set_scale(value, persist=persist)
 
     def _persist_bubble_preferences(self):
-        self._bubble_controller._persist_preferences()
+        self._bubble_controller.persist_preferences()
 
     def _bubble_handle_rect(self) -> QtCore.QRectF | None:
         return None
@@ -700,7 +700,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Update current state tracking (for compatibility with old code)
         self._current_state_key = event.new_key
-        self._state_list_text = self._state_service._write_state_list()
+        self._state_list_text = self._state_service.write_state_list()
 
         # Pick and load random GIF variant
         gif_resource_id = self._state_service.pick_random_variant(event.new_key)
@@ -733,7 +733,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _on_states_modified(self) -> None:
         """Handle state list modifications (add/remove states)."""
-        self._state_list_text = self._state_service._write_state_list()
+        self._state_list_text = self._state_service.write_state_list()
 
     def _is_movement_only_state(self, key: str) -> bool:
         # NEW: Use StateService
@@ -911,7 +911,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _write_state_list(self):
         # NEW: Delegate to StateService
-        self._state_list_text = self._state_service._write_state_list()
+        self._state_list_text = self._state_service.write_state_list()
 
     def _write_move_state_list(self):
         """Write movement state list (NEW: uses StateService)."""
@@ -1365,7 +1365,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         This is a legacy method. StateService handles variant management automatically.
         """
-        self._state_service._refresh_gif_variants(key)
+        self._state_service.refresh_gif_variants(key)
 
     def _ensure_local_gif_for_state(self, key: str):
         """
