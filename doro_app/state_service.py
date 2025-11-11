@@ -293,7 +293,7 @@ class StateService:
             new_state = State(key=key, label=label)
 
         self._states.add(new_state)
-        self._state_repo.save_all(self._states._states, self._states._protected_keys)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self._write_state_list()
 
         if self.on_states_modified:
@@ -320,7 +320,7 @@ class StateService:
         for variant_id in state.variant_gif_ids if state else []:
             self._gif_repo.delete(variant_id)
 
-        self._state_repo.save_all(self._states._states, self._states._protected_keys)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self._write_state_list()
 
         if self.on_states_modified:
@@ -341,7 +341,7 @@ class StateService:
 
         updated = state.with_visual(**visual_changes)
         self._states.add(updated)
-        self._state_repo.save_all(self._states._states, self._states._protected_keys)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
 
         # If this is current state, emit change event
         if self._states._current_key == key and self.on_state_changed:
@@ -459,7 +459,7 @@ class StateService:
             default_speed=speed,
         )
         self._move_states.add(move_state)
-        self._move_repo.save_all(self._move_states._move_states)
+        self._move_repo.save_all(self._move_states._items)
         self._write_state_list()
         return move_state
 
@@ -468,7 +468,7 @@ class StateService:
         if not self._move_states.remove(key):
             return False
 
-        self._move_repo.save_all(self._move_states._move_states)
+        self._move_repo.save_all(self._move_states._items)
         self._write_state_list()
         return True
 
@@ -516,8 +516,8 @@ class StateService:
     def _write_state_list(self) -> str:
         """Write state summary for LLM context."""
         return self._state_list_writer.write(
-            self._states._states,
-            self._move_states._move_states,
+            self._states._items,
+            self._move_states._items,
             self._gif_repo,
             self._move_states._movement_only_keys,
         )
