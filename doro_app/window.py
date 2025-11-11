@@ -478,7 +478,7 @@ class DoroWindow(QtWidgets.QWidget):
         states_menu = menu.addMenu("States")
         for key in self._visible_state_keys():
             # NEW: Get state from StateService
-            state = self._state_service.states.get(key)
+            state = self._state_service.get_state(key)
             if not state:
                 continue
             label = state.label or key
@@ -660,6 +660,42 @@ class DoroWindow(QtWidgets.QWidget):
         widget.setGraphicsEffect(shadow)
     # --- State helpers ---------------------------------------------------
 
+    # ═══════════════════════════════════════════════════════════
+    # Public State API - Encapsulation Layer
+    # ═══════════════════════════════════════════════════════════
+
+    def has_state(self, key: str) -> bool:
+        """Check if a state exists (public API)."""
+        return self._state_service.has_state(key)
+
+    def get_state(self, key: str) -> Optional[State]:
+        """Get a state by key (public API)."""
+        return self._state_service.get_state(key)
+
+    def set_state(self, key: str) -> bool:
+        """Change to a different state (public API)."""
+        return self._state_service.set_state(key)
+
+    def is_movement_only_state(self, key: str) -> bool:
+        """Check if a state is movement-only (public API)."""
+        return self._state_service.is_movement_only_state(key)
+
+    def get_current_state_key(self) -> Optional[str]:
+        """Get the current state key (public API)."""
+        return self._current_state_key
+
+    def save_states(self) -> bool:
+        """Save all states to disk (public API)."""
+        return self._state_service.save_states()
+
+    def get_gif_path(self, resource_id: str) -> Optional[Path]:
+        """Get GIF file path from resource ID (public API)."""
+        return self._gif_repo.get_path(resource_id)
+
+    # ═══════════════════════════════════════════════════════════
+    # Event Callbacks from StateService
+    # ═══════════════════════════════════════════════════════════
+
     # NEW: Event callbacks from StateService
     def _on_state_changed(self, event: StateChangeEvent) -> None:
         """
@@ -706,39 +742,13 @@ class DoroWindow(QtWidgets.QWidget):
         """Handle state list modifications (add/remove states)."""
         self._state_list_text = self._state_service._write_state_list()
 
-    # OLD: State helpers delegating to old StateManager (to be removed)
-    def _init_states(self):
-        """Legacy method - state initialization now handled by StateService.initialize()"""
-        pass
-
-    def _load_custom_states(self):
-        """Legacy method - custom states loaded automatically by StateService"""
-        pass
-
-    def _init_move_states(self):
-        """Legacy method - move states loaded automatically by StateService"""
-        pass
-
     def _is_movement_only_state(self, key: str) -> bool:
         # NEW: Use StateService
-        return self._state_service.move_states.is_movement_only(key)
+        return self._state_service.is_movement_only_state(key)
 
     def _visible_state_keys(self) -> list[str]:
         # NEW: Use StateService
         return self._state_service.visible_state_keys()
-
-    def _register_move_state(
-        self,
-        key: str,
-        *,
-        state_key: str,
-        direction: str | None = None,
-        default_distance: float | None = None,
-        default_speed: str | None = None,
-    ):
-        """Legacy method - move state registration now handled by StateService"""
-        # TODO: Implement using StateService.move_states.add() if needed
-        pass
 
     def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """
@@ -765,10 +775,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         return normalized, settings
 
-    def _restore_state_from_config(self):
-        """Legacy method - state restoration now handled in __init__"""
-        pass
-
     def _persist_current_state(self):
         """Persist current state to QSettings. State data is handled by StateService."""
         if not self._current_state_key:
@@ -785,7 +791,7 @@ class DoroWindow(QtWidgets.QWidget):
         if not self._current_state_key:
             return
 
-        state = self._state_service.states.get(self._current_state_key)
+        state = self._state_service.get_state(self._current_state_key)
         if not state:
             return
 
@@ -887,10 +893,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         self._state_service.set_state(key)
 
-    def _reset_state_overrides(self):
-        # OLD: No equivalent needed - states are immutable
-        pass
-
     def _load_state_gif(self):
         # NEW: Show GIF manager dialog
         from .state_dialogs import show_state_gif_manager
@@ -932,7 +934,7 @@ class DoroWindow(QtWidgets.QWidget):
                 direction = direction.lower()
                 state_key = move_settings.state_key
                 # NEW: Get state from StateService
-                state = self._state_service.states.get(state_key)
+                state = self._state_service.get_state(state_key)
                 label = state.label if state else state_key
                 # NEW: Get GIF from StateService
                 gif_hint = "(no GIF)"
@@ -972,7 +974,7 @@ class DoroWindow(QtWidgets.QWidget):
     def _clear_state_gif(self):
         # NEW: Clear primary GIF for current state
         if self._current_state_key:
-            state = self._state_service.states.get(self._current_state_key)
+            state = self._state_service.get_state(self._current_state_key)
             if state and state.primary_gif_id:
                 self._gif_repo.delete(state.primary_gif_id)
                 updated = state.with_changes(primary_gif_id=None)
@@ -1046,7 +1048,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Check aliases
         alias_target = ACTION_ALIASES.get(normalized)
-        if alias_target and self._state_service.states.get(alias_target):
+        if alias_target and self._state_service.get_state(alias_target):
             if not self._is_movement_only_state(alias_target):
                 return alias_target
 
@@ -1061,7 +1063,7 @@ class DoroWindow(QtWidgets.QWidget):
             candidates.add(sanitized)
 
         for candidate in candidates:
-            if self._state_service.states.get(candidate):
+            if self._state_service.get_state(candidate):
                 if not self._is_movement_only_state(candidate):
                     return candidate
 
@@ -1230,26 +1232,20 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Update through StateService
         if not self._current_state_key:
             return
-        current_state = self._state_service.states.get(self._current_state_key)
-        if not current_state:
-            return
-
-        updated = current_state.with_visual(bubble_visible=checked)
-        self._state_service.states.add(updated)
-        self._state_service.state_repo.save_all(
-            self._state_service.states._states,
-            self._state_service.states._protected_keys,
-        )
-
-        # Update UI
-        self._bubble_visible = checked
-        self._bubble_controller.set_visible(checked)
+        # Update state via StateService
+        if self._state_service.update_visual_config(
+            self._current_state_key,
+            bubble_visible=checked
+        ):
+            # Update UI
+            self._bubble_visible = checked
+            self._bubble_controller.set_visible(checked)
 
     def _rename_pet(self):
         # NEW: Update through StateService
         if not self._current_state_key:
             return
-        current_state = self._state_service.states.get(self._current_state_key)
+        current_state = self._state_service.get_state(self._current_state_key)
         if not current_state:
             return
 
@@ -1261,15 +1257,13 @@ class DoroWindow(QtWidgets.QWidget):
             current_state.name_tag,
         )
         if ok and text.strip():
-            updated = current_state.with_changes(name_tag=text.strip())
-            self._state_service.states.add(updated)
-            self._state_service.state_repo.save_all(
-                self._state_service.states._states,
-                self._state_service.states._protected_keys,
-            )
-
-            # Update local cache
-            self._name_tag = text.strip()
+            # Update state via StateService
+            if self._state_service.update_state(
+                self._current_state_key,
+                name_tag=text.strip()
+            ):
+                # Update local cache
+                self._name_tag = text.strip()
             self.update()
 
     def _add_state(self, checked: bool = False) -> str | None:
@@ -1286,7 +1280,7 @@ class DoroWindow(QtWidgets.QWidget):
     ) -> bool:
         # NEW: Use StateService with confirmation
         if confirm:
-            state = self._state_service.states.get(key)
+            state = self._state_service.get_state(key)
             if not state:
                 return False
 
@@ -1320,10 +1314,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _persist_state_definitions(self):
         # NEW: Persistence handled by StateService
-        self._state_service.state_repo.save_all(
-            self._state_service.states._states,
-            self._state_service.states._protected_keys,
-        )
+        self._state_service.save_states()
 
     def _state_storage_token(self, key: str) -> str:
         # NEW: Use GifRepository sanitize logic
@@ -1364,7 +1355,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Update corresponding display state
         state_key = move_settings.state_key
-        state = self._state_service.states.get(state_key)
+        state = self._state_service.get_state(state_key)
         if not state:
             return
 
@@ -1394,7 +1385,7 @@ class DoroWindow(QtWidgets.QWidget):
         This is a legacy method. GifRepository now handles all GIF storage
         automatically through store_gif().
         """
-        state = self._state_service.states.get(key)
+        state = self._state_service.get_state(key)
         if not state:
             return
 

@@ -98,7 +98,7 @@ class ChatOrchestrator(QtCore.QObject):
                 state_key = self._window._find_state_for_action(token)
                 if state_key:
                     # Check if this is a movement-only state
-                    is_movement_only = self._window._state_service.move_states.is_movement_only(state_key)
+                    is_movement_only = self._window.is_movement_only_state(state_key)
                     if is_movement_only:
                         self._movement.record_manual_report(
                             f"Movement state '{state_key}' 未設定方向，請更新 move_state_list。"

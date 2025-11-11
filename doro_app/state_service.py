@@ -105,6 +105,23 @@ class StateService:
     # Public API - State Modification
     # ═══════════════════════════════════════════════════════════
 
+    def update_state(self, key: str, **changes) -> bool:
+        """
+        Update any fields of a state.
+
+        Returns:
+            True if successful, False if state not found
+        """
+        state = self._states.get(key)
+        if not state:
+            return False
+
+        updated = state.with_changes(**changes)
+        self._states.add(updated)
+        self._save_states()
+        self._emit_states_modified()
+        return True
+
     def update_visual_config(self, key: str, **visual_changes) -> bool:
         """
         Update visual configuration for a state.

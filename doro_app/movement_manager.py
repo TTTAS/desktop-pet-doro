@@ -286,9 +286,9 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_pending_report = None
         self._movement_direction_key = None
-        if self._movement_previous_state and window._state_service.states.get(self._movement_previous_state):
+        if self._movement_previous_state and window.get_state(self._movement_previous_state):
             if window._current_state_key != self._movement_previous_state:
-                window._state_service.set_state(self._movement_previous_state)
+                window.set_state(self._movement_previous_state)
         self._movement_previous_state = None
 
     def _format_move_report(self, pos: QtCore.QPoint, direction_label: str | None, dx: int, dy: int) -> str:
@@ -414,12 +414,12 @@ class MovementManager:
         window = self._window
 
         # Check if walking state exists
-        walking_available = window._state_service.states.get("walking") is not None
+        walking_available = window.get_state("walking") is not None
 
         # Determine desired state for movement
         slug = self._direction_slug(direction)
 
-        if move_state and window._state_service.states.get(move_state.state_key):
+        if move_state and window.get_state(move_state.state_key):
             desired_key = move_state.state_key
         else:
             # TODO: Implement pick_random_state_for_direction in StateService
@@ -431,8 +431,8 @@ class MovementManager:
                 if not desired_key and walking_available:
                     desired_key = "walking"
 
-        if desired_key and window._state_service.states.get(desired_key) and desired_key != window._current_state_key:
-            window._state_service.set_state(desired_key)
+        if desired_key and window.get_state(desired_key) and desired_key != window._current_state_key:
+            window.set_state(desired_key)
 
     def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
         window = self._window
@@ -448,7 +448,7 @@ class MovementManager:
             f"move_{speed_name}",
         ]
         for key in candidates:
-            if window._state_service.states.get(key):
+            if window.get_state(key):
                 return key
         return None
 
