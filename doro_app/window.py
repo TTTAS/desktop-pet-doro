@@ -493,7 +493,7 @@ class DoroWindow(QtWidgets.QWidget):
         remove_action = states_menu.addAction("Remove current state")
         remove_action.setEnabled(
             bool(self._current_state_key)
-            and not self._state_service.states.is_protected(self._current_state_key)
+            and not self._state_service.is_state_protected(self._current_state_key)
         )
         remove_action.triggered.connect(self._remove_current_state)
 
@@ -524,7 +524,7 @@ class DoroWindow(QtWidgets.QWidget):
         bubble_action = visuals_menu.addAction("Show message panel")
         bubble_action.setCheckable(True)
         # NEW: Get from StateService
-        current_state = self._state_service.states.current()
+        current_state = self._state_service.get_current_state()
         bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
         bubble_action.triggered.connect(self._toggle_bubble)
 
@@ -760,7 +760,7 @@ class DoroWindow(QtWidgets.QWidget):
             return None, None
 
         normalized = key.strip().lower()
-        move_state = self._state_service.move_states.get(normalized)
+        move_state = self._state_service.get_move_state(normalized)
 
         if not move_state:
             return None, None
@@ -977,8 +977,7 @@ class DoroWindow(QtWidgets.QWidget):
             state = self._state_service.get_state(self._current_state_key)
             if state and state.primary_gif_id:
                 self._gif_repo.delete(state.primary_gif_id)
-                updated = state.with_changes(primary_gif_id=None)
-                self._state_service.states.add(updated)
+                self._state_service.update_state(self._current_state_key, primary_gif_id=None)
 
     def _load_click_actions(self) -> list[str]:
         path = getattr(self, "_click_actions_path", None)
