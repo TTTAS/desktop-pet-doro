@@ -122,13 +122,9 @@ class DoroMenu(QtWidgets.QMenu):
 
         self.setStyleSheet(stylesheet)
 
-        # Set window flags for better appearance
-        self.setWindowFlags(
-            self.windowFlags()
-            | QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.NoDropShadowWindowHint
-        )
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Note: Removed FramelessWindowHint and WA_TranslucentBackground
+        # These caused "UpdateLayeredWindowIndirect failed" errors on Windows
+        # The pink theme and rounded corners are preserved via stylesheet
 
     def paintEvent(self, event: QtGui.QPaintEvent):
         """Custom paint event to draw avatar and enhanced styling."""
@@ -227,16 +223,9 @@ class DoroMenu(QtWidgets.QMenu):
         painter.drawEllipse(QtCore.QPointF(x, y), 20, 20)
         painter.restore()
 
-    def showEvent(self, event: QtWidgets.QShowEvent):
-        """Handle show event to add shadow effect."""
-        super().showEvent(event)
-
-        # Add drop shadow for depth
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 6)
-        shadow.setColor(QtGui.QColor(255, 155, 227, 100))
-        self.setGraphicsEffect(shadow)
+    # Note: Removed showEvent with QGraphicsDropShadowEffect
+    # This caused rendering conflicts with the custom paintEvent on Windows
+    # The menu still looks good with just the stylesheet and avatar decoration
 
 
 def create_doro_menu(
@@ -250,17 +239,25 @@ def create_doro_menu(
     Args:
         parent: Parent widget
         avatar_position: "top-left", "top-right", or "none"
-        gif_movie: QMovie to extract current frame as avatar
+        gif_movie: QMovie to extract first frame as avatar
 
     Returns:
         Configured DoroMenu instance
     """
     menu = DoroMenu(parent, avatar_position=avatar_position)
 
-    # Extract avatar from GIF if available
+    # Extract first frame from GIF if available
     if gif_movie and gif_movie.isValid():
-        current_pixmap = gif_movie.currentPixmap()
-        if not current_pixmap.isNull():
-            menu.set_avatar(current_pixmap)
+        # Temporarily jump to first frame to get avatar
+        current_frame = gif_movie.currentFrameNumber()
+        gif_movie.jumpToFrame(0)
+        first_frame_pixmap = gif_movie.currentPixmap()
+
+        # Restore to current frame (to avoid disrupting animation)
+        if current_frame >= 0:
+            gif_movie.jumpToFrame(current_frame)
+
+        if not first_frame_pixmap.isNull():
+            menu.set_avatar(first_frame_pixmap)
 
     return menu
