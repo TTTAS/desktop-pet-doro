@@ -28,6 +28,7 @@ from .state_models import State, StateChangeEvent
 from .state_repository import GifRepository, MoveStateRepository, StateRepository
 from .state_service import StateService
 from .theme import ensure_application_theme
+from .themed_menu import create_doro_menu
 from .utils import safe_float as _safe_float, safe_int as _safe_int
 
 
@@ -473,7 +474,12 @@ class DoroWindow(QtWidgets.QWidget):
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self._mark_user_activity()
-        menu = QtWidgets.QMenu(self)
+        # Create Doro-themed menu with avatar from current GIF
+        menu = create_doro_menu(
+            parent=self,
+            avatar_position="top-right",
+            gif_movie=self._gif_movie
+        )
 
         states_menu = menu.addMenu("States")
         for key in self._visible_state_keys():
