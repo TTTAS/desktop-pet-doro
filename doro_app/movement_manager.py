@@ -57,7 +57,7 @@ class MovementManager:
         self._last_error = None
 
     def instruction_text(self) -> str:
-        step = max(12, int(getattr(self._window, "_movement_step_px", 60)))
+        step = max(12, self._window.get_movement_step_px())
         return (
             "輸出格式提醒：\n"
             "  • 狀態請以括號標註，例如 (HAPPY) 文字內容。\n"
@@ -307,7 +307,7 @@ class MovementManager:
         self._movement_pending_report = None
         self._movement_direction_key = None
         if self._movement_previous_state and window.get_state(self._movement_previous_state):
-            current = window.get_state_service().get_current_state_key()
+            current = window.get_current_state_key()
             if current != self._movement_previous_state:
                 window.set_state(self._movement_previous_state)
         self._movement_previous_state = None
@@ -400,7 +400,7 @@ class MovementManager:
         self._movement_start_pos = window.frameGeometry().topLeft()
         self._movement_direction_key = self._direction_slug(direction)
         self._movement_pending_report = report
-        self._movement_previous_state = window.get_state_service().get_current_state_key()
+        self._movement_previous_state = window.get_current_state_key()
         window.update_last_tick_time(time.monotonic())
         self._set_movement_state(
             direction,
@@ -408,7 +408,7 @@ class MovementManager:
             move_state=move_state,
             prefer_walking=move_state_name == window.get_default_move_state_key(),
         )
-        current_state = window.get_state_service().get_current_state_key()
+        current_state = window.get_current_state_key()
         self._active_movement = MovementRequest(
             direction=direction,
             distance_px=distance,
@@ -427,23 +427,22 @@ class MovementManager:
     ):
         """Select and set appropriate state for movement."""
         window = self._window
-        state_service = window.get_state_service()
 
         # Priority 1: Use explicit move_state if provided and valid
         if move_state and window.get_state(move_state.state_key):
             desired_key = move_state.state_key
         # Priority 2: Prefer default movement state if requested
         elif prefer_walking:
-            desired_key = state_service.get_default_movement_state()
+            desired_key = window.get_default_movement_state()
         # Priority 3: Infer state based on direction and speed
         else:
             desired_key = self._infer_state_for_movement(direction, speed_name)
             # Priority 4: Fall back to default movement state
             if not desired_key:
-                desired_key = state_service.get_default_movement_state()
+                desired_key = window.get_default_movement_state()
 
         # Only change state if we found a valid one and it's different
-        current_state_key = state_service.get_current_state_key()
+        current_state_key = window.get_current_state_key()
         if desired_key and desired_key != current_state_key:
             window.set_state(desired_key)
 
@@ -455,13 +454,12 @@ class MovementManager:
         that match the direction, instead of hardcoded string patterns.
         """
         window = self._window
-        state_service = window.get_state_service()
         slug = self._direction_slug(direction)
         if not slug:
             return None
 
         # Query movement states that support this direction
-        move_states = state_service.find_move_states_by_direction(slug)
+        move_states = window.find_move_states_by_direction(slug)
 
         # Priority 1: Exact speed match
         for move_state in move_states:

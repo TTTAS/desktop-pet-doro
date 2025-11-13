@@ -677,6 +677,14 @@ class DoroWindow(QtWidgets.QWidget):
         """Get the current state key (public API)."""
         return self._current_state_key
 
+    def get_default_movement_state(self) -> Optional[str]:
+        """Get the default movement state key (public API)."""
+        return self._state_service.get_default_movement_state()
+
+    def find_move_states_by_direction(self, direction_slug: str):
+        """Find movement states that support the given direction (public API)."""
+        return self._state_service.find_move_states_by_direction(direction_slug)
+
     def save_states(self) -> bool:
         """Save all states to disk (public API)."""
         return self._state_service.save_states()
