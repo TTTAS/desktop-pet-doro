@@ -1014,12 +1014,8 @@ class DoroWindow(QtWidgets.QWidget):
         show_state_gif_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        # TODO: Implement move GIF manager with new architecture
-        QtWidgets.QMessageBox.information(
-            self,
-            "Move GIF Manager",
-            "Move states not yet migrated to new architecture.\nComing soon!",
-        )
+        from .state_dialogs import show_move_state_manager
+        show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
         # NEW: Clear primary GIF for current state

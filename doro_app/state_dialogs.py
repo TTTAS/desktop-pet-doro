@@ -400,3 +400,286 @@ def show_add_state_dialog(service: StateService, parent: Optional[QtWidgets.QWid
     if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
         return dialog.key_edit.text().strip()
     return None
+
+
+class MoveStateManagerDialog(QtWidgets.QDialog):
+    """
+    Dialog for managing movement states (actions).
+
+    Allows editing MoveState configurations for transitions and movements.
+    """
+
+    def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent)
+        self.service = service
+        self.setWindowTitle("Action Manager - Movement States")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(500)
+        self._setup_ui()
+        self._populate()
+
+    def _setup_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # Title
+        title = QtWidgets.QLabel("Manage Movement States")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Table
+        self.table = QtWidgets.QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["Key", "State", "Direction", "Distance", "Speed"])
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        layout.addWidget(self.table)
+
+        # Buttons
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch()
+
+        add_btn = QtWidgets.QPushButton("Add Action")
+        add_btn.clicked.connect(self._on_add)
+        button_row.addWidget(add_btn)
+
+        edit_btn = QtWidgets.QPushButton("Edit Selected")
+        edit_btn.clicked.connect(self._on_edit)
+        button_row.addWidget(edit_btn)
+
+        remove_btn = QtWidgets.QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self._on_remove)
+        button_row.addWidget(remove_btn)
+
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        button_row.addWidget(close_btn)
+
+        layout.addLayout(button_row)
+
+    def _populate(self):
+        self.table.setRowCount(0)
+
+        move_state_keys = self.service.all_move_state_keys()
+        for key in sorted(move_state_keys):
+            move_state = self.service.get_move_state(key)
+            if not move_state:
+                continue
+
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            # Key
+            key_item = QtWidgets.QTableWidgetItem(move_state.key)
+            key_item.setData(QtCore.Qt.ItemDataRole.UserRole, move_state.key)
+            self.table.setItem(row, 0, key_item)
+
+            # State
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(move_state.state_key))
+
+            # Direction
+            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(move_state.direction))
+
+            # Distance
+            distance_text = str(move_state.default_distance) if move_state.default_distance is not None else "-"
+            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(distance_text))
+
+            # Speed
+            self.table.setItem(row, 4, QtWidgets.QTableWidgetItem(move_state.default_speed))
+
+    def _on_add(self):
+        """Add new movement state."""
+        dialog = EditMoveStateDialog(self.service, None, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._populate()
+
+    def _on_edit(self):
+        """Edit selected movement state."""
+        row = self.table.currentRow()
+        if row < 0:
+            QtWidgets.QMessageBox.information(self, "Edit action", "Please select an action to edit.")
+            return
+
+        key_item = self.table.item(row, 0)
+        if not key_item:
+            return
+
+        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        dialog = EditMoveStateDialog(self.service, key, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._populate()
+
+    def _on_remove(self):
+        """Remove selected movement state."""
+        row = self.table.currentRow()
+        if row < 0:
+            QtWidgets.QMessageBox.information(self, "Remove action", "Please select an action to remove.")
+            return
+
+        key_item = self.table.item(row, 0)
+        if not key_item:
+            return
+
+        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Remove action",
+            f"Remove movement state '{key}'?",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            if self.service.remove_move_state(key):
+                self._populate()
+            else:
+                QtWidgets.QMessageBox.warning(self, "Remove action", "Failed to remove movement state.")
+
+
+class EditMoveStateDialog(QtWidgets.QDialog):
+    """Dialog for adding or editing a movement state."""
+
+    def __init__(self, service: StateService, move_state_key: Optional[str], parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent)
+        self.service = service
+        self.move_state_key = move_state_key
+        self.is_edit = move_state_key is not None
+
+        title = "Edit Movement State" if self.is_edit else "Add Movement State"
+        self.setWindowTitle(title)
+        self.setMinimumWidth(500)
+        self._setup_ui()
+
+        if self.is_edit:
+            self._load_data()
+
+    def _setup_ui(self):
+        layout = QtWidgets.QFormLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        # Key
+        self.key_edit = QtWidgets.QLineEdit()
+        if self.is_edit:
+            self.key_edit.setEnabled(False)
+        layout.addRow("Key (identifier):", self.key_edit)
+
+        # State
+        self.state_combo = QtWidgets.QComboBox()
+        available_states = self.service.visible_state_keys()
+        for state_key in sorted(available_states):
+            self.state_combo.addItem(state_key)
+        layout.addRow("Associated state:", self.state_combo)
+
+        # Direction
+        self.direction_combo = QtWidgets.QComboBox()
+        self.direction_combo.addItems(["any", "left", "right", "up", "down", "left|right", "up|down"])
+        self.direction_combo.setEditable(True)
+        layout.addRow("Direction:", self.direction_combo)
+
+        # Distance
+        self.distance_edit = QtWidgets.QLineEdit()
+        self.distance_edit.setPlaceholderText("Leave empty for default")
+        layout.addRow("Default distance (px):", self.distance_edit)
+
+        # Speed
+        self.speed_combo = QtWidgets.QComboBox()
+        self.speed_combo.addItems(["slow", "med", "fast"])
+        layout.addRow("Default speed:", self.speed_combo)
+
+        # Buttons
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def _load_data(self):
+        """Load existing move state data."""
+        if not self.move_state_key:
+            return
+
+        move_state = self.service.get_move_state(self.move_state_key)
+        if not move_state:
+            return
+
+        self.key_edit.setText(move_state.key)
+
+        # Set state combo
+        index = self.state_combo.findText(move_state.state_key)
+        if index >= 0:
+            self.state_combo.setCurrentIndex(index)
+
+        self.direction_combo.setCurrentText(move_state.direction)
+
+        if move_state.default_distance is not None:
+            self.distance_edit.setText(str(move_state.default_distance))
+
+        index = self.speed_combo.findText(move_state.default_speed)
+        if index >= 0:
+            self.speed_combo.setCurrentIndex(index)
+
+    def _on_accept(self):
+        """Validate and save."""
+        key = self.key_edit.text().strip()
+        if not key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Key cannot be empty.")
+            return
+
+        # Check duplicate key (only for new)
+        if not self.is_edit and self.service.get_move_state(key):
+            QtWidgets.QMessageBox.warning(self, "Validation", "A movement state with this key already exists.")
+            return
+
+        state_key = self.state_combo.currentText()
+        if not state_key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Please select an associated state.")
+            return
+
+        direction = self.direction_combo.currentText().strip()
+        if not direction:
+            direction = "any"
+
+        # Parse distance
+        distance_text = self.distance_edit.text().strip()
+        default_distance = None
+        if distance_text:
+            try:
+                default_distance = float(distance_text)
+            except ValueError:
+                QtWidgets.QMessageBox.warning(self, "Validation", "Distance must be a number.")
+                return
+
+        default_speed = self.speed_combo.currentText()
+
+        # Create MoveState
+        move_state = MoveState(
+            key=key,
+            state_key=state_key,
+            direction=direction,
+            default_distance=default_distance,
+            default_speed=default_speed,
+        )
+
+        # Save
+        if self.service.add_move_state(move_state):
+            self.accept()
+        else:
+            QtWidgets.QMessageBox.warning(self, "Save", "Failed to save movement state.")
+
+
+def show_move_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+    """Show movement state manager dialog."""
+    dialog = MoveStateManagerDialog(service, parent)
+    dialog.exec()
