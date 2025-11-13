@@ -66,14 +66,25 @@ class GifRepository:
         Resolve resource ID to actual file path.
 
         Returns:
-            Absolute path if file exists, None otherwise
+            Absolute path if file exists and is within storage_dir, None otherwise
         """
+        # Security: Prevent path traversal attacks
+        if ".." in resource_id or resource_id.startswith("/"):
+            return None
+
         path = self.storage_dir / resource_id
-        if path.is_file():
-            try:
-                return path.resolve()
-            except OSError:
-                return path
+
+        # Ensure resolved path is still within storage_dir
+        try:
+            resolved = path.resolve()
+            storage_resolved = self.storage_dir.resolve()
+            if not str(resolved).startswith(str(storage_resolved)):
+                return None
+        except OSError:
+            return None
+
+        if resolved.is_file():
+            return resolved
         return None
 
     def delete(self, resource_id: str) -> bool:
