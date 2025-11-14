@@ -45,7 +45,16 @@ StateService (狀態服務)
     │       ├── key: str
     │       ├── state_key: str (對應的視覺狀態)
     │       ├── direction: str (方向: left/right/up/down/any)
-    │       └── default_distance: float
+    │       ├── default_distance: float
+    │       └── default_speed: str (slow/med/fast)
+    │
+    ├── TransitionStateCollection (狀態轉換集合) ⭐ NEW
+    │   └── TransitionState (轉換狀態)
+    │       ├── key: str (唯一識別)
+    │       ├── from_state: str (起始狀態)
+    │       ├── to_state: str (目標狀態)
+    │       ├── transition_gif_id: str (過渡動畫 GIF)
+    │       └── find_transition(from, to) (快速查找)
     │
     └── 事件發送
         ├── on_state_changed (狀態變更事件)
@@ -66,8 +75,13 @@ StateRepository
 MoveStateRepository
     └── move_states.json (移動狀態定義)
 
+TransitionStateRepository ⭐ NEW
+    └── transitions.json (狀態轉換定義)
+
 GifRepository
     └── STATE/ (GIF 檔案存儲)
+        ├── {state_key}.gif (主要 GIF)
+        └── {state_key}_variants/ (變體 GIF)
 ```
 
 ---
@@ -93,11 +107,30 @@ DoroWindow (主視窗)
     │       ├── 窗口邊界檢測
     │       └── 方向解析
     │
-    └── 氣泡控制
-        └── BubbleController
-            ├── 顯示/隱藏
-            ├── 自動消失
-            └── 拖曳調整位置
+    ├── 氣泡控制
+    │   └── BubbleController
+    │       ├── 顯示/隱藏
+    │       ├── 自動消失
+    │       └── 拖曳調整位置
+    │
+    └── 動作管理器 ⭐ NEW
+        ├── MoveStateManagerDialog (動作管理主介面)
+        │   ├── 表格顯示所有動作 (Key, Action GIF, Direction, Speed)
+        │   ├── GIF 預覽動畫播放
+        │   ├── 等寬可調整欄位
+        │   ├── 網格線顯示
+        │   └── 新增/編輯/刪除動作
+        │
+        └── EditMoveStateDialog (動作編輯對話框)
+            ├── Action Type 選擇器 (Movement / Transition)
+            ├── Movement 模式欄位:
+            │   ├── Associated state (關聯狀態)
+            │   ├── Direction (移動方向)
+            │   └── Speed (速度)
+            ├── Transition 模式欄位:
+            │   ├── From state (起始狀態)
+            │   └── To state (目標狀態)
+            └── GIF 預覽區
 ```
 
 **事件訂閱：**
@@ -177,6 +210,105 @@ StateService    MovementManager   BubbleController
 - ✅ 驅動狀態機轉換
 - ✅ 驅動移動系統
 - ✅ 更新氣泡對話
+
+---
+
+## 🎬 TransitionState：狀態轉換動畫系統 ⭐ NEW
+
+### **核心概念**
+
+**TransitionState** 管理兩個狀態之間的過渡動畫。
+
+```
+狀態 A (idle) → 轉換動畫 (transition.gif) → 狀態 B (happy)
+```
+
+### **與 MoveState 的區別**
+
+```
+┌─────────────────┬──────────────────┬─────────────────┐
+│     特性        │   MoveState      │ TransitionState │
+├─────────────────┼──────────────────┼─────────────────┤
+│ 用途            │ 移動動作          │ 狀態切換動畫     │
+│ 觸發時機        │ LLM 指令/手動     │ 狀態轉換時       │
+│ 方向            │ 有 (left/right)  │ 無 (不移動)     │
+│ 距離            │ 有               │ 無              │
+│ 關聯狀態        │ 單一狀態          │ 兩個狀態 (from/to)│
+│ GIF 來源        │ 從關聯的 State   │ transition_gif_id│
+└─────────────────┴──────────────────┴─────────────────┘
+```
+
+### **資料結構**
+
+```python
+@dataclass(frozen=True)
+class TransitionState:
+    key: str                          # "idle_to_happy"
+    from_state: str                   # "idle"
+    to_state: str                     # "happy"
+    transition_gif_id: Optional[str]  # GIF 資源 ID
+```
+
+### **查找機制**
+
+```python
+# 快速查找 O(1)
+transition = service.find_transition("idle", "happy")
+if transition:
+    play_gif(transition.transition_gif_id)
+```
+
+### **使用場景範例**
+
+```
+場景：Doro 從休息轉換到興奮
+
+1. 當前狀態：idle (閒置)
+2. LLM 指令：(STATE: excited)
+3. 查找轉換：find_transition("idle", "excited")
+4. 播放過渡：transition.gif (例如：伸懶腰動畫)
+5. 切換狀態：excited (興奮狀態)
+```
+
+### **TransitionState vs Movement**
+
+```
+Movement (移動動作)：
+  使用情境：Doro 需要物理移動
+  例子："走到螢幕左邊" [MOVE: left]
+  特點：有方向、有距離、改變位置
+
+Transition (狀態轉換)：
+  使用情境：狀態情緒變化的過渡
+  例子："從開心變成害羞"
+  特點：無方向、無距離、原地播放動畫
+```
+
+### **UI 管理介面**
+
+在 **Action Manager** 中：
+
+```
+1. 點擊 "Add Action"
+2. 選擇 "Action Type: Transition"
+3. 填寫：
+   - Key: idle_to_happy
+   - From state: idle (下拉選單)
+   - To state: happy (下拉選單)
+4. 保存
+```
+
+結果儲存在 `transitions.json`：
+
+```json
+{
+  "idle_to_happy": {
+    "from_state": "idle",
+    "to_state": "happy",
+    "transition_gif_id": null
+  }
+}
+```
 
 ---
 
@@ -392,31 +524,36 @@ class State:
 
 ```
 doro_app/
-├── 【FSM 核心】
-│   ├── state_models.py (270行)      # State, MoveState, Collections
-│   ├── state_service.py (536行)     # StateService (FSM 大腦)
-│   └── state_repository.py (450行)  # 數據持久化
+├── 【FSM 核心】⭐ UPDATED
+│   ├── state_models.py (327行)          # State, MoveState, TransitionState, Collections
+│   ├── state_service.py (560行)         # StateService (FSM 大腦)
+│   └── state_repository.py (500行)      # 數據持久化 (含 TransitionStateRepository)
 │
-├── 【UI 層】
-│   ├── window.py (1758行)           # 主視窗
-│   ├── bubble_controller.py (159行) # 氣泡控制
-│   ├── movement_manager.py (462行)  # 移動管理
-│   ├── themed_menu.py (258行)       # 粉紅主題選單
-│   └── state_dialogs.py (402行)     # 狀態管理對話框
+├── 【UI 層】⭐ UPDATED
+│   ├── window.py (1778行)               # 主視窗
+│   ├── bubble_controller.py (159行)     # 氣泡控制
+│   ├── movement_manager.py (462行)      # 移動管理
+│   ├── themed_menu.py (258行)           # 粉紅主題選單
+│   └── state_dialogs.py (886行)         # 狀態管理對話框 (新增動作類型選擇)
+│       ├── StateGifManagerDialog        # 狀態 GIF 管理
+│       ├── GifVariantDialog             # GIF 變體管理
+│       ├── AddStateDialog               # 新增狀態
+│       ├── MoveStateManagerDialog ⭐    # 動作管理主介面 (含 GIF 預覽表格)
+│       └── EditMoveStateDialog ⭐       # 動作編輯 (支援 Movement/Transition)
 │
 ├── 【LLM 層】
-│   ├── chat_orchestrator.py (156行) # 協調器 (連接 LLM 和 FSM)
-│   ├── chat_controller.py (253行)   # 聊天控制器
-│   ├── chat.py (132行)              # HTTP 工具
-│   └── workers.py (33行)            # 異步執行
+│   ├── chat_orchestrator.py (156行)     # 協調器 (連接 LLM 和 FSM)
+│   ├── chat_controller.py (253行)       # 聊天控制器
+│   ├── chat.py (132行)                  # HTTP 工具
+│   └── workers.py (33行)                # 異步執行
 │
 ├── 【工具/配置】
-│   ├── actions.py (100行)           # 動作解析器
-│   ├── models.py (40行)             # 舊模型 (待清理)
-│   └── theme.py (130行)             # 主題管理
+│   ├── actions.py (100行)               # 動作解析器
+│   ├── models.py (40行)                 # 舊模型 (待清理)
+│   └── theme.py (130行)                 # 主題管理
 │
 └── 【入口】
-    └── cli.py (110行)               # 應用程式啟動
+    └── cli.py (110行)                   # 應用程式啟動
 ```
 
 ---
