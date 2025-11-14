@@ -24,7 +24,7 @@ from .movement_manager import MovementManager
 from .models import MoveStateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from .state_models import State, StateChangeEvent
-from .state_repository import GifRepository, MoveStateRepository, StateRepository
+from .state_repository import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .state_service import StateService
 from .theme import ensure_application_theme
 from .themed_menu import create_doro_menu
@@ -106,11 +106,13 @@ class DoroWindow(QtWidgets.QWidget):
         self._gif_repo = GifRepository(STATE_DIR)
         self._state_repo = StateRepository(STATE_DIR / "states.json")
         self._move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
+        self._transition_repo = TransitionStateRepository(STATE_DIR / "transitions.json")
         self._state_service = StateService(
             self._state_repo,
             self._move_repo,
             self._gif_repo,
             STATE_DIR / "state_list.txt",
+            self._transition_repo,
         )
 
         # Connect state change events

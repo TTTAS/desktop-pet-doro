@@ -585,18 +585,19 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
 
 class EditMoveStateDialog(QtWidgets.QDialog):
-    """Dialog for adding or editing a movement state."""
+    """Dialog for adding or editing a movement state or transition."""
 
     def __init__(self, service: StateService, move_state_key: Optional[str], parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
         self.service = service
         self.move_state_key = move_state_key
         self.is_edit = move_state_key is not None
+        self.action_type = "movement"  # "movement" or "transition"
 
-        title = "Edit Movement State" if self.is_edit else "Add Movement State"
+        title = "Edit Action" if self.is_edit else "Add Action"
         self.setWindowTitle(title)
         self.setMinimumWidth(600)
-        self.setMinimumHeight(500)
+        self.setMinimumHeight(550)
 
         # Track preview movie
         self._preview_movie: Optional[QtGui.QMovie] = None
@@ -605,51 +606,80 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         if self.is_edit:
             self._load_data()
+        else:
+            # For new actions, default to movement type
+            self._on_action_type_changed("Movement")
 
     def _setup_ui(self):
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(16)
 
-        # Form layout
-        form_layout = QtWidgets.QFormLayout()
-        form_layout.setSpacing(12)
-        form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        # Action Type Selection (only for new actions)
+        if not self.is_edit:
+            type_layout = QtWidgets.QHBoxLayout()
+            type_label = QtWidgets.QLabel("Action Type:")
+            type_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+            self.type_combo = QtWidgets.QComboBox()
+            self.type_combo.addItems(["Movement", "Transition"])
+            self.type_combo.currentTextChanged.connect(self._on_action_type_changed)
+            type_layout.addWidget(type_label)
+            type_layout.addWidget(self.type_combo)
+            type_layout.addStretch()
+            main_layout.addLayout(type_layout)
 
-        # Key
+        # Form layout
+        self.form_layout = QtWidgets.QFormLayout()
+        self.form_layout.setSpacing(12)
+        self.form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+
+        # Key (common to both types)
         self.key_edit = QtWidgets.QLineEdit()
         if self.is_edit:
             self.key_edit.setEnabled(False)
-        key_label = QtWidgets.QLabel("Key (identifier):")
-        key_label.setStyleSheet("color: #ffffff;")
-        form_layout.addRow(key_label, self.key_edit)
+        self.key_label = QtWidgets.QLabel("Key (identifier):")
+        self.key_label.setStyleSheet("color: #ffffff;")
+        self.form_layout.addRow(self.key_label, self.key_edit)
 
-        # State
+        # Movement-specific fields
+        self.state_label = QtWidgets.QLabel("Associated state:")
+        self.state_label.setStyleSheet("color: #ffffff;")
         self.state_combo = QtWidgets.QComboBox()
         available_states = self.service.visible_state_keys()
         for state_key in sorted(available_states):
             self.state_combo.addItem(state_key)
         self.state_combo.currentTextChanged.connect(self._on_state_changed)
-        state_label = QtWidgets.QLabel("Associated state:")
-        state_label.setStyleSheet("color: #ffffff;")
-        form_layout.addRow(state_label, self.state_combo)
+        self.state_row = self.form_layout.addRow(self.state_label, self.state_combo)
 
-        # Direction (added "none" for transitions)
+        self.direction_label = QtWidgets.QLabel("Direction:")
+        self.direction_label.setStyleSheet("color: #ffffff;")
         self.direction_combo = QtWidgets.QComboBox()
         self.direction_combo.addItems(["none", "any", "left", "right", "up", "down", "left|right", "up|down"])
         self.direction_combo.setEditable(True)
-        direction_label = QtWidgets.QLabel("Direction:")
-        direction_label.setStyleSheet("color: #ffffff;")
-        form_layout.addRow(direction_label, self.direction_combo)
+        self.direction_row = self.form_layout.addRow(self.direction_label, self.direction_combo)
 
-        # Speed
+        self.speed_label = QtWidgets.QLabel("Default speed:")
+        self.speed_label.setStyleSheet("color: #ffffff;")
         self.speed_combo = QtWidgets.QComboBox()
         self.speed_combo.addItems(["slow", "med", "fast"])
-        speed_label = QtWidgets.QLabel("Default speed:")
-        speed_label.setStyleSheet("color: #ffffff;")
-        form_layout.addRow(speed_label, self.speed_combo)
+        self.speed_row = self.form_layout.addRow(self.speed_label, self.speed_combo)
 
-        main_layout.addLayout(form_layout)
+        # Transition-specific fields
+        self.from_state_label = QtWidgets.QLabel("From state:")
+        self.from_state_label.setStyleSheet("color: #ffffff;")
+        self.from_state_combo = QtWidgets.QComboBox()
+        for state_key in sorted(available_states):
+            self.from_state_combo.addItem(state_key)
+        self.from_state_row = self.form_layout.addRow(self.from_state_label, self.from_state_combo)
+
+        self.to_state_label = QtWidgets.QLabel("To state:")
+        self.to_state_label.setStyleSheet("color: #ffffff;")
+        self.to_state_combo = QtWidgets.QComboBox()
+        for state_key in sorted(available_states):
+            self.to_state_combo.addItem(state_key)
+        self.to_state_row = self.form_layout.addRow(self.to_state_label, self.to_state_combo)
+
+        main_layout.addLayout(self.form_layout)
 
         # GIF Preview
         preview_group = QtWidgets.QGroupBox("GIF Preview")
@@ -664,13 +694,11 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         main_layout.addWidget(preview_group)
 
-        # Info label
-        info_label = QtWidgets.QLabel(
-            "💡 Tip: Use direction='none' for transitions. Distance is determined by LLM at runtime."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #a5b4fc; font-size: 11px; padding: 8px;")
-        main_layout.addWidget(info_label)
+        # Info label (dynamic based on action type)
+        self.info_label = QtWidgets.QLabel()
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet("color: #a5b4fc; font-size: 11px; padding: 8px;")
+        main_layout.addWidget(self.info_label)
 
         # Buttons
         buttons = QtWidgets.QDialogButtonBox(
@@ -679,6 +707,35 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
+
+    def _on_action_type_changed(self, action_type_text: str):
+        """Handle action type change (Movement/Transition)."""
+        is_movement = (action_type_text == "Movement")
+        self.action_type = "movement" if is_movement else "transition"
+
+        # Show/hide movement fields
+        self.state_label.setVisible(is_movement)
+        self.state_combo.setVisible(is_movement)
+        self.direction_label.setVisible(is_movement)
+        self.direction_combo.setVisible(is_movement)
+        self.speed_label.setVisible(is_movement)
+        self.speed_combo.setVisible(is_movement)
+
+        # Show/hide transition fields
+        self.from_state_label.setVisible(not is_movement)
+        self.from_state_combo.setVisible(not is_movement)
+        self.to_state_label.setVisible(not is_movement)
+        self.to_state_combo.setVisible(not is_movement)
+
+        # Update info label
+        if is_movement:
+            self.info_label.setText(
+                "💡 Movement: LLM determines distance at runtime. Direction can be 'any', 'left', 'right', etc."
+            )
+        else:
+            self.info_label.setText(
+                "💡 Transition: Animation plays when changing from one state to another. Default GIF: transition.gif"
+            )
 
     def _on_state_changed(self, state_key: str):
         """Update GIF preview when state selection changes."""
@@ -750,6 +807,15 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Validation", "Key cannot be empty.")
             return
 
+        if self.action_type == "movement":
+            return self._save_movement()
+        else:
+            return self._save_transition()
+
+    def _save_movement(self):
+        """Save movement state."""
+        key = self.key_edit.text().strip()
+
         # Check duplicate key (only for new)
         if not self.is_edit and self.service.get_move_state(key):
             QtWidgets.QMessageBox.warning(self, "Validation", "A movement state with this key already exists.")
@@ -780,6 +846,43 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             self.accept()
         else:
             QtWidgets.QMessageBox.warning(self, "Save", "Failed to save movement state.")
+
+    def _save_transition(self):
+        """Save transition state."""
+        from .state_models import TransitionState
+
+        key = self.key_edit.text().strip()
+
+        # Check duplicate key (only for new)
+        if not self.is_edit and self.service.get_transition(key):
+            QtWidgets.QMessageBox.warning(self, "Validation", "A transition with this key already exists.")
+            return
+
+        from_state = self.from_state_combo.currentText()
+        to_state = self.to_state_combo.currentText()
+
+        if not from_state or not to_state:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Please select both from and to states.")
+            return
+
+        if from_state == to_state:
+            QtWidgets.QMessageBox.warning(self, "Validation", "From and To states must be different.")
+            return
+
+        # Create TransitionState with default transition.gif
+        # TODO: Allow user to upload custom transition GIF
+        transition = TransitionState(
+            key=key,
+            from_state=from_state,
+            to_state=to_state,
+            transition_gif_id=None,  # Will use default transition.gif
+        )
+
+        # Save
+        if self.service.add_transition(transition):
+            self.accept()
+        else:
+            QtWidgets.QMessageBox.warning(self, "Save", "Failed to save transition.")
 
 
 def show_move_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
