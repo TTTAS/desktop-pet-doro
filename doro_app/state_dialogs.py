@@ -431,11 +431,11 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         # Table (removed Distance column)
         self.table = QtWidgets.QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Key", "State", "Direction", "Speed"])
+        self.table.setHorizontalHeaderLabels(["Key", "Action", "Direction", "Speed"])
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)  # Action (GIF)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
@@ -486,8 +486,23 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             key_item.setData(QtCore.Qt.ItemDataRole.UserRole, move_state.key)
             self.table.setItem(row, 0, key_item)
 
-            # State
-            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(move_state.state_key))
+            # Action (GIF preview)
+            action_label = QtWidgets.QLabel()
+            action_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            action_label.setMinimumSize(114, 114)
+
+            # Get the state to load its GIF
+            state = self.service.get_state(move_state.state_key)
+            if state and state.primary_gif_id:
+                gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+                if gif_path:
+                    movie = QtGui.QMovie(str(gif_path))
+                    if movie.isValid():
+                        movie.setScaledSize(QtCore.QSize(96, 96))
+                        action_label.setMovie(movie)
+                        movie.start()
+
+            self.table.setCellWidget(row, 1, action_label)
 
             # Direction
             self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(move_state.direction))
