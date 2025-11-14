@@ -504,6 +504,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             self.table.setCellWidget(row, 1, action_label)
 
+            # Set row height to match GIF display
+            self.table.setRowHeight(row, 114)
+
             # Direction
             self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(move_state.direction))
 
