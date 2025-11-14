@@ -55,7 +55,7 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         visible_keys = sorted(self.service.visible_state_keys())
 
         for row, key in enumerate(visible_keys):
-            state = self.service.states.get(key)
+            state = self.service.get_state(key)
             if not state:
                 continue
 
@@ -132,13 +132,12 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
     def _on_clear_gif(self, state_key: str):
         """Handle Clear GIF button click."""
-        state = self.service.states.get(state_key)
+        state = self.service.get_state(state_key)
         if not state or not state.primary_gif_id:
             return
 
         self.service.gif_repo.delete(state.primary_gif_id)
-        updated = state.with_changes(primary_gif_id=None)
-        self.service.states.add(updated)
+        self.service.update_state(state_key, primary_gif_id=None)
         self._populate()
 
 
@@ -218,7 +217,7 @@ class GifVariantDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.list_widget.clear()
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state:
             return
 
@@ -303,12 +302,11 @@ class GifVariantDialog(QtWidgets.QDialog):
             return
 
         resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state:
             return
 
-        updated = state.with_changes(primary_gif_id=resource_id)
-        self.service.states.add(updated)
+        self.service.update_state(self.state_key, primary_gif_id=resource_id)
         self._populate()
 
     def _on_remove_variant(self):
@@ -318,7 +316,7 @@ class GifVariantDialog(QtWidgets.QDialog):
             return
 
         resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.states.get(self.state_key)
+        state = self.service.get_state(self.state_key)
         if not state or resource_id == state.primary_gif_id:
             QtWidgets.QMessageBox.information(
                 self,
@@ -362,11 +360,11 @@ class AddStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Add state", "Key cannot be empty.")
             return
 
-        if self.service.states.get(key):
+        if self.service.get_state(key):
             QtWidgets.QMessageBox.warning(self, "Add state", "A state with this key already exists.")
             return
 
-        if self.service.move_states.is_movement_only(key):
+        if self.service.is_movement_only_state(key):
             QtWidgets.QMessageBox.warning(self, "Add state", "This key is reserved for movement animations.")
             return
 
@@ -402,3 +400,346 @@ def show_add_state_dialog(service: StateService, parent: Optional[QtWidgets.QWid
     if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
         return dialog.key_edit.text().strip()
     return None
+
+
+class MoveStateManagerDialog(QtWidgets.QDialog):
+    """
+    Dialog for managing movement states (actions).
+
+    Allows editing MoveState configurations for transitions and movements.
+    """
+
+    def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent)
+        self.service = service
+        self.setWindowTitle("Action Manager - Movement States")
+        self.setMinimumWidth(700)
+        self.setMinimumHeight(500)
+        self._setup_ui()
+        self._populate()
+
+    def _setup_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # Title
+        title = QtWidgets.QLabel("Manage Movement States")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Table (removed Distance column)
+        self.table = QtWidgets.QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Key", "State", "Direction", "Speed"])
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        layout.addWidget(self.table)
+
+        # Buttons
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch()
+
+        add_btn = QtWidgets.QPushButton("Add Action")
+        add_btn.clicked.connect(self._on_add)
+        button_row.addWidget(add_btn)
+
+        edit_btn = QtWidgets.QPushButton("Edit Selected")
+        edit_btn.clicked.connect(self._on_edit)
+        button_row.addWidget(edit_btn)
+
+        remove_btn = QtWidgets.QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self._on_remove)
+        button_row.addWidget(remove_btn)
+
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        button_row.addWidget(close_btn)
+
+        layout.addLayout(button_row)
+
+    def _populate(self):
+        self.table.setRowCount(0)
+
+        move_state_keys = self.service.all_move_state_keys()
+        for key in sorted(move_state_keys):
+            move_state = self.service.get_move_state(key)
+            if not move_state:
+                continue
+
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            # Key
+            key_item = QtWidgets.QTableWidgetItem(move_state.key)
+            key_item.setData(QtCore.Qt.ItemDataRole.UserRole, move_state.key)
+            self.table.setItem(row, 0, key_item)
+
+            # State
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(move_state.state_key))
+
+            # Direction
+            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(move_state.direction))
+
+            # Speed (no more Distance column)
+            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(move_state.default_speed))
+
+    def _on_add(self):
+        """Add new movement state."""
+        dialog = EditMoveStateDialog(self.service, None, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._populate()
+
+    def _on_edit(self):
+        """Edit selected movement state."""
+        row = self.table.currentRow()
+        if row < 0:
+            QtWidgets.QMessageBox.information(self, "Edit action", "Please select an action to edit.")
+            return
+
+        key_item = self.table.item(row, 0)
+        if not key_item:
+            return
+
+        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        dialog = EditMoveStateDialog(self.service, key, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._populate()
+
+    def _on_remove(self):
+        """Remove selected movement state."""
+        row = self.table.currentRow()
+        if row < 0:
+            QtWidgets.QMessageBox.information(self, "Remove action", "Please select an action to remove.")
+            return
+
+        key_item = self.table.item(row, 0)
+        if not key_item:
+            return
+
+        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Remove action",
+            f"Remove movement state '{key}'?",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            if self.service.remove_move_state(key):
+                self._populate()
+            else:
+                QtWidgets.QMessageBox.warning(self, "Remove action", "Failed to remove movement state.")
+
+
+class EditMoveStateDialog(QtWidgets.QDialog):
+    """Dialog for adding or editing a movement state."""
+
+    def __init__(self, service: StateService, move_state_key: Optional[str], parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent)
+        self.service = service
+        self.move_state_key = move_state_key
+        self.is_edit = move_state_key is not None
+
+        title = "Edit Movement State" if self.is_edit else "Add Movement State"
+        self.setWindowTitle(title)
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(500)
+
+        # Track preview movie
+        self._preview_movie: Optional[QtGui.QMovie] = None
+
+        self._setup_ui()
+
+        if self.is_edit:
+            self._load_data()
+
+    def _setup_ui(self):
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
+
+        # Form layout
+        form_layout = QtWidgets.QFormLayout()
+        form_layout.setSpacing(12)
+        form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+
+        # Key
+        self.key_edit = QtWidgets.QLineEdit()
+        if self.is_edit:
+            self.key_edit.setEnabled(False)
+        key_label = QtWidgets.QLabel("Key (identifier):")
+        key_label.setStyleSheet("color: #ffffff;")
+        form_layout.addRow(key_label, self.key_edit)
+
+        # State
+        self.state_combo = QtWidgets.QComboBox()
+        available_states = self.service.visible_state_keys()
+        for state_key in sorted(available_states):
+            self.state_combo.addItem(state_key)
+        self.state_combo.currentTextChanged.connect(self._on_state_changed)
+        state_label = QtWidgets.QLabel("Associated state:")
+        state_label.setStyleSheet("color: #ffffff;")
+        form_layout.addRow(state_label, self.state_combo)
+
+        # Direction (added "none" for transitions)
+        self.direction_combo = QtWidgets.QComboBox()
+        self.direction_combo.addItems(["none", "any", "left", "right", "up", "down", "left|right", "up|down"])
+        self.direction_combo.setEditable(True)
+        direction_label = QtWidgets.QLabel("Direction:")
+        direction_label.setStyleSheet("color: #ffffff;")
+        form_layout.addRow(direction_label, self.direction_combo)
+
+        # Speed
+        self.speed_combo = QtWidgets.QComboBox()
+        self.speed_combo.addItems(["slow", "med", "fast"])
+        speed_label = QtWidgets.QLabel("Default speed:")
+        speed_label.setStyleSheet("color: #ffffff;")
+        form_layout.addRow(speed_label, self.speed_combo)
+
+        main_layout.addLayout(form_layout)
+
+        # GIF Preview
+        preview_group = QtWidgets.QGroupBox("GIF Preview")
+        preview_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        preview_layout = QtWidgets.QVBoxLayout(preview_group)
+
+        self.preview_label = QtWidgets.QLabel("Select a state to preview")
+        self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(200)
+        self.preview_label.setStyleSheet("background-color: #1a1a1a; color: #888888;")
+        preview_layout.addWidget(self.preview_label)
+
+        main_layout.addWidget(preview_group)
+
+        # Info label
+        info_label = QtWidgets.QLabel(
+            "💡 Tip: Use direction='none' for transitions. Distance is determined by LLM at runtime."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #a5b4fc; font-size: 11px; padding: 8px;")
+        main_layout.addWidget(info_label)
+
+        # Buttons
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        main_layout.addWidget(buttons)
+
+    def _on_state_changed(self, state_key: str):
+        """Update GIF preview when state selection changes."""
+        self._update_preview(state_key)
+
+    def _update_preview(self, state_key: str):
+        """Update the GIF preview for the selected state."""
+        # Clear previous preview
+        if self._preview_movie:
+            self._preview_movie.stop()
+        self._preview_movie = None
+        self.preview_label.setMovie(None)
+
+        if not state_key:
+            self.preview_label.setText("No state selected")
+            return
+
+        state = self.service.get_state(state_key)
+        if not state or not state.primary_gif_id:
+            self.preview_label.setText(f"State '{state_key}' has no GIF")
+            return
+
+        gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+        if not gif_path:
+            self.preview_label.setText("GIF file not found")
+            return
+
+        # Load and display GIF
+        movie = QtGui.QMovie(str(gif_path))
+        if not movie.isValid():
+            self.preview_label.setText("Invalid GIF file")
+            return
+
+        # Scale to fit preview area
+        movie.setScaledSize(QtCore.QSize(180, 180))
+        self.preview_label.setMovie(movie)
+        self._preview_movie = movie
+        movie.start()
+
+    def _load_data(self):
+        """Load existing move state data."""
+        if not self.move_state_key:
+            return
+
+        move_state = self.service.get_move_state(self.move_state_key)
+        if not move_state:
+            return
+
+        self.key_edit.setText(move_state.key)
+
+        # Set state combo
+        index = self.state_combo.findText(move_state.state_key)
+        if index >= 0:
+            self.state_combo.setCurrentIndex(index)
+
+        self.direction_combo.setCurrentText(move_state.direction)
+
+        index = self.speed_combo.findText(move_state.default_speed)
+        if index >= 0:
+            self.speed_combo.setCurrentIndex(index)
+
+        # Update preview
+        self._update_preview(move_state.state_key)
+
+    def _on_accept(self):
+        """Validate and save."""
+        key = self.key_edit.text().strip()
+        if not key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Key cannot be empty.")
+            return
+
+        # Check duplicate key (only for new)
+        if not self.is_edit and self.service.get_move_state(key):
+            QtWidgets.QMessageBox.warning(self, "Validation", "A movement state with this key already exists.")
+            return
+
+        state_key = self.state_combo.currentText()
+        if not state_key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Please select an associated state.")
+            return
+
+        direction = self.direction_combo.currentText().strip()
+        if not direction:
+            direction = "none"
+
+        default_speed = self.speed_combo.currentText()
+
+        # Create MoveState (no distance field - will be set by LLM)
+        move_state = MoveState(
+            key=key,
+            state_key=state_key,
+            direction=direction,
+            default_distance=None,
+            default_speed=default_speed,
+        )
+
+        # Save
+        if self.service.add_move_state(move_state):
+            self.accept()
+        else:
+            QtWidgets.QMessageBox.warning(self, "Save", "Failed to save movement state.")
+
+
+def show_move_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+    """Show movement state manager dialog."""
+    dialog = MoveStateManagerDialog(service, parent)
+    dialog.exec()

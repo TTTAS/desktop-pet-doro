@@ -66,7 +66,7 @@ class BubbleController:
         window._bubble_offset = QtCore.QPointF(self._offset)
         window._update_bubble_side_from_offset()
         if persist:
-            self._persist_preferences()
+            self.persist_preferences()
         window.update()
 
     def set_scale(self, value: float, *, persist: bool = False):
@@ -74,7 +74,7 @@ class BubbleController:
         self._scale = max(0.5, min(2.0, float(value)))
         window._bubble_scale = self._scale
         if persist:
-            self._persist_preferences()
+            self.persist_preferences()
         window.update()
 
     def persist_defaults(self):
@@ -84,10 +84,10 @@ class BubbleController:
             scale=self._scale,
         )
         self.apply_persisted_config(config)
-        self._persist_preferences()
+        self.persist_preferences()
         self.set_text("", override_visibility=False, auto_hide=False)
 
-    def _persist_preferences(self):
+    def persist_preferences(self):
         window = self._window
         if not getattr(window, "_config", None):
             return

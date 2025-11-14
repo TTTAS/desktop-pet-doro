@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Optional
+from typing import Generic, Optional, Protocol, TypeVar
 
 
 @dataclass(frozen=True)
@@ -73,73 +73,118 @@ class MoveState:
         return replace(self, **changes)
 
 
-class StateCollection:
+# Protocol for items that can be stored in a collection
+class HasKey(Protocol):
+    """Protocol for objects that have a key attribute."""
+
+    @property
+    def key(self) -> str:
+        """The unique identifier for this item."""
+        ...
+
+
+# Generic type variable for collection items
+T = TypeVar('T', bound=HasKey)
+
+
+class BaseCollection(Generic[T]):
     """
-    Manages a collection of states.
+    Generic base class for managing collections of keyed items.
 
-    Responsibilities:
-    - Store states by key
-    - Track current state
-    - Validate state transitions
-    - NO file I/O
-    - NO UI logic
+    Provides common CRUD operations for any item type that has a 'key' attribute.
+    Subclasses can add domain-specific behavior.
     """
 
-    def __init__(self, states: Optional[dict[str, State]] = None):
-        self._states: dict[str, State] = states or {}
-        self._current_key: Optional[str] = None
-        self._protected_keys: set[str] = {"idle"}  # Cannot be deleted
+    def __init__(self):
+        self._items: dict[str, T] = {}
 
-    def add(self, state: State) -> None:
-        """Add or update a state."""
-        self._states[state.key] = state
+    def add(self, item: T) -> None:
+        """Add or update an item in the collection."""
+        self._items[item.key] = item
 
     def remove(self, key: str) -> bool:
         """
-        Remove a state by key.
+        Remove an item by key.
+
+        Returns:
+            True if removed, False if not found
+        """
+        if key not in self._items:
+            return False
+        del self._items[key]
+        return True
+
+    def get(self, key: str) -> Optional[T]:
+        """Get an item by key."""
+        return self._items.get(key)
+
+    def all_keys(self) -> list[str]:
+        """Get all item keys."""
+        return list(self._items.keys())
+
+    def __len__(self) -> int:
+        """Get number of items in collection."""
+        return len(self._items)
+
+    def __contains__(self, key: str) -> bool:
+        """Check if a key exists in the collection."""
+        return key in self._items
+
+
+class StateCollection(BaseCollection[State]):
+    """
+    Manages a collection of states with current state tracking and protection.
+
+    Extends BaseCollection with:
+    - Current state tracking
+    - Protected keys (cannot be deleted)
+    - Visibility filtering
+    """
+
+    def __init__(self, states: Optional[dict[str, State]] = None):
+        super().__init__()
+        if states:
+            self._items = states
+        self._current_key: Optional[str] = None
+        self._protected_keys: set[str] = {"idle"}  # Cannot be deleted
+
+    def remove(self, key: str) -> bool:
+        """
+        Remove a state by key (override to check protection).
 
         Returns:
             True if removed, False if protected or not found
         """
-        if key in self._protected_keys or key not in self._states:
+        if key in self._protected_keys:
             return False
 
         # If removing current state, clear current
         if self._current_key == key:
             self._current_key = None
 
-        del self._states[key]
-        return True
-
-    def get(self, key: str) -> Optional[State]:
-        """Get state by key."""
-        return self._states.get(key)
+        return super().remove(key)
 
     def current(self) -> Optional[State]:
-        """Get the current state."""
+        """Get the currently active state."""
         if self._current_key is None:
             return None
-        return self._states.get(self._current_key)
+        return self.get(self._current_key)
 
     def set_current(self, key: str) -> bool:
         """
-        Set current state.
+        Set the current state.
 
         Returns:
             True if successful, False if key not found
         """
-        if key not in self._states:
+        if key not in self._items:
             return False
         self._current_key = key
         return True
 
-    def all_keys(self) -> list[str]:
-        """Get all state keys."""
-        return list(self._states.keys())
-
     def visible_keys(self, movement_only_keys: set[str]) -> list[str]:
         """Get keys for states that should appear in UI menus."""
-        return [k for k in self._states.keys() if k not in movement_only_keys]
+        return [k for k in self._items.keys() if k not in movement_only_keys]
 
     def protect(self, key: str) -> None:
         """Mark a state as protected (cannot be deleted)."""
@@ -150,53 +195,57 @@ class StateCollection:
         return key in self._protected_keys
 
 
-class MoveStateCollection:
+class MoveStateCollection(BaseCollection[MoveState]):
     """
     Manages movement-specific state mappings.
 
-    Maps movement actions (e.g., "walk_left") to display states.
+    Extends BaseCollection with:
+    - Case-insensitive key lookup
+    - Movement-only state tracking
+    - Direction-based filtering
     """
 
     def __init__(self):
-        self._move_states: dict[str, MoveState] = {}
+        super().__init__()
         self._movement_only_keys: set[str] = set()
 
     def add(self, move_state: MoveState) -> None:
-        """Add or update a movement state."""
+        """Add or update a movement state (case-insensitive)."""
         key = move_state.key.lower()
-        self._move_states[key] = move_state
+        # Create a modified copy with lowercase key
+        normalized = MoveState(
+            key=key,
+            state_key=move_state.state_key,
+            direction=move_state.direction,
+            default_distance=move_state.default_distance,
+            default_speed=move_state.default_speed,
+        )
+        self._items[key] = normalized
         self._movement_only_keys.add(move_state.state_key.lower())
 
     def remove(self, key: str) -> bool:
-        """Remove a movement state."""
+        """Remove a movement state (case-insensitive)."""
         key = key.lower()
-        if key not in self._move_states:
-            return False
-
-        move_state = self._move_states[key]
-        self._movement_only_keys.discard(move_state.state_key.lower())
-        del self._move_states[key]
-        return True
+        if key in self._items:
+            move_state = self._items[key]
+            self._movement_only_keys.discard(move_state.state_key.lower())
+        return super().remove(key)
 
     def get(self, key: str) -> Optional[MoveState]:
-        """Get movement state by key."""
-        return self._move_states.get(key.lower())
+        """Get movement state by key (case-insensitive)."""
+        return self._items.get(key.lower())
 
     def find_by_direction(self, direction: str) -> list[MoveState]:
         """Find all movement states matching a direction."""
         direction = direction.lower()
         matches = []
 
-        for move_state in self._move_states.values():
+        for move_state in self._items.values():
             tokens = [t.strip() for t in move_state.direction.split("|")]
             if "any" in tokens or direction in tokens:
                 matches.append(move_state)
 
         return matches
-
-    def all_keys(self) -> list[str]:
-        """Get all movement state keys."""
-        return list(self._move_states.keys())
 
     def is_movement_only(self, state_key: str) -> bool:
         """Check if a state key is reserved for movement only."""

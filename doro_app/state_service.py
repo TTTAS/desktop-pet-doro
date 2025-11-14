@@ -38,18 +38,150 @@ class StateService:
         gif_repo: GifRepository,
         state_list_path: Path,
     ):
-        self.state_repo = state_repo
-        self.move_repo = move_repo
-        self.gif_repo = gif_repo
-        self.state_list_writer = StateListWriter(state_list_path)
+        # Private - encapsulated repositories
+        self._state_repo = state_repo
+        self._move_repo = move_repo
+        self._gif_repo = gif_repo
+        self._state_list_writer = StateListWriter(state_list_path)
 
-        # Core collections
-        self.states = StateCollection()
-        self.move_states = MoveStateCollection()
+        # Private - encapsulated collections
+        self._states = StateCollection()
+        self._move_states = MoveStateCollection()
 
-        # Event callbacks (set by Window or controller)
+        # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Repository Access
+    # ═══════════════════════════════════════════════════════════
+
+    @property
+    def gif_repo(self) -> GifRepository:
+        """Access to GIF repository for path and storage operations."""
+        return self._gif_repo
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Query Methods
+    # ═══════════════════════════════════════════════════════════
+
+    def get_state(self, key: str) -> Optional[State]:
+        """Get a state by key."""
+        return self._states.get(key)
+
+    def has_state(self, key: str) -> bool:
+        """Check if a state exists."""
+        return self._states.get(key) is not None
+
+    def get_current_state(self) -> Optional[State]:
+        """Get the currently active state."""
+        return self._states.current()
+
+    def get_current_state_key(self) -> Optional[str]:
+        """Get the key of the currently active state."""
+        return self._states._current_key
+
+    def visible_state_keys(self) -> list[str]:
+        """Get all state keys that should be visible in UI."""
+        return self._states.visible_keys(self._move_states._movement_only_keys)
+
+    def all_state_keys(self) -> list[str]:
+        """Get all state keys."""
+        return self._states.all_keys()
+
+    def is_state_protected(self, key: str) -> bool:
+        """Check if a state is protected from deletion."""
+        return self._states.is_protected(key)
+
+    def is_movement_only_state(self, key: str) -> bool:
+        """Check if a state key is reserved for movement only."""
+        return self._move_states.is_movement_only(key)
+
+    def get_move_state(self, key: str) -> Optional[MoveState]:
+        """Get a movement state by key."""
+        return self._move_states.get(key)
+
+    def all_move_state_keys(self) -> list[str]:
+        """Get all movement state keys."""
+        return self._move_states.all_keys()
+
+    def find_move_states_by_direction(self, direction_slug: str) -> list[MoveState]:
+        """Find all movement states that support the given direction."""
+        return self._move_states.find_by_direction(direction_slug)
+
+    def get_default_movement_state(self) -> Optional[str]:
+        """Get the default movement state key (usually 'walking')."""
+        # Try to find 'walking' state
+        if self.get_state("walking"):
+            return "walking"
+        # Fall back to any move state with direction="any"
+        for move_state in self._move_states.find_by_direction("any"):
+            if self.get_state(move_state.state_key):
+                return move_state.state_key
+        return None
+
+    def find_state_by_label(self, label_query: str) -> Optional[str]:
+        """Find a state key by searching labels (case-insensitive)."""
+        query_lower = label_query.lower().strip()
+        for key in self._states.all_keys():
+            state = self._states.get(key)
+            if state and state.label.lower() == query_lower:
+                return key
+        return None
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - State Modification
+    # ═══════════════════════════════════════════════════════════
+
+    def update_state(self, key: str, **changes) -> bool:
+        """
+        Update any fields of a state.
+
+        Returns:
+            True if successful, False if state not found
+        """
+        state = self._states.get(key)
+        if not state:
+            return False
+
+        updated = state.with_changes(**changes)
+        self._states.add(updated)
+        self._save_states()
+        self._emit_states_modified()
+        return True
+
+    def update_visual_config(self, key: str, **visual_changes) -> bool:
+        """
+        Update visual configuration for a state.
+
+        Returns:
+            True if successful, False if state not found
+        """
+        state = self._states.get(key)
+        if not state:
+            return False
+
+        updated = state.with_visual(**visual_changes)
+        self._states.add(updated)
+        self._save_states()
+        self._emit_states_modified()
+        return True
+
+    def save_states(self) -> bool:
+        """Save all states to persistent storage."""
+        return self._save_states()
+
+    def _save_states(self) -> bool:
+        """Internal method to save states."""
+        return self._state_repo.save_all(
+            self._states._items,
+            self._states._protected_keys
+        )
+
+    def _emit_states_modified(self) -> None:
+        """Emit states modified event."""
+        if self.on_states_modified:
+            self.on_states_modified()
 
     # ═══════════════════════════════════════════════════════════
     # Initialization
@@ -65,7 +197,7 @@ class StateService:
         # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
-            default_gif_id = self.gif_repo.store_gif(default_gif_path, "idle", variant=False)
+            default_gif_id = self._gif_repo.store_gif(default_gif_path, "idle", variant=False)
 
         idle_state = State(
             key="idle",
@@ -73,34 +205,34 @@ class StateService:
             name_tag="doro",
             primary_gif_id=default_gif_id,
         )
-        self.states.add(idle_state)
-        self.states.protect("idle")
+        self._states.add(idle_state)
+        self._states.protect("idle")
 
         # Load custom states from JSON
-        custom_states = self.state_repo.load_all()
+        custom_states = self._state_repo.load_all()
         for state in custom_states.values():
-            self.states.add(state)
+            self._states.add(state)
 
         # Load movement states
-        move_states = self.move_repo.load_all()
+        move_states = self._move_repo.load_all()
         for move_state in move_states.values():
-            self.move_states.add(move_state)
+            self._move_states.add(move_state)
 
         # Set initial state
-        self.states.set_current("idle")
+        self._states.set_current("idle")
 
         # Ensure walking state exists
         self._ensure_walking_state()
 
         # Write initial state list
-        self._write_state_list()
+        self.write_state_list()
 
     def _ensure_walking_state(self) -> None:
         """Ensure a default walking movement state exists."""
         walking_key = "walking"
 
         # Check if movement state exists
-        if not self.move_states.get(walking_key):
+        if not self._move_states.get(walking_key):
             walk_move = MoveState(
                 key=walking_key,
                 state_key=walking_key,
@@ -108,15 +240,15 @@ class StateService:
                 default_distance=60.0,
                 default_speed="med",
             )
-            self.move_states.add(walk_move)
+            self._move_states.add(walk_move)
 
         # Ensure corresponding display state exists
-        if not self.states.get(walking_key):
+        if not self._states.get(walking_key):
             # Try to find walking.gif
-            walk_gif_path = self.gif_repo.storage_dir.parent / "ACTION" / "MOVE" / "walking.gif"
+            walk_gif_path = self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / "walking.gif"
             gif_id = None
             if walk_gif_path.is_file():
-                gif_id = self.gif_repo.store_gif(walk_gif_path, walking_key)
+                gif_id = self._gif_repo.store_gif(walk_gif_path, walking_key)
 
             walk_state = State(
                 key=walking_key,
@@ -124,8 +256,8 @@ class StateService:
                 name_tag="doro",
                 primary_gif_id=gif_id,
             )
-            self.states.add(walk_state)
-            self.states.protect(walking_key)
+            self._states.add(walk_state)
+            self._states.protect(walking_key)
 
     # ═══════════════════════════════════════════════════════════
     # State Operations
@@ -138,14 +270,14 @@ class StateService:
         Returns:
             True if successful, False if state not found
         """
-        old_key = self.states._current_key
-        if not self.states.set_current(key):
+        old_key = self._states._current_key
+        if not self._states.set_current(key):
             return False
 
         # Load GIF variants if needed
-        state = self.states.get(key)
+        state = self._states.get(key)
         if state:
-            self._refresh_gif_variants(key)
+            self.refresh_gif_variants(key)
 
         # Emit event
         if self.on_state_changed and state:
@@ -166,16 +298,16 @@ class StateService:
         Returns:
             The created State or None if key already exists
         """
-        if self.states.get(key):
+        if self._states.get(key):
             return None
 
         # Check if movement-only
-        if self.move_states.is_movement_only(key):
+        if self._move_states.is_movement_only(key):
             return None
 
         # Create new state
         if copy_from:
-            source = self.states.get(copy_from)
+            source = self._states.get(copy_from)
             if source:
                 new_state = State(
                     key=key,
@@ -188,9 +320,9 @@ class StateService:
         else:
             new_state = State(key=key, label=label)
 
-        self.states.add(new_state)
-        self.state_repo.save_all(self.states._states, self.states._protected_keys)
-        self._write_state_list()
+        self._states.add(new_state)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self.write_state_list()
 
         if self.on_states_modified:
             self.on_states_modified()
@@ -204,20 +336,20 @@ class StateService:
         Returns:
             True if removed, False if protected or not found
         """
-        if not self.states.remove(key):
+        if not self._states.remove(key):
             return False
 
         # Delete associated GIF
-        state = self.states.get(key)
+        state = self._states.get(key)
         if state and state.primary_gif_id:
-            self.gif_repo.delete(state.primary_gif_id)
+            self._gif_repo.delete(state.primary_gif_id)
 
         # Delete variants
         for variant_id in state.variant_gif_ids if state else []:
-            self.gif_repo.delete(variant_id)
+            self._gif_repo.delete(variant_id)
 
-        self.state_repo.save_all(self.states._states, self.states._protected_keys)
-        self._write_state_list()
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self.write_state_list()
 
         if self.on_states_modified:
             self.on_states_modified()
@@ -231,16 +363,16 @@ class StateService:
         Returns:
             Updated state or None if not found
         """
-        state = self.states.get(key)
+        state = self._states.get(key)
         if not state:
             return None
 
         updated = state.with_visual(**visual_changes)
-        self.states.add(updated)
-        self.state_repo.save_all(self.states._states, self.states._protected_keys)
+        self._states.add(updated)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
 
         # If this is current state, emit change event
-        if self.states._current_key == key and self.on_state_changed:
+        if self._states._current_key == key and self.on_state_changed:
             event = StateChangeEvent(key, key, updated)
             self.on_state_changed(event)
 
@@ -257,20 +389,20 @@ class StateService:
         Returns:
             True if successful
         """
-        state = self.states.get(state_key)
+        state = self._states.get(state_key)
         if not state:
             return False
 
-        resource_id = self.gif_repo.store_gif(gif_path, state_key, variant=False)
+        resource_id = self._gif_repo.store_gif(gif_path, state_key, variant=False)
         if not resource_id:
             return False
 
         updated = state.with_changes(primary_gif_id=resource_id)
-        self.states.add(updated)
-        self._refresh_gif_variants(state_key)
+        self._states.add(updated)
+        self.refresh_gif_variants(state_key)
 
         # Emit change if current
-        if self.states._current_key == state_key and self.on_state_changed:
+        if self._states._current_key == state_key and self.on_state_changed:
             event = StateChangeEvent(state_key, state_key, updated)
             self.on_state_changed(event)
 
@@ -283,33 +415,33 @@ class StateService:
         Returns:
             True if successful
         """
-        state = self.states.get(state_key)
+        state = self._states.get(state_key)
         if not state:
             return False
 
-        resource_id = self.gif_repo.store_gif(gif_path, state_key, variant=True)
+        resource_id = self._gif_repo.store_gif(gif_path, state_key, variant=True)
         if not resource_id:
             return False
 
-        self._refresh_gif_variants(state_key)
+        self.refresh_gif_variants(state_key)
         return True
 
     def remove_gif_variant(self, state_key: str, resource_id: str) -> bool:
         """Remove a GIF variant."""
-        if not self.gif_repo.delete(resource_id):
+        if not self._gif_repo.delete(resource_id):
             return False
 
-        self._refresh_gif_variants(state_key)
+        self.refresh_gif_variants(state_key)
         return True
 
-    def _refresh_gif_variants(self, state_key: str) -> None:
+    def refresh_gif_variants(self, state_key: str) -> None:
         """Refresh variant list for a state from filesystem."""
-        state = self.states.get(state_key)
+        state = self._states.get(state_key)
         if not state:
             return
 
         # Get all variants from repository
-        variant_ids = self.gif_repo.list_variants(state_key)
+        variant_ids = self._gif_repo.list_variants(state_key)
 
         # Build complete variant list (primary + variants)
         all_variants = []
@@ -319,7 +451,7 @@ class StateService:
 
         # Update state
         updated = state.with_changes(variant_gif_ids=tuple(all_variants))
-        self.states.add(updated)
+        self._states.add(updated)
 
     def pick_random_variant(self, state_key: str) -> Optional[str]:
         """
@@ -328,7 +460,7 @@ class StateService:
         Returns:
             Resource ID or None
         """
-        state = self.states.get(state_key)
+        state = self._states.get(state_key)
         if not state or not state.variant_gif_ids:
             return state.primary_gif_id if state else None
 
@@ -354,18 +486,18 @@ class StateService:
             default_distance=distance,
             default_speed=speed,
         )
-        self.move_states.add(move_state)
-        self.move_repo.save_all(self.move_states._move_states)
-        self._write_state_list()
+        self._move_states.add(move_state)
+        self._move_repo.save_all(self._move_states._items)
+        self.write_state_list()
         return move_state
 
     def remove_move_state(self, key: str) -> bool:
         """Remove a movement state."""
-        if not self.move_states.remove(key):
+        if not self._move_states.remove(key):
             return False
 
-        self.move_repo.save_all(self.move_states._move_states)
-        self._write_state_list()
+        self._move_repo.save_all(self._move_states._items)
+        self.write_state_list()
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:
@@ -375,7 +507,7 @@ class StateService:
         Returns:
             State key to use for this movement
         """
-        matches = self.move_states.find_by_direction(direction)
+        matches = self._move_states.find_by_direction(direction)
         if not matches:
             return None
 
@@ -383,7 +515,7 @@ class StateService:
         move_state = random.choice(matches)
 
         # Verify display state exists
-        if self.states.get(move_state.state_key):
+        if self._states.get(move_state.state_key):
             return move_state.state_key
 
         return None
@@ -394,13 +526,13 @@ class StateService:
 
     def visible_state_keys(self) -> list[str]:
         """Get keys for states visible in UI (not movement-only)."""
-        return self.states.visible_keys(self.move_states._movement_only_keys)
+        return self._states.visible_keys(self._move_states._movement_only_keys)
 
     def find_state_by_label(self, label: str) -> Optional[str]:
         """Find state key by label (case-insensitive)."""
         label_lower = label.lower()
-        for key in self.states.all_keys():
-            state = self.states.get(key)
+        for key in self._states.all_keys():
+            state = self._states.get(key)
             if state and state.label.lower() == label_lower:
                 return key
         return None
@@ -409,11 +541,11 @@ class StateService:
     # Persistence
     # ═══════════════════════════════════════════════════════════
 
-    def _write_state_list(self) -> str:
+    def write_state_list(self) -> str:
         """Write state summary for LLM context."""
-        return self.state_list_writer.write(
-            self.states._states,
-            self.move_states._move_states,
-            self.gif_repo,
-            self.move_states._movement_only_keys,
+        return self._state_list_writer.write(
+            self._states._items,
+            self._move_states._items,
+            self._gif_repo,
+            self._move_states._movement_only_keys,
         )
