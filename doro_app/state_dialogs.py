@@ -434,10 +434,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.table.setHorizontalHeaderLabels(["Key", "Action", "Direction", "Speed"])
 
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)  # Action (GIF)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        # Set all columns to Interactive mode (user can drag to resize)
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
 
         # Style header: bold and black text
         header.setStyleSheet("QHeaderView::section { font-weight: bold; color: black; }")
@@ -512,6 +510,19 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             # Speed (no more Distance column)
             self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(move_state.default_speed))
+
+        # Set equal width for all columns
+        self._set_equal_column_widths()
+
+    def _set_equal_column_widths(self):
+        """Set all columns to equal width."""
+        # Calculate available width (table width minus some padding for scrollbar/borders)
+        total_width = self.table.viewport().width()
+        column_count = self.table.columnCount()
+        column_width = total_width // column_count
+
+        for col in range(column_count):
+            self.table.setColumnWidth(col, column_width)
 
     def _on_add(self):
         """Add new movement state."""
