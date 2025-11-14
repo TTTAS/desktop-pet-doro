@@ -433,6 +433,17 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Key", "Action", "Direction", "Speed"])
 
+        # Enable grid lines for better visibility
+        self.table.setShowGrid(True)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #333333;
+            }
+            QTableWidget::item {
+                border-right: 1px solid #555555;
+            }
+        """)
+
         header = self.table.horizontalHeader()
         # Set all columns to Interactive mode (user can drag to resize)
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
