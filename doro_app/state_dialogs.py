@@ -41,11 +41,23 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["State", "Preview", "GIF Path", "Actions"])
 
+        # Enable grid lines for better visibility
+        self.table.setShowGrid(True)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #333333;
+            }
+            QTableWidget::item {
+                border-right: 1px solid #555555;
+            }
+        """)
+
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        # Set all columns to Interactive mode (user can drag to resize)
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+
+        # Style header: bold and black text
+        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: black; }")
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
@@ -81,6 +93,9 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
             self.table.setCellWidget(row, 1, preview_label)
 
+            # Set row height to match GIF display
+            self.table.setRowHeight(row, 114)
+
             # GIF path
             gif_info = self._gif_display_text(state)
             self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(gif_info))
@@ -99,6 +114,9 @@ class StateGifManagerDialog(QtWidgets.QDialog):
             btn_layout.addWidget(clear_btn)
 
             self.table.setCellWidget(row, 3, btn_container)
+
+        # Set equal width for all columns
+        self._set_equal_column_widths()
 
     def _gif_display_text(self, state: State) -> str:
         """Generate display text for GIF info."""
@@ -139,6 +157,16 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         self.service.gif_repo.delete(state.primary_gif_id)
         self.service.update_state(state_key, primary_gif_id=None)
         self._populate()
+
+    def _set_equal_column_widths(self):
+        """Set all columns to equal width."""
+        # Calculate available width (table width minus some padding for scrollbar/borders)
+        total_width = self.table.viewport().width()
+        column_count = self.table.columnCount()
+        column_width = total_width // column_count
+
+        for col in range(column_count):
+            self.table.setColumnWidth(col, column_width)
 
 
 class GifVariantDialog(QtWidgets.QDialog):
