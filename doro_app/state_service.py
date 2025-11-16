@@ -426,6 +426,9 @@ class StateService:
         self._states.add(updated)
         self.refresh_gif_variants(state_key)
 
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+
         # Emit change if current
         if self._states._current_key == state_key and self.on_state_changed:
             event = StateChangeEvent(state_key, state_key, updated)
@@ -449,6 +452,8 @@ class StateService:
             return False
 
         self.refresh_gif_variants(state_key)
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         return True
 
     def remove_gif_variant(self, state_key: str, resource_id: str) -> bool:
@@ -457,6 +462,8 @@ class StateService:
             return False
 
         self.refresh_gif_variants(state_key)
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         return True
 
     def refresh_gif_variants(self, state_key: str) -> None:

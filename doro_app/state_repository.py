@@ -271,7 +271,7 @@ class StateRepository:
 
     def _to_dict(self, state: State) -> dict:
         """Convert State to JSON-serializable dict."""
-        return {
+        data = {
             "label": state.label,
             "name_tag": state.name_tag,
             "bob_amplitude": state.visual.bob_amplitude,
@@ -285,6 +285,14 @@ class StateRepository:
             "bubble_visible": state.visual.bubble_visible,
             "bubble_alpha": state.visual.bubble_alpha,
         }
+
+        # Save GIF references
+        if state.primary_gif_id:
+            data["primary_gif_id"] = state.primary_gif_id
+        if state.variant_gif_ids:
+            data["variant_gif_ids"] = list(state.variant_gif_ids)
+
+        return data
 
     def _from_dict(self, key: str, data: dict) -> State:
         """Convert JSON dict to State object."""
@@ -307,7 +315,19 @@ class StateRepository:
         visual_data = {k: v for k, v in data.items() if k in visual_fields}
         visual = VisualConfig(**visual_data)
 
-        return State(key=key, label=label, name_tag=name_tag, visual=visual)
+        # Load GIF references
+        primary_gif_id = data.get("primary_gif_id")
+        variant_gif_ids_list = data.get("variant_gif_ids", [])
+        variant_gif_ids = tuple(variant_gif_ids_list) if variant_gif_ids_list else ()
+
+        return State(
+            key=key,
+            label=label,
+            name_tag=name_tag,
+            visual=visual,
+            primary_gif_id=primary_gif_id,
+            variant_gif_ids=variant_gif_ids,
+        )
 
 
 class MoveStateRepository:
@@ -498,9 +518,10 @@ class StateListWriter:
         primary_path = gif_repo.get_path(state.primary_gif_id)
         gif_info = str(primary_path) if primary_path else "(no GIF)"
 
+        # variant_gif_ids includes primary, so subtract 1 for additional variants
         variant_count = len(state.variant_gif_ids)
-        if variant_count > 0:
-            gif_info += f" (+{variant_count} variants)"
+        if variant_count > 1:
+            gif_info += f" (+{variant_count - 1} variants)"
 
         return gif_info
 
