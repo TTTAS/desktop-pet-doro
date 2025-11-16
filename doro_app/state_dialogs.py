@@ -85,16 +85,33 @@ class StateGifManagerDialog(QtWidgets.QDialog):
             preview_label = QtWidgets.QLabel()
             preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             preview_label.setMinimumSize(114, 114)
+            preview_label.setStyleSheet("background-color: #1a1a1a;")  # Debug: show label background
+
+            print(f"[StateGIF Debug] Row {row}, Key: {key}")
+            print(f"  primary_gif_id: {state.primary_gif_id}")
 
             if state.primary_gif_id:
                 gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+                print(f"  gif_path: {gif_path}")
                 if gif_path:
                     movie = QtGui.QMovie(str(gif_path))
+                    print(f"  movie.isValid(): {movie.isValid()}")
                     if movie.isValid():
                         movie.setScaledSize(QtCore.QSize(96, 96))
                         preview_label.setMovie(movie)
                         movie.start()
+                        print(f"  movie.state(): {movie.state()}")
+                        print(f"  movie started, appending to _movies")
                         self._movies.append(movie)  # Keep reference to prevent garbage collection
+                    else:
+                        preview_label.setText("Invalid GIF")
+                        preview_label.setStyleSheet("background-color: #1a1a1a; color: red;")
+                else:
+                    preview_label.setText("No Path")
+                    preview_label.setStyleSheet("background-color: #1a1a1a; color: yellow;")
+            else:
+                preview_label.setText("No GIF ID")
+                preview_label.setStyleSheet("background-color: #1a1a1a; color: orange;")
 
             self.table.setCellWidget(row, 1, preview_label)
 
