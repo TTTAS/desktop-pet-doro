@@ -57,8 +57,8 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         # Set all columns to Interactive mode (user can drag to resize)
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
 
-        # Style header: bold and black text
-        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: black; }")
+        # Style header: bold and white text
+        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: white; }")
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
@@ -501,8 +501,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         # Set all columns to Interactive mode (user can drag to resize)
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
 
-        # Style header: bold and black text
-        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: black; }")
+        # Style header: bold and white text
+        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: white; }")
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
