@@ -43,6 +43,13 @@ class GifRepository:
 
         dest_path = self._primary_path(state_key)
 
+        # If source and dest are the same file, just return resource ID
+        try:
+            if source_path.resolve() == dest_path.resolve():
+                return self._to_resource_id(dest_path)
+        except OSError:
+            pass
+
         try:
             shutil.copy2(source_path, dest_path)
             return self._to_resource_id(dest_path)
