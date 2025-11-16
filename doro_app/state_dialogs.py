@@ -29,6 +29,7 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         self.service = service
         self.setWindowTitle("State GIFs")
         self.setMinimumWidth(680)
+        self._movies = []  # Keep references to QMovie objects to prevent garbage collection
         self._setup_ui()
         self._populate()
 
@@ -64,6 +65,7 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.table.setRowCount(0)
+        self._movies.clear()  # Clear old movie references
         visible_keys = sorted(self.service.visible_state_keys())
 
         for row, key in enumerate(visible_keys):
@@ -75,7 +77,9 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
             # State name
             label = state.label or key
-            self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(f"{label}\n({key})"))
+            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key})")
+            name_item.setForeground(QtGui.QColor("#ffffff"))  # White text
+            self.table.setItem(row, 0, name_item)
 
             # Preview
             preview_label = QtWidgets.QLabel()
@@ -90,6 +94,7 @@ class StateGifManagerDialog(QtWidgets.QDialog):
                         movie.setScaledSize(QtCore.QSize(96, 96))
                         preview_label.setMovie(movie)
                         movie.start()
+                        self._movies.append(movie)  # Keep reference to prevent garbage collection
 
             self.table.setCellWidget(row, 1, preview_label)
 
@@ -98,7 +103,9 @@ class StateGifManagerDialog(QtWidgets.QDialog):
 
             # GIF path
             gif_info = self._gif_display_text(state)
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(gif_info))
+            path_item = QtWidgets.QTableWidgetItem(gif_info)
+            path_item.setForeground(QtGui.QColor("#ffffff"))  # White text
+            self.table.setItem(row, 2, path_item)
 
             # Actions
             btn_container = QtWidgets.QWidget()
@@ -443,6 +450,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.setWindowTitle("Action Manager - Movement States")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
+        self._movies = []  # Keep references to QMovie objects to prevent garbage collection
         self._setup_ui()
         self._populate()
 
@@ -508,6 +516,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.table.setRowCount(0)
+        self._movies.clear()  # Clear old movie references
 
         move_state_keys = self.service.all_move_state_keys()
         for key in sorted(move_state_keys):
@@ -521,6 +530,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             # Key
             key_item = QtWidgets.QTableWidgetItem(move_state.key)
             key_item.setData(QtCore.Qt.ItemDataRole.UserRole, move_state.key)
+            key_item.setForeground(QtGui.QColor("#ffffff"))  # White text
             self.table.setItem(row, 0, key_item)
 
             # Action (GIF preview)
@@ -538,6 +548,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                         movie.setScaledSize(QtCore.QSize(96, 96))
                         action_label.setMovie(movie)
                         movie.start()
+                        self._movies.append(movie)  # Keep reference to prevent garbage collection
 
             self.table.setCellWidget(row, 1, action_label)
 
@@ -545,10 +556,14 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             self.table.setRowHeight(row, 114)
 
             # Direction
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(move_state.direction))
+            direction_item = QtWidgets.QTableWidgetItem(move_state.direction)
+            direction_item.setForeground(QtGui.QColor("#ffffff"))  # White text
+            self.table.setItem(row, 2, direction_item)
 
             # Speed (no more Distance column)
-            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(move_state.default_speed))
+            speed_item = QtWidgets.QTableWidgetItem(move_state.default_speed)
+            speed_item.setForeground(QtGui.QColor("#ffffff"))  # White text
+            self.table.setItem(row, 3, speed_item)
 
         # Set equal width for all columns
         self._set_equal_column_widths()
