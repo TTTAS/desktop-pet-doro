@@ -39,8 +39,8 @@ class StateGifManagerDialog(QtWidgets.QDialog):
         layout.setSpacing(14)
 
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["State", "Preview", "GIF Path", "Actions"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["State", "Preview", "Actions"])
 
         # Enable grid lines for better visibility
         self.table.setShowGrid(True)
@@ -101,12 +101,6 @@ class StateGifManagerDialog(QtWidgets.QDialog):
             # Set row height to match GIF display
             self.table.setRowHeight(row, 114)
 
-            # GIF path
-            gif_info = self._gif_display_text(state)
-            path_item = QtWidgets.QTableWidgetItem(gif_info)
-            path_item.setForeground(QtGui.QColor("#ffffff"))  # White text
-            self.table.setItem(row, 2, path_item)
-
             # Actions
             btn_container = QtWidgets.QWidget()
             btn_layout = QtWidgets.QHBoxLayout(btn_container)
@@ -120,24 +114,10 @@ class StateGifManagerDialog(QtWidgets.QDialog):
             clear_btn.clicked.connect(lambda checked=False, k=key: self._on_clear_gif(k))
             btn_layout.addWidget(clear_btn)
 
-            self.table.setCellWidget(row, 3, btn_container)
+            self.table.setCellWidget(row, 2, btn_container)
 
         # Set equal width for all columns
         self._set_equal_column_widths()
-
-    def _gif_display_text(self, state: State) -> str:
-        """Generate display text for GIF info."""
-        if not state.primary_gif_id:
-            return "(no GIF)"
-
-        gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
-        text = str(gif_path) if gif_path else "(no GIF)"
-
-        variant_count = len(state.variant_gif_ids)
-        if variant_count > 1:  # Subtract primary
-            text += f" (+{variant_count - 1} variants)"
-
-        return text
 
     def _on_set_gif(self, state_key: str):
         """Handle Set GIF button click."""
