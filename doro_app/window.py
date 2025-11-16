@@ -753,8 +753,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = event.new_key
         self._state_list_text = self._state_service.write_state_list()
 
-        # Pick and load random GIF variant
-        gif_resource_id = self._state_service.pick_random_variant(event.new_key)
+        # Get and load GIF
+        gif_resource_id = self._state_service.get_gif_id(event.new_key)
         if gif_resource_id:
             gif_path = self._gif_repo.get_path(gif_resource_id)
             if gif_path:
@@ -855,8 +855,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_alpha = visual.bubble_alpha
         self._name_tag = state.name_tag
 
-        # Load GIF variant
-        gif_resource_id = self._state_service.pick_random_variant(self._current_state_key)
+        # Load GIF
+        gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
         if gif_resource_id:
             gif_path = self._gif_repo.get_path(gif_resource_id)
             if gif_path:
@@ -913,11 +913,11 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _select_state_gif_variant(self, key: str):
         """
-        Select and load a random GIF variant for the given state.
+        Load the GIF for the given state.
 
-        This is a legacy method. New code should use StateService.pick_random_variant().
+        This is a legacy method. New code should use StateService.get_gif_id().
         """
-        gif_resource_id = self._state_service.pick_random_variant(key)
+        gif_resource_id = self._state_service.get_gif_id(key)
         if gif_resource_id:
             gif_path = self._gif_repo.get_path(gif_resource_id)
             if gif_path:

@@ -444,11 +444,6 @@ class StateService:
         state = self._states.get(state_key)
         return state.gif_id if state else None
 
-    # Legacy method name for compatibility
-    def pick_random_variant(self, state_key: str) -> Optional[str]:
-        """Legacy method. Use get_gif_id() instead."""
-        return self.get_gif_id(state_key)
-
     # ═══════════════════════════════════════════════════════════
     # Movement State Operations
     # ═══════════════════════════════════════════════════════════
