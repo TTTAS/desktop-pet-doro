@@ -482,7 +482,8 @@ class DoroWindow(QtWidgets.QWidget):
             action.triggered.connect(lambda checked, s=key: self._set_state(s))
 
         edit_states_action = states_menu.addAction("Edit states")
-        edit_states_action.triggered.connect(self._show_state_gif_manager)
+        # TODO: Implement new Edit states dialog
+        # edit_states_action.triggered.connect(self._show_state_gif_manager)
 
         remove_action = states_menu.addAction("Remove current state")
         remove_action.setEnabled(
@@ -1009,11 +1010,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use dialog
         from .state_dialogs import show_gif_variant_dialog
         show_gif_variant_dialog(self._state_service, state_key, parent=parent or self)
-
-    def _show_state_gif_manager(self):
-        # NEW: Use dialog
-        from .state_dialogs import show_state_gif_manager
-        show_state_gif_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
         from .state_dialogs import show_move_state_manager
