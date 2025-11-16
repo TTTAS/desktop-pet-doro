@@ -262,6 +262,62 @@ class StateChangeEvent:
 
 
 @dataclass(frozen=True)
+class TransitionState:
+    """
+    State transition configuration.
+
+    Represents a transition animation between two states.
+    Example: idle -> transition_gif -> happy
+    """
+
+    key: str  # Unique identifier for this transition
+    from_state: str  # Starting state key
+    to_state: str  # Target state key
+    transition_gif_id: Optional[str] = None  # Reference to transition GIF
+
+    def with_changes(self, **changes) -> TransitionState:
+        """Return a new TransitionState with specified changes."""
+        return replace(self, **changes)
+
+
+class TransitionStateCollection(BaseCollection[TransitionState]):
+    """
+    Manages state transition animations.
+
+    Extends BaseCollection with:
+    - Fast lookup by from_state -> to_state pair
+    - Transition matching
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Index for fast from->to lookup
+        self._transition_map: dict[tuple[str, str], str] = {}
+
+    def add(self, transition: TransitionState) -> None:
+        """Add or update a transition."""
+        super().add(transition)
+        # Update index
+        self._transition_map[(transition.from_state, transition.to_state)] = transition.key
+
+    def remove(self, key: str) -> bool:
+        """Remove a transition."""
+        transition = self.get(key)
+        if transition:
+            # Remove from index
+            pair = (transition.from_state, transition.to_state)
+            self._transition_map.pop(pair, None)
+        return super().remove(key)
+
+    def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
+        """Find a transition between two states."""
+        key = self._transition_map.get((from_state, to_state))
+        if key:
+            return self.get(key)
+        return None
+
+
+@dataclass(frozen=True)
 class GifResourceReference:
     """Reference to a GIF resource (not the file itself)."""
 

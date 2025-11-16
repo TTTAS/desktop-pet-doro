@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .state_models import MoveState, State, VisualConfig
+from .state_models import MoveState, State, TransitionState, VisualConfig
 
 
 class GifRepository:
@@ -271,7 +271,7 @@ class StateRepository:
 
     def _to_dict(self, state: State) -> dict:
         """Convert State to JSON-serializable dict."""
-        return {
+        data = {
             "label": state.label,
             "name_tag": state.name_tag,
             "bob_amplitude": state.visual.bob_amplitude,
@@ -285,6 +285,14 @@ class StateRepository:
             "bubble_visible": state.visual.bubble_visible,
             "bubble_alpha": state.visual.bubble_alpha,
         }
+
+        # Save GIF references
+        if state.primary_gif_id:
+            data["primary_gif_id"] = state.primary_gif_id
+        if state.variant_gif_ids:
+            data["variant_gif_ids"] = list(state.variant_gif_ids)
+
+        return data
 
     def _from_dict(self, key: str, data: dict) -> State:
         """Convert JSON dict to State object."""
@@ -307,7 +315,19 @@ class StateRepository:
         visual_data = {k: v for k, v in data.items() if k in visual_fields}
         visual = VisualConfig(**visual_data)
 
-        return State(key=key, label=label, name_tag=name_tag, visual=visual)
+        # Load GIF references
+        primary_gif_id = data.get("primary_gif_id")
+        variant_gif_ids_list = data.get("variant_gif_ids", [])
+        variant_gif_ids = tuple(variant_gif_ids_list) if variant_gif_ids_list else ()
+
+        return State(
+            key=key,
+            label=label,
+            name_tag=name_tag,
+            visual=visual,
+            primary_gif_id=primary_gif_id,
+            variant_gif_ids=variant_gif_ids,
+        )
 
 
 class MoveStateRepository:
@@ -358,6 +378,67 @@ class MoveStateRepository:
                 "default_speed": ms.default_speed,
             }
             for key, ms in move_states.items()
+        }
+
+        try:
+            if data:
+                self.config_path.parent.mkdir(parents=True, exist_ok=True)
+                content = json.dumps(data, indent=2, ensure_ascii=False)
+                self.config_path.write_text(content, encoding="utf-8")
+            else:
+                if self.config_path.exists():
+                    self.config_path.unlink()
+            return True
+        except OSError:
+            return False
+
+
+class TransitionStateRepository:
+    """Manages transition state persistence."""
+
+    def __init__(self, config_path: Path):
+        self.config_path = config_path
+
+    def load_all(self) -> dict[str, TransitionState]:
+        """Load transition states from JSON."""
+        if not self.config_path.is_file():
+            return {}
+
+        try:
+            raw = self.config_path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if not isinstance(data, dict):
+            return {}
+
+        transitions = {}
+        for key, value in data.items():
+            if not isinstance(value, dict):
+                continue
+            try:
+                transition = TransitionState(
+                    key=key,
+                    from_state=value["from_state"],
+                    to_state=value["to_state"],
+                    transition_gif_id=value.get("transition_gif_id"),
+                )
+                transitions[key] = transition
+            except (KeyError, ValueError, TypeError):
+                continue
+
+        return transitions
+
+    def save_all(self, transitions: dict[str, TransitionState]) -> bool:
+        """Save transition states to JSON."""
+        data = {
+            key: {
+                "from_state": ts.from_state,
+                "to_state": ts.to_state,
+                "transition_gif_id": ts.transition_gif_id,
+            }
+            for key, ts in transitions.items()
         }
 
         try:
@@ -437,9 +518,10 @@ class StateListWriter:
         primary_path = gif_repo.get_path(state.primary_gif_id)
         gif_info = str(primary_path) if primary_path else "(no GIF)"
 
+        # variant_gif_ids includes primary, so subtract 1 for additional variants
         variant_count = len(state.variant_gif_ids)
-        if variant_count > 0:
-            gif_info += f" (+{variant_count} variants)"
+        if variant_count > 1:
+            gif_info += f" (+{variant_count - 1} variants)"
 
         return gif_info
 

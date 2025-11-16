@@ -11,8 +11,8 @@ import random
 from pathlib import Path
 from typing import Callable, Optional
 
-from .state_models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, VisualConfig
-from .state_repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository
+from .state_models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
+from .state_repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
 
 class StateService:
@@ -37,16 +37,19 @@ class StateService:
         move_repo: MoveStateRepository,
         gif_repo: GifRepository,
         state_list_path: Path,
+        transition_repo: Optional[TransitionStateRepository] = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
         self._move_repo = move_repo
         self._gif_repo = gif_repo
+        self._transition_repo = transition_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
         # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
+        self._transitions = TransitionStateCollection()
 
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
@@ -128,6 +131,22 @@ class StateService:
             if state and state.label.lower() == query_lower:
                 return key
         return None
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Transition Query Methods
+    # ═══════════════════════════════════════════════════════════
+
+    def get_transition(self, key: str) -> Optional[TransitionState]:
+        """Get a transition by key."""
+        return self._transitions.get(key)
+
+    def all_transition_keys(self) -> list[str]:
+        """Get all transition keys."""
+        return self._transitions.all_keys()
+
+    def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
+        """Find a transition between two states."""
+        return self._transitions.find_transition(from_state, to_state)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - State Modification
@@ -217,6 +236,12 @@ class StateService:
         move_states = self._move_repo.load_all()
         for move_state in move_states.values():
             self._move_states.add(move_state)
+
+        # Load transition states
+        if self._transition_repo:
+            transitions = self._transition_repo.load_all()
+            for transition in transitions.values():
+                self._transitions.add(transition)
 
         # Set initial state
         self._states.set_current("idle")
@@ -401,6 +426,9 @@ class StateService:
         self._states.add(updated)
         self.refresh_gif_variants(state_key)
 
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+
         # Emit change if current
         if self._states._current_key == state_key and self.on_state_changed:
             event = StateChangeEvent(state_key, state_key, updated)
@@ -424,6 +452,8 @@ class StateService:
             return False
 
         self.refresh_gif_variants(state_key)
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         return True
 
     def remove_gif_variant(self, state_key: str, resource_id: str) -> bool:
@@ -432,6 +462,8 @@ class StateService:
             return False
 
         self.refresh_gif_variants(state_key)
+        # Save to persistent storage
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
         return True
 
     def refresh_gif_variants(self, state_key: str) -> None:
@@ -498,6 +530,25 @@ class StateService:
 
         self._move_repo.save_all(self._move_states._items)
         self.write_state_list()
+        return True
+
+    def add_transition(
+        self,
+        transition: TransitionState,
+    ) -> bool:
+        """Create or update a transition state."""
+        self._transitions.add(transition)
+        if self._transition_repo:
+            return self._transition_repo.save_all(self._transitions._items)
+        return True
+
+    def remove_transition(self, key: str) -> bool:
+        """Remove a transition state."""
+        if not self._transitions.remove(key):
+            return False
+
+        if self._transition_repo:
+            return self._transition_repo.save_all(self._transitions._items)
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:

@@ -24,7 +24,7 @@ from .movement_manager import MovementManager
 from .models import MoveStateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from .state_models import State, StateChangeEvent
-from .state_repository import GifRepository, MoveStateRepository, StateRepository
+from .state_repository import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .state_service import StateService
 from .theme import ensure_application_theme
 from .themed_menu import create_doro_menu
@@ -106,11 +106,13 @@ class DoroWindow(QtWidgets.QWidget):
         self._gif_repo = GifRepository(STATE_DIR)
         self._state_repo = StateRepository(STATE_DIR / "states.json")
         self._move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
+        self._transition_repo = TransitionStateRepository(STATE_DIR / "transitions.json")
         self._state_service = StateService(
             self._state_repo,
             self._move_repo,
             self._gif_repo,
             STATE_DIR / "state_list.txt",
+            self._transition_repo,
         )
 
         # Connect state change events
@@ -480,7 +482,7 @@ class DoroWindow(QtWidgets.QWidget):
             action.triggered.connect(lambda checked, s=key: self._set_state(s))
 
         edit_states_action = states_menu.addAction("Edit states")
-        edit_states_action.triggered.connect(self._show_state_gif_manager)
+        edit_states_action.triggered.connect(self._show_state_manager)
 
         remove_action = states_menu.addAction("Remove current state")
         remove_action.setEnabled(
@@ -520,8 +522,9 @@ class DoroWindow(QtWidgets.QWidget):
         bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
         bubble_action.triggered.connect(self._toggle_bubble)
 
-        gif_action = visuals_menu.addAction("Load GIF")
-        gif_action.triggered.connect(self._load_state_gif)
+        # TODO: Re-implement with new Edit states dialog
+        # gif_action = visuals_menu.addAction("Load GIF")
+        # gif_action.triggered.connect(self._load_state_gif)
 
         clear_gif_action = visuals_menu.addAction("Reset GIF to default")
         clear_gif_action.setEnabled(self._default_idle_gif.is_file())
@@ -934,10 +937,11 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         self._state_service.set_state(key)
 
-    def _load_state_gif(self):
-        # NEW: Show GIF manager dialog
-        from .state_dialogs import show_state_gif_manager
-        show_state_gif_manager(self._state_service, parent=self)
+    # TODO: Re-implement with new Edit states dialog
+    # def _load_state_gif(self):
+    #     # NEW: Show GIF manager dialog
+    #     from .state_dialogs import show_state_gif_manager
+    #     show_state_gif_manager(self._state_service, parent=self)
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
         # NEW: Use StateService
@@ -1008,10 +1012,9 @@ class DoroWindow(QtWidgets.QWidget):
         from .state_dialogs import show_gif_variant_dialog
         show_gif_variant_dialog(self._state_service, state_key, parent=parent or self)
 
-    def _show_state_gif_manager(self):
-        # NEW: Use dialog
-        from .state_dialogs import show_state_gif_manager
-        show_state_gif_manager(self._state_service, parent=self)
+    def _show_state_manager(self):
+        from .state_dialogs import show_state_manager
+        show_state_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
         from .state_dialogs import show_move_state_manager
