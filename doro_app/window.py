@@ -523,8 +523,9 @@ class DoroWindow(QtWidgets.QWidget):
         bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
         bubble_action.triggered.connect(self._toggle_bubble)
 
-        gif_action = visuals_menu.addAction("Load GIF")
-        gif_action.triggered.connect(self._load_state_gif)
+        # TODO: Re-implement with new Edit states dialog
+        # gif_action = visuals_menu.addAction("Load GIF")
+        # gif_action.triggered.connect(self._load_state_gif)
 
         clear_gif_action = visuals_menu.addAction("Reset GIF to default")
         clear_gif_action.setEnabled(self._default_idle_gif.is_file())
@@ -937,10 +938,11 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         self._state_service.set_state(key)
 
-    def _load_state_gif(self):
-        # NEW: Show GIF manager dialog
-        from .state_dialogs import show_state_gif_manager
-        show_state_gif_manager(self._state_service, parent=self)
+    # TODO: Re-implement with new Edit states dialog
+    # def _load_state_gif(self):
+    #     # NEW: Show GIF manager dialog
+    #     from .state_dialogs import show_state_gif_manager
+    #     show_state_gif_manager(self._state_service, parent=self)
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
         # NEW: Use StateService

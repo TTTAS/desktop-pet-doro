@@ -534,8 +534,7 @@ doro_app/
 │   ├── bubble_controller.py (159行)     # 氣泡控制
 │   ├── movement_manager.py (462行)      # 移動管理
 │   ├── themed_menu.py (258行)           # 粉紅主題選單
-│   └── state_dialogs.py (886行)         # 狀態管理對話框 (新增動作類型選擇)
-│       ├── StateGifManagerDialog        # 狀態 GIF 管理
+│   └── state_dialogs.py (770行)         # 狀態管理對話框 (新增動作類型選擇)
 │       ├── GifVariantDialog             # GIF 變體管理
 │       ├── AddStateDialog               # 新增狀態
 │       ├── MoveStateManagerDialog ⭐    # 動作管理主介面 (含 GIF 預覽表格)
