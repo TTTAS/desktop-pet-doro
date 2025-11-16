@@ -947,19 +947,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         return self._state_service.set_primary_gif(key, Path(source_path))
 
-    def _add_state_gif_variant_from_path(self, key: str, source_path: str) -> bool:
-        # NEW: Use StateService
-        return self._state_service.add_gif_variant(key, Path(source_path))
-
-    def _remove_state_gif_variant(
-        self,
-        key: str,
-        variant_path: str,
-        *,
-        parent: QtWidgets.QWidget | None = None,
-    ) -> bool:
-        # NEW: variant_path is now a resource_id
-        return self._state_service.remove_gif_variant(key, variant_path)
 
     def _write_state_list(self):
         # NEW: Delegate to StateService
@@ -990,8 +977,8 @@ class DoroWindow(QtWidgets.QWidget):
 
                 # Get GIF information
                 gif_hint = "(no GIF)"
-                if state and state.primary_gif_id:
-                    gif_path = self._gif_repo.get_path(state.primary_gif_id)
+                if state and state.gif_id:
+                    gif_path = self._gif_repo.get_path(state.gif_id)
                     if gif_path:
                         gif_hint = str(gif_path)
 
@@ -1007,10 +994,6 @@ class DoroWindow(QtWidgets.QWidget):
             pass
         print(output)
 
-    def _show_state_gif_collection(self, state_key: str, *, parent: QtWidgets.QWidget | None = None):
-        # NEW: Use dialog
-        from .state_dialogs import show_gif_variant_dialog
-        show_gif_variant_dialog(self._state_service, state_key, parent=parent or self)
 
     def _show_state_manager(self):
         from .state_dialogs import show_state_manager
@@ -1021,12 +1004,12 @@ class DoroWindow(QtWidgets.QWidget):
         show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
-        # NEW: Clear primary GIF for current state
+        # Clear GIF for current state
         if self._current_state_key:
             state = self._state_service.get_state(self._current_state_key)
-            if state and state.primary_gif_id:
-                self._gif_repo.delete(state.primary_gif_id)
-                self._state_service.update_state(self._current_state_key, primary_gif_id=None)
+            if state and state.gif_id:
+                self._gif_repo.delete(state.gif_id)
+                self._state_service.update_state(self._current_state_key, gif_id=None)
 
     def _load_click_actions(self) -> list[str]:
         path = getattr(self, "_click_actions_path", None)
@@ -1360,9 +1343,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use GifRepository public API
         return self._gif_repo.get_state_storage_path(key)
 
-    def _state_variants_dir_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository public API
-        return self._gif_repo.get_state_variants_dir(key)
 
     def _move_storage_path_for_key(self, key: str) -> Path:
         # NEW: Use GifRepository public API
@@ -1406,13 +1386,6 @@ class DoroWindow(QtWidgets.QWidget):
                 self._apply_state_settings()
                 self.update()
 
-    def _update_state_variants(self, key: str):
-        """
-        Refresh GIF variants for a state.
-
-        This is a legacy method. StateService handles variant management automatically.
-        """
-        self._state_service.refresh_gif_variants(key)
 
     def _ensure_local_gif_for_state(self, key: str):
         """
@@ -1426,7 +1399,7 @@ class DoroWindow(QtWidgets.QWidget):
             return
 
         # If state already has a GIF, nothing to do
-        if state.primary_gif_id:
+        if state.gif_id:
             return
 
         # Special handling for walking state

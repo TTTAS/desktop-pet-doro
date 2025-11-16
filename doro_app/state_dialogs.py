@@ -138,13 +138,12 @@ class StateManagerDialog(QtWidgets.QDialog):
         Get GIF path for a state, trying multiple sources.
 
         Priority:
-        1. state.primary_gif_id (from repository)
+        1. state.gif_id (from repository)
         2. Fixed path: res/state/{key}.gif
-        3. First variant in: res/state/{key}_variants/
         """
-        # Try primary GIF ID first
-        if state.primary_gif_id:
-            gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+        # Try GIF ID from repository first
+        if state.gif_id:
+            gif_path = self.service.gif_repo.get_path(state.gif_id)
             if gif_path and gif_path.exists():
                 return gif_path
 
@@ -152,14 +151,6 @@ class StateManagerDialog(QtWidgets.QDialog):
         fixed_path = Path("res") / "state" / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
-
-        # Fallback to first variant: res/state/{key}_variants/
-        variants_dir = Path("res") / "state" / f"{key}_variants"
-        if variants_dir.exists() and variants_dir.is_dir():
-            # Find first .gif file in variants directory
-            for variant_file in sorted(variants_dir.glob("*.gif")):
-                if variant_file.is_file():
-                    return variant_file
 
         return None
 
@@ -224,194 +215,6 @@ class StateManagerDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Remove state", "Failed to remove state.")
 
 
-class GifVariantDialog(QtWidgets.QDialog):
-    """
-    Dialog for managing GIF variants for a single state.
-
-    Old location: StateManager.show_state_gif_collection()
-    """
-
-    def __init__(
-        self,
-        service: StateService,
-        state_key: str,
-        parent: Optional[QtWidgets.QWidget] = None,
-    ):
-        super().__init__(parent)
-        self.service = service
-        self.state_key = state_key
-        self.setWindowTitle(f"GIF variants · {state_key}")
-        self.setMinimumWidth(520)
-        self._setup_ui()
-        self._populate()
-
-    def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(22, 22, 22, 22)
-        layout.setSpacing(16)
-
-        # Info label
-        info_label = QtWidgets.QLabel(
-            "Manage the primary animation and additional variants. "
-            "Doro will randomly pick one when this state is active."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #a5b4fc; font-size: 11px;")
-        layout.addWidget(info_label)
-
-        # List widget
-        self.list_widget = QtWidgets.QListWidget()
-        self.list_widget.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        layout.addWidget(self.list_widget, stretch=1)
-
-        # Preview
-        self.preview_label = QtWidgets.QLabel()
-        self.preview_label.setFixedHeight(180)
-        self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.preview_label)
-
-        # Buttons
-        button_row = QtWidgets.QHBoxLayout()
-        button_row.setSpacing(12)
-
-        add_btn = QtWidgets.QPushButton("Add variant")
-        add_btn.clicked.connect(self._on_add_variant)
-        button_row.addWidget(add_btn)
-
-        set_main_btn = QtWidgets.QPushButton("Set as main")
-        set_main_btn.clicked.connect(self._on_set_main)
-        button_row.addWidget(set_main_btn)
-
-        remove_btn = QtWidgets.QPushButton("Remove variant")
-        remove_btn.clicked.connect(self._on_remove_variant)
-        button_row.addWidget(remove_btn)
-
-        close_btn = QtWidgets.QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        button_row.addWidget(close_btn)
-
-        layout.addLayout(button_row)
-
-        # Connect selection change to preview
-        self.list_widget.itemSelectionChanged.connect(self._on_selection_changed)
-
-        # Track current preview movie
-        self._preview_movie: Optional[QtGui.QMovie] = None
-
-    def _populate(self):
-        self.list_widget.clear()
-        state = self.service.get_state(self.state_key)
-        if not state:
-            return
-
-        # Add primary
-        if state.primary_gif_id:
-            item = QtWidgets.QListWidgetItem("Primary GIF")
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, state.primary_gif_id)
-            self.list_widget.addItem(item)
-
-        # Add variants
-        for idx, variant_id in enumerate(state.variant_gif_ids, start=1):
-            if variant_id == state.primary_gif_id:
-                continue
-            item = QtWidgets.QListWidgetItem(f"Variant {idx}")
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, variant_id)
-            self.list_widget.addItem(item)
-
-        # Select first
-        if self.list_widget.count() > 0:
-            self.list_widget.setCurrentRow(0)
-
-    def _on_selection_changed(self):
-        """Update preview when selection changes."""
-        item = self.list_widget.currentItem()
-        if not item:
-            self._clear_preview()
-            return
-
-        resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        if not resource_id:
-            self._clear_preview()
-            return
-
-        gif_path = self.service.gif_repo.get_path(resource_id)
-        if not gif_path:
-            self._clear_preview()
-            return
-
-        self._show_preview(gif_path)
-
-    def _show_preview(self, path: Path):
-        """Show GIF preview."""
-        self._clear_preview()
-
-        movie = QtGui.QMovie(str(path))
-        if not movie.isValid():
-            self.preview_label.setText("Invalid GIF")
-            return
-
-        self.preview_label.setMovie(movie)
-        self._preview_movie = movie
-        movie.start()
-
-    def _clear_preview(self):
-        """Clear preview."""
-        if self._preview_movie:
-            self._preview_movie.stop()
-        self._preview_movie = None
-        self.preview_label.setMovie(None)
-        self.preview_label.setText("No GIF selected")
-
-    def _on_add_variant(self):
-        """Add a new variant."""
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            f"Add GIF variant for '{self.state_key}'",
-            str(self.service.gif_repo.storage_dir),
-            "GIF files (*.gif)",
-        )
-        if not file_path:
-            return
-
-        if self.service.add_gif_variant(self.state_key, Path(file_path)):
-            self._populate()
-        else:
-            QtWidgets.QMessageBox.warning(self, "Add variant", "Failed to add GIF variant.")
-
-    def _on_set_main(self):
-        """Set selected variant as primary."""
-        item = self.list_widget.currentItem()
-        if not item:
-            return
-
-        resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.get_state(self.state_key)
-        if not state:
-            return
-
-        self.service.update_state(self.state_key, primary_gif_id=resource_id)
-        self._populate()
-
-    def _on_remove_variant(self):
-        """Remove selected variant."""
-        item = self.list_widget.currentItem()
-        if not item:
-            return
-
-        resource_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        state = self.service.get_state(self.state_key)
-        if not state or resource_id == state.primary_gif_id:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Remove variant",
-                "Select a variant entry to remove (not primary).",
-            )
-            return
-
-        if self.service.remove_gif_variant(self.state_key, resource_id):
-            self._populate()
-
-
 class AddStateDialog(QtWidgets.QDialog):
     """Dialog for creating a new state."""
 
@@ -463,12 +266,6 @@ class AddStateDialog(QtWidgets.QDialog):
 def show_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
     """Show state manager dialog."""
     dialog = StateManagerDialog(service, parent)
-    dialog.exec()
-
-
-def show_gif_variant_dialog(service: StateService, state_key: str, parent: Optional[QtWidgets.QWidget] = None):
-    """Show GIF variant manager for a state."""
-    dialog = GifVariantDialog(service, state_key, parent)
     dialog.exec()
 
 
@@ -621,13 +418,12 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         Get GIF path for a state, trying multiple sources.
 
         Priority:
-        1. state.primary_gif_id (from repository)
+        1. state.gif_id (from repository)
         2. Fixed path: res/state/{key}.gif
-        3. First variant in: res/state/{key}_variants/
         """
-        # Try primary GIF ID first
-        if state.primary_gif_id:
-            gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+        # Try GIF ID from repository first
+        if state.gif_id:
+            gif_path = self.service.gif_repo.get_path(state.gif_id)
             if gif_path and gif_path.exists():
                 return gif_path
 
@@ -635,14 +431,6 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         fixed_path = Path("res") / "state" / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
-
-        # Fallback to first variant: res/state/{key}_variants/
-        variants_dir = Path("res") / "state" / f"{key}_variants"
-        if variants_dir.exists() and variants_dir.is_dir():
-            # Find first .gif file in variants directory
-            for variant_file in sorted(variants_dir.glob("*.gif")):
-                if variant_file.is_file():
-                    return variant_file
 
         return None
 
@@ -875,11 +663,11 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             return
 
         state = self.service.get_state(state_key)
-        if not state or not state.primary_gif_id:
+        if not state or not state.gif_id:
             self.preview_label.setText(f"State '{state_key}' has no GIF")
             return
 
-        gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+        gif_path = self.service.gif_repo.get_path(state.gif_id)
         if not gif_path:
             self.preview_label.setText("GIF file not found")
             return

@@ -216,13 +216,13 @@ class StateService:
         # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
-            default_gif_id = self._gif_repo.store_gif(default_gif_path, "idle", variant=False)
+            default_gif_id = self._gif_repo.store_gif(default_gif_path, "idle")
 
         idle_state = State(
             key="idle",
             label="Idle",
             name_tag="doro",
-            primary_gif_id=default_gif_id,
+            gif_id=default_gif_id,
         )
         self._states.add(idle_state)
         self._states.protect("idle")
@@ -279,7 +279,7 @@ class StateService:
                 key=walking_key,
                 label="Walking",
                 name_tag="doro",
-                primary_gif_id=gif_id,
+                gif_id=gif_id,
             )
             self._states.add(walk_state)
             self._states.protect(walking_key)
@@ -299,12 +299,8 @@ class StateService:
         if not self._states.set_current(key):
             return False
 
-        # Load GIF variants if needed
-        state = self._states.get(key)
-        if state:
-            self.refresh_gif_variants(key)
-
         # Emit event
+        state = self._states.get(key)
         if self.on_state_changed and state:
             event = StateChangeEvent(old_key, key, state)
             self.on_state_changed(event)
@@ -361,17 +357,15 @@ class StateService:
         Returns:
             True if removed, False if protected or not found
         """
+        # Get state before removing
+        state = self._states.get(key)
+
         if not self._states.remove(key):
             return False
 
         # Delete associated GIF
-        state = self._states.get(key)
-        if state and state.primary_gif_id:
-            self._gif_repo.delete(state.primary_gif_id)
-
-        # Delete variants
-        for variant_id in state.variant_gif_ids if state else []:
-            self._gif_repo.delete(variant_id)
+        if state and state.gif_id:
+            self._gif_repo.delete(state.gif_id)
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self.write_state_list()
@@ -407,9 +401,9 @@ class StateService:
     # GIF Management
     # ═══════════════════════════════════════════════════════════
 
-    def set_primary_gif(self, state_key: str, gif_path: Path) -> bool:
+    def set_gif(self, state_key: str, gif_path: Path) -> bool:
         """
-        Set primary GIF for a state.
+        Set GIF for a state.
 
         Returns:
             True if successful
@@ -418,13 +412,12 @@ class StateService:
         if not state:
             return False
 
-        resource_id = self._gif_repo.store_gif(gif_path, state_key, variant=False)
+        resource_id = self._gif_repo.store_gif(gif_path, state_key)
         if not resource_id:
             return False
 
-        updated = state.with_changes(primary_gif_id=resource_id)
+        updated = state.with_changes(gif_id=resource_id)
         self._states.add(updated)
-        self.refresh_gif_variants(state_key)
 
         # Save to persistent storage
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
@@ -436,67 +429,25 @@ class StateService:
 
         return True
 
-    def add_gif_variant(self, state_key: str, gif_path: Path) -> bool:
+    # Legacy method name for compatibility
+    def set_primary_gif(self, state_key: str, gif_path: Path) -> bool:
+        """Legacy method. Use set_gif() instead."""
+        return self.set_gif(state_key, gif_path)
+
+    def get_gif_id(self, state_key: str) -> Optional[str]:
         """
-        Add a GIF variant for a state.
-
-        Returns:
-            True if successful
-        """
-        state = self._states.get(state_key)
-        if not state:
-            return False
-
-        resource_id = self._gif_repo.store_gif(gif_path, state_key, variant=True)
-        if not resource_id:
-            return False
-
-        self.refresh_gif_variants(state_key)
-        # Save to persistent storage
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
-        return True
-
-    def remove_gif_variant(self, state_key: str, resource_id: str) -> bool:
-        """Remove a GIF variant."""
-        if not self._gif_repo.delete(resource_id):
-            return False
-
-        self.refresh_gif_variants(state_key)
-        # Save to persistent storage
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
-        return True
-
-    def refresh_gif_variants(self, state_key: str) -> None:
-        """Refresh variant list for a state from filesystem."""
-        state = self._states.get(state_key)
-        if not state:
-            return
-
-        # Get all variants from repository
-        variant_ids = self._gif_repo.list_variants(state_key)
-
-        # Build complete variant list (primary + variants)
-        all_variants = []
-        if state.primary_gif_id:
-            all_variants.append(state.primary_gif_id)
-        all_variants.extend(variant_ids)
-
-        # Update state
-        updated = state.with_changes(variant_gif_ids=tuple(all_variants))
-        self._states.add(updated)
-
-    def pick_random_variant(self, state_key: str) -> Optional[str]:
-        """
-        Pick a random GIF variant for a state.
+        Get GIF resource ID for a state.
 
         Returns:
             Resource ID or None
         """
         state = self._states.get(state_key)
-        if not state or not state.variant_gif_ids:
-            return state.primary_gif_id if state else None
+        return state.gif_id if state else None
 
-        return random.choice(state.variant_gif_ids)
+    # Legacy method name for compatibility
+    def pick_random_variant(self, state_key: str) -> Optional[str]:
+        """Legacy method. Use get_gif_id() instead."""
+        return self.get_gif_id(state_key)
 
     # ═══════════════════════════════════════════════════════════
     # Movement State Operations
