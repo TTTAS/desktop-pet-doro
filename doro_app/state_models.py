@@ -41,8 +41,7 @@ class State:
     visual: VisualConfig = field(default_factory=VisualConfig)
 
     # Resource references (managed by Repository)
-    primary_gif_id: Optional[str] = None  # Reference to GIF, not path
-    variant_gif_ids: tuple[str, ...] = field(default_factory=tuple)
+    gif_id: Optional[str] = None  # Reference to GIF, not path
 
     def with_changes(self, **changes) -> State:
         """Return a new State with specified changes."""

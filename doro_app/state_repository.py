@@ -27,14 +27,13 @@ class GifRepository:
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-    def store_gif(self, source_path: Path, state_key: str, variant: bool = False) -> Optional[str]:
+    def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
         """
         Copy a GIF into storage.
 
         Args:
             source_path: Source GIF file
             state_key: State this GIF belongs to
-            variant: If True, store in variants subdirectory
 
         Returns:
             Resource ID (relative path) or None if failed
@@ -42,18 +41,14 @@ class GifRepository:
         if not source_path.is_file():
             return None
 
-        if variant:
-            dest_dir = self._variant_dir(state_key)
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            # Generate unique name for variant
-            counter = 1
-            dest_path = dest_dir / source_path.name
-            while dest_path.exists():
-                stem = source_path.stem
-                dest_path = dest_dir / f"{stem}_{counter}.gif"
-                counter += 1
-        else:
-            dest_path = self._primary_path(state_key)
+        dest_path = self._primary_path(state_key)
+
+        # If source and dest are the same file, just return resource ID
+        try:
+            if source_path.resolve() == dest_path.resolve():
+                return self._to_resource_id(dest_path)
+        except OSError:
+            pass
 
         try:
             shutil.copy2(source_path, dest_path)
@@ -95,25 +90,9 @@ class GifRepository:
 
         try:
             path.unlink()
-            # Clean up empty variant directory
-            if path.parent != self.storage_dir and not list(path.parent.iterdir()):
-                path.parent.rmdir()
             return True
         except OSError:
             return False
-
-    def list_variants(self, state_key: str) -> list[str]:
-        """List all variant resource IDs for a state."""
-        variant_dir = self._variant_dir(state_key)
-        if not variant_dir.is_dir():
-            return []
-
-        variants = []
-        for path in sorted(variant_dir.glob("*.gif")):
-            resource_id = self._to_resource_id(path)
-            if resource_id:
-                variants.append(resource_id)
-        return variants
 
     # ═══════════════════════════════════════════════════════════
     # Public API - Path Utilities
@@ -121,27 +100,15 @@ class GifRepository:
 
     def get_state_storage_path(self, state_key: str) -> Path:
         """
-        Get the primary storage path for a state's GIF.
+        Get the storage path for a state's GIF.
 
         Args:
             state_key: State identifier
 
         Returns:
-            Path where the primary GIF should be stored
+            Path where the GIF should be stored
         """
         return self._primary_path(state_key)
-
-    def get_state_variants_dir(self, state_key: str) -> Path:
-        """
-        Get the directory for a state's GIF variants.
-
-        Args:
-            state_key: State identifier
-
-        Returns:
-            Path to variants directory
-        """
-        return self._variant_dir(state_key)
 
     def get_move_storage_path(self, move_key: str) -> Path:
         """
@@ -173,14 +140,9 @@ class GifRepository:
     # ═══════════════════════════════════════════════════════════
 
     def _primary_path(self, state_key: str) -> Path:
-        """Get primary GIF path for a state."""
+        """Get GIF path for a state."""
         safe_key = self._sanitize_key(state_key)
         return self.storage_dir / f"{safe_key}.gif"
-
-    def _variant_dir(self, state_key: str) -> Path:
-        """Get variants directory for a state."""
-        safe_key = self._sanitize_key(state_key)
-        return self.storage_dir / f"{safe_key}_variants"
 
     def _to_resource_id(self, path: Path) -> str:
         """Convert absolute path to resource ID."""
@@ -286,11 +248,9 @@ class StateRepository:
             "bubble_alpha": state.visual.bubble_alpha,
         }
 
-        # Save GIF references
-        if state.primary_gif_id:
-            data["primary_gif_id"] = state.primary_gif_id
-        if state.variant_gif_ids:
-            data["variant_gif_ids"] = list(state.variant_gif_ids)
+        # Save GIF reference
+        if state.gif_id:
+            data["gif_id"] = state.gif_id
 
         return data
 
@@ -315,18 +275,15 @@ class StateRepository:
         visual_data = {k: v for k, v in data.items() if k in visual_fields}
         visual = VisualConfig(**visual_data)
 
-        # Load GIF references
-        primary_gif_id = data.get("primary_gif_id")
-        variant_gif_ids_list = data.get("variant_gif_ids", [])
-        variant_gif_ids = tuple(variant_gif_ids_list) if variant_gif_ids_list else ()
+        # Load GIF reference (support both old and new format)
+        gif_id = data.get("gif_id") or data.get("primary_gif_id")
 
         return State(
             key=key,
             label=label,
             name_tag=name_tag,
             visual=visual,
-            primary_gif_id=primary_gif_id,
-            variant_gif_ids=variant_gif_ids,
+            gif_id=gif_id,
         )
 
 
@@ -512,18 +469,11 @@ class StateListWriter:
 
     def _gif_summary(self, state: State, gif_repo: GifRepository) -> str:
         """Generate GIF summary string."""
-        if not state.primary_gif_id:
+        if not state.gif_id:
             return "(no GIF)"
 
-        primary_path = gif_repo.get_path(state.primary_gif_id)
-        gif_info = str(primary_path) if primary_path else "(no GIF)"
-
-        # variant_gif_ids includes primary, so subtract 1 for additional variants
-        variant_count = len(state.variant_gif_ids)
-        if variant_count > 1:
-            gif_info += f" (+{variant_count - 1} variants)"
-
-        return gif_info
+        gif_path = gif_repo.get_path(state.gif_id)
+        return str(gif_path) if gif_path else "(no GIF)"
 
     def _action_type(self, key: str, move_states: dict[str, MoveState]) -> str:
         """Determine action type for a state."""
