@@ -115,15 +115,15 @@ class StateManagerDialog(QtWidgets.QDialog):
             preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             preview_label.setMinimumSize(114, 114)
 
-            if state.primary_gif_id:
-                gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
-                if gif_path:
-                    movie = QtGui.QMovie(str(gif_path))
-                    if movie.isValid():
-                        movie.setScaledSize(QtCore.QSize(96, 96))
-                        preview_label.setMovie(movie)
-                        movie.start()
-                        self._movies.append(movie)  # Keep reference to prevent garbage collection
+            # Try to get GIF path from multiple sources
+            gif_path = self._get_state_gif_path(state, key)
+            if gif_path:
+                movie = QtGui.QMovie(str(gif_path))
+                if movie.isValid():
+                    movie.setScaledSize(QtCore.QSize(96, 96))
+                    preview_label.setMovie(movie)
+                    movie.start()
+                    self._movies.append(movie)  # Keep reference to prevent garbage collection
 
             self.table.setCellWidget(row, 1, preview_label)
 
@@ -132,6 +132,36 @@ class StateManagerDialog(QtWidgets.QDialog):
 
         # Set equal width for all columns
         self._set_equal_column_widths()
+
+    def _get_state_gif_path(self, state: State, key: str) -> Optional[Path]:
+        """
+        Get GIF path for a state, trying multiple sources.
+
+        Priority:
+        1. state.primary_gif_id (from repository)
+        2. Fixed path: res/state/{key}.gif
+        3. First variant in: res/state/{key}_variants/
+        """
+        # Try primary GIF ID first
+        if state.primary_gif_id:
+            gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+            if gif_path and gif_path.exists():
+                return gif_path
+
+        # Fallback to fixed path: res/state/{key}.gif
+        fixed_path = Path("res") / "state" / f"{key}.gif"
+        if fixed_path.exists():
+            return fixed_path
+
+        # Fallback to first variant: res/state/{key}_variants/
+        variants_dir = Path("res") / "state" / f"{key}_variants"
+        if variants_dir.exists() and variants_dir.is_dir():
+            # Find first .gif file in variants directory
+            for variant_file in sorted(variants_dir.glob("*.gif")):
+                if variant_file.is_file():
+                    return variant_file
+
+        return None
 
     def _set_equal_column_widths(self):
         """Set all columns to equal width."""
@@ -558,8 +588,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             # Get the state to load its GIF
             state = self.service.get_state(move_state.state_key)
-            if state and state.primary_gif_id:
-                gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+            if state:
+                gif_path = self._get_state_gif_path(state, move_state.state_key)
                 if gif_path:
                     movie = QtGui.QMovie(str(gif_path))
                     if movie.isValid():
@@ -585,6 +615,36 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
         # Set equal width for all columns
         self._set_equal_column_widths()
+
+    def _get_state_gif_path(self, state: State, key: str) -> Optional[Path]:
+        """
+        Get GIF path for a state, trying multiple sources.
+
+        Priority:
+        1. state.primary_gif_id (from repository)
+        2. Fixed path: res/state/{key}.gif
+        3. First variant in: res/state/{key}_variants/
+        """
+        # Try primary GIF ID first
+        if state.primary_gif_id:
+            gif_path = self.service.gif_repo.get_path(state.primary_gif_id)
+            if gif_path and gif_path.exists():
+                return gif_path
+
+        # Fallback to fixed path: res/state/{key}.gif
+        fixed_path = Path("res") / "state" / f"{key}.gif"
+        if fixed_path.exists():
+            return fixed_path
+
+        # Fallback to first variant: res/state/{key}_variants/
+        variants_dir = Path("res") / "state" / f"{key}_variants"
+        if variants_dir.exists() and variants_dir.is_dir():
+            # Find first .gif file in variants directory
+            for variant_file in sorted(variants_dir.glob("*.gif")):
+                if variant_file.is_file():
+                    return variant_file
+
+        return None
 
     def _set_equal_column_widths(self):
         """Set all columns to equal width."""
