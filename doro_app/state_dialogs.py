@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from . import paths
 from .state_models import MoveState, State
 from .state_repository import GifRepository
 from .state_service import StateService
@@ -46,8 +47,8 @@ class StateManagerDialog(QtWidgets.QDialog):
 
         # Table
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["State", "Preview"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["State", "Preview", "Actions"])
 
         # Enable grid lines for better visibility
         self.table.setShowGrid(True)
@@ -67,14 +68,22 @@ class StateManagerDialog(QtWidgets.QDialog):
         # Style header: bold and white text
         header.setStyleSheet("QHeaderView::section { font-weight: bold; color: white; }")
 
+        # Style vertical header (row numbers): black text
+        vertical_header = self.table.verticalHeader()
+        vertical_header.setStyleSheet("QHeaderView::section { color: black; }")
+
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         layout.addWidget(self.table)
 
-        # Buttons (no Add button for now)
+        # Buttons
         button_row = QtWidgets.QHBoxLayout()
         button_row.addStretch()
+
+        add_btn = QtWidgets.QPushButton("Add State")
+        add_btn.clicked.connect(self._on_add)
+        button_row.addWidget(add_btn)
 
         edit_btn = QtWidgets.QPushButton("Edit Selected")
         edit_btn.clicked.connect(self._on_edit)
@@ -127,6 +136,19 @@ class StateManagerDialog(QtWidgets.QDialog):
 
             self.table.setCellWidget(row, 1, preview_label)
 
+            # Actions column (Edit GIF button)
+            actions_widget = QtWidgets.QWidget()
+            actions_layout = QtWidgets.QVBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(5, 5, 5, 5)
+            actions_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+            edit_gif_btn = QtWidgets.QPushButton("Edit GIF")
+            edit_gif_btn.setMaximumWidth(100)
+            edit_gif_btn.clicked.connect(lambda checked, k=key: self._on_edit_gif(k))
+            actions_layout.addWidget(edit_gif_btn)
+
+            self.table.setCellWidget(row, 2, actions_widget)
+
             # Set row height to match GIF display
             self.table.setRowHeight(row, 114)
 
@@ -148,21 +170,46 @@ class StateManagerDialog(QtWidgets.QDialog):
                 return gif_path
 
         # Fallback to fixed path: res/state/{key}.gif
-        fixed_path = Path("res") / "state" / f"{key}.gif"
+        fixed_path = paths.STATE_DIR / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
 
         return None
 
     def _set_equal_column_widths(self):
-        """Set all columns to equal width."""
+        """Set column widths with appropriate ratios."""
         # Calculate available width (table width minus some padding for scrollbar/borders)
         total_width = self.table.viewport().width()
-        column_count = self.table.columnCount()
-        column_width = total_width // column_count
 
-        for col in range(column_count):
-            self.table.setColumnWidth(col, column_width)
+        # Set proportional widths: State(30%), Preview(50%), Actions(20%)
+        self.table.setColumnWidth(0, int(total_width * 0.30))  # State
+        self.table.setColumnWidth(1, int(total_width * 0.50))  # Preview
+        self.table.setColumnWidth(2, int(total_width * 0.20))  # Actions
+
+    def _on_add(self):
+        """Add new state."""
+        dialog = AddStateDialog(self.service, self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._populate()
+
+    def _on_edit_gif(self, state_key: str):
+        """Edit GIF for a state."""
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select GIF file",
+            "",
+            "GIF Files (*.gif);;All Files (*.*)"
+        )
+
+        if not file_path:
+            return
+
+        # Update GIF using service
+        if self.service.set_gif(state_key, Path(file_path)):
+            QtWidgets.QMessageBox.information(self, "Success", "GIF updated successfully!")
+            self._populate()  # Refresh to show new GIF
+        else:
+            QtWidgets.QMessageBox.warning(self, "Error", "Failed to update GIF.")
 
     def _on_edit(self):
         """Edit selected state."""
@@ -222,6 +269,7 @@ class AddStateDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.service = service
         self.setWindowTitle("Add new state")
+        self.selected_gif_path: Optional[Path] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -233,12 +281,38 @@ class AddStateDialog(QtWidgets.QDialog):
         self.label_edit = QtWidgets.QLineEdit()
         layout.addRow("Display name:", self.label_edit)
 
+        # GIF selection
+        gif_layout = QtWidgets.QHBoxLayout()
+        self.gif_label = QtWidgets.QLabel("No GIF selected")
+        self.gif_label.setStyleSheet("color: #888888;")
+        gif_layout.addWidget(self.gif_label)
+
+        select_gif_btn = QtWidgets.QPushButton("Select GIF")
+        select_gif_btn.clicked.connect(self._on_select_gif)
+        gif_layout.addWidget(select_gif_btn)
+
+        layout.addRow("GIF file:", gif_layout)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
+
+    def _on_select_gif(self):
+        """Handle GIF file selection."""
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select GIF file",
+            "",
+            "GIF Files (*.gif);;All Files (*.*)"
+        )
+
+        if file_path:
+            self.selected_gif_path = Path(file_path)
+            self.gif_label.setText(self.selected_gif_path.name)
+            self.gif_label.setStyleSheet("color: #ffffff;")
 
     def _on_accept(self):
         key = self.key_edit.text().strip()
@@ -257,10 +331,19 @@ class AddStateDialog(QtWidgets.QDialog):
         label = self.label_edit.text().strip() or key.capitalize()
 
         # Create state
-        if self.service.add_state(key, label):
-            self.accept()
-        else:
+        state = self.service.add_state(key, label)
+        if not state:
             QtWidgets.QMessageBox.warning(self, "Add state", "Failed to create state.")
+            return
+
+        # Set GIF if selected
+        if self.selected_gif_path:
+            if not self.service.set_gif(key, self.selected_gif_path):
+                QtWidgets.QMessageBox.warning(self, "Add state", "State created but failed to set GIF.")
+                self.accept()
+                return
+
+        self.accept()
 
 
 def show_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
@@ -428,7 +511,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                 return gif_path
 
         # Fallback to fixed path: res/state/{key}.gif
-        fixed_path = Path("res") / "state" / f"{key}.gif"
+        fixed_path = paths.STATE_DIR / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
 
