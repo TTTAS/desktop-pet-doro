@@ -1,5 +1,6 @@
-[2025-11-10 00:10:05] 可使用的狀態為:
-- (idle) Idle | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif (+2 variants)
+[2025-11-17 13:13:43] 可使用的狀態為:
+- (idle) Idle | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif
+- (stand) stand | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\stand.gif
 
 移動專用狀態:
-- (walking) Walking | type: movement (any) | GIF: C:\Users\KHUser\Desktop\doro\res\ACTION\MOVE\walking.gif
+- (walking) Walking | type: movement (any) | GIF: C:\Users\KHUser\Desktop\doro\res\state\walking.gif
