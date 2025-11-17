@@ -594,6 +594,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         # Track preview movie
         self._preview_movie: Optional[QtGui.QMovie] = None
 
+        # Track selected GIF for upload
+        self.selected_gif_path: Optional[Path] = None
+
         self._setup_ui()
 
         if self.is_edit:
@@ -673,6 +676,21 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         main_layout.addLayout(self.form_layout)
 
+        # GIF Upload Section
+        gif_upload_group = QtWidgets.QGroupBox("GIF File")
+        gif_upload_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        gif_upload_layout = QtWidgets.QHBoxLayout(gif_upload_group)
+
+        self.gif_status_label = QtWidgets.QLabel("No GIF selected")
+        self.gif_status_label.setStyleSheet("color: #888888;")
+        gif_upload_layout.addWidget(self.gif_status_label)
+
+        self.select_gif_btn = QtWidgets.QPushButton("Select GIF")
+        self.select_gif_btn.clicked.connect(self._on_select_gif)
+        gif_upload_layout.addWidget(self.select_gif_btn)
+
+        main_layout.addWidget(gif_upload_group)
+
         # GIF Preview
         preview_group = QtWidgets.QGroupBox("GIF Preview")
         preview_group.setStyleSheet("QGroupBox { color: #ffffff; }")
@@ -733,8 +751,29 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         """Update GIF preview when state selection changes."""
         self._update_preview(state_key)
 
+    def _on_select_gif(self):
+        """Handle GIF file selection."""
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select GIF file",
+            "",
+            "GIF Files (*.gif);;All Files (*.*)"
+        )
+
+        if file_path:
+            self.selected_gif_path = Path(file_path)
+            self.gif_status_label.setText(self.selected_gif_path.name)
+            self.gif_status_label.setStyleSheet("color: #4ade80;")  # Green color
+
+            # Update preview with the selected GIF
+            self._update_preview_from_file(self.selected_gif_path)
+
     def _update_preview(self, state_key: str):
         """Update the GIF preview for the selected state."""
+        # If user has selected a custom GIF, don't override with state GIF
+        if self.selected_gif_path:
+            return
+
         # Clear previous preview
         if self._preview_movie:
             self._preview_movie.stop()
@@ -754,6 +793,25 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if not gif_path:
             self.preview_label.setText("GIF file not found")
             return
+
+        # Load and display GIF
+        self._load_preview_movie(gif_path)
+
+    def _update_preview_from_file(self, gif_path: Path):
+        """Update preview directly from a file path."""
+        if not gif_path.exists():
+            self.preview_label.setText("File not found")
+            return
+
+        self._load_preview_movie(gif_path)
+
+    def _load_preview_movie(self, gif_path: Path):
+        """Load and display a GIF in the preview area."""
+        # Clear previous preview
+        if self._preview_movie:
+            self._preview_movie.stop()
+        self._preview_movie = None
+        self.preview_label.setMovie(None)
 
         # Load and display GIF
         movie = QtGui.QMovie(str(gif_path))
@@ -824,6 +882,15 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         default_speed = self.speed_combo.currentText()
 
+        # If user selected a GIF, upload it for the associated state
+        if self.selected_gif_path:
+            if not self.service.set_gif(state_key, self.selected_gif_path):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "Movement state will be saved, but failed to upload GIF."
+                )
+
         # Create MoveState (no distance field - will be set by LLM)
         move_state = MoveState(
             key=key,
@@ -861,13 +928,27 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Validation", "From and To states must be different.")
             return
 
-        # Create TransitionState with default transition.gif
-        # TODO: Allow user to upload custom transition GIF
+        # Upload custom transition GIF if selected
+        transition_gif_id = None
+        if self.selected_gif_path:
+            # Use transition key as the state_key for storage
+            transition_gif_id = self.service.gif_repo.store_gif(
+                self.selected_gif_path,
+                f"transition_{key}"
+            )
+            if not transition_gif_id:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "Transition will be saved, but failed to upload GIF."
+                )
+
+        # Create TransitionState
         transition = TransitionState(
             key=key,
             from_state=from_state,
             to_state=to_state,
-            transition_gif_id=None,  # Will use default transition.gif
+            transition_gif_id=transition_gif_id,  # None = use default transition.gif
         )
 
         # Save
