@@ -1,3 +1,0 @@
-# Doro Desktop Pet Application Dependencies
-# Qt bindings for Python GUI
-PySide6==6.10.0
