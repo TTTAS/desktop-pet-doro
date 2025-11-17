@@ -106,7 +106,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._gif_repo = GifRepository(STATE_DIR)
         self._state_repo = StateRepository(STATE_DIR / "states.json")
         self._move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
-        self._transition_repo = TransitionStateRepository(STATE_DIR / "transitions.json")
+        self._transition_repo = TransitionStateRepository(ACTION_TRANSITION_DIR / "transitions.json")
         self._state_service = StateService(
             self._state_repo,
             self._move_repo,
@@ -465,7 +465,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Create Doro-themed menu with avatar from current GIF
         menu = create_doro_menu(
             parent=self,
-            avatar_position="top-right",
+            avatar_position="top-center",
             gif_movie=self._gif_movie
         )
 
