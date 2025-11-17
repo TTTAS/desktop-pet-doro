@@ -22,7 +22,7 @@ class DoroMenu(QtWidgets.QMenu):
 
         Args:
             parent: Parent widget
-            avatar_position: Where to place avatar - "top-left", "top-right", or "none"
+            avatar_position: Where to place avatar - "top-left", "top-right", "top-center", or "none"
         """
         super().__init__(parent)
         self._avatar_position = avatar_position
@@ -31,6 +31,18 @@ class DoroMenu(QtWidgets.QMenu):
 
         # Apply Doro theme stylesheet
         self._apply_doro_stylesheet()
+
+        # Add extra top margin only for main menu with centered avatar
+        # This won't affect submenus
+        if avatar_position == "top-center":
+            # Add extra space at top using contentsMargins (not in stylesheet)
+            current_margins = self.contentsMargins()
+            self.setContentsMargins(
+                current_margins.left(),
+                52,  # Extra 52px top margin (60 - 8 from stylesheet)
+                current_margins.right(),
+                current_margins.bottom()
+            )
 
     def set_avatar(self, pixmap: QtGui.QPixmap | None):
         """Set the avatar pixmap to display in corner."""
@@ -55,7 +67,7 @@ class DoroMenu(QtWidgets.QMenu):
             );
             border: 2px solid {doro_pink};
             border-radius: 12px;
-            padding: 8px 4px;
+            padding: 8px 4px 8px 4px;
             margin: 0px;
         }}
 
@@ -148,6 +160,10 @@ class DoroMenu(QtWidgets.QMenu):
             y = margin
         elif self._avatar_position == "top-left":
             x = margin
+            y = margin
+        elif self._avatar_position == "top-center":
+            # Center horizontally at top
+            x = (self.width() - size) / 2
             y = margin
         else:
             return

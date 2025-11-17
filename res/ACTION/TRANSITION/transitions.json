@@ -1,0 +1,7 @@
+{
+  "standing_up": {
+    "from_state": "idle",
+    "to_state": "stand",
+    "transition_gif_id": "standing_up.gif"
+  }
+}

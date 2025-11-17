@@ -1,4 +1,4 @@
-[2025-11-17 19:08:49] 可使用的狀態為:
+[2025-11-17 22:59:01] 可使用的狀態為:
 - (idle) Idle | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\idle.gif
 - (stand) stand | type: transition | GIF: C:\Users\KHUser\Desktop\doro\res\state\stand.gif
 

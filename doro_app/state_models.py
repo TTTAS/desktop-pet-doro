@@ -227,7 +227,20 @@ class MoveStateCollection(BaseCollection[MoveState]):
         key = key.lower()
         if key in self._items:
             move_state = self._items[key]
-            self._movement_only_keys.discard(move_state.state_key.lower())
+            removed_state_key = move_state.state_key.lower()
+
+            # Remove the move_state
+            result = super().remove(key)
+
+            # Only remove from movement_only_keys if no other move_state uses this state
+            still_in_use = any(
+                ms.state_key.lower() == removed_state_key
+                for ms in self._items.values()
+            )
+            if not still_in_use:
+                self._movement_only_keys.discard(removed_state_key)
+
+            return result
         return super().remove(key)
 
     def get(self, key: str) -> Optional[MoveState]:
