@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from . import paths
 from .state_models import MoveState, State
 from .state_repository import GifRepository
 from .state_service import StateService
@@ -169,7 +170,7 @@ class StateManagerDialog(QtWidgets.QDialog):
                 return gif_path
 
         # Fallback to fixed path: res/state/{key}.gif
-        fixed_path = Path("res") / "state" / f"{key}.gif"
+        fixed_path = paths.STATE_DIR / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
 
@@ -510,7 +511,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                 return gif_path
 
         # Fallback to fixed path: res/state/{key}.gif
-        fixed_path = Path("res") / "state" / f"{key}.gif"
+        fixed_path = paths.STATE_DIR / f"{key}.gif"
         if fixed_path.exists():
             return fixed_path
 
