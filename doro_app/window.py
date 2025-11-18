@@ -740,7 +740,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def get_gif_path(self, resource_id: str) -> Optional[Path]:
         """Get GIF file path from resource ID (public API)."""
-        return self.service.get_gif_path_by_id(resource_id)
+        return self._state_service.get_gif_path_by_id(resource_id)
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService
@@ -762,7 +762,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Get and load GIF
         gif_resource_id = self._state_service.get_gif_id(event.new_key)
         if gif_resource_id:
-            gif_path = self.service.get_gif_path_by_id(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._load_gif(str(gif_path))
 
@@ -864,7 +864,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Load GIF
         gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
         if gif_resource_id:
-            gif_path = self.service.get_gif_path_by_id(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._load_gif(str(gif_path))
                 return
@@ -925,7 +925,7 @@ class DoroWindow(QtWidgets.QWidget):
         """
         gif_resource_id = self._state_service.get_gif_id(key)
         if gif_resource_id:
-            gif_path = self.service.get_gif_path_by_id(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._active_gif_path = str(gif_path)
                 return
@@ -984,7 +984,7 @@ class DoroWindow(QtWidgets.QWidget):
                 # Get GIF information
                 gif_hint = "(no GIF)"
                 if state and state.gif_id:
-                    gif_path = self.service.get_gif_path_by_id(state.gif_id)
+                    gif_path = self._state_service.get_gif_path_by_id(state.gif_id)
                     if gif_path:
                         gif_hint = str(gif_path)
 
@@ -1014,7 +1014,7 @@ class DoroWindow(QtWidgets.QWidget):
         if self._current_state_key:
             state = self._state_service.get_state(self._current_state_key)
             if state and state.gif_id:
-                self.service.delete_gif(state.gif_id)
+                self._state_service.delete_gif(state.gif_id)
                 self._state_service.update_state(self._current_state_key, gif_id=None)
 
     def _load_click_actions(self) -> list[str]:
@@ -1343,16 +1343,16 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _state_storage_token(self, key: str) -> str:
         # NEW: Use StateService encapsulated API
-        return self.service.sanitize_state_key(key)
+        return self._state_service.sanitize_state_key(key)
 
     def _state_storage_path_for_key(self, key: str) -> Path:
         # NEW: Use StateService encapsulated API
-        return self.service.get_state_storage_path(key)
+        return self._state_service.get_state_storage_path(key)
 
 
     def _move_storage_path_for_key(self, key: str) -> Path:
         # NEW: Use StateService encapsulated API
-        return self.service.get_move_storage_path(key)
+        return self._state_service.get_move_storage_path(key)
 
     def _apply_move_gif_update(self, action_key: str):
         """
