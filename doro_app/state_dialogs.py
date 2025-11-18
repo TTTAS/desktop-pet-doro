@@ -165,7 +165,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         """
         # Try GIF ID from repository first
         if state.gif_id:
-            gif_path = self.service.gif_repo.get_path(state.gif_id)
+            gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
                 return gif_path
 
@@ -572,7 +572,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         """
         # Try GIF ID from repository first
         if state.gif_id:
-            gif_path = self.service.gif_repo.get_path(state.gif_id)
+            gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
                 return gif_path
 
@@ -873,7 +873,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             self.preview_label.setText(f"State '{state_key}' has no GIF")
             return
 
-        gif_path = self.service.gif_repo.get_path(state.gif_id)
+        gif_path = self.service.get_gif_path_by_id(state.gif_id)
         if not gif_path:
             self.preview_label.setText("GIF file not found")
             return

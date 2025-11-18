@@ -59,13 +59,96 @@ class StateService:
         self.on_states_modified: Optional[Callable[[], None]] = None
 
     # ═══════════════════════════════════════════════════════════
-    # Public API - Repository Access
+    # Public API - GIF Operations (Encapsulated)
     # ═══════════════════════════════════════════════════════════
 
-    @property
-    def gif_repo(self) -> GifRepository:
-        """Access to GIF repository for path and storage operations."""
-        return self._gif_repo
+    def get_gif_path(self, state_key: str) -> Optional[Path]:
+        """
+        Get the file path for a state's GIF.
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Absolute path to GIF file or None if not found
+        """
+        state = self._states.get(state_key)
+        if not state or not state.gif_id:
+            return None
+        return self._gif_repo.get_path(state.gif_id)
+
+    def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
+        """
+        Get the file path for a GIF resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            Absolute path to GIF file or None if not found
+        """
+        return self._gif_repo.get_path(gif_id)
+
+    def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+        """
+        Store a GIF file for a state.
+
+        Args:
+            source_path: Source GIF file path
+            state_key: State key this GIF belongs to
+
+        Returns:
+            Resource ID or None if failed
+        """
+        return self._gif_repo.store_gif(source_path, state_key)
+
+    def delete_gif(self, gif_id: str) -> bool:
+        """
+        Delete a GIF by resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        return self._gif_repo.delete(gif_id)
+
+    def get_state_storage_path(self, state_key: str) -> Path:
+        """
+        Get the expected storage path for a state's GIF.
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Path where the state's GIF should be stored
+        """
+        return self._gif_repo.get_state_storage_path(state_key)
+
+    def get_move_storage_path(self, move_key: str) -> Path:
+        """
+        Get the expected storage path for a movement action's GIF.
+
+        Args:
+            move_key: Movement key (e.g., "walking")
+
+        Returns:
+            Path where the move GIF should be stored
+        """
+        return self._gif_repo.get_move_storage_path(move_key)
+
+    def sanitize_state_key(self, key: str) -> str:
+        """
+        Sanitize a key for safe use in filenames.
+
+        Args:
+            key: Raw key string
+
+        Returns:
+            Sanitized filename-safe string
+        """
+        return self._gif_repo.sanitize_filename(key)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - Query Methods
