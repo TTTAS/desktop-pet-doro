@@ -11,8 +11,11 @@ import random
 from pathlib import Path
 from typing import Callable, Optional
 
+from .logger import get_logger
 from .state_models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .state_repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
+
+logger = get_logger(__name__)
 
 
 class StateService:
@@ -297,7 +300,10 @@ class StateService:
         """
         old_key = self._states._current_key
         if not self._states.set_current(key):
+            logger.warning(f"Failed to set state: '{key}' not found")
             return False
+
+        logger.info(f"State changed: {old_key} -> {key}")
 
         # Emit event
         state = self._states.get(key)
@@ -320,10 +326,12 @@ class StateService:
             The created State or None if key already exists
         """
         if self._states.get(key):
+            logger.warning(f"Cannot add state '{key}': already exists")
             return None
 
         # Check if movement-only
         if self._move_states.is_movement_only(key):
+            logger.warning(f"Cannot add state '{key}': reserved for movement")
             return None
 
         # Create new state
@@ -336,10 +344,13 @@ class StateService:
                     name_tag=source.name_tag,
                     visual=source.visual,
                 )
+                logger.info(f"Added state '{key}' (copied from '{copy_from}')")
             else:
                 new_state = State(key=key, label=label)
+                logger.info(f"Added state '{key}' (copy source '{copy_from}' not found, using defaults)")
         else:
             new_state = State(key=key, label=label)
+            logger.info(f"Added state '{key}'")
 
         self._states.add(new_state)
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
@@ -361,11 +372,15 @@ class StateService:
         state = self._states.get(key)
 
         if not self._states.remove(key):
+            logger.warning(f"Cannot remove state '{key}': protected or not found")
             return False
+
+        logger.info(f"Removed state '{key}'")
 
         # Delete associated GIF
         if state and state.gif_id:
             self._gif_repo.delete(state.gif_id)
+            logger.debug(f"Deleted GIF for removed state '{key}': {state.gif_id}")
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self.write_state_list()

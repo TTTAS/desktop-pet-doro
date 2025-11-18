@@ -261,6 +261,14 @@ class StateManagerDialog(QtWidgets.QDialog):
             else:
                 QtWidgets.QMessageBox.warning(self, "Remove state", "Failed to remove state.")
 
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """Clean up QMovie objects to prevent memory leaks."""
+        for movie in self._movies:
+            movie.stop()
+            movie.deleteLater()
+        self._movies.clear()
+        super().closeEvent(event)
+
 
 class AddStateDialog(QtWidgets.QDialog):
     """Dialog for creating a new state."""
@@ -642,6 +650,14 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                 self._populate()
             else:
                 QtWidgets.QMessageBox.warning(self, "Remove action", f"Failed to remove {action_type_text}.")
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """Clean up QMovie objects to prevent memory leaks."""
+        for movie in self._movies:
+            movie.stop()
+            movie.deleteLater()
+        self._movies.clear()
+        super().closeEvent(event)
 
 
 class EditMoveStateDialog(QtWidgets.QDialog):
@@ -1041,6 +1057,14 @@ class EditMoveStateDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Save", "Failed to save transition (save_all returned False).")
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Save", f"Failed to save transition: {e}")
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """Clean up QMovie object to prevent memory leaks."""
+        if self._preview_movie:
+            self._preview_movie.stop()
+            self._preview_movie.deleteLater()
+            self._preview_movie = None
+        super().closeEvent(event)
 
 
 def show_move_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):

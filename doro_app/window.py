@@ -20,6 +20,7 @@ from .actions import ACTION_ALIASES
 from .bubble_controller import BubbleConfig, BubbleController
 from .chat_controller import ChatController
 from .chat_orchestrator import ChatOrchestrator
+from .logger import get_logger
 from .movement_manager import MovementManager
 from .models import MoveStateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
@@ -30,10 +31,13 @@ from .theme import ensure_application_theme
 from .themed_menu import create_doro_menu
 from .utils import safe_float as _safe_float, safe_int as _safe_int
 
+logger = get_logger(__name__)
+
 
 class DoroWindow(QtWidgets.QWidget):
     def __init__(self, not_topmost: bool = False):
         super().__init__()
+        logger.info("Initializing Doro window")
         ensure_application_theme()
         self.resize(380, 230)
         self.setMinimumSize(320, 240)
