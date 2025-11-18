@@ -449,11 +449,17 @@ class StateListWriter:
         self,
         states: dict[str, State],
         move_states: dict[str, MoveState],
-        gif_repo: GifRepository,
+        gif_paths: dict[str, Optional[Path]],
         movement_only_keys: set[str],
     ) -> str:
         """
         Generate and write state list summary.
+
+        Args:
+            states: State definitions
+            move_states: Movement state definitions
+            gif_paths: Pre-resolved GIF paths for each state key
+            movement_only_keys: Keys that are movement-only
 
         Returns:
             The generated text
@@ -465,7 +471,7 @@ class StateListWriter:
         visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
         for key in visible_keys:
             state = states[key]
-            gif_info = self._gif_summary(state, gif_repo)
+            gif_info = self._gif_summary(key, gif_paths)
             action_type = self._action_type(key, move_states)
             lines.append(f"- ({key}) {state.label} | {action_type} | GIF: {gif_info}")
 
@@ -478,7 +484,7 @@ class StateListWriter:
                 state = states.get(key)
                 if not state:
                     continue
-                gif_info = self._gif_summary(state, gif_repo)
+                gif_info = self._gif_summary(key, gif_paths)
                 direction = self._direction_for_state(key, move_states)
                 lines.append(f"- ({key}) {state.label} | type: movement ({direction}) | GIF: {gif_info}")
 
@@ -491,12 +497,9 @@ class StateListWriter:
 
         return output.strip()
 
-    def _gif_summary(self, state: State, gif_repo: GifRepository) -> str:
+    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]]) -> str:
         """Generate GIF summary string."""
-        if not state.gif_id:
-            return "(no GIF)"
-
-        gif_path = gif_repo.get_path(state.gif_id)
+        gif_path = gif_paths.get(state_key)
         return str(gif_path) if gif_path else "(no GIF)"
 
     def _action_type(self, key: str, move_states: dict[str, MoveState]) -> str:

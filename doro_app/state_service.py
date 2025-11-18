@@ -355,8 +355,8 @@ class StateService:
 
         # Ensure corresponding display state exists
         if not self._states.get(walking_key):
-            # Try to find walking.gif
-            walk_gif_path = self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / "walking.gif"
+            # Try to find walking.gif using encapsulated method
+            walk_gif_path = self._gif_repo.get_move_storage_path(walking_key)
             gif_id = None
             if walk_gif_path.is_file():
                 gif_id = self._gif_repo.store_gif(walk_gif_path, walking_key)
@@ -638,9 +638,17 @@ class StateService:
 
     def write_state_list(self) -> str:
         """Write state summary for LLM context."""
+        # Collect GIF path information (encapsulation: don't pass gif_repo)
+        gif_paths: dict[str, Optional[Path]] = {}
+        for key, state in self._states._items.items():
+            if state.gif_id:
+                gif_paths[key] = self._gif_repo.get_path(state.gif_id)
+            else:
+                gif_paths[key] = None
+
         return self._state_list_writer.write(
             self._states._items,
             self._move_states._items,
-            self._gif_repo,
+            gif_paths,
             self._move_states._movement_only_keys,
         )
