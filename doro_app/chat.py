@@ -6,6 +6,10 @@ import json
 import urllib.error
 import urllib.request
 
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def build_messages_for_mistral_instruct(system_prompt: str, user_text: str) -> list[dict]:
     """Fold system content into first user message for Mistral instruct-compatible backends."""
@@ -31,6 +35,8 @@ def perform_chat_request(
     payload: dict,
     timeout_seconds: int,
 ) -> tuple[str | None, str | None]:
+    logger.debug(f"Sending chat request to {url}")
+
     try:
         request_bytes = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
@@ -41,6 +47,7 @@ def perform_chat_request(
         )
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read()
+            logger.debug(f"Received response: {len(raw)} bytes")
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
@@ -56,18 +63,31 @@ def perform_chat_request(
         if detail:
             snippet = detail if len(detail) <= 200 else f"{detail[:197]}..."
             combined = f"{reason} | {snippet}" if reason else snippet
-        return None, f"HTTP error {exc.code}: {combined or 'Bad Request'}"
+        error_msg = f"HTTP error {exc.code}: {combined or 'Bad Request'}"
+        logger.error(f"Chat request failed: {error_msg} (URL: {url})")
+        return None, error_msg
     except urllib.error.URLError as exc:
-        return None, f"Network error: {exc.reason}"
+        error_msg = f"Network error: {exc.reason}"
+        logger.error(f"Chat request failed: {error_msg} (URL: {url})")
+        return None, error_msg
     except Exception as exc:  # noqa: BLE001
-        return None, str(exc)
+        error_msg = str(exc)
+        logger.error(f"Chat request failed with unexpected error: {error_msg} (URL: {url})", exc_info=True)
+        return None, error_msg
 
     try:
         payload = json.loads(raw.decode("utf-8", errors="replace"))
+        logger.debug("Successfully parsed JSON response")
     except json.JSONDecodeError as exc:
-        return None, f"Invalid JSON response: {exc}"
+        error_msg = f"Invalid JSON response: {exc}"
+        logger.error(f"Failed to parse chat response: {error_msg}")
+        return None, error_msg
 
     assistant_text = ChatResponseParser.extract_assistant_text(payload)
+    if assistant_text:
+        logger.info(f"Chat request successful, response length: {len(assistant_text)}")
+    else:
+        logger.warning("Chat request returned no assistant text")
     return assistant_text, None
 
 

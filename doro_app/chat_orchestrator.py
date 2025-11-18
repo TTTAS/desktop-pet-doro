@@ -8,6 +8,9 @@ from PySide6 import QtCore, QtWidgets
 
 from .actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
 from .chat_controller import ChatController
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from .movement_manager import MovementManager
@@ -34,7 +37,10 @@ class ChatOrchestrator(QtCore.QObject):
         return self._controller.is_inflight
 
     def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
+        logger.info(f"Sending chat message (auto={is_auto}, silent={silent}): {user_message[:50]}...")
+
         if self._controller.is_inflight:
+            logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
                 QtWidgets.QMessageBox.information(
                     self._window,
@@ -42,21 +48,26 @@ class ChatOrchestrator(QtCore.QObject):
                     "I am already replying, please wait a moment.",
                 )
             return False
+
         started, error_message = self._controller.start_request(user_message, is_auto=is_auto)
         if not started:
+            logger.error(f"Failed to start chat request: {error_message}")
             if not silent and error_message:
                 QtWidgets.QMessageBox.warning(self._window, "Chat", error_message)
             return False
+
         self._window._mark_user_activity()
         return True
 
     # ------------------------------------------------------------------ Controller callbacks
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
+        logger.debug("Chat request started, setting busy state")
         self._window._set_bubble_text("Thinking...", auto_hide=False)
         self._window._set_busy_cursor(True)
 
     def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
+        logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
             self._window._set_bubble_text(display_text)
@@ -69,6 +80,7 @@ class ChatOrchestrator(QtCore.QObject):
         self._window._set_busy_cursor(False)
 
     def _on_request_failed(self, error_message: str, was_auto: bool):
+        logger.error(f"Chat request failed (auto={was_auto}): {error_message}")
         if not was_auto:
             QtWidgets.QMessageBox.warning(
                 self._window,

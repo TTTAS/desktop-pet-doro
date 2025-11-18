@@ -10,9 +10,12 @@ from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from .config_defaults import DEFAULT_CHAT_SERVER_URL
+from .logger import get_logger
 from .prompts import load_prompt_text, write_prompt_text
 from .utils import safe_int as _safe_int
 from .workers import ChatRequestWorker
+
+logger = get_logger(__name__)
 
 TextProvider = Callable[[], str]
 
@@ -34,6 +37,8 @@ class ChatController(QtCore.QObject):
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
+        logger.debug("Initializing ChatController")
+
         self._config = config
         self._prompt_path = prompt_path
         self._state_text_provider = state_text_provider
@@ -47,12 +52,14 @@ class ChatController(QtCore.QObject):
         try:
             self._timeout_seconds = int(timeout_value)
         except (TypeError, ValueError):
+            logger.warning(f"Invalid timeout value: {timeout_value}, using default 30")
             self._timeout_seconds = 30
 
         temp_value = config.value("chat/temperature", 0.7)
         try:
             self._temperature = float(temp_value)
         except (TypeError, ValueError):
+            logger.warning(f"Invalid temperature value: {temp_value}, using default 0.7")
             self._temperature = 0.7
 
         self._system_prompt = load_prompt_text(prompt_path)
@@ -62,6 +69,8 @@ class ChatController(QtCore.QObject):
         self._inflight = False
         self._last_user_message = ""
         self._request_is_auto = False
+
+        logger.info(f"ChatController initialized: server={self._server_url}, model={self._model}, timeout={self._timeout_seconds}s")
 
     # ------------------------------------------------------------------ Public API
 
@@ -128,15 +137,22 @@ class ChatController(QtCore.QObject):
     def start_request(self, user_message: str, *, is_auto: bool = False) -> tuple[bool, str | None]:
         cleaned = (user_message or "").strip()
         if not cleaned:
+            logger.warning("Chat request rejected: empty message")
             return False, "Message cannot be empty."
+
         if self._inflight:
+            logger.warning("Chat request rejected: request already in flight")
             return False, "I am already replying, please wait a moment."
 
         endpoint = self._resolve_chat_endpoint()
         if not endpoint:
+            logger.error("Chat request rejected: server URL not configured")
             return False, "Chat server URL is not configured."
 
+        logger.debug(f"Building chat payload for message: {cleaned[:50]}...")
         payload = self._build_chat_payload(cleaned)
+
+        logger.debug(f"Creating worker thread for endpoint: {endpoint}")
         worker = ChatRequestWorker(endpoint, payload, int(self._timeout_seconds))
         thread = QtCore.QThread()
         worker.moveToThread(thread)
@@ -155,6 +171,8 @@ class ChatController(QtCore.QObject):
         self._inflight = True
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
+
+        logger.info(f"Starting chat request (auto={is_auto}): {cleaned[:50]}...")
         thread.start()
         self.request_started.emit(cleaned, is_auto)
         return True, None
@@ -163,25 +181,36 @@ class ChatController(QtCore.QObject):
 
     @QtCore.Slot(str)
     def _handle_worker_finished(self, assistant_text: str):
+        logger.info(f"Worker finished successfully, response length: {len(assistant_text)}")
+
         if self._last_user_message:
             self._history.append({"role": "user", "content": self._last_user_message})
         self._history.append({"role": "assistant", "content": assistant_text})
         self._trim_history()
+
         was_auto = self._request_is_auto
         self._reset_worker_state()
+
+        logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
         self.request_succeeded.emit(assistant_text, was_auto)
 
     @QtCore.Slot(str)
     def _handle_worker_error(self, error_message: str):
+        logger.error(f"Worker error: {error_message}")
+
         was_auto = self._request_is_auto
         self._reset_worker_state()
+
+        logger.debug(f"Emitting request_failed signal (auto={was_auto})")
         self.request_failed.emit(error_message, was_auto)
 
     @QtCore.Slot()
     def _handle_thread_finished(self):
+        logger.debug("Worker thread finished")
         self._thread = None
 
     def _reset_worker_state(self):
+        logger.debug("Resetting worker state")
         self._worker = None
         self._inflight = False
         self._last_user_message = ""

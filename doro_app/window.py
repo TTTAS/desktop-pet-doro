@@ -20,6 +20,7 @@ from .actions import ACTION_ALIASES
 from .bubble_controller import BubbleConfig, BubbleController
 from .chat_controller import ChatController
 from .chat_orchestrator import ChatOrchestrator
+from .logger import get_logger
 from .movement_manager import MovementManager
 from .models import MoveStateSettings
 from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
@@ -30,10 +31,13 @@ from .theme import ensure_application_theme
 from .themed_menu import create_doro_menu
 from .utils import safe_float as _safe_float, safe_int as _safe_int
 
+logger = get_logger(__name__)
+
 
 class DoroWindow(QtWidgets.QWidget):
     def __init__(self, not_topmost: bool = False):
         super().__init__()
+        logger.info("Initializing Doro window")
         ensure_application_theme()
         self.resize(380, 230)
         self.setMinimumSize(320, 240)
@@ -103,16 +107,18 @@ class DoroWindow(QtWidgets.QWidget):
         # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
 
         # NEW architecture - state management without Window coupling
-        self._gif_repo = GifRepository(STATE_DIR)
-        self._state_repo = StateRepository(STATE_DIR / "states.json")
-        self._move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
-        self._transition_repo = TransitionStateRepository(ACTION_TRANSITION_DIR / "transitions.json")
+        # Repositories are created and injected into StateService
+        # Window does NOT retain direct references to repositories
+        gif_repo = GifRepository(STATE_DIR)
+        state_repo = StateRepository(STATE_DIR / "states.json")
+        move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
+        transition_repo = TransitionStateRepository(ACTION_TRANSITION_DIR / "transitions.json")
         self._state_service = StateService(
-            self._state_repo,
-            self._move_repo,
-            self._gif_repo,
+            state_repo,
+            move_repo,
+            gif_repo,
             STATE_DIR / "state_list.txt",
-            self._transition_repo,
+            transition_repo,
         )
 
         # Connect state change events
@@ -734,7 +740,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def get_gif_path(self, resource_id: str) -> Optional[Path]:
         """Get GIF file path from resource ID (public API)."""
-        return self._gif_repo.get_path(resource_id)
+        return self._state_service.get_gif_path_by_id(resource_id)
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService
@@ -756,7 +762,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Get and load GIF
         gif_resource_id = self._state_service.get_gif_id(event.new_key)
         if gif_resource_id:
-            gif_path = self._gif_repo.get_path(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._load_gif(str(gif_path))
 
@@ -858,7 +864,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Load GIF
         gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
         if gif_resource_id:
-            gif_path = self._gif_repo.get_path(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._load_gif(str(gif_path))
                 return
@@ -919,7 +925,7 @@ class DoroWindow(QtWidgets.QWidget):
         """
         gif_resource_id = self._state_service.get_gif_id(key)
         if gif_resource_id:
-            gif_path = self._gif_repo.get_path(gif_resource_id)
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._active_gif_path = str(gif_path)
                 return
@@ -978,7 +984,7 @@ class DoroWindow(QtWidgets.QWidget):
                 # Get GIF information
                 gif_hint = "(no GIF)"
                 if state and state.gif_id:
-                    gif_path = self._gif_repo.get_path(state.gif_id)
+                    gif_path = self._state_service.get_gif_path_by_id(state.gif_id)
                     if gif_path:
                         gif_hint = str(gif_path)
 
@@ -1008,7 +1014,7 @@ class DoroWindow(QtWidgets.QWidget):
         if self._current_state_key:
             state = self._state_service.get_state(self._current_state_key)
             if state and state.gif_id:
-                self._gif_repo.delete(state.gif_id)
+                self._state_service.delete_gif(state.gif_id)
                 self._state_service.update_state(self._current_state_key, gif_id=None)
 
     def _load_click_actions(self) -> list[str]:
@@ -1336,17 +1342,17 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service.save_states()
 
     def _state_storage_token(self, key: str) -> str:
-        # NEW: Use GifRepository public API
-        return self._gif_repo.sanitize_filename(key)
+        # NEW: Use StateService encapsulated API
+        return self._state_service.sanitize_state_key(key)
 
     def _state_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository public API
-        return self._gif_repo.get_state_storage_path(key)
+        # NEW: Use StateService encapsulated API
+        return self._state_service.get_state_storage_path(key)
 
 
     def _move_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use GifRepository public API
-        return self._gif_repo.get_move_storage_path(key)
+        # NEW: Use StateService encapsulated API
+        return self._state_service.get_move_storage_path(key)
 
     def _apply_move_gif_update(self, action_key: str):
         """

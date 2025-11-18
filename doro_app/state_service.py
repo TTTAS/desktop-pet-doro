@@ -11,8 +11,11 @@ import random
 from pathlib import Path
 from typing import Callable, Optional
 
+from .logger import get_logger
 from .state_models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .state_repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
+
+logger = get_logger(__name__)
 
 
 class StateService:
@@ -56,13 +59,96 @@ class StateService:
         self.on_states_modified: Optional[Callable[[], None]] = None
 
     # ═══════════════════════════════════════════════════════════
-    # Public API - Repository Access
+    # Public API - GIF Operations (Encapsulated)
     # ═══════════════════════════════════════════════════════════
 
-    @property
-    def gif_repo(self) -> GifRepository:
-        """Access to GIF repository for path and storage operations."""
-        return self._gif_repo
+    def get_gif_path(self, state_key: str) -> Optional[Path]:
+        """
+        Get the file path for a state's GIF.
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Absolute path to GIF file or None if not found
+        """
+        state = self._states.get(state_key)
+        if not state or not state.gif_id:
+            return None
+        return self._gif_repo.get_path(state.gif_id)
+
+    def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
+        """
+        Get the file path for a GIF resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            Absolute path to GIF file or None if not found
+        """
+        return self._gif_repo.get_path(gif_id)
+
+    def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+        """
+        Store a GIF file for a state.
+
+        Args:
+            source_path: Source GIF file path
+            state_key: State key this GIF belongs to
+
+        Returns:
+            Resource ID or None if failed
+        """
+        return self._gif_repo.store_gif(source_path, state_key)
+
+    def delete_gif(self, gif_id: str) -> bool:
+        """
+        Delete a GIF by resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        return self._gif_repo.delete(gif_id)
+
+    def get_state_storage_path(self, state_key: str) -> Path:
+        """
+        Get the expected storage path for a state's GIF.
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Path where the state's GIF should be stored
+        """
+        return self._gif_repo.get_state_storage_path(state_key)
+
+    def get_move_storage_path(self, move_key: str) -> Path:
+        """
+        Get the expected storage path for a movement action's GIF.
+
+        Args:
+            move_key: Movement key (e.g., "walking")
+
+        Returns:
+            Path where the move GIF should be stored
+        """
+        return self._gif_repo.get_move_storage_path(move_key)
+
+    def sanitize_state_key(self, key: str) -> str:
+        """
+        Sanitize a key for safe use in filenames.
+
+        Args:
+            key: Raw key string
+
+        Returns:
+            Sanitized filename-safe string
+        """
+        return self._gif_repo.sanitize_filename(key)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - Query Methods
@@ -269,8 +355,8 @@ class StateService:
 
         # Ensure corresponding display state exists
         if not self._states.get(walking_key):
-            # Try to find walking.gif
-            walk_gif_path = self._gif_repo.storage_dir.parent / "ACTION" / "MOVE" / "walking.gif"
+            # Try to find walking.gif using encapsulated method
+            walk_gif_path = self._gif_repo.get_move_storage_path(walking_key)
             gif_id = None
             if walk_gif_path.is_file():
                 gif_id = self._gif_repo.store_gif(walk_gif_path, walking_key)
@@ -297,7 +383,10 @@ class StateService:
         """
         old_key = self._states._current_key
         if not self._states.set_current(key):
+            logger.warning(f"Failed to set state: '{key}' not found")
             return False
+
+        logger.info(f"State changed: {old_key} -> {key}")
 
         # Emit event
         state = self._states.get(key)
@@ -320,10 +409,12 @@ class StateService:
             The created State or None if key already exists
         """
         if self._states.get(key):
+            logger.warning(f"Cannot add state '{key}': already exists")
             return None
 
         # Check if movement-only
         if self._move_states.is_movement_only(key):
+            logger.warning(f"Cannot add state '{key}': reserved for movement")
             return None
 
         # Create new state
@@ -336,10 +427,13 @@ class StateService:
                     name_tag=source.name_tag,
                     visual=source.visual,
                 )
+                logger.info(f"Added state '{key}' (copied from '{copy_from}')")
             else:
                 new_state = State(key=key, label=label)
+                logger.info(f"Added state '{key}' (copy source '{copy_from}' not found, using defaults)")
         else:
             new_state = State(key=key, label=label)
+            logger.info(f"Added state '{key}'")
 
         self._states.add(new_state)
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
@@ -361,11 +455,15 @@ class StateService:
         state = self._states.get(key)
 
         if not self._states.remove(key):
+            logger.warning(f"Cannot remove state '{key}': protected or not found")
             return False
+
+        logger.info(f"Removed state '{key}'")
 
         # Delete associated GIF
         if state and state.gif_id:
             self._gif_repo.delete(state.gif_id)
+            logger.debug(f"Deleted GIF for removed state '{key}': {state.gif_id}")
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self.write_state_list()
@@ -540,9 +638,17 @@ class StateService:
 
     def write_state_list(self) -> str:
         """Write state summary for LLM context."""
+        # Collect GIF path information (encapsulation: don't pass gif_repo)
+        gif_paths: dict[str, Optional[Path]] = {}
+        for key, state in self._states._items.items():
+            if state.gif_id:
+                gif_paths[key] = self._gif_repo.get_path(state.gif_id)
+            else:
+                gif_paths[key] = None
+
         return self._state_list_writer.write(
             self._states._items,
             self._move_states._items,
-            self._gif_repo,
+            gif_paths,
             self._move_states._movement_only_keys,
         )

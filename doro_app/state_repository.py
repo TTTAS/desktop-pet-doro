@@ -8,7 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .logger import get_logger
 from .state_models import MoveState, State, TransitionState, VisualConfig
+
+logger = get_logger(__name__)
 
 
 class GifRepository:
@@ -64,23 +67,31 @@ class GifRepository:
             Absolute path if file exists and is within storage_dir, None otherwise
         """
         # Security: Prevent path traversal attacks
-        if ".." in resource_id or resource_id.startswith("/"):
-            return None
-
-        path = self.storage_dir / resource_id
-
-        # Ensure resolved path is still within storage_dir
         try:
-            resolved = path.resolve()
+            # Resolve the full path
+            path = (self.storage_dir / resource_id).resolve()
             storage_resolved = self.storage_dir.resolve()
-            if not str(resolved).startswith(str(storage_resolved)):
-                return None
-        except OSError:
-            return None
 
-        if resolved.is_file():
-            return resolved
-        return None
+            # Ensure the resolved path is within storage_dir
+            # This prevents attacks like "../../etc/passwd"
+            path.relative_to(storage_resolved)
+
+            # Check if file exists
+            if path.is_file():
+                logger.debug(f"GIF path resolved: {resource_id} -> {path}")
+                return path
+            else:
+                logger.warning(f"GIF file not found: {resource_id}")
+                return None
+
+        except ValueError as e:
+            # Path is outside storage_dir
+            logger.error(f"Path traversal attempt blocked: {resource_id} (error: {e})")
+            return None
+        except OSError as e:
+            # File system error
+            logger.error(f"Failed to resolve GIF path {resource_id}: {e}")
+            return None
 
     def delete(self, resource_id: str) -> bool:
         """Delete a GIF by resource ID."""
@@ -177,27 +188,37 @@ class StateRepository:
             Dict of state_key -> State
         """
         if not self.config_path.is_file():
+            logger.debug(f"No state config file found at {self.config_path}")
             return {}
 
         try:
             raw = self.config_path.read_text(encoding="utf-8")
             data = json.loads(raw)
-        except (OSError, json.JSONDecodeError):
+            logger.info(f"Loaded state config from {self.config_path}")
+        except OSError as e:
+            logger.error(f"Failed to read state config {self.config_path}: {e}")
+            return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in state config {self.config_path}: {e}")
             return {}
 
         if not isinstance(data, dict):
+            logger.error(f"State config is not a dict: {type(data)}")
             return {}
 
         states = {}
         for key, value in data.items():
             if not isinstance(value, dict):
+                logger.warning(f"Skipping invalid state entry '{key}': not a dict")
                 continue
             try:
                 state = self._from_dict(key, value)
                 states[key] = state
-            except (KeyError, ValueError, TypeError):
+            except (KeyError, ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse state '{key}': {e}")
                 continue
 
+        logger.info(f"Loaded {len(states)} custom states")
         return states
 
     def save_all(self, states: dict[str, State], protected_keys: set[str]) -> bool:
@@ -223,12 +244,15 @@ class StateRepository:
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 content = json.dumps(custom_states, indent=2, ensure_ascii=False)
                 self.config_path.write_text(content, encoding="utf-8")
+                logger.info(f"Saved {len(custom_states)} custom states to {self.config_path}")
             else:
                 # No custom states, remove file
                 if self.config_path.exists():
                     self.config_path.unlink()
+                    logger.info(f"Removed empty state config {self.config_path}")
             return True
-        except OSError:
+        except OSError as e:
+            logger.error(f"Failed to save states to {self.config_path}: {e}")
             return False
 
     def _to_dict(self, state: State) -> dict:
@@ -425,11 +449,17 @@ class StateListWriter:
         self,
         states: dict[str, State],
         move_states: dict[str, MoveState],
-        gif_repo: GifRepository,
+        gif_paths: dict[str, Optional[Path]],
         movement_only_keys: set[str],
     ) -> str:
         """
         Generate and write state list summary.
+
+        Args:
+            states: State definitions
+            move_states: Movement state definitions
+            gif_paths: Pre-resolved GIF paths for each state key
+            movement_only_keys: Keys that are movement-only
 
         Returns:
             The generated text
@@ -441,7 +471,7 @@ class StateListWriter:
         visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
         for key in visible_keys:
             state = states[key]
-            gif_info = self._gif_summary(state, gif_repo)
+            gif_info = self._gif_summary(key, gif_paths)
             action_type = self._action_type(key, move_states)
             lines.append(f"- ({key}) {state.label} | {action_type} | GIF: {gif_info}")
 
@@ -454,7 +484,7 @@ class StateListWriter:
                 state = states.get(key)
                 if not state:
                     continue
-                gif_info = self._gif_summary(state, gif_repo)
+                gif_info = self._gif_summary(key, gif_paths)
                 direction = self._direction_for_state(key, move_states)
                 lines.append(f"- ({key}) {state.label} | type: movement ({direction}) | GIF: {gif_info}")
 
@@ -467,12 +497,9 @@ class StateListWriter:
 
         return output.strip()
 
-    def _gif_summary(self, state: State, gif_repo: GifRepository) -> str:
+    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]]) -> str:
         """Generate GIF summary string."""
-        if not state.gif_id:
-            return "(no GIF)"
-
-        gif_path = gif_repo.get_path(state.gif_id)
+        gif_path = gif_paths.get(state_key)
         return str(gif_path) if gif_path else "(no GIF)"
 
     def _action_type(self, key: str, move_states: dict[str, MoveState]) -> str:
