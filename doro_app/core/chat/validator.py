@@ -61,9 +61,12 @@ class ResponseValidator:
         Validate an LLM response for correct format.
 
         Checks:
-        1. If state tokens are present, they must be valid state keys
+        1. Response is not empty
         2. If movement tokens are present, they must have valid directions
         3. Response should contain dialogue (not just control tokens)
+
+        Note: State validation is disabled - invalid states will be handled by
+        the orchestrator (falling back to current state if not found).
 
         Args:
             response: Raw LLM response text
@@ -79,22 +82,12 @@ class ResponseValidator:
 
         has_state = False
         has_movement = False
-        invalid_states: list[str] = []
         invalid_directions: list[str] = []
 
-        # Validate state tokens (parentheses)
+        # Check for state tokens (but don't validate - orchestrator will handle)
         for kind, token in actions:
             if kind == "paren":
-                # Check if it's a valid state
-                if not self._state_service.has_state(token):
-                    # Allow labels too
-                    found_key = self._state_service.find_state_by_label(token)
-                    if not found_key:
-                        invalid_states.append(token)
-                    else:
-                        has_state = True
-                else:
-                    has_state = True
+                has_state = True  # Just mark that state token exists
 
         # Validate movement tokens (brackets)
         for kind, token in actions:
@@ -112,14 +105,7 @@ class ResponseValidator:
         # Check for dialogue content
         has_dialogue = bool(cleaned_text.strip())
 
-        # Build error message if needed
-        if invalid_states:
-            available_states = ", ".join(self._state_service.visible_state_keys())
-            return ValidationResult.failure(
-                f"Invalid state(s): {', '.join(invalid_states)}. "
-                f"Available states: {available_states}"
-            )
-
+        # Only fail on invalid directions (not invalid states)
         if invalid_directions:
             valid_dirs = ["left", "right", "up", "down", "upleft", "upright", "downleft", "downright"]
             return ValidationResult.failure(
