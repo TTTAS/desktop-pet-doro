@@ -16,6 +16,25 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .constants import (
+    TIMER_INTERVAL_MS, BUBBLE_AUTO_HIDE_MS, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
+    WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT,
+    SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
+    MOVEMENT_STEP_PX, BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
+    BUBBLE_DEFAULT_SCALE, BUBBLE_DEFAULT_ALPHA, MOVEMENT_ONLY_STATE_KEYS,
+    DEFAULT_MOVE_STATE_KEY, COMPANION_IDLE_THRESHOLD_SECONDS,
+    CLICK_DRAG_THRESHOLD_PX, RESTART_DELAY_MS, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
+    SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
+    # Fallback sprite geometry
+    FACE_CENTER_X, FACE_CENTER_Y_TOP, FACE_CENTER_Y_BOTTOM, FACE_LEFT_X, FACE_RIGHT_X,
+    FACE_CONTROL_X_LEFT, FACE_CONTROL_X_RIGHT,
+    BLUSH_LEFT_X, BLUSH_RIGHT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT,
+    EYE_LEFT_X, EYE_RIGHT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT,
+    MOUTH_START_X, MOUTH_START_Y, MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y,
+    MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y, MOUTH_PEN_WIDTH,
+    DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH,
+    get_default_fill_colors, get_default_blush_color, get_default_eye_color,
+)
 from .utils.actions import ACTION_ALIASES
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .core.chat.controller import ChatController
@@ -40,8 +59,8 @@ class DoroWindow(QtWidgets.QWidget):
         super().__init__()
         logger.info("Initializing Doro window")
         ensure_application_theme()
-        self.resize(380, 230)
-        self.setMinimumSize(320, 240)
+        self.resize(WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
+        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         flags = (
@@ -56,33 +75,29 @@ class DoroWindow(QtWidgets.QWidget):
         self._t = 0.0
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(16)  # ~60 FPS
+        self._timer.start(TIMER_INTERVAL_MS)
 
         # Appearance/animation parameters
         # OLD state data removed - now managed by StateService
         self._active_gif_path: str | None = None
         self._current_state_key: str = ""
         self._state_list_text: str = ""
-        self._movement_only_state_keys: set[str] = {"walking"}
+        self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
         self._amplitude = 0.0
         self._scale_amp = 0.0
-        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = (
-            QtGui.QColor("#FFFFFFFF"),
-            QtGui.QColor("#FF9BE3FF"),
-            QtGui.QColor("#FF6CC1F0"),
-        )
+        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = get_default_fill_colors()
         self._cheek_alpha = 0.0
-        self._blush_base = QtGui.QColor("#FFC0C0")
-        self._eye_color = QtGui.QColor("#222222")
+        self._blush_base = get_default_blush_color()
+        self._eye_color = get_default_eye_color()
         self._bubble_visible = True
-        self._bubble_alpha = 170.0
+        self._bubble_alpha = BUBBLE_DEFAULT_ALPHA
         self._bubble_side = "center"
         self._name_tag = "doro"
         self._gif_movie: QtGui.QMovie | None = None
         self._bubble_text = ""
         self._bubble_text_show_override = False
-        self._bubble_auto_hide_ms = 6000
+        self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
         self._bubble_offset = QtCore.QPointF(0.0, 0.0)
         self._bubble_scale = 1.0
         self._bubble_dragging = False
@@ -96,15 +111,15 @@ class DoroWindow(QtWidgets.QWidget):
         self._companion_prompts: list[str] = []
         self._companion_prompt_index = 0
         self._last_user_activity = time.monotonic()
-        self._companion_idle_threshold = 10.0
-        self._panel_width_hint = 360.0
-        self._panel_height_hint = 110.0
+        self._companion_idle_threshold = COMPANION_IDLE_THRESHOLD_SECONDS
+        self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
+        self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
-        self._sprite_size = QtCore.QSize(200, 200)
-        self._sprite_offset_x = -110.0
+        self._sprite_size = QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT)
+        self._sprite_offset_x = SPRITE_OFFSET_X
         self._sprite_anchor_top: float | None = None
-        self._movement_step_px = 60
-        self._default_move_state_key = "walking"
+        self._movement_step_px = MOVEMENT_STEP_PX
+        self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
         # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
 
         # NEW architecture - state management without Window coupling
@@ -154,9 +169,9 @@ class DoroWindow(QtWidgets.QWidget):
         if not self._config.contains("state/idle/gif_path") and self._default_idle_gif.is_file():
             self._config.setValue("state/idle/gif_path", str(self._default_idle_gif))
 
-        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", 120.0), 120.0)
-        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", -110.0), -110.0)
-        scale_pref = _safe_float(self._config.value("ui/bubble_scale", 1.0), 1.0)
+        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
+        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
+        scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
         self._bubble_controller.apply_persisted_config(
             BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
         )
@@ -236,7 +251,7 @@ class DoroWindow(QtWidgets.QWidget):
             if (
                 self._click_press_pos is not None
                 and not self._click_was_dragging
-                and (e.position() - self._click_press_pos).manhattanLength() > 6
+                and (e.position() - self._click_press_pos).manhattanLength() > CLICK_DRAG_THRESHOLD_PX
             ):
                 self._click_was_dragging = True
             self.move(e.globalPosition().toPoint() - self._drag_pos)
@@ -254,7 +269,7 @@ class DoroWindow(QtWidgets.QWidget):
             was_click = (
                 not self._click_was_dragging
                 and self._click_press_pos is not None
-                and (e.position() - self._click_press_pos).manhattanLength() <= 6
+                and (e.position() - self._click_press_pos).manhattanLength() <= CLICK_DRAG_THRESHOLD_PX
             )
             self._drag_pos = None
             self._click_press_pos = None
@@ -278,21 +293,21 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _sprite_center(self) -> QtCore.QPointF:
         base_x = self.width() / 2.0 + getattr(self, "_sprite_offset_x", 0.0)
-        half_w = max(20.0, self._sprite_size.width() / 2.0)
-        half_h = max(20.0, self._sprite_size.height() / 2.0)
-        margin_x = 12.0
+        half_w = max(SPRITE_MIN_SIZE, self._sprite_size.width() / 2.0)
+        half_h = max(SPRITE_MIN_SIZE, self._sprite_size.height() / 2.0)
+        margin_x = SPRITE_MARGIN_X
         min_center_x = half_w + margin_x
         max_center_x = self.width() - half_w - margin_x
         if min_center_x <= max_center_x:
             base_x = max(min_center_x, min(max_center_x, base_x))
-        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + 20.0
-        margin_bottom = 24.0
+        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + SPRITE_BOB_ALLOWANCE
+        margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
         max_center_y = self.height() - half_h - margin_bottom
         if max_center_y < min_center_y:
             max_center_y = min_center_y
         if getattr(self, "_sprite_anchor_top", None) is None:
-            panel_reserve = getattr(self, "_panel_height_hint", 110.0) + 48.0
+            panel_reserve = getattr(self, "_panel_height_hint", PANEL_DEFAULT_HEIGHT_HINT) + SPRITE_PANEL_RESERVE_OFFSET
             initial_base_y = (self.height() - panel_reserve) / 2.0
             initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
             self._sprite_anchor_top = max(0.0, initial_base_y - half_h)
@@ -573,20 +588,20 @@ class DoroWindow(QtWidgets.QWidget):
             p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             p.drawPixmap(0, 0, pixmap)
         else:
-            p.translate(-90, -90)
+            p.translate(-FACE_CENTER_X, -FACE_CENTER_X)
 
-            path = QtGui.QPainterPath(QtCore.QPointF(90, 20))
-            path.cubicTo(50, 20, 30, 50, 30, 90)
-            path.cubicTo(30, 130, 50, 160, 90, 160)
-            path.cubicTo(130, 160, 150, 130, 150, 90)
-            path.cubicTo(150, 50, 130, 20, 90, 20)
+            path = QtGui.QPainterPath(QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_TOP))
+            path.cubicTo(FACE_CONTROL_X_LEFT, FACE_CENTER_Y_TOP, FACE_LEFT_X, FACE_CONTROL_X_LEFT, FACE_LEFT_X, FACE_CENTER_X)
+            path.cubicTo(FACE_LEFT_X, 130, FACE_CONTROL_X_LEFT, FACE_CENTER_Y_BOTTOM, FACE_CENTER_X, FACE_CENTER_Y_BOTTOM)
+            path.cubicTo(FACE_CONTROL_X_RIGHT, FACE_CENTER_Y_BOTTOM, FACE_RIGHT_X, 130, FACE_RIGHT_X, FACE_CENTER_X)
+            path.cubicTo(FACE_RIGHT_X, FACE_CONTROL_X_LEFT, FACE_CONTROL_X_RIGHT, FACE_CENTER_Y_TOP, FACE_CENTER_X, FACE_CENTER_Y_TOP)
 
-            fill = QtGui.QLinearGradient(QtCore.QPointF(90, 20), QtCore.QPointF(90, 160))
+            fill = QtGui.QLinearGradient(QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_TOP), QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_BOTTOM))
             fill.setColorAt(0.0, self._fill_colors[0])
             fill.setColorAt(0.4, self._fill_colors[1])
             fill.setColorAt(1.0, self._fill_colors[2])
 
-            p.setPen(QtGui.QPen(QtGui.QColor("#FF5C9ED6"), 3))
+            p.setPen(QtGui.QPen(QtGui.QColor(DEFAULT_BORDER_COLOR), DEFAULT_BORDER_WIDTH))
             p.setBrush(QtGui.QBrush(fill))
             p.drawPath(path)
 
@@ -595,12 +610,12 @@ class DoroWindow(QtWidgets.QWidget):
                 blush.setAlpha(int(self._cheek_alpha))
                 p.setBrush(blush)
                 p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.drawEllipse(QtCore.QRectF(55, 85, 18, 10))
-                p.drawEllipse(QtCore.QRectF(107, 85, 18, 10))
+                p.drawEllipse(QtCore.QRectF(BLUSH_LEFT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT))
+                p.drawEllipse(QtCore.QRectF(BLUSH_RIGHT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT))
 
             p.setBrush(self._eye_color)
-            p.drawEllipse(QtCore.QRectF(70, 70, 10, 14))
-            p.drawEllipse(QtCore.QRectF(100, 70, 10, 14))
+            p.drawEllipse(QtCore.QRectF(EYE_LEFT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT))
+            p.drawEllipse(QtCore.QRectF(EYE_RIGHT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT))
 
             self._draw_mouth(p)
 
@@ -1314,14 +1329,14 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _draw_mouth(self, p: QtGui.QPainter):
         pen = QtGui.QPen(QtGui.QColor(51, 51, 51))
-        pen.setWidthF(2)
+        pen.setWidthF(MOUTH_PEN_WIDTH)
         pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         mouth = QtGui.QPainterPath()
-        mouth.moveTo(80, 95)
-        mouth.cubicTo(90, 105, 100, 105, 110, 95)
+        mouth.moveTo(MOUTH_START_X, MOUTH_START_Y)
+        mouth.cubicTo(MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y, MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y)
         p.drawPath(mouth)
     def _release_single_instance_locks_safely(self):
         """Release possible single-instance locks safely."""
@@ -1408,7 +1423,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         if ok:
             # 6) 啟動成功就關閉目前實例
-            QtCore.QTimer.singleShot(50, app.quit)
+            QtCore.QTimer.singleShot(RESTART_DELAY_MS, app.quit)
         else:
             QtWidgets.QMessageBox.warning(self, "Restart", "Failed to relaunch doro. Please restart manually.")
 
