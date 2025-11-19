@@ -9,7 +9,6 @@ from PySide6 import QtGui
 TIMER_INTERVAL_MS = 16  # ~60 FPS (1000ms / 60 = 16.67ms)
 BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
 COMPANION_IDLE_THRESHOLD_SECONDS = 10.0
-RESTART_DELAY_MS = 50  # Delay before quitting after restart
 
 # ═══════════════════════════════════════════════════════════
 # Window Size Constants

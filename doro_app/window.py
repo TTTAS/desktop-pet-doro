@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import math
-import os
 import random
 import re
-import shutil
-import sys
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +18,7 @@ from .constants import (
     MOVEMENT_STEP_PX, BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE, BUBBLE_DEFAULT_ALPHA, MOVEMENT_ONLY_STATE_KEYS,
     DEFAULT_MOVE_STATE_KEY, COMPANION_IDLE_THRESHOLD_SECONDS,
-    CLICK_DRAG_THRESHOLD_PX, RESTART_DELAY_MS, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
+    CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
     SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
     # Fallback sprite geometry
     FACE_CENTER_X, FACE_CENTER_Y_TOP, FACE_CENTER_Y_BOTTOM, FACE_LEFT_X, FACE_RIGHT_X,
@@ -50,7 +45,6 @@ from .ui.theme.theme import ensure_application_theme
 from .ui.theme.themed_menu import build_context_menu_content, create_doro_menu
 from .ui.helpers import ChatUIHelper
 from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
-from .utils.app_restarter import AppRestarter
 
 logger = get_logger(__name__)
 
@@ -144,7 +138,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
-        self._app_restarter = AppRestarter(self)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
@@ -730,12 +723,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         return self._state_service.set_primary_gif(key, Path(source_path))
 
-    # TODO: Re-implement with new Edit states dialog
-    # def _load_state_gif(self):
-    #     # NEW: Show GIF manager dialog
-    #     from .ui.dialogs.state_dialogs import show_state_gif_manager
-    #     show_state_gif_manager(self._state_service, parent=self)
-
     def _show_state_manager(self):
         from .ui.dialogs.state_dialogs import show_state_manager
         show_state_manager(self._state_service, parent=self)
@@ -1125,8 +1112,30 @@ class DoroWindow(QtWidgets.QWidget):
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._set_busy_cursor(False)
+
+        # Stop companion timer
         timer = getattr(self, "_companion_timer", None)
         if isinstance(timer, QtCore.QTimer):
             timer.stop()
-        self._app_restarter.cleanup_on_close()
+
+        # Clean up resources
+        try:
+            if self._gif_movie:
+                try:
+                    self._gif_movie.stop()
+                except Exception:
+                    pass
+                self._gif_movie = None
+
+            if self._timer:
+                try:
+                    self._timer.stop()
+                except Exception:
+                    pass
+
+            if self._config:
+                self._config.sync()
+        except Exception:
+            pass
+
         super().closeEvent(event)

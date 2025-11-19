@@ -381,11 +381,7 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     menu.addSeparator()
 
-    # Exit and restart actions
+    # Exit action
     quit_action = QtGui.QAction("Exit doro", window)
     quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
     menu.addAction(quit_action)
-
-    restart_action = QtGui.QAction("Restart doro", window)
-    restart_action.triggered.connect(window._app_restarter.restart)
-    menu.addAction(restart_action)
