@@ -895,6 +895,11 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         return self._state_service.set_primary_gif(key, Path(source_path))
 
+    # TODO: Re-implement with new Edit states dialog
+    # def _load_state_gif(self):
+    #     # NEW: Show GIF manager dialog
+    #     from .ui.dialogs.state_dialogs import show_state_gif_manager
+    #     show_state_gif_manager(self._state_service, parent=self)
 
     def _show_state_manager(self):
         from .ui.dialogs.state_dialogs import show_state_manager
