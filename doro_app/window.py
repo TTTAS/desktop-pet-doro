@@ -311,6 +311,10 @@ class DoroWindow(QtWidgets.QWidget):
     def _apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
         self._bubble_controller.apply_offset(candidate, persist=persist)
 
+    def _update_bubble_side_from_offset(self):
+        """Update bubble side based on offset (called by BubbleController)."""
+        self._bubble_side = "center"
+
     def _available_screen_geometry(self) -> QtCore.QRect:
         handle = self.windowHandle()
         screen = handle.screen() if handle else None
