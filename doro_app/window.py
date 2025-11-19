@@ -227,8 +227,8 @@ class DoroWindow(QtWidgets.QWidget):
     def mousePressEvent(self, e: QtGui.QMouseEvent):
         self._mark_user_activity()
         if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._begin_bubble_transform(e.position()):
-                self._update_bubble_cursor(e.position())
+            if self._bubble_controller.begin_transform(e.position()):
+                self._bubble_controller.update_cursor(e.position())
                 e.accept()
                 return
             self._drag_pos = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -241,12 +241,12 @@ class DoroWindow(QtWidgets.QWidget):
     def mouseMoveEvent(self, e: QtGui.QMouseEvent):
         if e.buttons() & QtCore.Qt.MouseButton.LeftButton:
             self._mark_user_activity()
-        if self._update_bubble_transform(e.position()):
-            self._update_bubble_cursor(e.position())
+        if self._bubble_controller.update_transform(e.position()):
+            self._bubble_controller.update_cursor(e.position())
             e.accept()
             return
         if not self._bubble_dragging and not self._bubble_resizing:
-            self._update_bubble_cursor(e.position())
+            self._bubble_controller.update_cursor(e.position())
         if self._drag_pos is not None and e.buttons() & QtCore.Qt.MouseButton.LeftButton:
             if (
                 self._click_press_pos is not None
@@ -262,8 +262,8 @@ class DoroWindow(QtWidgets.QWidget):
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
         self._mark_user_activity()
         if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._end_bubble_transform():
-                self._update_bubble_cursor(e.position())
+            if self._bubble_controller.end_transform():
+                self._bubble_controller.update_cursor(e.position())
                 e.accept()
                 return
             was_click = (
@@ -284,7 +284,7 @@ class DoroWindow(QtWidgets.QWidget):
         super().mouseReleaseEvent(e)
 
     def leaveEvent(self, e: QtCore.QEvent):
-        self._update_bubble_cursor(None)
+        self._bubble_controller.update_cursor(None)
         super().leaveEvent(e)
 
     def keyPressEvent(self, e: QtGui.QKeyEvent):
@@ -395,18 +395,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         panel_height = max(80.0, text_height + 56.0)
         return panel_width, panel_height
-
-    def _begin_bubble_transform(self, pos: QtCore.QPointF) -> bool:
-        return self._bubble_controller.begin_transform(pos)
-
-    def _update_bubble_transform(self, pos: QtCore.QPointF) -> bool:
-        return self._bubble_controller.update_transform(pos)
-
-    def _update_bubble_cursor(self, pos: QtCore.QPointF | None):
-        self._bubble_controller.update_cursor(pos)
-
-    def _end_bubble_transform(self) -> bool:
-        return self._bubble_controller.end_transform()
 
     def _apply_window_preferred_size(self):
         sprite_w = max(120.0, float(self._sprite_size.width()))
@@ -532,31 +520,31 @@ class DoroWindow(QtWidgets.QWidget):
         chat_menu = menu.addMenu("Chat")
         ask_action = chat_menu.addAction("Ask Doro")
         ask_action.setEnabled(not self._chat_orchestrator.is_inflight)
-        ask_action.triggered.connect(self._prompt_chat)
+        ask_action.triggered.connect(self._chat_ui.prompt_chat)
 
         edit_prompt_action = chat_menu.addAction("Edit prompt")
-        edit_prompt_action.triggered.connect(self._edit_chat_prompt)
+        edit_prompt_action.triggered.connect(self._chat_ui.edit_chat_prompt)
 
         clear_history_action = chat_menu.addAction("Clear conversation history")
         clear_history_action.setEnabled(self._chat_controller.has_history)
-        clear_history_action.triggered.connect(self._clear_chat_history)
+        clear_history_action.triggered.connect(self._chat_ui.clear_chat_history)
 
         configure_menu = chat_menu.addMenu("Configure")
 
         server_action = configure_menu.addAction("Set server URL")
-        server_action.triggered.connect(self._configure_chat_server)
+        server_action.triggered.connect(self._chat_ui.configure_chat_server)
 
         model_action = configure_menu.addAction("Set model name")
-        model_action.triggered.connect(self._configure_chat_model)
+        model_action.triggered.connect(self._chat_ui.configure_chat_model)
 
         endpoint_action = configure_menu.addAction("Set endpoint path")
-        endpoint_action.triggered.connect(self._configure_chat_endpoint)
+        endpoint_action.triggered.connect(self._chat_ui.configure_chat_endpoint)
 
         temperature_action = configure_menu.addAction("Set temperature")
-        temperature_action.triggered.connect(self._configure_chat_temperature)
+        temperature_action.triggered.connect(self._chat_ui.configure_chat_temperature)
 
         timeout_action = configure_menu.addAction("Set timeout (seconds)")
-        timeout_action.triggered.connect(self._configure_chat_timeout)
+        timeout_action.triggered.connect(self._chat_ui.configure_chat_timeout)
 
         menu.addSeparator()
         quit_action = QtGui.QAction("Exit doro", self)
@@ -1051,38 +1039,6 @@ class DoroWindow(QtWidgets.QWidget):
         elif not enabled and self._chat_cursor_overridden:
             QtWidgets.QApplication.restoreOverrideCursor()
             self._chat_cursor_overridden = False
-
-    def _prompt_chat(self):
-        """Show chat input dialog."""
-        self._chat_ui.prompt_chat()
-
-    def _clear_chat_history(self):
-        """Clear chat history after confirmation."""
-        self._chat_ui.clear_chat_history()
-
-    def _edit_chat_prompt(self):
-        """Edit chat system prompt."""
-        self._chat_ui.edit_chat_prompt()
-
-    def _configure_chat_server(self):
-        """Configure chat server URL."""
-        self._chat_ui.configure_chat_server()
-
-    def _configure_chat_model(self):
-        """Configure chat model name."""
-        self._chat_ui.configure_chat_model()
-
-    def _configure_chat_endpoint(self):
-        """Configure chat endpoint path."""
-        self._chat_ui.configure_chat_endpoint()
-
-    def _configure_chat_temperature(self):
-        """Configure chat temperature."""
-        self._chat_ui.configure_chat_temperature()
-
-    def _configure_chat_timeout(self):
-        """Configure chat timeout."""
-        self._chat_ui.configure_chat_timeout()
 
     def _toggle_bubble(self, checked: bool):
         # NEW: Update through StateService
