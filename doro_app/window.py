@@ -16,20 +16,21 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .actions import ACTION_ALIASES
-from .bubble_controller import BubbleConfig, BubbleController
-from .chat_controller import ChatController
-from .chat_orchestrator import ChatOrchestrator
-from .logger import get_logger
-from .movement_manager import MovementManager
-from .models import MoveStateSettings
-from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
-from .state_models import State, StateChangeEvent
-from .state_repository import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
-from .state_service import StateService
-from .theme import ensure_application_theme
-from .themed_menu import create_doro_menu
-from .utils import safe_float as _safe_float, safe_int as _safe_int
+from .utils.actions import ACTION_ALIASES
+from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .core.chat.controller import ChatController
+from .core.chat.orchestrator import ChatOrchestrator
+from .utils.logger import get_logger
+from .core.movement.manager import MovementManager
+from .utils.models import MoveStateSettings
+from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from .core.state import State, StateChangeEvent
+from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
+from .core.state import StateService
+from .ui.theme.theme import ensure_application_theme
+from .ui.theme.themed_menu import create_doro_menu
+from .ui.helpers import ChatUIHelper
+from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
 
@@ -169,6 +170,7 @@ class DoroWindow(QtWidgets.QWidget):
             parent=self,
         )
         self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement)
+        self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
         self._companion_prompts = self._load_companion_prompts()
 
@@ -306,22 +308,11 @@ class DoroWindow(QtWidgets.QWidget):
     def _mark_user_activity(self):
         self._last_user_activity = time.monotonic()
 
-    def _clamp_bubble_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
-        return self._bubble_controller.clamp_offset(candidate)
-
     def _apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
         self._bubble_controller.apply_offset(candidate, persist=persist)
 
-    def _set_bubble_scale(self, value: float, *, persist: bool = False):
-        self._bubble_controller.set_scale(value, persist=persist)
-
-    def _persist_bubble_preferences(self):
-        self._bubble_controller.persist_preferences()
-
-    def _bubble_handle_rect(self) -> QtCore.QRectF | None:
-        return None
-
     def _update_bubble_side_from_offset(self):
+        """Update bubble side based on offset (called by BubbleController)."""
         self._bubble_side = "center"
 
     def _available_screen_geometry(self) -> QtCore.QRect:
@@ -389,22 +380,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         panel_height = max(80.0, text_height + 56.0)
         return panel_width, panel_height
-
-    def _normalize_state_token(self, token: str) -> str:
-        raw = (token or "").strip()
-        if not raw:
-            return ""
-        lowered = raw.lower()
-        for prefix in ("state", "mode", "status"):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix) :]
-                break
-        else:
-            if raw.startswith(("狀態", "模式")):
-                raw = raw[2:]
-        raw = raw.lstrip(":：-_ ")
-        return raw.strip().lower()
-
 
     def _begin_bubble_transform(self, pos: QtCore.QPointF) -> bool:
         return self._bubble_controller.begin_transform(pos)
@@ -748,11 +723,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     # NEW: Event callbacks from StateService
     def _on_state_changed(self, event: StateChangeEvent) -> None:
-        """
-        Handle state change events from StateService.
-
-        This replaces the old pattern where StateManager directly called Window methods.
-        """
+        """Handle state change events from StateService."""
         state = event.new_state
 
         # Update current state tracking (for compatibility with old code)
@@ -801,11 +772,7 @@ class DoroWindow(QtWidgets.QWidget):
         return self._state_service.visible_state_keys()
 
     def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """
-        Resolve movement state configuration.
-
-        Legacy method - converts new MoveState to old MoveStateSettings format.
-        """
+        """Resolve movement state configuration."""
         if not key:
             return None, None
 
@@ -825,19 +792,8 @@ class DoroWindow(QtWidgets.QWidget):
 
         return normalized, settings
 
-    def _persist_current_state(self):
-        """Persist current state to QSettings. State data is handled by StateService."""
-        if not self._current_state_key:
-            return
-        self._config.setValue("current_state", self._current_state_key)
-
     def _apply_state_settings(self):
-        """
-        Apply current state settings from StateService.
-
-        This is a legacy method kept for compatibility. New code should use
-        _on_state_changed() event handler instead.
-        """
+        """Apply current state settings from StateService."""
         if not self._current_state_key:
             return
 
@@ -918,11 +874,7 @@ class DoroWindow(QtWidgets.QWidget):
         self.update()
 
     def _select_state_gif_variant(self, key: str):
-        """
-        Load the GIF for the given state.
-
-        This is a legacy method. New code should use StateService.get_gif_id().
-        """
+        """Load the GIF for the given state."""
         gif_resource_id = self._state_service.get_gif_id(key)
         if gif_resource_id:
             gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
@@ -943,70 +895,22 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Use StateService
         self._state_service.set_state(key)
 
-    # TODO: Re-implement with new Edit states dialog
-    # def _load_state_gif(self):
-    #     # NEW: Show GIF manager dialog
-    #     from .state_dialogs import show_state_gif_manager
-    #     show_state_gif_manager(self._state_service, parent=self)
-
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
         # NEW: Use StateService
         return self._state_service.set_primary_gif(key, Path(source_path))
 
-
-    def _write_state_list(self):
-        # NEW: Delegate to StateService
-        self._state_list_text = self._state_service.write_state_list()
-
-    def _write_move_state_list(self):
-        """Write movement state list (NEW: uses StateService)."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        lines = [f"[{timestamp}] 可使用的移動狀態為:"]
-
-        # NEW: Get movement states from StateService
-        move_keys = self._state_service.all_move_state_keys()
-        if not move_keys:
-            lines.append("- (none) 無移動專用狀態")
-        else:
-            for key in sorted(move_keys):
-                move_state = self._state_service.get_move_state(key)
-                if not move_state:
-                    continue
-
-                direction = (move_state.direction or "any").strip() or "any"
-                direction = direction.lower()
-                state_key = move_state.state_key
-
-                # Get state information from StateService
-                state = self._state_service.get_state(state_key)
-                label = state.label if state else state_key
-
-                # Get GIF information
-                gif_hint = "(no GIF)"
-                if state and state.gif_id:
-                    gif_path = self._state_service.get_gif_path_by_id(state.gif_id)
-                    if gif_path:
-                        gif_hint = str(gif_path)
-
-                lines.append(
-                    f"- ({key}) {label} | direction: {direction} | state: {state_key} | GIF: {gif_hint}"
-                )
-
-        output = "\n".join(lines) + "\n"
-        self._move_state_list_text = output.strip()
-        try:
-            self._move_state_list_path.write_text(output, encoding="utf-8")
-        except OSError:
-            pass
-        print(output)
-
+    # TODO: Re-implement with new Edit states dialog
+    # def _load_state_gif(self):
+    #     # NEW: Show GIF manager dialog
+    #     from .ui.dialogs.state_dialogs import show_state_gif_manager
+    #     show_state_gif_manager(self._state_service, parent=self)
 
     def _show_state_manager(self):
-        from .state_dialogs import show_state_manager
+        from .ui.dialogs.state_dialogs import show_state_manager
         show_state_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        from .state_dialogs import show_move_state_manager
+        from .ui.dialogs.state_dialogs import show_move_state_manager
         show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
@@ -1079,7 +983,21 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator.send_message(message)
 
     def _find_state_for_action(self, action: str) -> str | None:
-        normalized = self._normalize_state_token(action)
+        # Normalize action token inline
+        raw = (action or "").strip()
+        if not raw:
+            return None
+        lowered = raw.lower()
+        for prefix in ("state", "mode", "status"):
+            if lowered.startswith(prefix):
+                raw = raw[len(prefix) :]
+                break
+        else:
+            if raw.startswith(("狀態", "模式")):
+                raw = raw[2:]
+        raw = raw.lstrip(":：-_ ")
+        normalized = raw.strip().lower()
+
         if not normalized:
             return None
 
@@ -1120,150 +1038,36 @@ class DoroWindow(QtWidgets.QWidget):
             self._chat_cursor_overridden = False
 
     def _prompt_chat(self):
-        if self._chat_orchestrator.is_inflight:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Chat",
-                "I'm already replying, please wait a little bit.",
-            )
-            return
-        self._mark_user_activity()
-        prompt, ok = QtWidgets.QInputDialog.getMultiLineText(
-            self,
-            "Chat with Doro",
-            "Say something to Doro:",
-            "",
-        )
-        if not ok:
-            return
-        cleaned = prompt.strip()
-        if not cleaned:
-            return
-        self._chat_orchestrator.send_message(cleaned)
+        """Show chat input dialog."""
+        self._chat_ui.prompt_chat()
 
     def _clear_chat_history(self):
-        if not self._chat_controller.has_history:
-            self._clear_bubble_text()
-            return
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "Clear conversation",
-            "Clear Doro's recent conversation history?",
-            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-        )
-        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
-            return
-        self._chat_controller.clear_history()
-        self._clear_bubble_text()
+        """Clear chat history after confirmation."""
+        self._chat_ui.clear_chat_history()
 
     def _edit_chat_prompt(self):
-        descriptive_path = str(self._prompt_file_path)
-        current = self._chat_controller.system_prompt or ""
-        text, ok = QtWidgets.QInputDialog.getMultiLineText(
-            self,
-            "Edit Doro prompt",
-            f"Prompt stored at:\n{descriptive_path}\n\nEnter new prompt:",
-            current,
-        )
-        if not ok:
-            return
-        cleaned = text.strip()
-        if not cleaned:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Edit Doro prompt",
-                "Prompt cannot be empty.",
-            )
-            return
-        try:
-            self._chat_controller.update_system_prompt(cleaned + "\n")
-        except OSError as exc:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Edit Doro prompt",
-                f"Failed to write prompt file:\n{exc}",
-            )
-            return
+        """Edit chat system prompt."""
+        self._chat_ui.edit_chat_prompt()
 
     def _configure_chat_server(self):
-        current = self._chat_controller.server_url or ""
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat server URL",
-            "Base server URL (e.g. http://127.0.0.1:1234):",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        new_url = text.strip()
-        if not new_url:
-            QtWidgets.QMessageBox.warning(self, "Chat server URL", "URL cannot be empty.")
-            return
-        self._chat_controller.set_server_url(new_url)
+        """Configure chat server URL."""
+        self._chat_ui.configure_chat_server()
 
     def _configure_chat_model(self):
-        current = self._chat_controller.model or ""
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat model name",
-            "Model identifier:",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        cleaned = text.strip()
-        if not cleaned:
-            QtWidgets.QMessageBox.warning(self, "Chat model name", "Model name cannot be empty.")
-            return
-        self._chat_controller.set_model(cleaned)
+        """Configure chat model name."""
+        self._chat_ui.configure_chat_model()
 
     def _configure_chat_endpoint(self):
-        current = self._chat_controller.endpoint_path or "/v1/chat/completions"
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Chat endpoint path",
-            "Endpoint path on the server:",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current,
-        )
-        if not ok:
-            return
-        cleaned = text.strip()
-        if not cleaned:
-            QtWidgets.QMessageBox.warning(self, "Chat endpoint path", "Endpoint path cannot be empty.")
-            return
-        if not cleaned.startswith("/"):
-            cleaned = f"/{cleaned}"
-        self._chat_controller.set_endpoint_path(cleaned)
+        """Configure chat endpoint path."""
+        self._chat_ui.configure_chat_endpoint()
 
     def _configure_chat_temperature(self):
-        value, ok = QtWidgets.QInputDialog.getDouble(
-            self,
-            "Chat temperature",
-            "Sampling temperature:",
-            float(self._chat_controller.temperature),
-            0.0,
-            2.0,
-            decimals=2,
-        )
-        if not ok:
-            return
-        self._chat_controller.set_temperature(value)
+        """Configure chat temperature."""
+        self._chat_ui.configure_chat_temperature()
 
     def _configure_chat_timeout(self):
-        value, ok = QtWidgets.QInputDialog.getInt(
-            self,
-            "Chat timeout",
-            "Request timeout in seconds:",
-            int(self._chat_controller.timeout_seconds),
-            5,
-            120,
-        )
-        if not ok:
-            return
-        self._chat_controller.set_timeout_seconds(value)
+        """Configure chat timeout."""
+        self._chat_ui.configure_chat_timeout()
 
     def _toggle_bubble(self, checked: bool):
         # NEW: Update through StateService
@@ -1305,7 +1109,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _add_state(self, checked: bool = False) -> str | None:
         # NEW: Use dialog
-        from .state_dialogs import show_add_state_dialog
+        from .ui.dialogs.state_dialogs import show_add_state_dialog
         return show_add_state_dialog(self._state_service, parent=self)
 
     def _remove_state_by_key(
@@ -1336,88 +1140,6 @@ class DoroWindow(QtWidgets.QWidget):
         # NEW: Remove current state
         if self._current_state_key:
             self._remove_state_by_key(self._current_state_key, confirm=True)
-
-    def _persist_state_definitions(self):
-        # NEW: Persistence handled by StateService
-        self._state_service.save_states()
-
-    def _state_storage_token(self, key: str) -> str:
-        # NEW: Use StateService encapsulated API
-        return self._state_service.sanitize_state_key(key)
-
-    def _state_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use StateService encapsulated API
-        return self._state_service.get_state_storage_path(key)
-
-
-    def _move_storage_path_for_key(self, key: str) -> Path:
-        # NEW: Use StateService encapsulated API
-        return self._state_service.get_move_storage_path(key)
-
-    def _apply_move_gif_update(self, action_key: str):
-        """
-        Update GIF for a movement action.
-
-        This is called when a move GIF is changed and needs to update the
-        corresponding display state.
-        """
-        normalized = (action_key or "").strip().lower()
-        if not normalized:
-            return
-
-        # NEW: Get move state from StateService
-        move_state = self._state_service.get_move_state(normalized)
-        if not move_state:
-            return
-
-        # Get GIF path for this move
-        target_path = self._move_storage_path_for_key(normalized)
-        if not target_path.is_file():
-            return
-
-        # Update corresponding display state
-        state_key = move_state.state_key
-        state = self._state_service.get_state(state_key)
-        if not state:
-            return
-
-        # Set the move GIF as the primary GIF for this state
-        if self._state_service.set_primary_gif(state_key, target_path):
-            # Refresh state list
-            self._write_state_list()
-            self._write_move_state_list()
-
-            # If this is the current state, trigger update
-            if state_key == self._current_state_key:
-                self._apply_state_settings()
-                self.update()
-
-
-    def _ensure_local_gif_for_state(self, key: str):
-        """
-        Ensure a state has a GIF assigned.
-
-        This is a legacy method. GifRepository now handles all GIF storage
-        automatically through store_gif().
-        """
-        state = self._state_service.get_state(key)
-        if not state:
-            return
-
-        # If state already has a GIF, nothing to do
-        if state.gif_id:
-            return
-
-        # Special handling for walking state
-        if key == "walking":
-            walking_source = self._move_storage_dir / "walking.gif"
-            if walking_source.is_file():
-                self._state_service.set_primary_gif(key, walking_source)
-                return
-
-        # Fallback to default idle GIF if available
-        if self._default_idle_gif.is_file():
-            self._state_service.set_primary_gif(key, self._default_idle_gif)
 
     # --- Chat panel rendering --------------------------------------
     def _draw_text_panel(self, p: QtGui.QPainter, alpha: int):
@@ -1587,44 +1309,6 @@ class DoroWindow(QtWidgets.QWidget):
         )
         self._apply_window_preferred_size()
 
-        def _classify_action_token(self, token: str, *, strict: bool = True):
-            """
-            解析括號指令：
-            - (state: <key>) -> ("state", <key>)
-            - (move:  <dir>) -> ("move", <normalized_direction_tuple>)
-            嚴格模式(strict=True)僅接受有命名空間的格式；鬆綁時會回退到原本的容錯（先判斷移動，再嘗試狀態）。
-            """
-            raw = (token or "").strip()
-            if not raw:
-                return None
-
-            # 1) 明確命名空間
-            if ":" in raw:
-                head, tail = raw.split(":", 1)
-                ns = head.strip().lower()
-                arg = tail.strip()
-                if ns == "move":
-                    direction = self._movement.parse_movement_token(arg)
-                    return ("move", direction) if direction else None
-                if ns == "state":
-                    state_key = self._find_state_for_action(arg)
-                    return ("state", state_key) if state_key else None
-                # 未知命名空間直接忽略
-                return None
-
-            # 2) 嚴格模式：沒有命名空間就直接忽略，避免誤判
-            if strict:
-                return None
-
-            # 3) 寬鬆容錯（跟現有邏輯一致）：先當「移動」試，失敗再當「狀態」
-            direction = self._movement.parse_movement_token(raw)
-            if direction:
-                return ("move", direction)
-            state_key = self._find_state_for_action(raw)
-            if state_key:
-                return ("state", state_key)
-            return None
-        
     def _clear_bubble_text(self):
         self._bubble_controller.clear_text()
 

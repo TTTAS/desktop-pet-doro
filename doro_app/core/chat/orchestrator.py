@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 
-from .actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
-from .chat_controller import ChatController
-from .logger import get_logger
+from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
+from .controller import ChatController
+from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from .movement_manager import MovementManager
+    from .core.movement.manager import MovementManager
     from .window import DoroWindow
 
 

@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from .logger import get_logger
-from .state_models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
-from .state_repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
+from ...utils.logger import get_logger
+from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
+from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
 logger = get_logger(__name__)
 
@@ -238,7 +238,7 @@ class StateService:
     # Public API - State Modification
     # ═══════════════════════════════════════════════════════════
 
-    def update_state(self, key: str, **changes) -> bool:
+    def update_state(self, key: str, **changes: Any) -> bool:
         """
         Update any fields of a state.
 
@@ -255,7 +255,7 @@ class StateService:
         self._emit_states_modified()
         return True
 
-    def update_visual_config(self, key: str, **visual_changes) -> bool:
+    def update_visual_config(self, key: str, **visual_changes: Any) -> bool:
         """
         Update visual configuration for a state.
 
@@ -473,7 +473,7 @@ class StateService:
 
         return True
 
-    def update_state_visual(self, key: str, **visual_changes) -> Optional[State]:
+    def update_state_visual(self, key: str, **visual_changes: Any) -> Optional[State]:
         """
         Update visual config for a state.
 
@@ -613,23 +613,6 @@ class StateService:
         if self._states.get(move_state.state_key):
             return move_state.state_key
 
-        return None
-
-    # ═══════════════════════════════════════════════════════════
-    # Queries
-    # ═══════════════════════════════════════════════════════════
-
-    def visible_state_keys(self) -> list[str]:
-        """Get keys for states visible in UI (not movement-only)."""
-        return self._states.visible_keys(self._move_states._movement_only_keys)
-
-    def find_state_by_label(self, label: str) -> Optional[str]:
-        """Find state key by label (case-insensitive)."""
-        label_lower = label.lower()
-        for key in self._states.all_keys():
-            state = self._states.get(key)
-            if state and state.label.lower() == label_lower:
-                return key
         return None
 
     # ═══════════════════════════════════════════════════════════

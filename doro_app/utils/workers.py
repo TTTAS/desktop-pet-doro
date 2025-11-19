@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore
 
-from .chat import perform_chat_request
+from ..core.chat.chat import perform_chat_request
 from .logger import get_logger
 
 logger = get_logger(__name__)

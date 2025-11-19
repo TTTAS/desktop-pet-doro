@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Generic, Optional, Protocol, TypeVar
+from typing import Any, Generic, Optional, Protocol, TypeVar
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class VisualConfig:
     bubble_visible: bool = True
     bubble_alpha: float = 170
 
-    def with_changes(self, **changes) -> VisualConfig:
+    def with_changes(self, **changes: Any) -> VisualConfig:
         """Return a new VisualConfig with specified changes."""
         return replace(self, **changes)
 
@@ -43,11 +43,11 @@ class State:
     # Resource references (managed by Repository)
     gif_id: Optional[str] = None  # Reference to GIF, not path
 
-    def with_changes(self, **changes) -> State:
+    def with_changes(self, **changes: Any) -> State:
         """Return a new State with specified changes."""
         return replace(self, **changes)
 
-    def with_visual(self, **visual_changes) -> State:
+    def with_visual(self, **visual_changes: Any) -> State:
         """Return a new State with modified visual config."""
         new_visual = self.visual.with_changes(**visual_changes)
         return replace(self, visual=new_visual)
@@ -67,7 +67,7 @@ class MoveState:
     default_distance: Optional[float] = None
     default_speed: str = "med"  # "slow", "med", "fast"
 
-    def with_changes(self, **changes) -> MoveState:
+    def with_changes(self, **changes: Any) -> MoveState:
         """Return a new MoveState with specified changes."""
         return replace(self, **changes)
 
@@ -94,7 +94,7 @@ class BaseCollection(Generic[T]):
     Subclasses can add domain-specific behavior.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._items: dict[str, T] = {}
 
     def add(self, item: T) -> None:
@@ -140,7 +140,7 @@ class StateCollection(BaseCollection[State]):
     - Visibility filtering
     """
 
-    def __init__(self, states: Optional[dict[str, State]] = None):
+    def __init__(self, states: Optional[dict[str, State]] = None) -> None:
         super().__init__()
         if states:
             self._items = states
@@ -204,7 +204,7 @@ class MoveStateCollection(BaseCollection[MoveState]):
     - Direction-based filtering
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._movement_only_keys: set[str] = set()
 
@@ -287,7 +287,7 @@ class TransitionState:
     to_state: str  # Target state key
     transition_gif_id: Optional[str] = None  # Reference to transition GIF
 
-    def with_changes(self, **changes) -> TransitionState:
+    def with_changes(self, **changes: Any) -> TransitionState:
         """Return a new TransitionState with specified changes."""
         return replace(self, **changes)
 
@@ -301,7 +301,7 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
     - Transition matching
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         # Index for fast from->to lookup
         self._transition_map: dict[tuple[str, str], str] = {}

@@ -12,10 +12,10 @@ from typing import Callable, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import paths
-from .state_models import MoveState, State
-from .state_repository import GifRepository
-from .state_service import StateService
+from ...utils import paths
+from ...core.state import MoveState, State
+from ...core.state import GifRepository
+from ...core.state import StateService
 
 
 class StateManagerDialog(QtWidgets.QDialog):
@@ -536,7 +536,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             action_label.setMinimumSize(114, 114)
 
             if transition.transition_gif_id:
-                from . import paths
+                from ...utils import paths
                 gif_path = paths.ACTION_TRANSITION_DIR / transition.transition_gif_id
                 if gif_path.exists():
                     movie = QtGui.QMovie(str(gif_path))
@@ -990,7 +990,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
     def _save_transition(self):
         """Save transition state."""
-        from .state_models import TransitionState
+        from ...core.state import TransitionState
 
         key = self.key_edit.text().strip()
 
@@ -1015,7 +1015,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if self.selected_gif_path:
             # Store transition GIF in res/ACTION/TRANSITION/ directory
             try:
-                from . import paths
+                from ...utils import paths
                 import shutil
 
                 # Ensure transition directory exists

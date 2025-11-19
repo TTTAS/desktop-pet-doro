@@ -8,9 +8,9 @@ from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from .actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
-from .models import MoveStateSettings, MovementRequest
-from .utils import safe_float as _safe_float, safe_int as _safe_int
+from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
+from ...utils.models import MoveStateSettings, MovementRequest
+from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 if TYPE_CHECKING:
     from .window import DoroWindow

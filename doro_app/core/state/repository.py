@@ -6,10 +6,10 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from .logger import get_logger
-from .state_models import MoveState, State, TransitionState, VisualConfig
+from ...utils.logger import get_logger
+from .models import MoveState, State, TransitionState, VisualConfig
 
 logger = get_logger(__name__)
 
@@ -255,7 +255,7 @@ class StateRepository:
             logger.error(f"Failed to save states to {self.config_path}: {e}")
             return False
 
-    def _to_dict(self, state: State) -> dict:
+    def _to_dict(self, state: State) -> dict[str, Any]:
         """Convert State to JSON-serializable dict."""
         data = {
             "label": state.label,
@@ -278,7 +278,7 @@ class StateRepository:
 
         return data
 
-    def _from_dict(self, key: str, data: dict) -> State:
+    def _from_dict(self, key: str, data: dict[str, Any]) -> State:
         """Convert JSON dict to State object."""
         label = data.get("label", key.capitalize())
         name_tag = data.get("name_tag", "doro")
@@ -470,7 +470,7 @@ class StateListWriter:
         # Regular states
         visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
         for key in visible_keys:
-            state = states[key]
+            state: State = states[key]
             gif_info = self._gif_summary(key, gif_paths)
             action_type = self._action_type(key, move_states)
             lines.append(f"- ({key}) {state.label} | {action_type} | GIF: {gif_info}")
@@ -481,12 +481,12 @@ class StateListWriter:
             lines.append("")
             lines.append("移動專用狀態:")
             for key in movement_keys:
-                state = states.get(key)
-                if not state:
+                move_state: Optional[State] = states.get(key)
+                if not move_state:
                     continue
                 gif_info = self._gif_summary(key, gif_paths)
                 direction = self._direction_for_state(key, move_states)
-                lines.append(f"- ({key}) {state.label} | type: movement ({direction}) | GIF: {gif_info}")
+                lines.append(f"- ({key}) {move_state.label} | type: movement ({direction}) | GIF: {gif_info}")
 
         output = "\n".join(lines) + "\n"
 
