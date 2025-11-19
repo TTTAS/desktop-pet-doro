@@ -218,14 +218,20 @@ class ChatController(QtCore.QObject):
                 # Build retry prompt
                 retry_message = self._validator.build_retry_prompt(validation, self._original_user_message)
 
-                # Restart request with retry prompt
-                success, error = self.start_request(retry_message, is_auto=was_auto)
-                if not success:
-                    logger.error(f"Retry failed to start: {error}")
-                    self.request_failed.emit(
-                        f"Response validation failed and retry failed: {validation.error_message}",
-                        was_auto,
-                    )
+                # IMPORTANT: Delay retry to let the current thread finish cleanup
+                # If we call start_request() immediately, the old QThread may still be running
+                # when it gets destroyed, causing "QThread: Destroyed while thread is still running"
+                def _delayed_retry():
+                    success, error = self.start_request(retry_message, is_auto=was_auto)
+                    if not success:
+                        logger.error(f"Retry failed to start: {error}")
+                        self.request_failed.emit(
+                            f"Response validation failed and retry failed: {validation.error_message}",
+                            was_auto,
+                        )
+
+                # Wait 150ms for thread cleanup before retrying
+                QtCore.QTimer.singleShot(150, _delayed_retry)
                 return
 
             # Max retries exceeded or shouldn't retry
