@@ -47,7 +47,7 @@ from .core.state import State, StateChangeEvent
 from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .core.state import StateService
 from .ui.theme.theme import ensure_application_theme
-from .ui.theme.themed_menu import create_doro_menu
+from .ui.theme.themed_menu import build_context_menu_content, create_doro_menu
 from .ui.helpers import ChatUIHelper
 from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
 from .utils.app_restarter import AppRestarter
@@ -445,115 +445,12 @@ class DoroWindow(QtWidgets.QWidget):
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self._mark_user_activity()
-        # Create Doro-themed menu with avatar from current GIF
         menu = create_doro_menu(
             parent=self,
             avatar_position="top-center",
             gif_movie=self._gif_movie
         )
-
-        states_menu = menu.addMenu("States")
-        for key in self._visible_state_keys():
-            # NEW: Get state from StateService
-            state = self._state_service.get_state(key)
-            if not state:
-                continue
-            label = state.label or key
-            action = states_menu.addAction(label)
-            action.setCheckable(True)
-            action.setChecked(key == self._current_state_key)
-            action.triggered.connect(lambda checked, s=key: self._set_state(s))
-
-        edit_states_action = states_menu.addAction("Edit states")
-        edit_states_action.triggered.connect(self._show_state_manager)
-
-        remove_action = states_menu.addAction("Remove current state")
-        remove_action.setEnabled(
-            bool(self._current_state_key)
-            and not self._state_service.is_state_protected(self._current_state_key)
-        )
-        remove_action.triggered.connect(self._remove_current_state)
-
-        actions_menu = menu.addMenu("Actions")
-        edit_actions_action = actions_menu.addAction("Edit actions")
-        edit_actions_action.triggered.connect(self._show_move_gif_manager)
-
-        menu.addSeparator()
-
-        top_action = QtGui.QAction("Stay on top", self)
-        top_action.setCheckable(True)
-        is_top = bool(self.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint)
-        top_action.setChecked(is_top)
-
-        def toggle_top():
-            f = self.windowFlags()
-            if bool(f & QtCore.Qt.WindowType.WindowStaysOnTopHint):
-                f &= ~QtCore.Qt.WindowType.WindowStaysOnTopHint
-            else:
-                f |= QtCore.Qt.WindowType.WindowStaysOnTopHint
-            self.setWindowFlags(f)
-            self.show()  # re-apply flags
-
-        top_action.triggered.connect(toggle_top)
-        menu.addAction(top_action)
-
-        visuals_menu = menu.addMenu("State visuals")
-        bubble_action = visuals_menu.addAction("Show message panel")
-        bubble_action.setCheckable(True)
-        # NEW: Get from StateService
-        current_state = self._state_service.get_current_state()
-        bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
-        bubble_action.triggered.connect(self._toggle_bubble)
-
-        # TODO: Re-implement with new Edit states dialog
-        # gif_action = visuals_menu.addAction("Load GIF")
-        # gif_action.triggered.connect(self._load_state_gif)
-
-        clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-        clear_gif_action.setEnabled(self._default_idle_gif.is_file())
-        clear_gif_action.triggered.connect(self._clear_state_gif)
-
-        name_tag_action = visuals_menu.addAction("Rename pet")
-        name_tag_action.triggered.connect(self._rename_pet)
-
-        chat_menu = menu.addMenu("Chat")
-        ask_action = chat_menu.addAction("Ask Doro")
-        ask_action.setEnabled(not self._chat_orchestrator.is_inflight)
-        ask_action.triggered.connect(self._chat_ui.prompt_chat)
-
-        edit_prompt_action = chat_menu.addAction("Edit prompt")
-        edit_prompt_action.triggered.connect(self._chat_ui.edit_chat_prompt)
-
-        clear_history_action = chat_menu.addAction("Clear conversation history")
-        clear_history_action.setEnabled(self._chat_controller.has_history)
-        clear_history_action.triggered.connect(self._chat_ui.clear_chat_history)
-
-        configure_menu = chat_menu.addMenu("Configure")
-
-        server_action = configure_menu.addAction("Set server URL")
-        server_action.triggered.connect(self._chat_ui.configure_chat_server)
-
-        model_action = configure_menu.addAction("Set model name")
-        model_action.triggered.connect(self._chat_ui.configure_chat_model)
-
-        endpoint_action = configure_menu.addAction("Set endpoint path")
-        endpoint_action.triggered.connect(self._chat_ui.configure_chat_endpoint)
-
-        temperature_action = configure_menu.addAction("Set temperature")
-        temperature_action.triggered.connect(self._chat_ui.configure_chat_temperature)
-
-        timeout_action = configure_menu.addAction("Set timeout (seconds)")
-        timeout_action.triggered.connect(self._chat_ui.configure_chat_timeout)
-
-        menu.addSeparator()
-        quit_action = QtGui.QAction("Exit doro", self)
-        quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
-        menu.addAction(quit_action)
-
-        restart_action = QtGui.QAction("Restart doro", self)
-        restart_action.triggered.connect(self._app_restarter.restart)
-        menu.addAction(restart_action)
-
+        build_context_menu_content(self, menu)
         menu.exec(e.globalPos())
 
     # --- Painting --------------------------------------------------------
