@@ -16,20 +16,20 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .actions import ACTION_ALIASES
-from .bubble_controller import BubbleConfig, BubbleController
-from .chat_controller import ChatController
-from .chat_orchestrator import ChatOrchestrator
-from .logger import get_logger
-from .movement_manager import MovementManager
-from .models import MoveStateSettings
-from .paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
-from .state_models import State, StateChangeEvent
-from .state_repository import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
-from .state_service import StateService
-from .theme import ensure_application_theme
-from .themed_menu import create_doro_menu
-from .utils import safe_float as _safe_float, safe_int as _safe_int
+from .utils.actions import ACTION_ALIASES
+from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .core.chat.controller import ChatController
+from .core.chat.orchestrator import ChatOrchestrator
+from .utils.logger import get_logger
+from .core.movement.manager import MovementManager
+from .utils.models import MoveStateSettings
+from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from .core.state import State, StateChangeEvent
+from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
+from .core.state import StateService
+from .ui.theme.theme import ensure_application_theme
+from .ui.theme.themed_menu import create_doro_menu
+from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
 
@@ -946,7 +946,7 @@ class DoroWindow(QtWidgets.QWidget):
     # TODO: Re-implement with new Edit states dialog
     # def _load_state_gif(self):
     #     # NEW: Show GIF manager dialog
-    #     from .state_dialogs import show_state_gif_manager
+    #     from .ui.dialogs.state_dialogs import show_state_gif_manager
     #     show_state_gif_manager(self._state_service, parent=self)
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
@@ -1002,11 +1002,11 @@ class DoroWindow(QtWidgets.QWidget):
 
 
     def _show_state_manager(self):
-        from .state_dialogs import show_state_manager
+        from .ui.dialogs.state_dialogs import show_state_manager
         show_state_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        from .state_dialogs import show_move_state_manager
+        from .ui.dialogs.state_dialogs import show_move_state_manager
         show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
@@ -1305,7 +1305,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _add_state(self, checked: bool = False) -> str | None:
         # NEW: Use dialog
-        from .state_dialogs import show_add_state_dialog
+        from .ui.dialogs.state_dialogs import show_add_state_dialog
         return show_add_state_dialog(self._state_service, parent=self)
 
     def _remove_state_by_key(

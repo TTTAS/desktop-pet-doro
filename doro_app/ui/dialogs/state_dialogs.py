@@ -13,9 +13,9 @@ from typing import Callable, Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import paths
-from .state_models import MoveState, State
-from .state_repository import GifRepository
-from .state_service import StateService
+from ...core.state import MoveState, State
+from ...core.state import GifRepository
+from ...core.state import StateService
 
 
 class StateManagerDialog(QtWidgets.QDialog):
@@ -990,7 +990,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
     def _save_transition(self):
         """Save transition state."""
-        from .state_models import TransitionState
+        from ...core.state import TransitionState
 
         key = self.key_edit.text().strip()
 

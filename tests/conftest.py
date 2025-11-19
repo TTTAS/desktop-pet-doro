@@ -6,14 +6,16 @@ from unittest.mock import Mock
 
 import pytest
 
-from doro_app.state_models import State, MoveState, TransitionState
-from doro_app.state_repository import (
+from doro_app.core.state import (
+    State,
+    MoveState,
+    TransitionState,
     StateRepository,
     MoveStateRepository,
     GifRepository,
     TransitionStateRepository,
+    StateService,
 )
-from doro_app.state_service import StateService
 
 
 @pytest.fixture

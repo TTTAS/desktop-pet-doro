@@ -8,12 +8,12 @@ from typing import Callable
 
 from PySide6 import QtCore
 
-from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
-from .config_defaults import DEFAULT_CHAT_SERVER_URL
-from .logger import get_logger
-from .prompts import load_prompt_text, write_prompt_text
-from .utils import safe_int as _safe_int
-from .workers import ChatRequestWorker
+from .core.chat.chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
+from ...utils.logger import get_logger
+from ...utils.prompts import load_prompt_text, write_prompt_text
+from ...utils.utils import safe_int as _safe_int
+from ...utils.workers import ChatRequestWorker
 
 logger = get_logger(__name__)
 

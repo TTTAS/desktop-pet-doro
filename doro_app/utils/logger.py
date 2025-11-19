@@ -72,7 +72,7 @@ def get_logger(name: str = "doro") -> logging.Logger:
     Get or create logger instance.
 
     Usage:
-        from .logger import get_logger
+        from .utils.logger import get_logger
         logger = get_logger(__name__)
         logger.info("Application started")
     """

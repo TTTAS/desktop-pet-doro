@@ -7,11 +7,11 @@ import sys
 
 from PySide6 import QtCore, QtWidgets
 
-from .actions import parse_actions_from_text
-from .chat import perform_chat_request, resolve_chat_endpoint
-from .config_defaults import DEFAULT_CHAT_SERVER_URL
-from .paths import PROMPT_PATH
-from .prompts import load_prompt_text
+from .utils.actions import parse_actions_from_text
+from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
+from .utils.config_defaults import DEFAULT_CHAT_SERVER_URL
+from .utils.paths import PROMPT_PATH
+from .utils.prompts import load_prompt_text
 from .window import DoroWindow
 
 

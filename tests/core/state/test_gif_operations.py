@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 import pytest
 
-from doro_app.state_service import StateService
+from doro_app.core.state import StateService
 
 
 class TestGifOperations:
