@@ -175,6 +175,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_controller = ChatController(
             self._config,
             self._prompt_file_path,
+            state_service=self._state_service,
             state_text_provider=lambda: self._state_list_text or "",
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self,

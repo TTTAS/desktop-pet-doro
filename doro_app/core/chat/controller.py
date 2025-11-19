@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .validator import ResponseValidator
 from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
 from ...utils.utils import safe_int as _safe_int
 from ...utils.workers import ChatRequestWorker
+
+if TYPE_CHECKING:
+    from ..state import StateService
 
 logger = get_logger(__name__)
 
@@ -32,6 +36,7 @@ class ChatController(QtCore.QObject):
         config: QtCore.QSettings,
         prompt_path: Path,
         *,
+        state_service: StateService,
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
         parent: QtCore.QObject | None = None,
@@ -41,8 +46,15 @@ class ChatController(QtCore.QObject):
 
         self._config = config
         self._prompt_path = prompt_path
+        self._state_service = state_service
         self._state_text_provider = state_text_provider
         self._movement_hint_provider = movement_hint_provider
+
+        # Response validation
+        self._validator = ResponseValidator(state_service)
+        self._max_retries = 2
+        self._retry_count = 0
+        self._original_user_message = ""
 
         self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
         self._model = config.value("chat/model", "lmstudio", str)
@@ -149,6 +161,10 @@ class ChatController(QtCore.QObject):
             logger.error("Chat request rejected: server URL not configured")
             return False, "Chat server URL is not configured."
 
+        # Save original message for potential retries (only on first request, not retries)
+        if self._retry_count == 0:
+            self._original_user_message = cleaned
+
         logger.debug(f"Building chat payload for message: {cleaned[:50]}...")
         payload = self._build_chat_payload(cleaned)
 
@@ -172,7 +188,8 @@ class ChatController(QtCore.QObject):
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
 
-        logger.info(f"Starting chat request (auto={is_auto}): {cleaned[:50]}...")
+        retry_info = f" (retry {self._retry_count}/{self._max_retries})" if self._retry_count > 0 else ""
+        logger.info(f"Starting chat request{retry_info} (auto={is_auto}): {cleaned[:50]}...")
         thread.start()
         self.request_started.emit(cleaned, is_auto)
         return True, None
@@ -183,6 +200,50 @@ class ChatController(QtCore.QObject):
     def _handle_worker_finished(self, assistant_text: str):
         logger.info(f"Worker finished successfully, response length: {len(assistant_text)}")
 
+        # Validate response
+        validation = self._validator.validate(assistant_text)
+
+        if not validation.valid:
+            logger.warning(f"Response validation failed: {validation.error_message}")
+
+            # Check if we should retry
+            if self._validator.should_retry(validation) and self._retry_count < self._max_retries:
+                self._retry_count += 1
+                logger.info(f"Retrying request (attempt {self._retry_count}/{self._max_retries})")
+
+                # Don't add failed response to history
+                was_auto = self._request_is_auto
+                self._reset_worker_state()
+
+                # Build retry prompt
+                retry_message = self._validator.build_retry_prompt(validation, self._original_user_message)
+
+                # Restart request with retry prompt
+                success, error = self.start_request(retry_message, is_auto=was_auto)
+                if not success:
+                    logger.error(f"Retry failed to start: {error}")
+                    self.request_failed.emit(
+                        f"Response validation failed and retry failed: {validation.error_message}",
+                        was_auto,
+                    )
+                return
+
+            # Max retries exceeded or shouldn't retry
+            logger.error(f"Response validation failed after {self._retry_count} retries: {validation.error_message}")
+            was_auto = self._request_is_auto
+            self._reset_worker_state()
+            self._retry_count = 0  # Reset for next request
+            self._original_user_message = ""
+
+            self.request_failed.emit(
+                f"Response validation failed: {validation.error_message}",
+                was_auto,
+            )
+            return
+
+        # Validation passed
+        logger.info(f"Response validation passed (state={validation.has_state}, movement={validation.has_movement}, dialogue={validation.has_dialogue})")
+
         if self._last_user_message:
             self._history.append({"role": "user", "content": self._last_user_message})
         self._history.append({"role": "assistant", "content": assistant_text})
@@ -190,6 +251,8 @@ class ChatController(QtCore.QObject):
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
+        self._retry_count = 0  # Reset for next request
+        self._original_user_message = ""
 
         logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
         self.request_succeeded.emit(assistant_text, was_auto)
@@ -200,6 +263,8 @@ class ChatController(QtCore.QObject):
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
+        self._retry_count = 0  # Reset for next request
+        self._original_user_message = ""
 
         logger.debug(f"Emitting request_failed signal (auto={was_auto})")
         self.request_failed.emit(error_message, was_auto)
