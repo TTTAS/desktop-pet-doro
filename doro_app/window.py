@@ -143,7 +143,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service.on_states_modified = self._on_states_modified
 
         self._bubble_controller = BubbleController(self)
-        self._movement = MovementManager(self, self._state_service)
+        self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
         self._app_restarter = AppRestarter(self)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
@@ -324,9 +324,6 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _mark_user_activity(self):
         self._last_user_activity = time.monotonic()
-
-    def _apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
-        self._bubble_controller.apply_offset(candidate, persist=persist)
 
     def _update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
@@ -646,14 +643,6 @@ class DoroWindow(QtWidgets.QWidget):
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
 
-    def get_movement_step_px(self) -> int:
-        """Get the default movement step in pixels (public API)."""
-        return self._movement_step_px
-
-    def get_default_move_state_key(self) -> str:
-        """Get the default movement state key (public API)."""
-        return self._default_move_state_key
-
     def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
         """Clamp window position to stay on screen (public API)."""
         return self._clamp_window_position(pos)
@@ -661,22 +650,6 @@ class DoroWindow(QtWidgets.QWidget):
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
         self._move_window_to(pos)
-
-    def update_last_tick_time(self, time_value: float):
-        """Update last tick time (public API)."""
-        self._last_tick_time = time_value
-
-    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration (public API)."""
-        return self._resolve_move_state(key)
-
-    def get_bubble_offset(self) -> QtCore.QPointF:
-        """Get current bubble offset (public API)."""
-        return self._bubble_offset
-
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
-        """Apply bubble offset (public API)."""
-        self._apply_bubble_offset(offset, persist=persist)
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService
