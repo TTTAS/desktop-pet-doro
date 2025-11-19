@@ -1,0 +1,142 @@
+"""Chat UI helper for window - handles all chat-related menu actions and dialogs."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from PySide6 import QtWidgets
+
+if TYPE_CHECKING:
+    from ..window import DoroWindow
+
+
+class ChatUIHelper:
+    """
+    Handles chat-related UI interactions for DoroWindow.
+
+    This helper extracts chat configuration dialogs and menu actions
+    to reduce the complexity of the main window class.
+    """
+
+    def __init__(self, window: DoroWindow) -> None:
+        """
+        Initialize ChatUIHelper.
+
+        Args:
+            window: The parent DoroWindow instance
+        """
+        self.window = window
+
+    def prompt_chat(self) -> None:
+        """Show chat input dialog and send message."""
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "與 Doro 對話",
+            "輸入訊息:",
+            QtWidgets.QInputDialog.InputMode.Normal,
+        )
+        if not ok or not text.strip():
+            return
+
+        self.window._mark_user_activity()
+        self.window._chat_orchestrator.send_message(text.strip(), silent=False, is_auto=False)
+
+    def clear_chat_history(self) -> None:
+        """Clear chat history after confirmation."""
+        reply = QtWidgets.QMessageBox.question(
+            self.window,
+            "清除對話紀錄",
+            "確定要清除所有對話紀錄嗎？",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.window._chat_orchestrator.clear_history()
+            self.window._clear_bubble_text()
+
+    def edit_chat_prompt(self) -> None:
+        """Edit the chat system prompt."""
+        current_prompt = self.window._chat_orchestrator.get_system_prompt()
+
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self.window,
+            "編輯系統提示詞",
+            "系統提示詞 (System Prompt):",
+            current_prompt,
+        )
+        if not ok:
+            return
+
+        self.window._chat_orchestrator.set_system_prompt(text)
+        QtWidgets.QMessageBox.information(
+            self.window,
+            "提示詞已更新",
+            "系統提示詞已成功更新",
+        )
+
+    def configure_chat_server(self) -> None:
+        """Configure chat server URL."""
+        current = self.window._chat_orchestrator.get_server_url()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "設定聊天伺服器",
+            "伺服器 URL:",
+            QtWidgets.QInputDialog.InputMode.Normal,
+            current,
+        )
+        if ok and text.strip():
+            self.window._chat_orchestrator.set_server_url(text.strip())
+
+    def configure_chat_model(self) -> None:
+        """Configure chat model name."""
+        current = self.window._chat_orchestrator.get_model_name()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "設定模型",
+            "模型名稱:",
+            QtWidgets.QInputDialog.InputMode.Normal,
+            current,
+        )
+        if ok and text.strip():
+            self.window._chat_orchestrator.set_model_name(text.strip())
+
+    def configure_chat_endpoint(self) -> None:
+        """Configure chat API endpoint."""
+        current = self.window._chat_orchestrator.get_endpoint()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "設定 API 端點",
+            "API 端點路徑:",
+            QtWidgets.QInputDialog.InputMode.Normal,
+            current,
+        )
+        if ok and text.strip():
+            self.window._chat_orchestrator.set_endpoint(text.strip())
+
+    def configure_chat_temperature(self) -> None:
+        """Configure chat temperature parameter."""
+        current = self.window._chat_orchestrator.get_temperature()
+        value, ok = QtWidgets.QInputDialog.getDouble(
+            self.window,
+            "設定 Temperature",
+            "Temperature (0.0 - 2.0):",
+            current,
+            0.0,
+            2.0,
+            2,
+        )
+        if ok:
+            self.window._chat_orchestrator.set_temperature(value)
+
+    def configure_chat_timeout(self) -> None:
+        """Configure chat request timeout."""
+        current = self.window._chat_orchestrator.get_timeout()
+        value, ok = QtWidgets.QInputDialog.getInt(
+            self.window,
+            "設定請求逾時",
+            "逾時秒數:",
+            current,
+            1,
+            300,
+        )
+        if ok:
+            self.window._chat_orchestrator.set_timeout(value)
