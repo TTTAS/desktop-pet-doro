@@ -61,6 +61,60 @@ class ChatOrchestrator(QtCore.QObject):
         self._window._mark_user_activity()
         return True
 
+    # ------------------------------------------------------------------ Configuration API (delegate to controller)
+
+    def get_system_prompt(self) -> str:
+        """Get the current system prompt."""
+        return self._controller.system_prompt
+
+    def set_system_prompt(self, text: str):
+        """Update the system prompt."""
+        self._controller.update_system_prompt(text)
+
+    def get_server_url(self) -> str:
+        """Get the chat server URL."""
+        return self._controller.server_url
+
+    def set_server_url(self, url: str):
+        """Set the chat server URL."""
+        self._controller.set_server_url(url)
+
+    def get_model_name(self) -> str:
+        """Get the model name."""
+        return self._controller.model
+
+    def set_model_name(self, model: str):
+        """Set the model name."""
+        self._controller.set_model(model)
+
+    def get_endpoint(self) -> str:
+        """Get the API endpoint path."""
+        return self._controller.endpoint_path
+
+    def set_endpoint(self, path: str):
+        """Set the API endpoint path."""
+        self._controller.set_endpoint_path(path)
+
+    def get_temperature(self) -> float:
+        """Get the temperature parameter."""
+        return self._controller.temperature
+
+    def set_temperature(self, value: float):
+        """Set the temperature parameter."""
+        self._controller.set_temperature(value)
+
+    def get_timeout(self) -> int:
+        """Get the request timeout in seconds."""
+        return self._controller.timeout_seconds
+
+    def set_timeout(self, seconds: int):
+        """Set the request timeout in seconds."""
+        self._controller.set_timeout_seconds(seconds)
+
+    def clear_history(self):
+        """Clear the conversation history."""
+        self._controller.clear_history()
+
     # ------------------------------------------------------------------ Controller callbacks
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
