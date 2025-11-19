@@ -50,6 +50,7 @@ from .ui.theme.theme import ensure_application_theme
 from .ui.theme.themed_menu import create_doro_menu
 from .ui.helpers import ChatUIHelper
 from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
+from .utils.app_restarter import AppRestarter
 
 logger = get_logger(__name__)
 
@@ -143,6 +144,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self, self._state_service)
+        self._app_restarter = AppRestarter(self)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
@@ -552,7 +554,7 @@ class DoroWindow(QtWidgets.QWidget):
         menu.addAction(quit_action)
 
         restart_action = QtGui.QAction("Restart doro", self)
-        restart_action.triggered.connect(self._restart_app)
+        restart_action.triggered.connect(self._app_restarter.restart)
         menu.addAction(restart_action)
 
         menu.exec(e.globalPos())
@@ -1250,121 +1252,11 @@ class DoroWindow(QtWidgets.QWidget):
         mouth.moveTo(MOUTH_START_X, MOUTH_START_Y)
         mouth.cubicTo(MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y, MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y)
         p.drawPath(mouth)
-    def _release_single_instance_locks_safely(self):
-        """Release possible single-instance locks safely."""
-        # QLockFile 常見做法
-        for attr in ("_lock_file", "_instance_lock", "lock_file", "instance_lock"):
-            lf = getattr(self, attr, None)
-            # QLockFile: has isLocked()/unlock()
-            try:
-                if lf and hasattr(lf, "isLocked") and lf.isLocked() and hasattr(lf, "unlock"):
-                    lf.unlock()
-            except Exception:
-                pass
-
-        # QSharedMemory 常見做法
-        for attr in ("_shared_mem", "shared_mem", "single_instance_shm"):
-            shm = getattr(self, attr, None)
-            try:
-                if shm and hasattr(shm, "isAttached") and shm.isAttached() and hasattr(shm, "detach"):
-                    shm.detach()
-            except Exception:
-                pass
-
-        # 也可順手把參考清掉，避免之後誤用
-        for attr in ("_lock_file", "_instance_lock", "lock_file", "instance_lock", "_shared_mem", "shared_mem", "single_instance_shm"):
-            if hasattr(self, attr):
-                try:
-                    setattr(self, attr, None)
-                except Exception:
-                    pass
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._set_busy_cursor(False)
         timer = getattr(self, "_companion_timer", None)
         if isinstance(timer, QtCore.QTimer):
             timer.stop()
+        self._app_restarter.cleanup_on_close()
         super().closeEvent(event)
-    def _restart_app(self):
-        """Restart doro *without* external helper script."""
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
-
-        # 1) 儘量清理資源（避免檔案/鎖佔用）
-        try:
-            if getattr(self, "_gif_movie", None):
-                try:
-                    self._gif_movie.stop()
-                except Exception:
-                    pass
-                self._gif_movie = None
-            if hasattr(self, "_timer") and self._timer:
-                try:
-                    self._timer.stop()
-                except Exception:
-                    pass
-            if getattr(self, "_config", None):
-                self._config.sync()
-        except Exception:
-            pass
-
-        # 2) 釋放可能的「單實例鎖」
-        self._release_single_instance_locks_safely()
-
-        # 3) 構造重新啟動命令列
-        relaunch_cmd = self._build_self_launch_command()
-        if not relaunch_cmd:
-            QtWidgets.QMessageBox.warning(self, "Restart", "Unable to determine relaunch command.")
-            return
-        if "--restarted" not in relaunch_cmd:
-            relaunch_cmd.append("--restarted")
-
-        # 4) Debugger 下優先改用 execv，避免 IDE 把新行程一同停下
-        debugger_attached = bool(getattr(sys, "gettrace", lambda: None)())
-        if debugger_attached:
-            try:
-                os.execv(relaunch_cmd[0], relaunch_cmd)
-                return  # pragma: no cover - execv 不會返回
-            except Exception:
-                debugger_attached = False  # 失敗時 fallback 至舊流程
-
-        # 5) 以分離行程啟動自己
-        cwd = str(Path(__file__).resolve().parent)
-        ok, _pid = QtCore.QProcess.startDetached(relaunch_cmd[0], relaunch_cmd[1:], cwd)
-
-        if ok:
-            # 6) 啟動成功就關閉目前實例
-            QtCore.QTimer.singleShot(RESTART_DELAY_MS, app.quit)
-        else:
-            QtWidgets.QMessageBox.warning(self, "Restart", "Failed to relaunch doro. Please restart manually.")
-
-    def _build_self_launch_command(self) -> list[str] | None:
-        """Return argv for relaunching this app."""
-        try:
-            if getattr(sys, "frozen", False):  # PyInstaller 等
-                exe = sys.executable or sys.argv[0]
-                return [exe, *sys.argv[1:]] if exe else None
-
-            python_exe = sys.executable or "python"
-
-            # ★ Windows：若是 python.exe，優先改用 pythonw.exe（避免新行程被 console 關掉）
-            if os.name == "nt":
-                try:
-                    base = os.path.dirname(python_exe)
-                    name = os.path.basename(python_exe).lower()
-                    if name == "python.exe":
-                        cand = os.path.join(base, "pythonw.exe")
-                        if os.path.isfile(cand):
-                            python_exe = cand
-                except Exception:
-                    pass
-
-            script_path = Path(sys.argv[0]).resolve()
-            if not script_path.exists():
-                script_path = Path(__file__).resolve()
-            if not script_path.exists():
-                return None
-            return [python_exe, str(script_path), *sys.argv[1:]]
-        except Exception:
-            return None
