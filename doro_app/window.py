@@ -142,7 +142,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service.on_states_modified = self._on_states_modified
 
         self._bubble_controller = BubbleController(self)
-        self._movement = MovementManager(self)
+        self._movement = MovementManager(self, self._state_service)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
@@ -184,7 +184,7 @@ class DoroWindow(QtWidgets.QWidget):
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self,
         )
-        self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement)
+        self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement, self._state_service)
         self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
         self._companion_prompts = self._load_companion_prompts()
@@ -641,48 +641,8 @@ class DoroWindow(QtWidgets.QWidget):
     # --- State helpers ---------------------------------------------------
 
     # ═══════════════════════════════════════════════════════════
-    # Public State API - Encapsulation Layer
-    # ═══════════════════════════════════════════════════════════
-
-    def has_state(self, key: str) -> bool:
-        """Check if a state exists (public API)."""
-        return self._state_service.has_state(key)
-
-    def get_state(self, key: str) -> Optional[State]:
-        """Get a state by key (public API)."""
-        return self._state_service.get_state(key)
-
-    def set_state(self, key: str) -> bool:
-        """Change to a different state (public API)."""
-        return self._state_service.set_state(key)
-
-    def is_movement_only_state(self, key: str) -> bool:
-        """Check if a state is movement-only (public API)."""
-        return self._state_service.is_movement_only_state(key)
-
-    def get_current_state_key(self) -> Optional[str]:
-        """Get the current state key (public API)."""
-        return self._current_state_key
-
-    def get_default_movement_state(self) -> Optional[str]:
-        """Get the default movement state key (public API)."""
-        return self._state_service.get_default_movement_state()
-
-    def find_move_states_by_direction(self, direction_slug: str):
-        """Find movement states that support the given direction (public API)."""
-        return self._state_service.find_move_states_by_direction(direction_slug)
-
-    def save_states(self) -> bool:
-        """Save all states to disk (public API)."""
-        return self._state_service.save_states()
-
-    # ═══════════════════════════════════════════════════════════
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
-
-    def get_state_service(self):
-        """Get the state service (public API)."""
-        return self._state_service
 
     def get_movement_step_px(self) -> int:
         """Get the default movement step in pixels (public API)."""
@@ -715,10 +675,6 @@ class DoroWindow(QtWidgets.QWidget):
     def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
         """Apply bubble offset (public API)."""
         self._apply_bubble_offset(offset, persist=persist)
-
-    def get_gif_path(self, resource_id: str) -> Optional[Path]:
-        """Get GIF file path from resource ID (public API)."""
-        return self._state_service.get_gif_path_by_id(resource_id)
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService

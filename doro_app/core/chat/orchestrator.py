@@ -13,18 +13,20 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from .core.movement.manager import MovementManager
-    from .window import DoroWindow
+    from ..movement.manager import MovementManager
+    from ...window import DoroWindow
+    from ..state import StateService
 
 
 class ChatOrchestrator(QtCore.QObject):
     """Coordinate chat requests, response parsing, and UI updates."""
 
-    def __init__(self, window: DoroWindow, controller: ChatController, movement: MovementManager):
+    def __init__(self, window: DoroWindow, controller: ChatController, movement: MovementManager, state_service: StateService):
         super().__init__(window)
         self._window = window
         self._controller = controller
         self._movement = movement
+        self._state_service = state_service
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -110,14 +112,16 @@ class ChatOrchestrator(QtCore.QObject):
                 state_key = self._window._find_state_for_action(token)
                 if state_key:
                     # Check if this is a movement-only state
-                    is_movement_only = self._window.is_movement_only_state(state_key)
+                    is_movement_only = self._state_service.is_movement_only_state(state_key)
                     if is_movement_only:
                         self._movement.record_manual_report(
                             f"Movement state '{state_key}' 未設定方向，請更新 move_state_list。"
                         )
                         continue
-                    if state_key != self._window._current_state_key:
-                        self._window._set_state(state_key)
+                    current_state = self._state_service.get_current_state()
+                    current_key = current_state.key if current_state else None
+                    if state_key != current_key:
+                        self._state_service.set_state(state_key)
                     continue
 
             direction = self._movement.parse_movement_token(token)
