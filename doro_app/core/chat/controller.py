@@ -8,7 +8,7 @@ from typing import Callable
 
 from PySide6 import QtCore
 
-from .core.chat.chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text

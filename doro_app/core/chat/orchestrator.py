@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from PySide6 import QtCore, QtWidgets
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
-from .core.chat.controller import ChatController
+from .controller import ChatController
 from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
