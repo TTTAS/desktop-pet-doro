@@ -120,6 +120,12 @@ MOVEMENT_ONLY_STATE_KEYS = {"walking"}  # States that are movement-only
 DEFAULT_MOVE_STATE_KEY = "walking"
 
 # ═══════════════════════════════════════════════════════════
+# Transition Wildcards
+# ═══════════════════════════════════════════════════════════
+
+TRANSITION_WILDCARD = "*"  # Wildcard for transition matching (e.g., "idle" -> "*")
+
+# ═══════════════════════════════════════════════════════════
 # Helper Functions for Color Construction
 # ═══════════════════════════════════════════════════════════
 
