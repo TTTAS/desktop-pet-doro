@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
+from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from .controller import ChatController
 from ...utils.logger import get_logger
 
@@ -135,6 +137,25 @@ class ChatOrchestrator(QtCore.QObject):
                 self._window._clear_bubble_text()
         self._window._set_busy_cursor(False)
 
+    def _get_random_network_fail_message(self) -> str:
+        """
+        Get a random network failure message from network_fail_doro.txt.
+
+        Returns:
+            Random message from file, or default message if file not found
+        """
+        try:
+            if NETWORK_FAIL_MESSAGES_PATH.exists():
+                with open(NETWORK_FAIL_MESSAGES_PATH, "r", encoding="utf-8") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                if lines:
+                    return random.choice(lines)
+        except Exception as e:
+            logger.warning(f"Failed to read network fail messages: {e}")
+
+        # Fallback message
+        return "嗚嗚……人，doro找不到回應了……"
+
     def _on_request_failed(self, error_message: str, was_auto: bool):
         logger.error(f"Chat request failed (auto={was_auto}): {error_message}")
         if not was_auto:
@@ -144,11 +165,10 @@ class ChatOrchestrator(QtCore.QObject):
                 error_message or "Failed to reach the chat server.",
             )
         self._window._set_busy_cursor(False)
-        fallback_text = (
-            error_message.strip()
-            if error_message and error_message.strip()
-            else "I could not reach the chat server."
-        )
+
+        # Use random network fail message from doro
+        fallback_text = self._get_random_network_fail_message()
+
         if not was_auto:
             self._window._set_bubble_text(fallback_text, auto_hide=False)
 
