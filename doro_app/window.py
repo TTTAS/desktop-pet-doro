@@ -2,33 +2,45 @@
 
 from __future__ import annotations
 
-import json
-import math
-import os
 import random
-import re
-import shutil
-import sys
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .utils.actions import ACTION_ALIASES
+from .constants import (
+    TIMER_INTERVAL_MS, BUBBLE_AUTO_HIDE_MS, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
+    WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT,
+    SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
+    MOVEMENT_STEP_PX, BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
+    BUBBLE_DEFAULT_SCALE, BUBBLE_DEFAULT_ALPHA, MOVEMENT_ONLY_STATE_KEYS,
+    DEFAULT_MOVE_STATE_KEY, CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
+    SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
+    # Fallback sprite geometry
+    FACE_CENTER_X, FACE_CENTER_Y_TOP, FACE_CENTER_Y_BOTTOM, FACE_LEFT_X, FACE_RIGHT_X,
+    FACE_CONTROL_X_LEFT, FACE_CONTROL_X_RIGHT,
+    BLUSH_LEFT_X, BLUSH_RIGHT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT,
+    EYE_LEFT_X, EYE_RIGHT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT,
+    MOUTH_START_X, MOUTH_START_Y, MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y,
+    MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y, MOUTH_PEN_WIDTH,
+    DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH,
+    get_default_fill_colors, get_default_blush_color, get_default_eye_color,
+)
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.fallback_sprite import draw_fallback_sprite
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .utils.logger import get_logger
 from .core.movement.manager import MovementManager
 from .utils.models import MoveStateSettings
-from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from .core.state import State, StateChangeEvent
 from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .core.state import StateService
+from .core.state.transition_player import TransitionPlayer
 from .ui.theme.theme import ensure_application_theme
-from .ui.theme.themed_menu import create_doro_menu
+from .ui.theme.themed_menu import build_context_menu_content, create_doro_menu
 from .ui.helpers import ChatUIHelper
 from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
@@ -40,8 +52,8 @@ class DoroWindow(QtWidgets.QWidget):
         super().__init__()
         logger.info("Initializing Doro window")
         ensure_application_theme()
-        self.resize(380, 230)
-        self.setMinimumSize(320, 240)
+        self.resize(WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
+        self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         flags = (
@@ -56,33 +68,28 @@ class DoroWindow(QtWidgets.QWidget):
         self._t = 0.0
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(16)  # ~60 FPS
+        self._timer.start(TIMER_INTERVAL_MS)
 
         # Appearance/animation parameters
         # OLD state data removed - now managed by StateService
-        self._active_gif_path: str | None = None
         self._current_state_key: str = ""
         self._state_list_text: str = ""
-        self._movement_only_state_keys: set[str] = {"walking"}
+        self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
         self._amplitude = 0.0
         self._scale_amp = 0.0
-        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = (
-            QtGui.QColor("#FFFFFFFF"),
-            QtGui.QColor("#FF9BE3FF"),
-            QtGui.QColor("#FF6CC1F0"),
-        )
+        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = get_default_fill_colors()
         self._cheek_alpha = 0.0
-        self._blush_base = QtGui.QColor("#FFC0C0")
-        self._eye_color = QtGui.QColor("#222222")
+        self._blush_base = get_default_blush_color()
+        self._eye_color = get_default_eye_color()
         self._bubble_visible = True
-        self._bubble_alpha = 170.0
+        self._bubble_alpha = BUBBLE_DEFAULT_ALPHA
         self._bubble_side = "center"
         self._name_tag = "doro"
         self._gif_movie: QtGui.QMovie | None = None
         self._bubble_text = ""
         self._bubble_text_show_override = False
-        self._bubble_auto_hide_ms = 6000
+        self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
         self._bubble_offset = QtCore.QPointF(0.0, 0.0)
         self._bubble_scale = 1.0
         self._bubble_dragging = False
@@ -93,18 +100,15 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_resize_anchor: QtCore.QPointF | None = None
         self._bubble_initial_scale = 1.0
         self._bubble_resize_cursor_active = False
-        self._companion_prompts: list[str] = []
-        self._companion_prompt_index = 0
         self._last_user_activity = time.monotonic()
-        self._companion_idle_threshold = 10.0
-        self._panel_width_hint = 360.0
-        self._panel_height_hint = 110.0
+        self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
+        self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
-        self._sprite_size = QtCore.QSize(200, 200)
-        self._sprite_offset_x = -110.0
+        self._sprite_size = QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT)
+        self._sprite_offset_x = SPRITE_OFFSET_X
         self._sprite_anchor_top: float | None = None
-        self._movement_step_px = 60
-        self._default_move_state_key = "walking"
+        self._movement_step_px = MOVEMENT_STEP_PX
+        self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
         # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
 
         # NEW architecture - state management without Window coupling
@@ -126,8 +130,11 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service.on_state_changed = self._on_state_changed
         self._state_service.on_states_modified = self._on_states_modified
 
+        # Create transition player for state change animations
+        self._transition_player = TransitionPlayer(self, self._state_service)
+
         self._bubble_controller = BubbleController(self)
-        self._movement = MovementManager(self)
+        self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
@@ -143,7 +150,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_config_path = self._state_storage_dir / "states.json"
         self._prompt_file_path = PROMPT_PATH
         self._click_actions_path = CLICK_ACTIONS_PATH
-        self._companion_prompts_path = COMPANION_PROMPTS_PATH
         self._click_press_pos: QtCore.QPointF | None = None
         self._click_was_dragging = False
 
@@ -154,9 +160,9 @@ class DoroWindow(QtWidgets.QWidget):
         if not self._config.contains("state/idle/gif_path") and self._default_idle_gif.is_file():
             self._config.setValue("state/idle/gif_path", str(self._default_idle_gif))
 
-        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", 120.0), 120.0)
-        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", -110.0), -110.0)
-        scale_pref = _safe_float(self._config.value("ui/bubble_scale", 1.0), 1.0)
+        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
+        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
+        scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
         self._bubble_controller.apply_persisted_config(
             BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
         )
@@ -165,14 +171,20 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_controller = ChatController(
             self._config,
             self._prompt_file_path,
+            state_service=self._state_service,
             state_text_provider=lambda: self._state_list_text or "",
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self,
         )
-        self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement)
+        self._chat_orchestrator = ChatOrchestrator(self._chat_controller, self._movement, self._state_service)
+
+        # Connect ChatOrchestrator signals to Window methods
+        self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
+        self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
+        self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+
         self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
-        self._companion_prompts = self._load_companion_prompts()
 
         # Initialize state system (NEW architecture)
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
@@ -212,8 +224,8 @@ class DoroWindow(QtWidgets.QWidget):
     def mousePressEvent(self, e: QtGui.QMouseEvent):
         self._mark_user_activity()
         if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._begin_bubble_transform(e.position()):
-                self._update_bubble_cursor(e.position())
+            if self._bubble_controller.begin_transform(e.position()):
+                self._bubble_controller.update_cursor(e.position())
                 e.accept()
                 return
             self._drag_pos = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -226,17 +238,17 @@ class DoroWindow(QtWidgets.QWidget):
     def mouseMoveEvent(self, e: QtGui.QMouseEvent):
         if e.buttons() & QtCore.Qt.MouseButton.LeftButton:
             self._mark_user_activity()
-        if self._update_bubble_transform(e.position()):
-            self._update_bubble_cursor(e.position())
+        if self._bubble_controller.update_transform(e.position()):
+            self._bubble_controller.update_cursor(e.position())
             e.accept()
             return
         if not self._bubble_dragging and not self._bubble_resizing:
-            self._update_bubble_cursor(e.position())
+            self._bubble_controller.update_cursor(e.position())
         if self._drag_pos is not None and e.buttons() & QtCore.Qt.MouseButton.LeftButton:
             if (
                 self._click_press_pos is not None
                 and not self._click_was_dragging
-                and (e.position() - self._click_press_pos).manhattanLength() > 6
+                and (e.position() - self._click_press_pos).manhattanLength() > CLICK_DRAG_THRESHOLD_PX
             ):
                 self._click_was_dragging = True
             self.move(e.globalPosition().toPoint() - self._drag_pos)
@@ -247,14 +259,14 @@ class DoroWindow(QtWidgets.QWidget):
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
         self._mark_user_activity()
         if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._end_bubble_transform():
-                self._update_bubble_cursor(e.position())
+            if self._bubble_controller.end_transform():
+                self._bubble_controller.update_cursor(e.position())
                 e.accept()
                 return
             was_click = (
                 not self._click_was_dragging
                 and self._click_press_pos is not None
-                and (e.position() - self._click_press_pos).manhattanLength() <= 6
+                and (e.position() - self._click_press_pos).manhattanLength() <= CLICK_DRAG_THRESHOLD_PX
             )
             self._drag_pos = None
             self._click_press_pos = None
@@ -269,7 +281,7 @@ class DoroWindow(QtWidgets.QWidget):
         super().mouseReleaseEvent(e)
 
     def leaveEvent(self, e: QtCore.QEvent):
-        self._update_bubble_cursor(None)
+        self._bubble_controller.update_cursor(None)
         super().leaveEvent(e)
 
     def keyPressEvent(self, e: QtGui.QKeyEvent):
@@ -278,21 +290,21 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _sprite_center(self) -> QtCore.QPointF:
         base_x = self.width() / 2.0 + getattr(self, "_sprite_offset_x", 0.0)
-        half_w = max(20.0, self._sprite_size.width() / 2.0)
-        half_h = max(20.0, self._sprite_size.height() / 2.0)
-        margin_x = 12.0
+        half_w = max(SPRITE_MIN_SIZE, self._sprite_size.width() / 2.0)
+        half_h = max(SPRITE_MIN_SIZE, self._sprite_size.height() / 2.0)
+        margin_x = SPRITE_MARGIN_X
         min_center_x = half_w + margin_x
         max_center_x = self.width() - half_w - margin_x
         if min_center_x <= max_center_x:
             base_x = max(min_center_x, min(max_center_x, base_x))
-        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + 20.0
-        margin_bottom = 24.0
+        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + SPRITE_BOB_ALLOWANCE
+        margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
         max_center_y = self.height() - half_h - margin_bottom
         if max_center_y < min_center_y:
             max_center_y = min_center_y
         if getattr(self, "_sprite_anchor_top", None) is None:
-            panel_reserve = getattr(self, "_panel_height_hint", 110.0) + 48.0
+            panel_reserve = getattr(self, "_panel_height_hint", PANEL_DEFAULT_HEIGHT_HINT) + SPRITE_PANEL_RESERVE_OFFSET
             initial_base_y = (self.height() - panel_reserve) / 2.0
             initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
             self._sprite_anchor_top = max(0.0, initial_base_y - half_h)
@@ -307,9 +319,6 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _mark_user_activity(self):
         self._last_user_activity = time.monotonic()
-
-    def _apply_bubble_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
-        self._bubble_controller.apply_offset(candidate, persist=persist)
 
     def _update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
@@ -381,18 +390,6 @@ class DoroWindow(QtWidgets.QWidget):
         panel_height = max(80.0, text_height + 56.0)
         return panel_width, panel_height
 
-    def _begin_bubble_transform(self, pos: QtCore.QPointF) -> bool:
-        return self._bubble_controller.begin_transform(pos)
-
-    def _update_bubble_transform(self, pos: QtCore.QPointF) -> bool:
-        return self._bubble_controller.update_transform(pos)
-
-    def _update_bubble_cursor(self, pos: QtCore.QPointF | None):
-        self._bubble_controller.update_cursor(pos)
-
-    def _end_bubble_transform(self) -> bool:
-        return self._bubble_controller.end_transform()
-
     def _apply_window_preferred_size(self):
         sprite_w = max(120.0, float(self._sprite_size.width()))
         sprite_h = max(120.0, float(self._sprite_size.height()))
@@ -443,115 +440,12 @@ class DoroWindow(QtWidgets.QWidget):
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self._mark_user_activity()
-        # Create Doro-themed menu with avatar from current GIF
         menu = create_doro_menu(
             parent=self,
             avatar_position="top-center",
             gif_movie=self._gif_movie
         )
-
-        states_menu = menu.addMenu("States")
-        for key in self._visible_state_keys():
-            # NEW: Get state from StateService
-            state = self._state_service.get_state(key)
-            if not state:
-                continue
-            label = state.label or key
-            action = states_menu.addAction(label)
-            action.setCheckable(True)
-            action.setChecked(key == self._current_state_key)
-            action.triggered.connect(lambda checked, s=key: self._set_state(s))
-
-        edit_states_action = states_menu.addAction("Edit states")
-        edit_states_action.triggered.connect(self._show_state_manager)
-
-        remove_action = states_menu.addAction("Remove current state")
-        remove_action.setEnabled(
-            bool(self._current_state_key)
-            and not self._state_service.is_state_protected(self._current_state_key)
-        )
-        remove_action.triggered.connect(self._remove_current_state)
-
-        actions_menu = menu.addMenu("Actions")
-        edit_actions_action = actions_menu.addAction("Edit actions")
-        edit_actions_action.triggered.connect(self._show_move_gif_manager)
-
-        menu.addSeparator()
-
-        top_action = QtGui.QAction("Stay on top", self)
-        top_action.setCheckable(True)
-        is_top = bool(self.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint)
-        top_action.setChecked(is_top)
-
-        def toggle_top():
-            f = self.windowFlags()
-            if bool(f & QtCore.Qt.WindowType.WindowStaysOnTopHint):
-                f &= ~QtCore.Qt.WindowType.WindowStaysOnTopHint
-            else:
-                f |= QtCore.Qt.WindowType.WindowStaysOnTopHint
-            self.setWindowFlags(f)
-            self.show()  # re-apply flags
-
-        top_action.triggered.connect(toggle_top)
-        menu.addAction(top_action)
-
-        visuals_menu = menu.addMenu("State visuals")
-        bubble_action = visuals_menu.addAction("Show message panel")
-        bubble_action.setCheckable(True)
-        # NEW: Get from StateService
-        current_state = self._state_service.get_current_state()
-        bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
-        bubble_action.triggered.connect(self._toggle_bubble)
-
-        # TODO: Re-implement with new Edit states dialog
-        # gif_action = visuals_menu.addAction("Load GIF")
-        # gif_action.triggered.connect(self._load_state_gif)
-
-        clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-        clear_gif_action.setEnabled(self._default_idle_gif.is_file())
-        clear_gif_action.triggered.connect(self._clear_state_gif)
-
-        name_tag_action = visuals_menu.addAction("Rename pet")
-        name_tag_action.triggered.connect(self._rename_pet)
-
-        chat_menu = menu.addMenu("Chat")
-        ask_action = chat_menu.addAction("Ask Doro")
-        ask_action.setEnabled(not self._chat_orchestrator.is_inflight)
-        ask_action.triggered.connect(self._prompt_chat)
-
-        edit_prompt_action = chat_menu.addAction("Edit prompt")
-        edit_prompt_action.triggered.connect(self._edit_chat_prompt)
-
-        clear_history_action = chat_menu.addAction("Clear conversation history")
-        clear_history_action.setEnabled(self._chat_controller.has_history)
-        clear_history_action.triggered.connect(self._clear_chat_history)
-
-        configure_menu = chat_menu.addMenu("Configure")
-
-        server_action = configure_menu.addAction("Set server URL")
-        server_action.triggered.connect(self._configure_chat_server)
-
-        model_action = configure_menu.addAction("Set model name")
-        model_action.triggered.connect(self._configure_chat_model)
-
-        endpoint_action = configure_menu.addAction("Set endpoint path")
-        endpoint_action.triggered.connect(self._configure_chat_endpoint)
-
-        temperature_action = configure_menu.addAction("Set temperature")
-        temperature_action.triggered.connect(self._configure_chat_temperature)
-
-        timeout_action = configure_menu.addAction("Set timeout (seconds)")
-        timeout_action.triggered.connect(self._configure_chat_timeout)
-
-        menu.addSeparator()
-        quit_action = QtGui.QAction("Exit doro", self)
-        quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
-        menu.addAction(quit_action)
-
-        restart_action = QtGui.QAction("Restart doro", self)
-        restart_action.triggered.connect(self._restart_app)
-        menu.addAction(restart_action)
-
+        build_context_menu_content(self, menu)
         menu.exec(e.globalPos())
 
     # --- Painting --------------------------------------------------------
@@ -573,36 +467,8 @@ class DoroWindow(QtWidgets.QWidget):
             p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             p.drawPixmap(0, 0, pixmap)
         else:
-            p.translate(-90, -90)
-
-            path = QtGui.QPainterPath(QtCore.QPointF(90, 20))
-            path.cubicTo(50, 20, 30, 50, 30, 90)
-            path.cubicTo(30, 130, 50, 160, 90, 160)
-            path.cubicTo(130, 160, 150, 130, 150, 90)
-            path.cubicTo(150, 50, 130, 20, 90, 20)
-
-            fill = QtGui.QLinearGradient(QtCore.QPointF(90, 20), QtCore.QPointF(90, 160))
-            fill.setColorAt(0.0, self._fill_colors[0])
-            fill.setColorAt(0.4, self._fill_colors[1])
-            fill.setColorAt(1.0, self._fill_colors[2])
-
-            p.setPen(QtGui.QPen(QtGui.QColor("#FF5C9ED6"), 3))
-            p.setBrush(QtGui.QBrush(fill))
-            p.drawPath(path)
-
-            if self._cheek_alpha > 0:
-                blush = QtGui.QColor(self._blush_base)
-                blush.setAlpha(int(self._cheek_alpha))
-                p.setBrush(blush)
-                p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.drawEllipse(QtCore.QRectF(55, 85, 18, 10))
-                p.drawEllipse(QtCore.QRectF(107, 85, 18, 10))
-
-            p.setBrush(self._eye_color)
-            p.drawEllipse(QtCore.QRectF(70, 70, 10, 14))
-            p.drawEllipse(QtCore.QRectF(100, 70, 10, 14))
-
-            self._draw_mouth(p)
+            # Draw fallback sprite when no GIF is available
+            draw_fallback_sprite(p, self._fill_colors, self._cheek_alpha, self._blush_base, self._eye_color)
 
         p.restore()
 
@@ -622,72 +488,9 @@ class DoroWindow(QtWidgets.QWidget):
         font.setWeight(QtGui.QFont.Weight.Bold)
         p.setFont(font)
 
-    def _apply_card_shadow(
-        self,
-        widget: QtWidgets.QWidget,
-        *,
-        blur_radius: float = 28.0,
-        y_offset: float = 10.0,
-        opacity: int = 150,
-    ):
-        shadow = QtWidgets.QGraphicsDropShadowEffect(widget)
-        shadow.setBlurRadius(blur_radius)
-        shadow.setOffset(0.0, y_offset)
-        shadow.setColor(QtGui.QColor(4, 7, 20, opacity))
-        widget.setGraphicsEffect(shadow)
-    # --- State helpers ---------------------------------------------------
-
-    # ═══════════════════════════════════════════════════════════
-    # Public State API - Encapsulation Layer
-    # ═══════════════════════════════════════════════════════════
-
-    def has_state(self, key: str) -> bool:
-        """Check if a state exists (public API)."""
-        return self._state_service.has_state(key)
-
-    def get_state(self, key: str) -> Optional[State]:
-        """Get a state by key (public API)."""
-        return self._state_service.get_state(key)
-
-    def set_state(self, key: str) -> bool:
-        """Change to a different state (public API)."""
-        return self._state_service.set_state(key)
-
-    def is_movement_only_state(self, key: str) -> bool:
-        """Check if a state is movement-only (public API)."""
-        return self._state_service.is_movement_only_state(key)
-
-    def get_current_state_key(self) -> Optional[str]:
-        """Get the current state key (public API)."""
-        return self._current_state_key
-
-    def get_default_movement_state(self) -> Optional[str]:
-        """Get the default movement state key (public API)."""
-        return self._state_service.get_default_movement_state()
-
-    def find_move_states_by_direction(self, direction_slug: str):
-        """Find movement states that support the given direction (public API)."""
-        return self._state_service.find_move_states_by_direction(direction_slug)
-
-    def save_states(self) -> bool:
-        """Save all states to disk (public API)."""
-        return self._state_service.save_states()
-
     # ═══════════════════════════════════════════════════════════
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
-
-    def get_state_service(self):
-        """Get the state service (public API)."""
-        return self._state_service
-
-    def get_movement_step_px(self) -> int:
-        """Get the default movement step in pixels (public API)."""
-        return self._movement_step_px
-
-    def get_default_move_state_key(self) -> str:
-        """Get the default movement state key (public API)."""
-        return self._default_move_state_key
 
     def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
         """Clamp window position to stay on screen (public API)."""
@@ -696,26 +499,6 @@ class DoroWindow(QtWidgets.QWidget):
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
         self._move_window_to(pos)
-
-    def update_last_tick_time(self, time_value: float):
-        """Update last tick time (public API)."""
-        self._last_tick_time = time_value
-
-    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration (public API)."""
-        return self._resolve_move_state(key)
-
-    def get_bubble_offset(self) -> QtCore.QPointF:
-        """Get current bubble offset (public API)."""
-        return self._bubble_offset
-
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
-        """Apply bubble offset (public API)."""
-        self._apply_bubble_offset(offset, persist=persist)
-
-    def get_gif_path(self, resource_id: str) -> Optional[Path]:
-        """Get GIF file path from resource ID (public API)."""
-        return self._state_service.get_gif_path_by_id(resource_id)
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService
@@ -730,14 +513,22 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = event.new_key
         self._state_list_text = self._state_service.write_state_list()
 
-        # Get and load GIF
-        gif_resource_id = self._state_service.get_gif_id(event.new_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._load_gif(str(gif_path))
+        # Try to play transition animation
+        # If transition exists and plays, it will load the target state GIF when complete
+        if self._transition_player.play_transition(event.old_key, event.new_key):
+            logger.debug(f"Transition animation started: {event.old_key} -> {event.new_key}")
+            # Visual config will be applied when transition completes
+            # For now, just update the visual parameters (transition GIF is playing)
+            # The target state GIF will be loaded by TransitionPlayer after transition completes
+        else:
+            # No transition available - load target state GIF directly
+            gif_resource_id = self._state_service.get_gif_id(event.new_key)
+            if gif_resource_id:
+                gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
+                if gif_path:
+                    self._load_gif(str(gif_path))
 
-        # Apply visual config
+        # Apply visual config (even during transitions, for when it completes)
         visual = state.visual
         self._amplitude = visual.bob_amplitude
         self._scale_amp = visual.scale_amplitude
@@ -873,24 +664,6 @@ class DoroWindow(QtWidgets.QWidget):
                     self._apply_window_preferred_size()
         self.update()
 
-    def _select_state_gif_variant(self, key: str):
-        """Load the GIF for the given state."""
-        gif_resource_id = self._state_service.get_gif_id(key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._active_gif_path = str(gif_path)
-                return
-
-        # Fallback to default idle GIF
-        if self._default_idle_gif.is_file():
-            try:
-                self._active_gif_path = str(self._default_idle_gif.resolve())
-            except OSError:
-                self._active_gif_path = str(self._default_idle_gif)
-        else:
-            self._active_gif_path = None
-
     def _set_state(self, key: str):
         # NEW: Use StateService
         self._state_service.set_state(key)
@@ -898,12 +671,6 @@ class DoroWindow(QtWidgets.QWidget):
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
         # NEW: Use StateService
         return self._state_service.set_primary_gif(key, Path(source_path))
-
-    # TODO: Re-implement with new Edit states dialog
-    # def _load_state_gif(self):
-    #     # NEW: Show GIF manager dialog
-    #     from .ui.dialogs.state_dialogs import show_state_gif_manager
-    #     show_state_gif_manager(self._state_service, parent=self)
 
     def _show_state_manager(self):
         from .ui.dialogs.state_dialogs import show_state_manager
@@ -931,47 +698,6 @@ class DoroWindow(QtWidgets.QWidget):
             return []
         return [line.strip() for line in raw.splitlines() if line.strip()]
 
-    def _load_companion_prompts(self) -> list[str]:
-        path = getattr(self, "_companion_prompts_path", None)
-        prompts: list[str] = []
-        if path:
-            try:
-                raw = Path(path).read_text(encoding="utf-8")
-            except OSError:
-                raw = ""
-            if raw:
-                prompts = [line.strip() for line in raw.splitlines() if line.strip()]
-        if not prompts:
-            prompts = [
-                "請主動示範一個陪伴主人的小動作，務必搭配適當的括號狀態或方括號移動，並附上一句溫暖關懷的短句。",
-                "想辦法吸引主人的注意，安排一個活潑的小劇情，記得輸出必要的 (STATE: ...) 或 [MOVE:...] 指令。",
-                "描述 Doro 此刻的心情並配上一個生動的動作，簡短一句話即可，務必包含行為指令讓動畫能執行。",
-            ]
-        return prompts
-
-    def _next_companion_prompt(self) -> str:
-        if not self._companion_prompts:
-            return ""
-        prompt = self._companion_prompts[self._companion_prompt_index % len(self._companion_prompts)]
-        self._companion_prompt_index = (self._companion_prompt_index + 1) % len(self._companion_prompts)
-        return prompt
-
-    def _on_companion_timeout(self):
-        if self._chat_orchestrator.is_inflight:
-            return
-        if not self.isVisible():
-            return
-        if self.windowState() & QtCore.Qt.WindowState.WindowMinimized:
-            return
-        now = time.monotonic()
-        if now - self._last_user_activity < self._companion_idle_threshold:
-            return
-        prompt = self._next_companion_prompt()
-        if not prompt:
-            return
-        self._last_user_activity = now
-        self._chat_orchestrator.send_message(prompt, silent=True, is_auto=True)
-
     def _trigger_click_action(self):
         self._mark_user_activity()
         actions = self._load_click_actions()
@@ -982,53 +708,6 @@ class DoroWindow(QtWidgets.QWidget):
             return
         self._chat_orchestrator.send_message(message)
 
-    def _find_state_for_action(self, action: str) -> str | None:
-        # Normalize action token inline
-        raw = (action or "").strip()
-        if not raw:
-            return None
-        lowered = raw.lower()
-        for prefix in ("state", "mode", "status"):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix) :]
-                break
-        else:
-            if raw.startswith(("狀態", "模式")):
-                raw = raw[2:]
-        raw = raw.lstrip(":：-_ ")
-        normalized = raw.strip().lower()
-
-        if not normalized:
-            return None
-
-        # Check aliases
-        alias_target = ACTION_ALIASES.get(normalized)
-        if alias_target and self._state_service.get_state(alias_target):
-            if not self._is_movement_only_state(alias_target):
-                return alias_target
-
-        # Try various normalized forms
-        candidates = {
-            normalized,
-            normalized.replace(" ", "_"),
-            normalized.replace(" ", ""),
-        }
-        sanitized = "".join(ch for ch in normalized if ch.isalnum() or ch in ("-", "_"))
-        if sanitized:
-            candidates.add(sanitized)
-
-        for candidate in candidates:
-            if self._state_service.get_state(candidate):
-                if not self._is_movement_only_state(candidate):
-                    return candidate
-
-        # Try matching by label
-        result = self._state_service.find_state_by_label(normalized)
-        if result and not self._is_movement_only_state(result):
-            return result
-
-        return None
-
     def _set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
@@ -1036,38 +715,6 @@ class DoroWindow(QtWidgets.QWidget):
         elif not enabled and self._chat_cursor_overridden:
             QtWidgets.QApplication.restoreOverrideCursor()
             self._chat_cursor_overridden = False
-
-    def _prompt_chat(self):
-        """Show chat input dialog."""
-        self._chat_ui.prompt_chat()
-
-    def _clear_chat_history(self):
-        """Clear chat history after confirmation."""
-        self._chat_ui.clear_chat_history()
-
-    def _edit_chat_prompt(self):
-        """Edit chat system prompt."""
-        self._chat_ui.edit_chat_prompt()
-
-    def _configure_chat_server(self):
-        """Configure chat server URL."""
-        self._chat_ui.configure_chat_server()
-
-    def _configure_chat_model(self):
-        """Configure chat model name."""
-        self._chat_ui.configure_chat_model()
-
-    def _configure_chat_endpoint(self):
-        """Configure chat endpoint path."""
-        self._chat_ui.configure_chat_endpoint()
-
-    def _configure_chat_temperature(self):
-        """Configure chat temperature."""
-        self._chat_ui.configure_chat_temperature()
-
-    def _configure_chat_timeout(self):
-        """Configure chat timeout."""
-        self._chat_ui.configure_chat_timeout()
 
     def _toggle_bubble(self, checked: bool):
         # NEW: Update through StateService
@@ -1293,6 +940,16 @@ class DoroWindow(QtWidgets.QWidget):
         p.restore()
         self._panel_rect_cache = QtCore.QRectF(panel_rect)
 
+    def _on_bubble_text_requested(self, text: str, kwargs: dict):
+        """
+        Handle bubble text request from ChatOrchestrator signal.
+
+        Args:
+            text: Text to display in bubble
+            kwargs: Additional arguments for _set_bubble_text() (dict)
+        """
+        self._set_bubble_text(text, **kwargs)
+
     def _set_bubble_text(
         self,
         text: str,
@@ -1312,132 +969,27 @@ class DoroWindow(QtWidgets.QWidget):
     def _clear_bubble_text(self):
         self._bubble_controller.clear_text()
 
-    def _draw_mouth(self, p: QtGui.QPainter):
-        pen = QtGui.QPen(QtGui.QColor(51, 51, 51))
-        pen.setWidthF(2)
-        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-        p.setPen(pen)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        mouth = QtGui.QPainterPath()
-        mouth.moveTo(80, 95)
-        mouth.cubicTo(90, 105, 100, 105, 110, 95)
-        p.drawPath(mouth)
-    def _release_single_instance_locks_safely(self):
-        """Release possible single-instance locks safely."""
-        # QLockFile 常見做法
-        for attr in ("_lock_file", "_instance_lock", "lock_file", "instance_lock"):
-            lf = getattr(self, attr, None)
-            # QLockFile: has isLocked()/unlock()
-            try:
-                if lf and hasattr(lf, "isLocked") and lf.isLocked() and hasattr(lf, "unlock"):
-                    lf.unlock()
-            except Exception:
-                pass
-
-        # QSharedMemory 常見做法
-        for attr in ("_shared_mem", "shared_mem", "single_instance_shm"):
-            shm = getattr(self, attr, None)
-            try:
-                if shm and hasattr(shm, "isAttached") and shm.isAttached() and hasattr(shm, "detach"):
-                    shm.detach()
-            except Exception:
-                pass
-
-        # 也可順手把參考清掉，避免之後誤用
-        for attr in ("_lock_file", "_instance_lock", "lock_file", "instance_lock", "_shared_mem", "shared_mem", "single_instance_shm"):
-            if hasattr(self, attr):
-                try:
-                    setattr(self, attr, None)
-                except Exception:
-                    pass
-
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._set_busy_cursor(False)
-        timer = getattr(self, "_companion_timer", None)
-        if isinstance(timer, QtCore.QTimer):
-            timer.stop()
-        super().closeEvent(event)
-    def _restart_app(self):
-        """Restart doro *without* external helper script."""
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
 
-        # 1) 儘量清理資源（避免檔案/鎖佔用）
+        # Clean up resources
         try:
-            if getattr(self, "_gif_movie", None):
+            if self._gif_movie:
                 try:
                     self._gif_movie.stop()
                 except Exception:
                     pass
                 self._gif_movie = None
-            if hasattr(self, "_timer") and self._timer:
+
+            if self._timer:
                 try:
                     self._timer.stop()
                 except Exception:
                     pass
-            if getattr(self, "_config", None):
+
+            if self._config:
                 self._config.sync()
         except Exception:
             pass
 
-        # 2) 釋放可能的「單實例鎖」
-        self._release_single_instance_locks_safely()
-
-        # 3) 構造重新啟動命令列
-        relaunch_cmd = self._build_self_launch_command()
-        if not relaunch_cmd:
-            QtWidgets.QMessageBox.warning(self, "Restart", "Unable to determine relaunch command.")
-            return
-        if "--restarted" not in relaunch_cmd:
-            relaunch_cmd.append("--restarted")
-
-        # 4) Debugger 下優先改用 execv，避免 IDE 把新行程一同停下
-        debugger_attached = bool(getattr(sys, "gettrace", lambda: None)())
-        if debugger_attached:
-            try:
-                os.execv(relaunch_cmd[0], relaunch_cmd)
-                return  # pragma: no cover - execv 不會返回
-            except Exception:
-                debugger_attached = False  # 失敗時 fallback 至舊流程
-
-        # 5) 以分離行程啟動自己
-        cwd = str(Path(__file__).resolve().parent)
-        ok, _pid = QtCore.QProcess.startDetached(relaunch_cmd[0], relaunch_cmd[1:], cwd)
-
-        if ok:
-            # 6) 啟動成功就關閉目前實例
-            QtCore.QTimer.singleShot(50, app.quit)
-        else:
-            QtWidgets.QMessageBox.warning(self, "Restart", "Failed to relaunch doro. Please restart manually.")
-
-    def _build_self_launch_command(self) -> list[str] | None:
-        """Return argv for relaunching this app."""
-        try:
-            if getattr(sys, "frozen", False):  # PyInstaller 等
-                exe = sys.executable or sys.argv[0]
-                return [exe, *sys.argv[1:]] if exe else None
-
-            python_exe = sys.executable or "python"
-
-            # ★ Windows：若是 python.exe，優先改用 pythonw.exe（避免新行程被 console 關掉）
-            if os.name == "nt":
-                try:
-                    base = os.path.dirname(python_exe)
-                    name = os.path.basename(python_exe).lower()
-                    if name == "python.exe":
-                        cand = os.path.join(base, "pythonw.exe")
-                        if os.path.isfile(cand):
-                            python_exe = cand
-                except Exception:
-                    pass
-
-            script_path = Path(sys.argv[0]).resolve()
-            if not script_path.exists():
-                script_path = Path(__file__).resolve()
-            if not script_path.exists():
-                return None
-            return [python_exe, str(script_path), *sys.argv[1:]]
-        except Exception:
-            return None
+        super().closeEvent(event)

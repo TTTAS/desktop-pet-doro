@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6 import QtCore, QtGui, QtWidgets
+
+if TYPE_CHECKING:
+    from ...window import DoroWindow
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -272,3 +277,111 @@ def create_doro_menu(
             menu.set_avatar(first_frame_pixmap)
 
     return menu
+
+
+def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
+    """
+    Build the content (items, submenus, actions) for the context menu.
+
+    Args:
+        window: The main DoroWindow instance
+        menu: The themed menu to populate
+    """
+    # States submenu
+    states_menu = menu.addMenu("States")
+    for key in window._visible_state_keys():
+        state = window._state_service.get_state(key)
+        if not state:
+            continue
+        label = state.label or key
+        action = states_menu.addAction(label)
+        action.setCheckable(True)
+        action.setChecked(key == window._current_state_key)
+        action.triggered.connect(lambda checked, s=key: window._set_state(s))
+
+    edit_states_action = states_menu.addAction("Edit states")
+    edit_states_action.triggered.connect(window._show_state_manager)
+
+    remove_action = states_menu.addAction("Remove current state")
+    remove_action.setEnabled(
+        bool(window._current_state_key)
+        and not window._state_service.is_state_protected(window._current_state_key)
+    )
+    remove_action.triggered.connect(window._remove_current_state)
+
+    # Actions submenu
+    actions_menu = menu.addMenu("Actions")
+    edit_actions_action = actions_menu.addAction("Edit actions")
+    edit_actions_action.triggered.connect(window._show_move_gif_manager)
+
+    menu.addSeparator()
+
+    # Stay on top toggle
+    top_action = QtGui.QAction("Stay on top", window)
+    top_action.setCheckable(True)
+    is_top = bool(window.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint)
+    top_action.setChecked(is_top)
+
+    def toggle_top():
+        f = window.windowFlags()
+        if bool(f & QtCore.Qt.WindowType.WindowStaysOnTopHint):
+            f &= ~QtCore.Qt.WindowType.WindowStaysOnTopHint
+        else:
+            f |= QtCore.Qt.WindowType.WindowStaysOnTopHint
+        window.setWindowFlags(f)
+        window.show()  # re-apply flags
+
+    top_action.triggered.connect(toggle_top)
+    menu.addAction(top_action)
+
+    # State visuals submenu
+    visuals_menu = menu.addMenu("State visuals")
+    bubble_action = visuals_menu.addAction("Show message panel")
+    bubble_action.setCheckable(True)
+    current_state = window._state_service.get_current_state()
+    bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
+    bubble_action.triggered.connect(window._toggle_bubble)
+
+    clear_gif_action = visuals_menu.addAction("Reset GIF to default")
+    clear_gif_action.setEnabled(window._default_idle_gif.is_file())
+    clear_gif_action.triggered.connect(window._clear_state_gif)
+
+    name_tag_action = visuals_menu.addAction("Rename pet")
+    name_tag_action.triggered.connect(window._rename_pet)
+
+    # Chat submenu
+    chat_menu = menu.addMenu("Chat")
+    ask_action = chat_menu.addAction("Ask Doro")
+    ask_action.setEnabled(not window._chat_orchestrator.is_inflight)
+    ask_action.triggered.connect(window._chat_ui.prompt_chat)
+
+    edit_prompt_action = chat_menu.addAction("Edit prompt")
+    edit_prompt_action.triggered.connect(window._chat_ui.edit_chat_prompt)
+
+    clear_history_action = chat_menu.addAction("Clear conversation history")
+    clear_history_action.setEnabled(window._chat_controller.has_history)
+    clear_history_action.triggered.connect(window._chat_ui.clear_chat_history)
+
+    configure_menu = chat_menu.addMenu("Configure")
+
+    server_action = configure_menu.addAction("Set server URL")
+    server_action.triggered.connect(window._chat_ui.configure_chat_server)
+
+    model_action = configure_menu.addAction("Set model name")
+    model_action.triggered.connect(window._chat_ui.configure_chat_model)
+
+    endpoint_action = configure_menu.addAction("Set endpoint path")
+    endpoint_action.triggered.connect(window._chat_ui.configure_chat_endpoint)
+
+    temperature_action = configure_menu.addAction("Set temperature")
+    temperature_action.triggered.connect(window._chat_ui.configure_chat_temperature)
+
+    timeout_action = configure_menu.addAction("Set timeout (seconds)")
+    timeout_action.triggered.connect(window._chat_ui.configure_chat_timeout)
+
+    menu.addSeparator()
+
+    # Exit action
+    quit_action = QtGui.QAction("Exit doro", window)
+    quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
+    menu.addAction(quit_action)

@@ -46,3 +46,6 @@ Thumbs.db
 res/state/*.gif
 !res/state/idle.gif
 !res/state/stand.gif
+
+# Runtime generated state files
+doro_app/state/

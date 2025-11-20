@@ -54,6 +54,9 @@ class StateService:
         self._move_states = MoveStateCollection()
         self._transitions = TransitionStateCollection()
 
+        # Transition protection flag
+        self._is_transitioning: bool = False
+
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
@@ -374,19 +377,32 @@ class StateService:
     # State Operations
     # ═══════════════════════════════════════════════════════════
 
-    def set_state(self, key: str) -> bool:
+    def set_state(self, key: str, *, force: bool = False) -> bool:
         """
         Set current state.
 
+        Args:
+            key: State key to switch to
+            force: If True, bypass transition protection (used by MovementManager)
+
         Returns:
-            True if successful, False if state not found
+            True if successful, False if state not found or rejected
+
+        Protection:
+            - Rejects requests during transitions (unless force=True)
+            - Ensures state integrity during transition animations
         """
+        # Check transition protection
+        if self._is_transitioning and not force:
+            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+            return False
+
         old_key = self._states._current_key
         if not self._states.set_current(key):
             logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
-        logger.info(f"State changed: {old_key} -> {key}")
+        logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if force else ""))
 
         # Emit event
         state = self._states.get(key)
@@ -395,6 +411,143 @@ class StateService:
             self.on_state_changed(event)
 
         return True
+
+    # ═══════════════════════════════════════════════════════════
+    # Transition Lock Management
+    # ═══════════════════════════════════════════════════════════
+
+    def begin_transition(self) -> bool:
+        """
+        Begin a transition animation, locking state changes.
+
+        Prevents non-forced state changes during transition playback.
+        Only forced state changes (force=True) can bypass this lock.
+
+        Returns:
+            True if lock acquired, False if already transitioning
+
+        Usage:
+            # Before playing transition GIF
+            if service.begin_transition():
+                play_transition_gif()
+                # ... wait for completion ...
+                service.end_transition()
+        """
+        if self._is_transitioning:
+            logger.warning("Transition already in progress, cannot begin new transition")
+            return False
+
+        self._is_transitioning = True
+        logger.debug("Transition lock acquired")
+        return True
+
+    def end_transition(self) -> bool:
+        """
+        End a transition animation, unlocking state changes.
+
+        Allows normal state changes to proceed after transition playback.
+
+        Returns:
+            True if lock released, False if no transition was in progress
+
+        Usage:
+            # After transition GIF completes
+            service.end_transition()
+        """
+        if not self._is_transitioning:
+            logger.warning("No transition in progress, cannot end")
+            return False
+
+        self._is_transitioning = False
+        logger.debug("Transition lock released")
+        return True
+
+    def is_transitioning(self) -> bool:
+        """
+        Check if a transition is currently in progress.
+
+        Returns:
+            True if transition lock is active, False otherwise
+        """
+        return self._is_transitioning
+
+    def parse_state_from_action(self, action: str) -> Optional[str]:
+        """
+        Parse state key from action token in LLM responses.
+
+        Handles various formats:
+            (happy) -> "happy"
+            (STATE:stand) -> "stand"
+            (Mode: idle) -> "idle"
+            (狀態:walking) -> "walking"
+
+        Also handles:
+            - Action aliases (e.g., "sleep" -> "idle")
+            - Multiple normalized forms (spaces, underscores)
+            - Label matching
+            - Chinese prefixes (狀態, 模式)
+
+        Args:
+            action: Raw action token string from LLM response
+
+        Returns:
+            State key if valid non-movement state exists, None otherwise
+        """
+        from ...utils.actions import ACTION_ALIASES
+
+        # Normalize action token
+        raw = (action or "").strip()
+        if not raw:
+            return None
+
+        lowered = raw.lower()
+
+        # Remove common prefixes: "state", "mode", "status"
+        for prefix in ("state", "mode", "status"):
+            if lowered.startswith(prefix):
+                raw = raw[len(prefix):]
+                break
+        else:
+            # Handle Chinese prefixes
+            if raw.startswith(("狀態", "模式")):
+                raw = raw[2:]
+
+        # Clean up separators
+        raw = raw.lstrip(":：-_ ")
+        normalized = raw.strip().lower()
+
+        if not normalized:
+            return None
+
+        # Check aliases (e.g., "sleep" -> "idle")
+        alias_target = ACTION_ALIASES.get(normalized)
+        if alias_target and self.get_state(alias_target):
+            if not self.is_movement_only_state(alias_target):
+                return alias_target
+
+        # Try various normalized forms
+        candidates = {
+            normalized,
+            normalized.replace(" ", "_"),
+            normalized.replace(" ", ""),
+        }
+
+        # Sanitize: keep only alphanumeric, -, _
+        sanitized = "".join(ch for ch in normalized if ch.isalnum() or ch in ("-", "_"))
+        if sanitized:
+            candidates.add(sanitized)
+
+        for candidate in candidates:
+            if self.get_state(candidate):
+                if not self.is_movement_only_state(candidate):
+                    return candidate
+
+        # Try matching by label
+        result = self.find_state_by_label(normalized)
+        if result and not self.is_movement_only_state(result):
+            return result
+
+        return None
 
     def add_state(self, key: str, label: str, copy_from: Optional[str] = None) -> Optional[State]:
         """

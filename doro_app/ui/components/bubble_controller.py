@@ -56,9 +56,6 @@ class BubbleController:
     def clamp_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
         return self._clamp_offset(candidate)
 
-    def clamp_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
-        return self._clamp_offset(candidate)
-
     # ------------------------------------------------------------------ Offset/scale manipulation
     def apply_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
         window = self._window

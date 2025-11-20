@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 
+from ..dialogs.chat_dialog import show_chat_dialog
+
 if TYPE_CHECKING:
     from ..window import DoroWindow
 
@@ -29,12 +31,7 @@ class ChatUIHelper:
 
     def prompt_chat(self) -> None:
         """Show chat input dialog and send message."""
-        text, ok = QtWidgets.QInputDialog.getText(
-            self.window,
-            "與 Doro 對話",
-            "輸入訊息:",
-            QtWidgets.QInputDialog.InputMode.Normal,
-        )
+        text, ok = show_chat_dialog(self.window)
         if not ok or not text.strip():
             return
 

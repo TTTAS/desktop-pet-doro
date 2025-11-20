@@ -2,29 +2,36 @@
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
+from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from .controller import ChatController
 from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from .core.movement.manager import MovementManager
-    from .window import DoroWindow
+    from ..movement.manager import MovementManager
+    from ..state import StateService
 
 
 class ChatOrchestrator(QtCore.QObject):
     """Coordinate chat requests, response parsing, and UI updates."""
 
-    def __init__(self, window: DoroWindow, controller: ChatController, movement: MovementManager):
-        super().__init__(window)
-        self._window = window
+    # UI notification signals (Window connects to these)
+    bubble_text_requested = QtCore.Signal(str, dict)  # (text, kwargs)
+    bubble_clear_requested = QtCore.Signal()
+    busy_cursor_requested = QtCore.Signal(bool)  # enabled
+
+    def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
+        super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
+        self._state_service = state_service
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -43,7 +50,7 @@ class ChatOrchestrator(QtCore.QObject):
             logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
                 QtWidgets.QMessageBox.information(
-                    self._window,
+                    None,  # No parent - Window handles user activity tracking
                     "Chat",
                     "I am already replying, please wait a moment.",
                 )
@@ -53,48 +60,114 @@ class ChatOrchestrator(QtCore.QObject):
         if not started:
             logger.error(f"Failed to start chat request: {error_message}")
             if not silent and error_message:
-                QtWidgets.QMessageBox.warning(self._window, "Chat", error_message)
+                QtWidgets.QMessageBox.warning(None, "Chat", error_message)
             return False
 
-        self._window._mark_user_activity()
+        # Window handles user activity tracking before calling send_message()
         return True
+
+    # ------------------------------------------------------------------ Configuration API (delegate to controller)
+
+    def get_system_prompt(self) -> str:
+        """Get the current system prompt."""
+        return self._controller.system_prompt
+
+    def set_system_prompt(self, text: str):
+        """Update the system prompt."""
+        self._controller.update_system_prompt(text)
+
+    def get_server_url(self) -> str:
+        """Get the chat server URL."""
+        return self._controller.server_url
+
+    def set_server_url(self, url: str):
+        """Set the chat server URL."""
+        self._controller.set_server_url(url)
+
+    def get_model_name(self) -> str:
+        """Get the model name."""
+        return self._controller.model
+
+    def set_model_name(self, model: str):
+        """Set the model name."""
+        self._controller.set_model(model)
+
+    def get_endpoint(self) -> str:
+        """Get the API endpoint path."""
+        return self._controller.endpoint_path
+
+    def set_endpoint(self, path: str):
+        """Set the API endpoint path."""
+        self._controller.set_endpoint_path(path)
+
+    def get_temperature(self) -> float:
+        """Get the temperature parameter."""
+        return self._controller.temperature
+
+    def set_temperature(self, value: float):
+        """Set the temperature parameter."""
+        self._controller.set_temperature(value)
+
+    def get_timeout(self) -> int:
+        """Get the request timeout in seconds."""
+        return self._controller.timeout_seconds
+
+    def set_timeout(self, seconds: int):
+        """Set the request timeout in seconds."""
+        self._controller.set_timeout_seconds(seconds)
+
+    def clear_history(self):
+        """Clear the conversation history."""
+        self._controller.clear_history()
 
     # ------------------------------------------------------------------ Controller callbacks
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
         logger.debug("Chat request started, setting busy state")
-        self._window._set_bubble_text("Thinking...", auto_hide=False)
-        self._window._set_busy_cursor(True)
+        self.bubble_text_requested.emit("Thinking...", {"auto_hide": False})
+        self.busy_cursor_requested.emit(True)
 
     def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
         logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
-            self._window._set_bubble_text(display_text)
+            self.bubble_text_requested.emit(display_text, {})
         else:
             fallback = assistant_text.strip()
             if fallback:
-                self._window._set_bubble_text(fallback, override_visibility=True)
+                self.bubble_text_requested.emit(fallback, {"override_visibility": True})
             else:
-                self._window._clear_bubble_text()
-        self._window._set_busy_cursor(False)
+                self.bubble_clear_requested.emit()
+        self.busy_cursor_requested.emit(False)
+
+    def _get_random_network_fail_message(self) -> str:
+        """
+        Get a random network failure message from network_fail_doro.txt.
+
+        Returns:
+            Random message from file, or default message if file not found
+        """
+        try:
+            if NETWORK_FAIL_MESSAGES_PATH.exists():
+                with open(NETWORK_FAIL_MESSAGES_PATH, "r", encoding="utf-8") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                if lines:
+                    return random.choice(lines)
+        except Exception as e:
+            logger.warning(f"Failed to read network fail messages: {e}")
+
+        # Fallback message
+        return "嗚嗚……人，doro找不到回應了……"
 
     def _on_request_failed(self, error_message: str, was_auto: bool):
         logger.error(f"Chat request failed (auto={was_auto}): {error_message}")
+        self.busy_cursor_requested.emit(False)
+
+        # Use random network fail message from doro
+        fallback_text = self._get_random_network_fail_message()
+
         if not was_auto:
-            QtWidgets.QMessageBox.warning(
-                self._window,
-                "Chat",
-                error_message or "Failed to reach the chat server.",
-            )
-        self._window._set_busy_cursor(False)
-        fallback_text = (
-            error_message.strip()
-            if error_message and error_message.strip()
-            else "I could not reach the chat server."
-        )
-        if not was_auto:
-            self._window._set_bubble_text(fallback_text, auto_hide=False)
+            self.bubble_text_requested.emit(fallback_text, {"auto_hide": False})
 
     # ------------------------------------------------------------------ Response processing
 
@@ -107,17 +180,19 @@ class ChatOrchestrator(QtCore.QObject):
                 if self._movement.handle_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
-                state_key = self._window._find_state_for_action(token)
+                state_key = self._state_service.parse_state_from_action(token)
                 if state_key:
                     # Check if this is a movement-only state
-                    is_movement_only = self._window.is_movement_only_state(state_key)
+                    is_movement_only = self._state_service.is_movement_only_state(state_key)
                     if is_movement_only:
                         self._movement.record_manual_report(
                             f"Movement state '{state_key}' 未設定方向，請更新 move_state_list。"
                         )
                         continue
-                    if state_key != self._window._current_state_key:
-                        self._window._set_state(state_key)
+                    current_state = self._state_service.get_current_state()
+                    current_key = current_state.key if current_state else None
+                    if state_key != current_key:
+                        self._state_service.set_state(state_key)
                     continue
 
             direction = self._movement.parse_movement_token(token)

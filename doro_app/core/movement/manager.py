@@ -14,6 +14,7 @@ from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 if TYPE_CHECKING:
     from .window import DoroWindow
+    from ..state import StateService
 
 
 # Movement constants
@@ -33,8 +34,10 @@ DIRECTION_COMPONENT_THRESHOLD = 0.2  # for direction classification
 class MovementManager:
     """Encapsulates movement parsing, execution, and reporting."""
 
-    def __init__(self, window: DoroWindow):
+    def __init__(self, window: DoroWindow, state_service: StateService, movement_step_px: int):
         self._window = window
+        self._state_service = state_service
+        self._movement_step_px = movement_step_px
         self._active_movement: MovementRequest | None = None
         self._movement_remaining = 0.0
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -57,7 +60,7 @@ class MovementManager:
         self._last_error = None
 
     def instruction_text(self) -> str:
-        step = max(12, self._window.get_movement_step_px())
+        step = max(12, self._movement_step_px)
         return (
             "輸出格式提醒：\n"
             "  • 狀態請以括號標註，例如 (HAPPY) 文字內容。\n"
@@ -112,9 +115,10 @@ class MovementManager:
                 or params.get("movestate")
                 or params.get("移動狀態")
             )
-            move_state_key, move_state_settings = window.resolve_move_state(move_state_param)
+            move_state_key, move_state_settings = self._window._resolve_move_state(move_state_param)
             if move_state_settings is None:
-                move_state_key, move_state_settings = window.resolve_move_state(window.get_default_move_state_key())
+                default_key = self._state_service.get_default_movement_state()
+                move_state_key, move_state_settings = self._window._resolve_move_state(default_key)
 
             direction_vec = None
             if direction_key:
@@ -134,7 +138,7 @@ class MovementManager:
                 reports.append(f"[移動錯誤] {self._last_error}")
                 return False
 
-            step_default = window.get_movement_step_px()
+            step_default = self._movement_step_px
             if distance_param not in (None, ""):
                 distance_val = abs(float(_safe_float(distance_param, float(step_default))))
             elif move_state_settings and move_state_settings.default_distance is not None:
@@ -180,11 +184,11 @@ class MovementManager:
 
         if action_lower == "face":
             dir_hint = params.get("dir", "").strip().lower()
-            bubble_offset = window.get_bubble_offset()
+            bubble_offset = window._bubble_offset
             if dir_hint in ("left", "l", "左"):
-                window.apply_bubble_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window._bubble_controller.apply_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             elif dir_hint in ("right", "r", "右"):
-                window.apply_bubble_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window._bubble_controller.apply_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             return True
         return True
 
@@ -217,7 +221,7 @@ class MovementManager:
         dx, dy = direction
         if dx == 0 and dy == 0:
             return None
-        step = max(12, self._window.get_movement_step_px())
+        step = max(12, self._movement_step_px)
         current = self._window.frameGeometry().topLeft()
         target = QtCore.QPoint(round(current.x() + dx * step), round(current.y() + dy * step))
         clamped = self._window.clamp_window_position(target)
@@ -306,10 +310,11 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_pending_report = None
         self._movement_direction_key = None
-        if self._movement_previous_state and window.get_state(self._movement_previous_state):
-            current = window.get_current_state_key()
+        if self._movement_previous_state and self._state_service.get_state(self._movement_previous_state):
+            current_state = self._state_service.get_current_state()
+            current = current_state.key if current_state else None
             if current != self._movement_previous_state:
-                window.set_state(self._movement_previous_state)
+                self._state_service.set_state(self._movement_previous_state)
         self._movement_previous_state = None
 
     def _format_move_report(self, pos: QtCore.QPoint, direction_label: str | None, dx: int, dy: int) -> str:
@@ -400,15 +405,17 @@ class MovementManager:
         self._movement_start_pos = window.frameGeometry().topLeft()
         self._movement_direction_key = self._direction_slug(direction)
         self._movement_pending_report = report
-        self._movement_previous_state = window.get_current_state_key()
-        window.update_last_tick_time(time.monotonic())
+        current_state = self._state_service.get_current_state()
+        self._movement_previous_state = current_state.key if current_state else None
+        window._last_tick_time = time.monotonic()
         self._set_movement_state(
             direction,
             speed_name,
             move_state=move_state,
-            prefer_walking=move_state_name == window.get_default_move_state_key(),
+            prefer_walking=move_state_name == self._state_service.get_default_movement_state(),
         )
-        current_state = window.get_current_state_key()
+        current_state_obj = self._state_service.get_current_state()
+        current_state = current_state_obj.key if current_state_obj else None
         self._active_movement = MovementRequest(
             direction=direction,
             distance_px=distance,
@@ -426,25 +433,24 @@ class MovementManager:
         prefer_walking: bool = False,
     ):
         """Select and set appropriate state for movement."""
-        window = self._window
-
         # Priority 1: Use explicit move_state if provided and valid
-        if move_state and window.get_state(move_state.state_key):
+        if move_state and self._state_service.get_state(move_state.state_key):
             desired_key = move_state.state_key
         # Priority 2: Prefer default movement state if requested
         elif prefer_walking:
-            desired_key = window.get_default_movement_state()
+            desired_key = self._state_service.get_default_movement_state()
         # Priority 3: Infer state based on direction and speed
         else:
             desired_key = self._infer_state_for_movement(direction, speed_name)
             # Priority 4: Fall back to default movement state
             if not desired_key:
-                desired_key = window.get_default_movement_state()
+                desired_key = self._state_service.get_default_movement_state()
 
         # Only change state if we found a valid one and it's different
-        current_state_key = window.get_current_state_key()
+        current_state_obj = self._state_service.get_current_state()
+        current_state_key = current_state_obj.key if current_state_obj else None
         if desired_key and desired_key != current_state_key:
-            window.set_state(desired_key)
+            self._state_service.set_state(desired_key)
 
     def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
         """
@@ -453,23 +459,22 @@ class MovementManager:
         Uses data-driven approach: queries StateService for movement states
         that match the direction, instead of hardcoded string patterns.
         """
-        window = self._window
         slug = self._direction_slug(direction)
         if not slug:
             return None
 
         # Query movement states that support this direction
-        move_states = window.find_move_states_by_direction(slug)
+        move_states = self._state_service.find_move_states_by_direction(slug)
 
         # Priority 1: Exact speed match
         for move_state in move_states:
             if move_state.default_speed == speed_name:
-                if window.get_state(move_state.state_key):
+                if self._state_service.get_state(move_state.state_key):
                     return move_state.state_key
 
         # Priority 2: Any state for this direction
         for move_state in move_states:
-            if window.get_state(move_state.state_key):
+            if self._state_service.get_state(move_state.state_key):
                 return move_state.state_key
 
         return None

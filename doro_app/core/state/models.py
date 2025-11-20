@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Generic, Optional, Protocol, TypeVar
 
+# Transition wildcard constant (also defined in constants.py for UI usage)
+TRANSITION_WILDCARD = "*"
+
 
 @dataclass(frozen=True)
 class VisualConfig:
@@ -308,8 +311,14 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
 
     def add(self, transition: TransitionState) -> None:
         """Add or update a transition."""
+        # If overwriting an existing key, remove old index first
+        old_transition = self.get(transition.key)
+        if old_transition:
+            old_pair = (old_transition.from_state, old_transition.to_state)
+            self._transition_map.pop(old_pair, None)
+
         super().add(transition)
-        # Update index
+        # Update index with new transition
         self._transition_map[(transition.from_state, transition.to_state)] = transition.key
 
     def remove(self, key: str) -> bool:
@@ -322,10 +331,55 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
         return super().remove(key)
 
     def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
-        """Find a transition between two states."""
+        """
+        Find a transition between two states with priority-based matching.
+
+        Matching priority (highest to lowest):
+        1. Exact match: from_state -> to_state (e.g., "idle" -> "happy")
+        2. Partial wildcard:
+           - from_state -> "*" (e.g., "idle" -> any state)
+           - "*" -> to_state (e.g., any state -> "happy")
+        3. Full wildcard: "*" -> "*" (universal transition)
+
+        Args:
+            from_state: Starting state key
+            to_state: Target state key
+
+        Returns:
+            TransitionState if found, None otherwise
+
+        Example:
+            # Priority 1: Exact match
+            find_transition("idle", "happy")  # Returns "idle" -> "happy" if exists
+
+            # Priority 2: Partial wildcard
+            find_transition("idle", "happy")  # Returns "idle" -> "*" if no exact match
+            find_transition("idle", "happy")  # Returns "*" -> "happy" if no "idle" -> "*"
+
+            # Priority 3: Universal
+            find_transition("idle", "happy")  # Returns "*" -> "*" if no other matches
+        """
+        # Priority 1: Exact match
         key = self._transition_map.get((from_state, to_state))
         if key:
             return self.get(key)
+
+        # Priority 2a: from_state -> "*" (from specific state to any state)
+        key = self._transition_map.get((from_state, TRANSITION_WILDCARD))
+        if key:
+            return self.get(key)
+
+        # Priority 2b: "*" -> to_state (from any state to specific state)
+        key = self._transition_map.get((TRANSITION_WILDCARD, to_state))
+        if key:
+            return self.get(key)
+
+        # Priority 3: "*" -> "*" (universal transition)
+        key = self._transition_map.get((TRANSITION_WILDCARD, TRANSITION_WILDCARD))
+        if key:
+            return self.get(key)
+
+        # No match found
         return None
 
 
