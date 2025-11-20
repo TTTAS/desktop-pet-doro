@@ -158,12 +158,13 @@ class ChatOrchestrator(QtCore.QObject):
 
     def _on_request_failed(self, error_message: str, was_auto: bool):
         logger.error(f"Chat request failed (auto={was_auto}): {error_message}")
-        if not was_auto:
-            QtWidgets.QMessageBox.warning(
-                self._window,
-                "Chat",
-                error_message or "Failed to reach the chat server.",
-            )
+        # Don't show error dialog - doro's message is enough
+        # if not was_auto:
+        #     QtWidgets.QMessageBox.warning(
+        #         self._window,
+        #         "Chat",
+        #         error_message or "Failed to reach the chat server.",
+        #     )
         self._window._set_busy_cursor(False)
 
         # Use random network fail message from doro
