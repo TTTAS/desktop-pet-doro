@@ -412,6 +412,65 @@ class StateService:
 
         return True
 
+    # ═══════════════════════════════════════════════════════════
+    # Transition Lock Management
+    # ═══════════════════════════════════════════════════════════
+
+    def begin_transition(self) -> bool:
+        """
+        Begin a transition animation, locking state changes.
+
+        Prevents non-forced state changes during transition playback.
+        Only forced state changes (force=True) can bypass this lock.
+
+        Returns:
+            True if lock acquired, False if already transitioning
+
+        Usage:
+            # Before playing transition GIF
+            if service.begin_transition():
+                play_transition_gif()
+                # ... wait for completion ...
+                service.end_transition()
+        """
+        if self._is_transitioning:
+            logger.warning("Transition already in progress, cannot begin new transition")
+            return False
+
+        self._is_transitioning = True
+        logger.debug("Transition lock acquired")
+        return True
+
+    def end_transition(self) -> bool:
+        """
+        End a transition animation, unlocking state changes.
+
+        Allows normal state changes to proceed after transition playback.
+
+        Returns:
+            True if lock released, False if no transition was in progress
+
+        Usage:
+            # After transition GIF completes
+            service.end_transition()
+        """
+        if not self._is_transitioning:
+            logger.warning("No transition in progress, cannot end")
+            return False
+
+        self._is_transitioning = False
+        logger.debug("Transition lock released")
+        return True
+
+    def is_transitioning(self) -> bool:
+        """
+        Check if a transition is currently in progress.
+
+        Returns:
+            True if transition lock is active, False otherwise
+        """
+        return self._is_transitioning
+
     def parse_state_from_action(self, action: str) -> Optional[str]:
         """
         Parse state key from action token in LLM responses.
