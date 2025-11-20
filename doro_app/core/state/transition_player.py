@@ -42,6 +42,8 @@ class TransitionPlayer(QtCore.QObject):
         self._is_playing = False
         self._target_state_key: Optional[str] = None
         self._transition_movie: Optional[QtGui.QMovie] = None
+        self._last_frame_number = -1
+        self._has_played_once = False
 
     def play_transition(self, from_state: str, to_state: str) -> bool:
         """
@@ -90,6 +92,8 @@ class TransitionPlayer(QtCore.QObject):
         logger.info(f"Playing transition: {from_state} -> {to_state} ({transition.transition_gif_id})")
         self._is_playing = True
         self._target_state_key = to_state
+        self._last_frame_number = -1
+        self._has_played_once = False
         self._load_and_play_transition_gif(gif_path)
 
         return True
@@ -134,12 +138,10 @@ class TransitionPlayer(QtCore.QObject):
         # Create QMovie for transition GIF
         self._transition_movie = QtGui.QMovie(str(gif_path))
 
-        # CRITICAL: Set loop count to 1 so transition plays only once
-        # Without this, the GIF loops forever and finished signal never fires
-        self._transition_movie.setLoopCount(1)
-
-        # Connect completion signal
-        self._transition_movie.finished.connect(self._on_transition_complete)
+        # CRITICAL: Monitor frame changes to detect when one loop completes
+        # QMovie doesn't have setLoopCount in PySide6, so we detect loop completion manually
+        # When frameNumber wraps back to 0, we know the loop completed
+        self._transition_movie.frameChanged.connect(self._on_transition_frame_changed)
 
         # Set movie to window's GIF movie (temporarily)
         # This will cause window to render the transition GIF
@@ -158,6 +160,27 @@ class TransitionPlayer(QtCore.QObject):
         self._window.update()
 
         logger.debug(f"Started playing transition GIF: {gif_path.name}")
+
+    def _on_transition_frame_changed(self, frame_number: int):
+        """
+        Monitor frame changes to detect when transition GIF completes one loop.
+
+        Args:
+            frame_number: Current frame number from QMovie
+        """
+        if not self._is_playing or not self._transition_movie:
+            return
+
+        # Detect loop completion: frame number wraps back to 0 or -1 after we've played
+        if self._last_frame_number > 0 and frame_number <= 0:
+            # One complete loop detected
+            logger.debug(f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})")
+            self._has_played_once = True
+            # Stop the movie and trigger completion
+            self._transition_movie.stop()
+            self._on_transition_complete()
+        else:
+            self._last_frame_number = frame_number
 
     def _on_transition_complete(self):
         """
