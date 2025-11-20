@@ -38,6 +38,7 @@ from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PR
 from .core.state import State, StateChangeEvent
 from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .core.state import StateService
+from .core.state.transition_player import TransitionPlayer
 from .ui.theme.theme import ensure_application_theme
 from .ui.theme.themed_menu import build_context_menu_content, create_doro_menu
 from .ui.helpers import ChatUIHelper
@@ -128,6 +129,9 @@ class DoroWindow(QtWidgets.QWidget):
         # Connect state change events
         self._state_service.on_state_changed = self._on_state_changed
         self._state_service.on_states_modified = self._on_states_modified
+
+        # Create transition player for state change animations
+        self._transition_player = TransitionPlayer(self, self._state_service)
 
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
@@ -509,14 +513,22 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = event.new_key
         self._state_list_text = self._state_service.write_state_list()
 
-        # Get and load GIF
-        gif_resource_id = self._state_service.get_gif_id(event.new_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._load_gif(str(gif_path))
+        # Try to play transition animation
+        # If transition exists and plays, it will load the target state GIF when complete
+        if self._transition_player.play_transition(event.old_key, event.new_key):
+            logger.debug(f"Transition animation started: {event.old_key} -> {event.new_key}")
+            # Visual config will be applied when transition completes
+            # For now, just update the visual parameters (transition GIF is playing)
+            # The target state GIF will be loaded by TransitionPlayer after transition completes
+        else:
+            # No transition available - load target state GIF directly
+            gif_resource_id = self._state_service.get_gif_id(event.new_key)
+            if gif_resource_id:
+                gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
+                if gif_path:
+                    self._load_gif(str(gif_path))
 
-        # Apply visual config
+        # Apply visual config (even during transitions, for when it completes)
         visual = state.visual
         self._amplitude = visual.bob_amplitude
         self._scale_amp = visual.scale_amplitude
