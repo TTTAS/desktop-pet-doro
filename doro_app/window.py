@@ -28,6 +28,7 @@ from .constants import (
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.fallback_sprite import draw_fallback_sprite
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .utils.logger import get_logger
@@ -462,36 +463,8 @@ class DoroWindow(QtWidgets.QWidget):
             p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             p.drawPixmap(0, 0, pixmap)
         else:
-            p.translate(-FACE_CENTER_X, -FACE_CENTER_X)
-
-            path = QtGui.QPainterPath(QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_TOP))
-            path.cubicTo(FACE_CONTROL_X_LEFT, FACE_CENTER_Y_TOP, FACE_LEFT_X, FACE_CONTROL_X_LEFT, FACE_LEFT_X, FACE_CENTER_X)
-            path.cubicTo(FACE_LEFT_X, 130, FACE_CONTROL_X_LEFT, FACE_CENTER_Y_BOTTOM, FACE_CENTER_X, FACE_CENTER_Y_BOTTOM)
-            path.cubicTo(FACE_CONTROL_X_RIGHT, FACE_CENTER_Y_BOTTOM, FACE_RIGHT_X, 130, FACE_RIGHT_X, FACE_CENTER_X)
-            path.cubicTo(FACE_RIGHT_X, FACE_CONTROL_X_LEFT, FACE_CONTROL_X_RIGHT, FACE_CENTER_Y_TOP, FACE_CENTER_X, FACE_CENTER_Y_TOP)
-
-            fill = QtGui.QLinearGradient(QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_TOP), QtCore.QPointF(FACE_CENTER_X, FACE_CENTER_Y_BOTTOM))
-            fill.setColorAt(0.0, self._fill_colors[0])
-            fill.setColorAt(0.4, self._fill_colors[1])
-            fill.setColorAt(1.0, self._fill_colors[2])
-
-            p.setPen(QtGui.QPen(QtGui.QColor(DEFAULT_BORDER_COLOR), DEFAULT_BORDER_WIDTH))
-            p.setBrush(QtGui.QBrush(fill))
-            p.drawPath(path)
-
-            if self._cheek_alpha > 0:
-                blush = QtGui.QColor(self._blush_base)
-                blush.setAlpha(int(self._cheek_alpha))
-                p.setBrush(blush)
-                p.setPen(QtCore.Qt.PenStyle.NoPen)
-                p.drawEllipse(QtCore.QRectF(BLUSH_LEFT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT))
-                p.drawEllipse(QtCore.QRectF(BLUSH_RIGHT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT))
-
-            p.setBrush(self._eye_color)
-            p.drawEllipse(QtCore.QRectF(EYE_LEFT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT))
-            p.drawEllipse(QtCore.QRectF(EYE_RIGHT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT))
-
-            self._draw_mouth(p)
+            # Draw fallback sprite when no GIF is available
+            draw_fallback_sprite(p, self._fill_colors, self._cheek_alpha, self._blush_base, self._eye_color)
 
         p.restore()
 
@@ -983,18 +956,6 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _clear_bubble_text(self):
         self._bubble_controller.clear_text()
-
-    def _draw_mouth(self, p: QtGui.QPainter):
-        pen = QtGui.QPen(QtGui.QColor(51, 51, 51))
-        pen.setWidthF(MOUTH_PEN_WIDTH)
-        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-        p.setPen(pen)
-        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-        mouth = QtGui.QPainterPath()
-        mouth.moveTo(MOUTH_START_X, MOUTH_START_Y)
-        mouth.cubicTo(MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y, MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y)
-        p.drawPath(mouth)
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._set_busy_cursor(False)
