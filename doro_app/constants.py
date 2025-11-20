@@ -42,33 +42,10 @@ BUBBLE_DEFAULT_OFFSET_Y = -110.0
 BUBBLE_DEFAULT_SCALE = 1.0
 BUBBLE_DEFAULT_ALPHA = 170.0
 
-# Bubble positioning
-BUBBLE_GAP_FROM_SPRITE = 28.0  # Gap between sprite and bubble
-BUBBLE_MARGIN_TOP = 18.0
-BUBBLE_MARGIN_BOTTOM = 24.0
-BUBBLE_MARGIN_LEFT = 12.0
-
-# Bubble rendering
-BUBBLE_CORNER_RADIUS = 18.0
-BUBBLE_INNER_PADDING_X = 28.0
-BUBBLE_INNER_PADDING_Y = 22.0
-BUBBLE_SHADOW_OFFSET_BELOW = 8.0
-BUBBLE_SHADOW_OFFSET_ABOVE = -12.0
-BUBBLE_SHADOW_BOTTOM_BELOW = 12.0
-BUBBLE_SHADOW_BOTTOM_ABOVE = 4.0
-
-# Bubble text
-BUBBLE_TEXT_FONT_SIZE = 12.0
-BUBBLE_MIN_TEXT_WIDTH = 60.0
-BUBBLE_MIN_WIDTH = 80.0
-BUBBLE_MIN_HEIGHT = 80.0
-
 # Bubble gradient alphas (as fractions of base alpha)
 BUBBLE_OUTLINE_ALPHA_FACTOR = 0.55
 BUBBLE_FILL_ALPHA_FACTOR = 0.92
 BUBBLE_SHADOW_ALPHA_FACTOR = 0.4
-BUBBLE_SHEEN_ALPHA_FACTOR_START = 0.28
-BUBBLE_SHEEN_ALPHA_FACTOR_MID = 0.12
 
 # ═══════════════════════════════════════════════════════════
 # Sprite Positioning Constants
@@ -136,30 +113,6 @@ MOUTH_END_Y = 95
 MOUTH_PEN_WIDTH = 2
 
 # ═══════════════════════════════════════════════════════════
-# Bubble Gradient Colors
-# ═══════════════════════════════════════════════════════════
-
-BUBBLE_FILL_TOP_COLOR = (255, 255, 255)  # RGB
-BUBBLE_FILL_BOTTOM_COLOR = (236, 240, 255)  # RGB
-
-BUBBLE_OUTLINE_START_COLOR = (134, 180, 255)  # RGB
-BUBBLE_OUTLINE_END_COLOR = (255, 255, 255)  # RGB
-
-BUBBLE_SHEEN_COLOR = (255, 255, 255)  # RGB (alpha varies)
-BUBBLE_SHADOW_COLOR = (4, 8, 20)  # RGB (alpha varies)
-
-BUBBLE_TEXT_COLOR = (0, 0, 0, 255)  # RGBA
-
-# ═══════════════════════════════════════════════════════════
-# Shadow Effect Constants (for dialogs)
-# ═══════════════════════════════════════════════════════════
-
-CARD_SHADOW_BLUR_RADIUS = 28.0
-CARD_SHADOW_Y_OFFSET = 10.0
-CARD_SHADOW_OPACITY = 150
-CARD_SHADOW_COLOR = (4, 7, 20)  # RGB
-
-# ═══════════════════════════════════════════════════════════
 # Protected State Keys
 # ═══════════════════════════════════════════════════════════
 
@@ -185,26 +138,3 @@ def get_default_blush_color() -> QtGui.QColor:
 def get_default_eye_color() -> QtGui.QColor:
     """Get default eye color."""
     return QtGui.QColor(DEFAULT_EYE_COLOR)
-
-def get_bubble_fill_gradient_colors(alpha: int) -> tuple[QtGui.QColor, QtGui.QColor]:
-    """Get bubble fill gradient colors with specified alpha."""
-    fill_alpha = int(alpha * BUBBLE_FILL_ALPHA_FACTOR)
-    top = QtGui.QColor(*BUBBLE_FILL_TOP_COLOR, fill_alpha)
-    bottom = QtGui.QColor(*BUBBLE_FILL_BOTTOM_COLOR, fill_alpha)
-    return top, bottom
-
-def get_bubble_outline_gradient_colors(alpha: int) -> tuple[QtGui.QColor, QtGui.QColor]:
-    """Get bubble outline gradient colors with specified alpha."""
-    outline_alpha = int(alpha * BUBBLE_OUTLINE_ALPHA_FACTOR)
-    start = QtGui.QColor(*BUBBLE_OUTLINE_START_COLOR, outline_alpha)
-    end = QtGui.QColor(*BUBBLE_OUTLINE_END_COLOR, outline_alpha)
-    return start, end
-
-def get_bubble_shadow_color(alpha: int) -> QtGui.QColor:
-    """Get bubble shadow color with specified alpha."""
-    shadow_alpha = int(alpha * BUBBLE_SHADOW_ALPHA_FACTOR)
-    return QtGui.QColor(*BUBBLE_SHADOW_COLOR, shadow_alpha)
-
-def get_bubble_text_color() -> QtGui.QColor:
-    """Get bubble text color."""
-    return QtGui.QColor(*BUBBLE_TEXT_COLOR)

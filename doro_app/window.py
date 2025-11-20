@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import math
 import random
-import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -17,8 +15,7 @@ from .constants import (
     SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
     MOVEMENT_STEP_PX, BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE, BUBBLE_DEFAULT_ALPHA, MOVEMENT_ONLY_STATE_KEYS,
-    DEFAULT_MOVE_STATE_KEY, COMPANION_IDLE_THRESHOLD_SECONDS,
-    CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
+    DEFAULT_MOVE_STATE_KEY, CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
     SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
     # Fallback sprite geometry
     FACE_CENTER_X, FACE_CENTER_Y_TOP, FACE_CENTER_Y_BOTTOM, FACE_LEFT_X, FACE_RIGHT_X,
@@ -36,7 +33,7 @@ from .core.chat.orchestrator import ChatOrchestrator
 from .utils.logger import get_logger
 from .core.movement.manager import MovementManager
 from .utils.models import MoveStateSettings
-from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, COMPANION_PROMPTS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from .core.state import State, StateChangeEvent
 from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from .core.state import StateService
@@ -73,7 +70,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Appearance/animation parameters
         # OLD state data removed - now managed by StateService
-        self._active_gif_path: str | None = None
         self._current_state_key: str = ""
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
@@ -102,10 +98,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_resize_anchor: QtCore.QPointF | None = None
         self._bubble_initial_scale = 1.0
         self._bubble_resize_cursor_active = False
-        self._companion_prompts: list[str] = []
-        self._companion_prompt_index = 0
         self._last_user_activity = time.monotonic()
-        self._companion_idle_threshold = COMPANION_IDLE_THRESHOLD_SECONDS
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
@@ -152,7 +145,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_config_path = self._state_storage_dir / "states.json"
         self._prompt_file_path = PROMPT_PATH
         self._click_actions_path = CLICK_ACTIONS_PATH
-        self._companion_prompts_path = COMPANION_PROMPTS_PATH
         self._click_press_pos: QtCore.QPointF | None = None
         self._click_was_dragging = False
 
@@ -188,7 +180,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
-        self._companion_prompts = self._load_companion_prompts()
 
         # Initialize state system (NEW architecture)
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
@@ -520,21 +511,6 @@ class DoroWindow(QtWidgets.QWidget):
         font.setWeight(QtGui.QFont.Weight.Bold)
         p.setFont(font)
 
-    def _apply_card_shadow(
-        self,
-        widget: QtWidgets.QWidget,
-        *,
-        blur_radius: float = 28.0,
-        y_offset: float = 10.0,
-        opacity: int = 150,
-    ):
-        shadow = QtWidgets.QGraphicsDropShadowEffect(widget)
-        shadow.setBlurRadius(blur_radius)
-        shadow.setOffset(0.0, y_offset)
-        shadow.setColor(QtGui.QColor(4, 7, 20, opacity))
-        widget.setGraphicsEffect(shadow)
-    # --- State helpers ---------------------------------------------------
-
     # ═══════════════════════════════════════════════════════════
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
@@ -703,24 +679,6 @@ class DoroWindow(QtWidgets.QWidget):
                     self._apply_window_preferred_size()
         self.update()
 
-    def _select_state_gif_variant(self, key: str):
-        """Load the GIF for the given state."""
-        gif_resource_id = self._state_service.get_gif_id(key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._active_gif_path = str(gif_path)
-                return
-
-        # Fallback to default idle GIF
-        if self._default_idle_gif.is_file():
-            try:
-                self._active_gif_path = str(self._default_idle_gif.resolve())
-            except OSError:
-                self._active_gif_path = str(self._default_idle_gif)
-        else:
-            self._active_gif_path = None
-
     def _set_state(self, key: str):
         # NEW: Use StateService
         self._state_service.set_state(key)
@@ -754,47 +712,6 @@ class DoroWindow(QtWidgets.QWidget):
         except OSError:
             return []
         return [line.strip() for line in raw.splitlines() if line.strip()]
-
-    def _load_companion_prompts(self) -> list[str]:
-        path = getattr(self, "_companion_prompts_path", None)
-        prompts: list[str] = []
-        if path:
-            try:
-                raw = Path(path).read_text(encoding="utf-8")
-            except OSError:
-                raw = ""
-            if raw:
-                prompts = [line.strip() for line in raw.splitlines() if line.strip()]
-        if not prompts:
-            prompts = [
-                "請主動示範一個陪伴主人的小動作，務必搭配適當的括號狀態或方括號移動，並附上一句溫暖關懷的短句。",
-                "想辦法吸引主人的注意，安排一個活潑的小劇情，記得輸出必要的 (STATE: ...) 或 [MOVE:...] 指令。",
-                "描述 Doro 此刻的心情並配上一個生動的動作，簡短一句話即可，務必包含行為指令讓動畫能執行。",
-            ]
-        return prompts
-
-    def _next_companion_prompt(self) -> str:
-        if not self._companion_prompts:
-            return ""
-        prompt = self._companion_prompts[self._companion_prompt_index % len(self._companion_prompts)]
-        self._companion_prompt_index = (self._companion_prompt_index + 1) % len(self._companion_prompts)
-        return prompt
-
-    def _on_companion_timeout(self):
-        if self._chat_orchestrator.is_inflight:
-            return
-        if not self.isVisible():
-            return
-        if self.windowState() & QtCore.Qt.WindowState.WindowMinimized:
-            return
-        now = time.monotonic()
-        if now - self._last_user_activity < self._companion_idle_threshold:
-            return
-        prompt = self._next_companion_prompt()
-        if not prompt:
-            return
-        self._last_user_activity = now
-        self._chat_orchestrator.send_message(prompt, silent=True, is_auto=True)
 
     def _trigger_click_action(self):
         self._mark_user_activity()
@@ -1081,11 +998,6 @@ class DoroWindow(QtWidgets.QWidget):
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._set_busy_cursor(False)
-
-        # Stop companion timer
-        timer = getattr(self, "_companion_timer", None)
-        if isinstance(timer, QtCore.QTimer):
-            timer.stop()
 
         # Clean up resources
         try:
