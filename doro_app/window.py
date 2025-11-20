@@ -30,7 +30,6 @@ from .constants import (
     DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH,
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
-from .utils.actions import ACTION_ALIASES
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
@@ -180,7 +179,13 @@ class DoroWindow(QtWidgets.QWidget):
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self,
         )
-        self._chat_orchestrator = ChatOrchestrator(self, self._chat_controller, self._movement, self._state_service)
+        self._chat_orchestrator = ChatOrchestrator(self._chat_controller, self._movement, self._state_service)
+
+        # Connect ChatOrchestrator signals to Window methods
+        self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
+        self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
+        self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+
         self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
         self._companion_prompts = self._load_companion_prompts()
@@ -801,53 +806,6 @@ class DoroWindow(QtWidgets.QWidget):
             return
         self._chat_orchestrator.send_message(message)
 
-    def _find_state_for_action(self, action: str) -> str | None:
-        # Normalize action token inline
-        raw = (action or "").strip()
-        if not raw:
-            return None
-        lowered = raw.lower()
-        for prefix in ("state", "mode", "status"):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix) :]
-                break
-        else:
-            if raw.startswith(("狀態", "模式")):
-                raw = raw[2:]
-        raw = raw.lstrip(":：-_ ")
-        normalized = raw.strip().lower()
-
-        if not normalized:
-            return None
-
-        # Check aliases
-        alias_target = ACTION_ALIASES.get(normalized)
-        if alias_target and self._state_service.get_state(alias_target):
-            if not self._is_movement_only_state(alias_target):
-                return alias_target
-
-        # Try various normalized forms
-        candidates = {
-            normalized,
-            normalized.replace(" ", "_"),
-            normalized.replace(" ", ""),
-        }
-        sanitized = "".join(ch for ch in normalized if ch.isalnum() or ch in ("-", "_"))
-        if sanitized:
-            candidates.add(sanitized)
-
-        for candidate in candidates:
-            if self._state_service.get_state(candidate):
-                if not self._is_movement_only_state(candidate):
-                    return candidate
-
-        # Try matching by label
-        result = self._state_service.find_state_by_label(normalized)
-        if result and not self._is_movement_only_state(result):
-            return result
-
-        return None
-
     def _set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
@@ -1079,6 +1037,16 @@ class DoroWindow(QtWidgets.QWidget):
 
         p.restore()
         self._panel_rect_cache = QtCore.QRectF(panel_rect)
+
+    def _on_bubble_text_requested(self, text: str, kwargs: dict):
+        """
+        Handle bubble text request from ChatOrchestrator signal.
+
+        Args:
+            text: Text to display in bubble
+            kwargs: Additional arguments for _set_bubble_text() (dict)
+        """
+        self._set_bubble_text(text, **kwargs)
 
     def _set_bubble_text(
         self,

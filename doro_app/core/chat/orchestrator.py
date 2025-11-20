@@ -16,16 +16,19 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ..movement.manager import MovementManager
-    from ...window import DoroWindow
     from ..state import StateService
 
 
 class ChatOrchestrator(QtCore.QObject):
     """Coordinate chat requests, response parsing, and UI updates."""
 
-    def __init__(self, window: DoroWindow, controller: ChatController, movement: MovementManager, state_service: StateService):
-        super().__init__(window)
-        self._window = window
+    # UI notification signals (Window connects to these)
+    bubble_text_requested = QtCore.Signal(str, dict)  # (text, kwargs)
+    bubble_clear_requested = QtCore.Signal()
+    busy_cursor_requested = QtCore.Signal(bool)  # enabled
+
+    def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
+        super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
         self._state_service = state_service
@@ -47,7 +50,7 @@ class ChatOrchestrator(QtCore.QObject):
             logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
                 QtWidgets.QMessageBox.information(
-                    self._window,
+                    None,  # No parent - Window handles user activity tracking
                     "Chat",
                     "I am already replying, please wait a moment.",
                 )
@@ -57,10 +60,10 @@ class ChatOrchestrator(QtCore.QObject):
         if not started:
             logger.error(f"Failed to start chat request: {error_message}")
             if not silent and error_message:
-                QtWidgets.QMessageBox.warning(self._window, "Chat", error_message)
+                QtWidgets.QMessageBox.warning(None, "Chat", error_message)
             return False
 
-        self._window._mark_user_activity()
+        # Window handles user activity tracking before calling send_message()
         return True
 
     # ------------------------------------------------------------------ Configuration API (delegate to controller)
@@ -121,21 +124,21 @@ class ChatOrchestrator(QtCore.QObject):
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
         logger.debug("Chat request started, setting busy state")
-        self._window._set_bubble_text("Thinking...", auto_hide=False)
-        self._window._set_busy_cursor(True)
+        self.bubble_text_requested.emit("Thinking...", {"auto_hide": False})
+        self.busy_cursor_requested.emit(True)
 
     def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
         logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
-            self._window._set_bubble_text(display_text)
+            self.bubble_text_requested.emit(display_text, {})
         else:
             fallback = assistant_text.strip()
             if fallback:
-                self._window._set_bubble_text(fallback, override_visibility=True)
+                self.bubble_text_requested.emit(fallback, {"override_visibility": True})
             else:
-                self._window._clear_bubble_text()
-        self._window._set_busy_cursor(False)
+                self.bubble_clear_requested.emit()
+        self.busy_cursor_requested.emit(False)
 
     def _get_random_network_fail_message(self) -> str:
         """
@@ -158,20 +161,13 @@ class ChatOrchestrator(QtCore.QObject):
 
     def _on_request_failed(self, error_message: str, was_auto: bool):
         logger.error(f"Chat request failed (auto={was_auto}): {error_message}")
-        # Don't show error dialog - doro's message is enough
-        # if not was_auto:
-        #     QtWidgets.QMessageBox.warning(
-        #         self._window,
-        #         "Chat",
-        #         error_message or "Failed to reach the chat server.",
-        #     )
-        self._window._set_busy_cursor(False)
+        self.busy_cursor_requested.emit(False)
 
         # Use random network fail message from doro
         fallback_text = self._get_random_network_fail_message()
 
         if not was_auto:
-            self._window._set_bubble_text(fallback_text, auto_hide=False)
+            self.bubble_text_requested.emit(fallback_text, {"auto_hide": False})
 
     # ------------------------------------------------------------------ Response processing
 
@@ -184,7 +180,7 @@ class ChatOrchestrator(QtCore.QObject):
                 if self._movement.handle_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
-                state_key = self._window._find_state_for_action(token)
+                state_key = self._state_service.parse_state_from_action(token)
                 if state_key:
                     # Check if this is a movement-only state
                     is_movement_only = self._state_service.is_movement_only_state(state_key)
