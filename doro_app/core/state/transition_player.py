@@ -134,6 +134,10 @@ class TransitionPlayer(QtCore.QObject):
         # Create QMovie for transition GIF
         self._transition_movie = QtGui.QMovie(str(gif_path))
 
+        # CRITICAL: Set loop count to 1 so transition plays only once
+        # Without this, the GIF loops forever and finished signal never fires
+        self._transition_movie.setLoopCount(1)
+
         # Connect completion signal
         self._transition_movie.finished.connect(self._on_transition_complete)
 
