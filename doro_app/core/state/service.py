@@ -54,6 +54,9 @@ class StateService:
         self._move_states = MoveStateCollection()
         self._transitions = TransitionStateCollection()
 
+        # Transition protection flag
+        self._is_transitioning: bool = False
+
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
@@ -374,19 +377,32 @@ class StateService:
     # State Operations
     # ═══════════════════════════════════════════════════════════
 
-    def set_state(self, key: str) -> bool:
+    def set_state(self, key: str, *, force: bool = False) -> bool:
         """
         Set current state.
 
+        Args:
+            key: State key to switch to
+            force: If True, bypass transition protection (used by MovementManager)
+
         Returns:
-            True if successful, False if state not found
+            True if successful, False if state not found or rejected
+
+        Protection:
+            - Rejects requests during transitions (unless force=True)
+            - Ensures state integrity during transition animations
         """
+        # Check transition protection
+        if self._is_transitioning and not force:
+            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+            return False
+
         old_key = self._states._current_key
         if not self._states.set_current(key):
             logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
-        logger.info(f"State changed: {old_key} -> {key}")
+        logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if force else ""))
 
         # Emit event
         state = self._states.get(key)
