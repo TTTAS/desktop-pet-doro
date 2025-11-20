@@ -15,7 +15,7 @@ doro_app/res/dia_prompt.txt
 
 ### 新路徑
 ```
-doro_app/res/chat/dia_prompt.txt
+doro_app/core/chat/dia_prompt.txt
 ```
 
 ---
@@ -61,7 +61,7 @@ PROMPT_PATH = CHAT_DIR / "dia_prompt.txt"
 - **docs/chat_architecture_current.md** (第 372 行)
   ```markdown
   舊：`doro_app/res/dia_prompt.txt`
-  新：`doro_app/res/chat/dia_prompt.txt`
+  新：`doro_app/core/chat/dia_prompt.txt`
   ```
 
 ---
@@ -122,7 +122,7 @@ res/
 ```python
 from doro_app.utils.paths import PROMPT_PATH
 print(PROMPT_PATH)
-# 輸出: /path/to/doro_app/res/chat/dia_prompt.txt
+# 輸出: /path/to/doro_app/core/chat/dia_prompt.txt
 print(PROMPT_PATH.exists())
 # 輸出: True
 ```
@@ -139,7 +139,7 @@ python doro.py
 
 使用 `git mv` 移動檔案，保留完整的 git 歷史：
 ```bash
-git mv doro_app/res/dia_prompt.txt doro_app/res/chat/dia_prompt.txt
+git mv doro_app/res/dia_prompt.txt doro_app/core/chat/dia_prompt.txt
 ```
 
 Git 顯示：

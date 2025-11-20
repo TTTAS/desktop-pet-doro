@@ -369,7 +369,7 @@ emit request_succeeded
 
 ### 問題 1：Prompt 和 StateService 不同步
 
-**Prompt 定義的狀態** (`doro_app/res/chat/dia_prompt.txt`):
+**Prompt 定義的狀態** (`doro_app/core/chat/dia_prompt.txt`):
 ```
 HAPPY, SAD, SHY, SLEEPY, EXCITED, THINK, IDLE
 ```
