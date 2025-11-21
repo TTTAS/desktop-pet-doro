@@ -673,11 +673,11 @@ class DoroWindow(QtWidgets.QWidget):
         return self._state_service.set_primary_gif(key, Path(source_path))
 
     def _show_state_manager(self):
-        from .ui.dialogs.state_dialogs import show_state_manager
+        from .ui.dialogs.state import show_state_manager
         show_state_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        from .ui.dialogs.state_dialogs import show_move_state_manager
+        from .ui.dialogs.move_state import show_move_state_manager
         show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
@@ -756,7 +756,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _add_state(self, checked: bool = False) -> str | None:
         # NEW: Use dialog
-        from .ui.dialogs.state_dialogs import show_add_state_dialog
+        from .ui.dialogs.state import show_add_state_dialog
         return show_add_state_dialog(self._state_service, parent=self)
 
     def _remove_state_by_key(
