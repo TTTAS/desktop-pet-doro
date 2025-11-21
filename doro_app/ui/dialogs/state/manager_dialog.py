@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....utils import paths
 from ....core.state import State, StateService
+from ...components.gif_player import GifPlayer
 
 
 class StateManagerDialog(QtWidgets.QDialog):
@@ -24,7 +25,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         self.setWindowTitle("State Manager")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
-        self._movies = []  # Keep references to QMovie objects to prevent garbage collection
+        self._gif_player = GifPlayer()  # Unified GIF resource management
         self._setup_ui()
         self._populate()
 
@@ -94,7 +95,7 @@ class StateManagerDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.table.setRowCount(0)
-        self._movies.clear()  # Clear old movie references
+        self._gif_player.clear()  # Clear old GIF players
 
         visible_keys = sorted(self.service.visible_state_keys())
         for key in visible_keys:
@@ -120,12 +121,9 @@ class StateManagerDialog(QtWidgets.QDialog):
             # Try to get GIF path from multiple sources
             gif_path = self._get_state_gif_path(state, key)
             if gif_path:
-                movie = QtGui.QMovie(str(gif_path))
-                if movie.isValid():
-                    movie.setScaledSize(QtCore.QSize(96, 96))
+                movie = self._gif_player.load(gif_path, size=QtCore.QSize(96, 96))
+                if movie:
                     preview_label.setMovie(movie)
-                    movie.start()
-                    self._movies.append(movie)  # Keep reference to prevent garbage collection
 
             self.table.setCellWidget(row, 1, preview_label)
 
@@ -256,11 +254,8 @@ class StateManagerDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Remove state", "Failed to remove state.")
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up QMovie objects to prevent memory leaks."""
-        for movie in self._movies:
-            movie.stop()
-            movie.deleteLater()
-        self._movies.clear()
+        """Clean up GIF resources to prevent memory leaks."""
+        self._gif_player.clear()
         super().closeEvent(event)
 
 

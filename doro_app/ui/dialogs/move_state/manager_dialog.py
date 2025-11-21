@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....utils import paths
 from ....core.state import State, StateService
+from ...components.gif_player import GifPlayer
 
 
 class MoveStateManagerDialog(QtWidgets.QDialog):
@@ -24,7 +25,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.setWindowTitle("Action Manager")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
-        self._movies = []  # Keep references to QMovie objects to prevent garbage collection
+        self._gif_player = GifPlayer()  # Unified GIF resource management
         self._setup_ui()
         self._populate()
 
@@ -95,7 +96,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.table.setRowCount(0)
-        self._movies.clear()  # Clear old movie references
+        self._gif_player.clear()  # Clear old GIF players
 
         # Add movement actions
         move_state_keys = self.service.all_move_state_keys()
@@ -127,12 +128,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             if state:
                 gif_path = self._get_state_gif_path(state, move_state.state_key)
                 if gif_path:
-                    movie = QtGui.QMovie(str(gif_path))
-                    if movie.isValid():
-                        movie.setScaledSize(QtCore.QSize(96, 96))
+                    movie = self._gif_player.load(gif_path, size=QtCore.QSize(96, 96))
+                    if movie:
                         action_label.setMovie(movie)
-                        movie.start()
-                        self._movies.append(movie)
 
             self.table.setCellWidget(row, 2, action_label)
             self.table.setRowHeight(row, 114)
@@ -176,12 +174,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             if transition.transition_gif_id:
                 gif_path = paths.ACTION_TRANSITION_DIR / transition.transition_gif_id
                 if gif_path.exists():
-                    movie = QtGui.QMovie(str(gif_path))
-                    if movie.isValid():
-                        movie.setScaledSize(QtCore.QSize(96, 96))
+                    movie = self._gif_player.load(gif_path, size=QtCore.QSize(96, 96))
+                    if movie:
                         action_label.setMovie(movie)
-                        movie.start()
-                        self._movies.append(movie)
 
             self.table.setCellWidget(row, 2, action_label)
             self.table.setRowHeight(row, 114)
@@ -291,11 +286,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Remove action", f"Failed to remove {action_type_text}.")
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up QMovie objects to prevent memory leaks."""
-        for movie in self._movies:
-            movie.stop()
-            movie.deleteLater()
-        self._movies.clear()
+        """Clean up GIF resources to prevent memory leaks."""
+        self._gif_player.clear()
         super().closeEvent(event)
 
 

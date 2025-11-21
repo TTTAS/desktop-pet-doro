@@ -10,6 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....utils import paths
 from ....core.state import StateService, TransitionState
+from ...components.gif_player import GifPlayer
 
 
 class EditMoveStateDialog(QtWidgets.QDialog):
@@ -27,8 +28,8 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.setMinimumWidth(600)
         self.setMinimumHeight(550)
 
-        # Track preview movie
-        self._preview_movie: Optional[QtGui.QMovie] = None
+        # Unified GIF resource management
+        self._gif_player = GifPlayer()
 
         # Track selected GIF for upload
         self.selected_gif_path: Optional[Path] = None
@@ -210,10 +211,8 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if self.selected_gif_path:
             return
 
-        # Clear previous preview
-        if self._preview_movie:
-            self._preview_movie.stop()
-        self._preview_movie = None
+        # Clear previous previews
+        self._gif_player.clear()
         self.preview_label.setMovie(None)
 
         if not state_key:
@@ -244,22 +243,16 @@ class EditMoveStateDialog(QtWidgets.QDialog):
     def _load_preview_movie(self, gif_path: Path):
         """Load and display a GIF in the preview area."""
         # Clear previous preview
-        if self._preview_movie:
-            self._preview_movie.stop()
-        self._preview_movie = None
+        self._gif_player.clear()
         self.preview_label.setMovie(None)
 
         # Load and display GIF
-        movie = QtGui.QMovie(str(gif_path))
-        if not movie.isValid():
+        movie = self._gif_player.load(gif_path, size=QtCore.QSize(180, 180))
+        if not movie:
             self.preview_label.setText("Invalid GIF file")
             return
 
-        # Scale to fit preview area
-        movie.setScaledSize(QtCore.QSize(180, 180))
         self.preview_label.setMovie(movie)
-        self._preview_movie = movie
-        movie.start()
 
     def _load_data(self):
         """Load existing move state data."""
@@ -406,9 +399,6 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Save", f"Failed to save transition: {e}")
 
     def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up QMovie object to prevent memory leaks."""
-        if self._preview_movie:
-            self._preview_movie.stop()
-            self._preview_movie.deleteLater()
-            self._preview_movie = None
+        """Clean up GIF resources to prevent memory leaks."""
+        self._gif_player.clear()
         super().closeEvent(event)
