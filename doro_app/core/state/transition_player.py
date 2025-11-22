@@ -139,7 +139,9 @@ class TransitionPlayer(QtCore.QObject):
         self._transition_movie = self._gif_player.load(gif_path)
 
         if not self._transition_movie:
-            logger.warning(f"Failed to load transition GIF: {gif_path}")
+            logger.error(f"Failed to load transition GIF: {gif_path}")
+            # CRITICAL: Release lock if loading failed
+            self._cleanup_failed_transition()
             return
 
         # CRITICAL: Monitor frame changes to detect when one loop completes
@@ -168,19 +170,24 @@ class TransitionPlayer(QtCore.QObject):
         Args:
             frame_number: Current frame number from QMovie
         """
-        if not self._is_playing or not self._transition_movie:
-            return
+        try:
+            if not self._is_playing or not self._transition_movie:
+                return
 
-        # Detect loop completion: frame number wraps back to 0 or -1 after we've played
-        if self._last_frame_number > 0 and frame_number <= 0:
-            # One complete loop detected
-            logger.debug(f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})")
-            self._has_played_once = True
-            # Stop the movie and trigger completion
-            self._transition_movie.stop()
-            self._on_transition_complete()
-        else:
-            self._last_frame_number = frame_number
+            # Detect loop completion: frame number wraps back to 0 or -1 after we've played
+            if self._last_frame_number > 0 and frame_number <= 0:
+                # One complete loop detected
+                logger.debug(f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})")
+                self._has_played_once = True
+                # Stop the movie and trigger completion
+                self._transition_movie.stop()
+                self._on_transition_complete()
+            else:
+                self._last_frame_number = frame_number
+        except Exception as e:
+            # If any error occurs during transition playback, clean up to prevent lock leak
+            logger.error(f"Error during transition playback: {e}")
+            self._cleanup_failed_transition()
 
     def _on_transition_complete(self):
         """
@@ -198,6 +205,26 @@ class TransitionPlayer(QtCore.QObject):
         if self._target_state_key:
             logger.debug(f"Loading target state: {self._target_state_key}")
             self._load_target_state(self._target_state_key)
+
+        # Release transition lock
+        self._state_service.end_transition()
+
+        # Reset state
+        self._is_playing = False
+        self._target_state_key = None
+
+    def _cleanup_failed_transition(self):
+        """
+        Clean up after a failed transition attempt.
+
+        Releases the transition lock and resets state to prevent deadlock.
+        This is called when GIF loading fails or other errors occur.
+        """
+        logger.warning("Cleaning up failed transition")
+
+        # Clear resources
+        self._gif_player.clear()
+        self._transition_movie = None
 
         # Release transition lock
         self._state_service.end_transition()
