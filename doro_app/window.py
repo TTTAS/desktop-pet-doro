@@ -31,6 +31,7 @@ from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .ui.components.gif_player import GifPlayer
 from .ui.design_tokens import tokens
 from .ui.fallback_sprite import draw_fallback_sprite
+from .ui.view_model import DoroViewModel
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .utils.logger import get_logger
@@ -66,8 +67,10 @@ class DoroWindow(QtWidgets.QWidget):
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
 
+        # NEW: Presentation state managed by ViewModel
+        self._view_model = DoroViewModel()
+
         # Animation clock
-        self._t = 0.0
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(TIMER_INTERVAL_MS)
@@ -78,6 +81,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
+        # NOTE: Legacy variables kept for gradual migration
+        # Animation state now primarily in _view_model
         self._amplitude = 0.0
         self._scale_amp = 0.0
         self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = get_default_fill_colors()
@@ -220,7 +225,9 @@ class DoroWindow(QtWidgets.QWidget):
             dt = 0.0
         dt = min(dt, tokens.animation.max_delta_time)
         self._movement.process_active_movement(dt)
-        self._t += dt
+
+        # NEW: Use ViewModel for animation time
+        self._view_model.tick(dt)
         self.update()
 
     # --- Interaction -----------------------------------------------------
@@ -456,9 +463,9 @@ class DoroWindow(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        # Disable animations - no bob (floating) or scale (breathing) effects
-        bob = 0.0
-        scale = 1.0
+        # NEW: Use ViewModel for animation calculations
+        bob = self._view_model.calculate_bob()
+        scale = self._view_model.calculate_scale()
 
         sprite_center = self._sprite_center()
         p.save()
@@ -470,8 +477,14 @@ class DoroWindow(QtWidgets.QWidget):
             p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             p.drawPixmap(0, 0, pixmap)
         else:
-            # Draw fallback sprite when no GIF is available
-            draw_fallback_sprite(p, self._fill_colors, self._cheek_alpha, self._blush_base, self._eye_color)
+            # Draw fallback sprite when no GIF is available (use ViewModel colors)
+            draw_fallback_sprite(
+                p,
+                self._view_model.fill_colors,
+                self._view_model.cheek_alpha,
+                self._view_model.blush_color,
+                self._view_model.eye_color
+            )
 
         p.restore()
 
@@ -533,16 +546,29 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Apply visual config (even during transitions, for when it completes)
         visual = state.visual
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = (
+
+        # NEW: Apply visual config to ViewModel
+        self._view_model.set_bob_amplitude(visual.bob_amplitude)
+        self._view_model.set_scale_amplitude(visual.scale_amplitude)
+        self._view_model.set_fill_colors(
             QtGui.QColor(visual.gradient_top),
             QtGui.QColor(visual.gradient_mid),
             QtGui.QColor(visual.gradient_bottom),
         )
+        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
+        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
+        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
+        self._view_model.set_bubble_visible(visual.bubble_visible)
+        self._view_model.set_bubble_alpha(visual.bubble_alpha)
+        self._view_model.set_name_tag(state.name_tag)
+
+        # Keep legacy variables in sync (for gradual migration)
+        self._amplitude = visual.bob_amplitude
+        self._scale_amp = visual.scale_amplitude
+        self._fill_colors = self._view_model.fill_colors
         self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = QtGui.QColor(visual.blush_color)
-        self._eye_color = QtGui.QColor(visual.eye_color)
+        self._blush_base = self._view_model.blush_color
+        self._eye_color = self._view_model.eye_color
         self._bubble_visible = visual.bubble_visible
         self._bubble_alpha = visual.bubble_alpha
         self._name_tag = state.name_tag
@@ -595,18 +621,29 @@ class DoroWindow(QtWidgets.QWidget):
         if not state:
             return
 
-        # Apply visual config
+        # Apply visual config to ViewModel
         visual = state.visual
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = (
+        self._view_model.set_bob_amplitude(visual.bob_amplitude)
+        self._view_model.set_scale_amplitude(visual.scale_amplitude)
+        self._view_model.set_fill_colors(
             QtGui.QColor(visual.gradient_top),
             QtGui.QColor(visual.gradient_mid),
             QtGui.QColor(visual.gradient_bottom),
         )
+        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
+        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
+        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
+        self._view_model.set_bubble_visible(visual.bubble_visible)
+        self._view_model.set_bubble_alpha(visual.bubble_alpha)
+        self._view_model.set_name_tag(state.name_tag)
+
+        # Keep legacy variables in sync
+        self._amplitude = visual.bob_amplitude
+        self._scale_amp = visual.scale_amplitude
+        self._fill_colors = self._view_model.fill_colors
         self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = QtGui.QColor(visual.blush_color)
-        self._eye_color = QtGui.QColor(visual.eye_color)
+        self._blush_base = self._view_model.blush_color
+        self._eye_color = self._view_model.eye_color
         self._bubble_visible = visual.bubble_visible
         self._bubble_alpha = visual.bubble_alpha
         self._name_tag = state.name_tag
