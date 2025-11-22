@@ -28,6 +28,7 @@ from .constants import (
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.components.gif_player import GifPlayer
 from .ui.design_tokens import tokens
 from .ui.fallback_sprite import draw_fallback_sprite
 from .core.chat.controller import ChatController
@@ -87,7 +88,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_alpha = BUBBLE_DEFAULT_ALPHA
         self._bubble_side = "center"
         self._name_tag = "doro"
-        self._gif_movie: QtGui.QMovie | None = None
+        self._gif_player = GifPlayer()
+        self._gif_movie: QtGui.QMovie | None = None  # Current movie from player
         self._bubble_text = ""
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
@@ -627,13 +629,16 @@ class DoroWindow(QtWidgets.QWidget):
             self._load_gif(None)
 
     def _load_gif(self, path: str | None):
+        # Disconnect old movie if exists
         if self._gif_movie:
             try:
                 self._gif_movie.frameChanged.disconnect(self._on_movie_frame_changed)
             except (RuntimeError, TypeError):
                 pass
-            self._gif_movie.stop()
-            self._gif_movie = None
+
+        # Clear all movies from player
+        self._gif_player.clear()
+        self._gif_movie = None
 
         if not path:
             self._update_sprite_size_hint(None)
@@ -644,14 +649,14 @@ class DoroWindow(QtWidgets.QWidget):
             self._update_sprite_size_hint(None)
             return
 
-        movie = QtGui.QMovie(str(path_obj))
-        if not movie.isValid():
+        # Load using GifPlayer for unified resource management
+        movie = self._gif_player.load(path_obj)
+        if not movie:
             self._update_sprite_size_hint(None)
             return
 
         movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
         movie.frameChanged.connect(self._on_movie_frame_changed)
-        movie.start()
         self._gif_movie = movie
         self._update_sprite_size_hint(movie)
 
@@ -980,12 +985,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Clean up resources
         try:
-            if self._gif_movie:
-                try:
-                    self._gif_movie.stop()
-                except Exception:
-                    pass
-                self._gif_movie = None
+            # Clear all GIF resources using GifPlayer
+            self._gif_player.clear()
+            self._gif_movie = None
 
             if self._timer:
                 try:
