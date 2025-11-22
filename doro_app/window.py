@@ -28,6 +28,7 @@ from .constants import (
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.design_tokens import tokens
 from .ui.fallback_sprite import draw_fallback_sprite
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
@@ -215,7 +216,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._last_tick_time = now
         if dt < 0.0:
             dt = 0.0
-        dt = min(dt, 0.1)
+        dt = min(dt, tokens.animation.max_delta_time)
         self._movement.process_active_movement(dt)
         self._t += dt
         self.update()
@@ -801,8 +802,8 @@ class DoroWindow(QtWidgets.QWidget):
             min(target_width, float(self.width()) - 24.0),
         )
 
-        inner_padding_x = 28.0
-        inner_padding_y = 22.0
+        inner_padding_x = tokens.spacing.bubble_inner_x
+        inner_padding_y = tokens.spacing.bubble_inner_y
         font = QtGui.QFont()
         font.setPointSizeF(12.0)
         font.setWeight(QtGui.QFont.Weight.DemiBold)
@@ -821,10 +822,10 @@ class DoroWindow(QtWidgets.QWidget):
         panel_height = max(self._panel_height_hint, text_height + inner_padding_y * 2.0)
 
         sprite_center = self._sprite_center()
-        sprite_half_h = float(max(20.0, self._sprite_size.height() / 2.0))
-        gap = 28.0
-        margin_top = 18.0
-        margin_bottom = 24.0
+        sprite_half_h = float(max(tokens.sprite.min_half_height, self._sprite_size.height() / 2.0))
+        gap = tokens.spacing.sprite_bubble_gap
+        margin_top = tokens.spacing.margin_top
+        margin_bottom = tokens.spacing.margin_bottom
 
         below_top = sprite_center.y() + sprite_half_h + gap
         available_below = self.height() - margin_bottom - below_top
@@ -861,19 +862,24 @@ class DoroWindow(QtWidgets.QWidget):
             return
 
         left = sprite_center.x() - panel_width / 2.0
-        min_left = 12.0
-        max_left = self.width() - panel_width - 12.0
+        min_left = tokens.spacing.margin_horizontal
+        max_left = self.width() - panel_width - tokens.spacing.margin_horizontal
         if max_left < min_left:
             min_left = max_left = max(self.width() - panel_width, 0.0)
         left = max(min_left, min(max_left, left))
         panel_rect = QtCore.QRectF(left, top, panel_width, adjusted_panel_height)
 
-        shadow_rect = panel_rect.adjusted(0.0, 8.0 if place_below else -12.0, 0.0, 12.0 if place_below else 4.0)
-        corner_radius = 18.0
+        shadow_rect = panel_rect.adjusted(
+            0.0,
+            tokens.spacing.shadow_offset_below if place_below else tokens.spacing.shadow_offset_above,
+            0.0,
+            tokens.spacing.shadow_extend_below if place_below else tokens.spacing.shadow_extend_above
+        )
+        corner_radius = tokens.radius.bubble
 
-        base_alpha = max(140, min(255, alpha))
-        outline_alpha = int(base_alpha * 0.55)
-        fill_alpha = int(base_alpha * 0.92)
+        base_alpha = max(tokens.opacity.min_base_alpha, min(tokens.opacity.max_base_alpha, alpha))
+        outline_alpha = tokens.calculate_outline_alpha(base_alpha)
+        fill_alpha = tokens.calculate_fill_alpha(base_alpha)
 
         fill_gradient = QtGui.QLinearGradient(
             QtCore.QPointF(panel_rect.left(), panel_rect.top()),
