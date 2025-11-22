@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ...utils.logger import get_logger
+from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
 from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
@@ -103,7 +104,11 @@ class StateService:
         Returns:
             Resource ID or None if failed
         """
-        return self._gif_repo.store_gif(source_path, state_key)
+        try:
+            return self._gif_repo.store_gif(source_path, state_key)
+        except (GifNotFoundError, GifStorageError) as e:
+            logger.error(f"Failed to store GIF for '{state_key}': {e}")
+            return None
 
     def delete_gif(self, gif_id: str) -> bool:
         """
@@ -281,10 +286,15 @@ class StateService:
 
     def _save_states(self) -> bool:
         """Internal method to save states."""
-        return self._state_repo.save_all(
-            self._states._items,
-            self._states._protected_keys
-        )
+        try:
+            self._state_repo.save_all(
+                self._states._items,
+                self._states._protected_keys
+            )
+            return True
+        except ConfigSaveError as e:
+            logger.error(f"Failed to save states: {e}")
+            return False
 
     def _emit_states_modified(self) -> None:
         """Emit states modified event."""
@@ -716,7 +726,10 @@ class StateService:
             default_speed=speed,
         )
         self._move_states.add(move_state)
-        self._move_repo.save_all(self._move_states._items)
+        try:
+            self._move_repo.save_all(self._move_states._items)
+        except ConfigSaveError as e:
+            logger.error(f"Failed to save move states: {e}")
         self.write_state_list()
         return move_state
 
@@ -725,7 +738,10 @@ class StateService:
         if not self._move_states.remove(key):
             return False
 
-        self._move_repo.save_all(self._move_states._items)
+        try:
+            self._move_repo.save_all(self._move_states._items)
+        except ConfigSaveError as e:
+            logger.error(f"Failed to save move states: {e}")
         self.write_state_list()
         return True
 
@@ -736,7 +752,11 @@ class StateService:
         """Create or update a transition state."""
         self._transitions.add(transition)
         if self._transition_repo:
-            return self._transition_repo.save_all(self._transitions._items)
+            try:
+                self._transition_repo.save_all(self._transitions._items)
+            except ConfigSaveError as e:
+                logger.error(f"Failed to save transitions: {e}")
+                return False
         return True
 
     def remove_transition(self, key: str) -> bool:
@@ -745,7 +765,11 @@ class StateService:
             return False
 
         if self._transition_repo:
-            return self._transition_repo.save_all(self._transitions._items)
+            try:
+                self._transition_repo.save_all(self._transitions._items)
+            except ConfigSaveError as e:
+                logger.error(f"Failed to save transitions: {e}")
+                return False
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:
