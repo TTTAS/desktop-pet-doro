@@ -463,9 +463,10 @@ class DoroWindow(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        # NEW: Use ViewModel for animation calculations
-        bob = self._view_model.calculate_bob()
-        scale = self._view_model.calculate_scale()
+        # Disable animations - no bob (floating) or scale (breathing) effects
+        # NOTE: ViewModel can calculate these, but we keep animations disabled for now
+        bob = 0.0
+        scale = 1.0
 
         sprite_center = self._sprite_center()
         p.save()
