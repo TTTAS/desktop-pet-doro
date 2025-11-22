@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtGui
 
+from ...ui.components.gif_player import GifPlayer
 from ...utils.logger import get_logger
 from ...utils.paths import ACTION_TRANSITION_DIR
 
@@ -41,6 +42,7 @@ class TransitionPlayer(QtCore.QObject):
         self._state_service = state_service
         self._is_playing = False
         self._target_state_key: Optional[str] = None
+        self._gif_player = GifPlayer()
         self._transition_movie: Optional[QtGui.QMovie] = None
         self._last_frame_number = -1
         self._has_played_once = False
@@ -129,14 +131,16 @@ class TransitionPlayer(QtCore.QObject):
         Args:
             gif_path: Path to transition GIF file
         """
-        # Clean up previous movie if exists
-        if self._transition_movie:
-            self._transition_movie.stop()
-            self._transition_movie.deleteLater()
-            self._transition_movie = None
+        # Clear all previous movies using GifPlayer
+        self._gif_player.clear()
+        self._transition_movie = None
 
-        # Create QMovie for transition GIF
-        self._transition_movie = QtGui.QMovie(str(gif_path))
+        # Load transition GIF using GifPlayer
+        self._transition_movie = self._gif_player.load(gif_path)
+
+        if not self._transition_movie:
+            logger.warning(f"Failed to load transition GIF: {gif_path}")
+            return
 
         # CRITICAL: Monitor frame changes to detect when one loop completes
         # QMovie doesn't have setLoopCount in PySide6, so we detect loop completion manually
@@ -145,18 +149,14 @@ class TransitionPlayer(QtCore.QObject):
 
         # Set movie to window's GIF movie (temporarily)
         # This will cause window to render the transition GIF
-        old_movie = self._window._gif_movie
         self._window._gif_movie = self._transition_movie
 
         # Update sprite size from transition GIF
-        if self._transition_movie.isValid():
-            frame_rect = self._transition_movie.frameRect()
-            if frame_rect.width() > 0 and frame_rect.height() > 0:
-                self._window._sprite_size = frame_rect.size()
-                self._window._apply_window_preferred_size()
+        frame_rect = self._transition_movie.frameRect()
+        if frame_rect.width() > 0 and frame_rect.height() > 0:
+            self._window._sprite_size = frame_rect.size()
+            self._window._apply_window_preferred_size()
 
-        # Start playing
-        self._transition_movie.start()
         self._window.update()
 
         logger.debug(f"Started playing transition GIF: {gif_path.name}")
@@ -190,11 +190,9 @@ class TransitionPlayer(QtCore.QObject):
         """
         logger.debug("Transition GIF playback completed")
 
-        # Clean up transition movie
-        if self._transition_movie:
-            self._transition_movie.stop()
-            self._transition_movie.deleteLater()
-            self._transition_movie = None
+        # Clear all transition movies using GifPlayer
+        self._gif_player.clear()
+        self._transition_movie = None
 
         # Load target state
         if self._target_state_key:
