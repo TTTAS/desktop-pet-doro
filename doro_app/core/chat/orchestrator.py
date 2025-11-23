@@ -167,7 +167,12 @@ class ChatOrchestrator(QtCore.QObject):
         fallback_text = self._get_random_network_fail_message()
 
         if not was_auto:
-            self.bubble_text_requested.emit(fallback_text, {"auto_hide": False})
+            # FIXED: Error messages should auto-hide after longer delay (12s instead of 6s)
+            # Previously used auto_hide=False which broke the timer completely
+            self.bubble_text_requested.emit(
+                fallback_text,
+                {"auto_hide": True, "hide_delay_ms": 12000}
+            )
 
     # ------------------------------------------------------------------ Response processing
 
