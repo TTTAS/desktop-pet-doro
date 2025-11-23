@@ -27,7 +27,15 @@ class TransitionPlayer(QtCore.QObject):
     - Load and play transition GIF
     - Lock state changes during playback
     - Load target state GIF after completion
+
+    Signals:
+    - transition_movie_loaded: Emitted when transition GIF is loaded (QMovie, QSize)
+    - transition_completed: Emitted when transition animation completes (str: target_state_key)
     """
+
+    # Signals to decouple from Window
+    transition_movie_loaded = QtCore.Signal(object, QtCore.QSize)  # QMovie, sprite_size
+    transition_completed = QtCore.Signal(str)  # target_state_key
 
     def __init__(self, window: DoroWindow, state_service: StateService):
         """
@@ -149,17 +157,12 @@ class TransitionPlayer(QtCore.QObject):
         # When frameNumber wraps back to 0, we know the loop completed
         self._transition_movie.frameChanged.connect(self._on_transition_frame_changed)
 
-        # Set movie to window's GIF movie (temporarily)
-        # This will cause window to render the transition GIF
-        self._window._gif_movie = self._transition_movie
-
         # Update sprite size from transition GIF
         frame_rect = self._transition_movie.frameRect()
-        if frame_rect.width() > 0 and frame_rect.height() > 0:
-            self._window._sprite_size = frame_rect.size()
-            self._window._apply_window_preferred_size()
+        sprite_size = frame_rect.size() if (frame_rect.width() > 0 and frame_rect.height() > 0) else QtCore.QSize(200, 200)
 
-        self._window.update()
+        # Emit signal to notify Window (decouples TransitionPlayer from Window internals)
+        self.transition_movie_loaded.emit(self._transition_movie, sprite_size)
 
         logger.debug(f"Started playing transition GIF: {gif_path.name}")
 
@@ -193,7 +196,7 @@ class TransitionPlayer(QtCore.QObject):
         """
         Called when transition GIF playback completes.
 
-        Loads target state GIF and releases transition lock.
+        Emits signal to notify Window to load target state, then releases transition lock.
         """
         logger.debug("Transition GIF playback completed")
 
@@ -201,17 +204,20 @@ class TransitionPlayer(QtCore.QObject):
         self._gif_player.clear()
         self._transition_movie = None
 
-        # Load target state
-        if self._target_state_key:
-            logger.debug(f"Loading target state: {self._target_state_key}")
-            self._load_target_state(self._target_state_key)
+        # Store target for signal emission
+        target_key = self._target_state_key
 
-        # Release transition lock
+        # Release transition lock BEFORE emitting signal
         self._state_service.end_transition()
 
         # Reset state
         self._is_playing = False
         self._target_state_key = None
+
+        # Emit signal to notify Window to load target state
+        if target_key:
+            logger.debug(f"Emitting transition_completed signal for: {target_key}")
+            self.transition_completed.emit(target_key)
 
     def _cleanup_failed_transition(self):
         """
@@ -232,34 +238,6 @@ class TransitionPlayer(QtCore.QObject):
         # Reset state
         self._is_playing = False
         self._target_state_key = None
-
-    def _load_target_state(self, state_key: str):
-        """
-        Load target state's GIF and apply visual config.
-
-        This is similar to what _on_state_changed() does, but without
-        triggering another state change event.
-
-        Args:
-            state_key: Target state key to load
-        """
-        # Get state
-        state = self._state_service.get_state(state_key)
-        if not state:
-            logger.warning(f"Target state not found: {state_key}")
-            return
-
-        # Get and load GIF
-        gif_resource_id = self._state_service.get_gif_id(state_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._window._load_gif(str(gif_path))
-
-        # Apply visual config (this will be handled by _on_state_changed already)
-        # No need to duplicate here
-
-        logger.info(f"Loaded target state GIF: {state_key}")
 
     @property
     def is_playing(self) -> bool:

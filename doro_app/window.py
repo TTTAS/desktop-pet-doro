@@ -69,6 +69,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # NEW: Presentation state managed by ViewModel
         self._view_model = DoroViewModel()
+        # Initialize sprite geometry
+        self._view_model.set_sprite_size(QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT))
+        self._view_model.set_sprite_offset_x(SPRITE_OFFSET_X)
 
         # Animation clock
         self._timer = QtCore.QTimer(self)
@@ -76,30 +79,20 @@ class DoroWindow(QtWidgets.QWidget):
         self._timer.start(TIMER_INTERVAL_MS)
 
         # Appearance/animation parameters
-        # OLD state data removed - now managed by StateService
+        # State data now managed by StateService
         self._current_state_key: str = ""
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
-        # NOTE: Legacy variables kept for gradual migration
-        # Animation state now primarily in _view_model
-        self._amplitude = 0.0
-        self._scale_amp = 0.0
-        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = get_default_fill_colors()
-        self._cheek_alpha = 0.0
-        self._blush_base = get_default_blush_color()
-        self._eye_color = get_default_eye_color()
-        self._bubble_visible = True
-        self._bubble_alpha = BUBBLE_DEFAULT_ALPHA
-        self._bubble_side = "center"
-        self._name_tag = "doro"
+        # NOTE: All presentation state moved to _view_model (ViewModel)
+        # Removed: _amplitude, _scale_amp, _fill_colors, _cheek_alpha, _blush_base, _eye_color
+        # Removed: _bubble_visible, _bubble_alpha, _bubble_side, _name_tag
+        # Removed: _bubble_offset, _bubble_scale, _sprite_size, _sprite_offset_x
         self._gif_player = GifPlayer()
         self._gif_movie: QtGui.QMovie | None = None  # Current movie from player
         self._bubble_text = ""
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
-        self._bubble_offset = QtCore.QPointF(0.0, 0.0)
-        self._bubble_scale = 1.0
         self._bubble_dragging = False
         self._bubble_resizing = False
         self._bubble_drag_start: QtCore.QPointF | None = None
@@ -112,8 +105,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
-        self._sprite_size = QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT)
-        self._sprite_offset_x = SPRITE_OFFSET_X
+        # Removed: _sprite_size, _sprite_offset_x → now in ViewModel
         self._sprite_anchor_top: float | None = None
         self._movement_step_px = MOVEMENT_STEP_PX
         self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
@@ -140,6 +132,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Create transition player for state change animations
         self._transition_player = TransitionPlayer(self, self._state_service)
+        # Connect transition player signals (breaks circular dependency)
+        self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
+        self._transition_player.transition_completed.connect(self._on_transition_completed)
 
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
@@ -299,15 +294,15 @@ class DoroWindow(QtWidgets.QWidget):
         super().keyPressEvent(e)
 
     def _sprite_center(self) -> QtCore.QPointF:
-        base_x = self.width() / 2.0 + getattr(self, "_sprite_offset_x", 0.0)
-        half_w = max(SPRITE_MIN_SIZE, self._sprite_size.width() / 2.0)
-        half_h = max(SPRITE_MIN_SIZE, self._sprite_size.height() / 2.0)
+        base_x = self.width() / 2.0 + self._view_model.sprite_offset_x
+        half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
+        half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
         margin_x = SPRITE_MARGIN_X
         min_center_x = half_w + margin_x
         max_center_x = self.width() - half_w - margin_x
         if min_center_x <= max_center_x:
             base_x = max(min_center_x, min(max_center_x, base_x))
-        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + SPRITE_BOB_ALLOWANCE
+        bob_allowance = abs(self._view_model.bob_amplitude) + SPRITE_BOB_ALLOWANCE
         margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
         max_center_y = self.height() - half_h - margin_bottom
@@ -332,7 +327,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
-        self._bubble_side = "center"
+        self._view_model.set_bubble_side("center")
 
     def _available_screen_geometry(self) -> QtCore.QRect:
         handle = self.windowHandle()
@@ -373,7 +368,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
         text = (self._bubble_text or "").strip()
-        sprite_w = max(120.0, float(self._sprite_size.width()))
+        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
         panel_width = max(160.0, sprite_w)
         available_text_width = max(80.0, panel_width - 56.0)
 
@@ -401,8 +396,8 @@ class DoroWindow(QtWidgets.QWidget):
         return panel_width, panel_height
 
     def _apply_window_preferred_size(self):
-        sprite_w = max(120.0, float(self._sprite_size.width()))
-        sprite_h = max(120.0, float(self._sprite_size.height()))
+        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
+        sprite_h = max(120.0, float(self._view_model.sprite_size.height()))
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
         self._panel_height_hint = panel_h_hint
@@ -442,10 +437,10 @@ class DoroWindow(QtWidgets.QWidget):
         if movie and movie.isValid():
             rect = movie.frameRect()
             if rect.width() > 0 and rect.height() > 0:
-                self._sprite_size = rect.size()
+                self._view_model.set_sprite_size(rect.size())
                 self._apply_window_preferred_size()
                 return
-        self._sprite_size = QtCore.QSize(200, 200)
+        self._view_model.set_sprite_size(QtCore.QSize(200, 200))
         self._apply_window_preferred_size()
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
@@ -490,12 +485,12 @@ class DoroWindow(QtWidgets.QWidget):
         p.restore()
 
         panel_should_draw = (
-            (self._bubble_visible or self._bubble_text_show_override)
-            and self._bubble_alpha > 0
+            (self._view_model.bubble_visible or self._bubble_text_show_override)
+            and self._view_model.bubble_alpha > 0
             and bool((self._bubble_text or "").strip())
         )
         if panel_should_draw:
-            alpha = min(max(int(self._bubble_alpha), 0), 255)
+            alpha = min(max(int(self._view_model.bubble_alpha), 0), 255)
             self._draw_text_panel(p, alpha)
         else:
             self._panel_rect_cache = None
@@ -518,10 +513,39 @@ class DoroWindow(QtWidgets.QWidget):
         self._move_window_to(pos)
 
     # ═══════════════════════════════════════════════════════════
-    # Event Callbacks from StateService
+    # Event Callbacks from StateService and TransitionPlayer
     # ═══════════════════════════════════════════════════════════
 
-    # NEW: Event callbacks from StateService
+    def _on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
+        """
+        Handle transition movie loaded signal from TransitionPlayer.
+
+        Args:
+            movie: The transition QMovie
+            sprite_size: The sprite size from the transition GIF
+        """
+        # Set movie to window's GIF movie (temporarily for transition)
+        self._gif_movie = movie
+        # Update sprite size from transition GIF
+        self._view_model.set_sprite_size(sprite_size)
+        self._apply_window_preferred_size()
+        self.update()
+
+    def _on_transition_completed(self, target_state_key: str):
+        """
+        Handle transition completion signal from TransitionPlayer.
+
+        Args:
+            target_state_key: The target state key to load after transition
+        """
+        logger.debug(f"Transition completed, loading target state: {target_state_key}")
+        # Load target state GIF
+        gif_resource_id = self._state_service.get_gif_id(target_state_key)
+        if gif_resource_id:
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
+            if gif_path:
+                self._load_gif(str(gif_path))
+
     def _on_state_changed(self, event: StateChangeEvent) -> None:
         """Handle state change events from StateService."""
         state = event.new_state
@@ -545,10 +569,8 @@ class DoroWindow(QtWidgets.QWidget):
                 if gif_path:
                     self._load_gif(str(gif_path))
 
-        # Apply visual config (even during transitions, for when it completes)
+        # Apply visual config to ViewModel (even during transitions)
         visual = state.visual
-
-        # NEW: Apply visual config to ViewModel
         self._view_model.set_bob_amplitude(visual.bob_amplitude)
         self._view_model.set_scale_amplitude(visual.scale_amplitude)
         self._view_model.set_fill_colors(
@@ -562,17 +584,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._view_model.set_bubble_visible(visual.bubble_visible)
         self._view_model.set_bubble_alpha(visual.bubble_alpha)
         self._view_model.set_name_tag(state.name_tag)
-
-        # Keep legacy variables in sync (for gradual migration)
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = self._view_model.fill_colors
-        self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = self._view_model.blush_color
-        self._eye_color = self._view_model.eye_color
-        self._bubble_visible = visual.bubble_visible
-        self._bubble_alpha = visual.bubble_alpha
-        self._name_tag = state.name_tag
 
         # Persist to QSettings
         self._config.setValue("current_state", event.new_key)
@@ -638,17 +649,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._view_model.set_bubble_alpha(visual.bubble_alpha)
         self._view_model.set_name_tag(state.name_tag)
 
-        # Keep legacy variables in sync
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = self._view_model.fill_colors
-        self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = self._view_model.blush_color
-        self._eye_color = self._view_model.eye_color
-        self._bubble_visible = visual.bubble_visible
-        self._bubble_alpha = visual.bubble_alpha
-        self._name_tag = state.name_tag
-
         # Load GIF
         gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
         if gif_resource_id:
@@ -703,8 +703,8 @@ class DoroWindow(QtWidgets.QWidget):
             pixmap = self._gif_movie.currentPixmap()
             if not pixmap.isNull():
                 frame_size = pixmap.size()
-                if frame_size != self._sprite_size:
-                    self._sprite_size = QtCore.QSize(frame_size)
+                if frame_size != self._view_model.sprite_size:
+                    self._view_model.set_sprite_size(QtCore.QSize(frame_size))
                     self._apply_window_preferred_size()
         self.update()
 
@@ -761,7 +761,7 @@ class DoroWindow(QtWidgets.QWidget):
             self._chat_cursor_overridden = False
 
     def _toggle_bubble(self, checked: bool):
-        # NEW: Update through StateService
+        # Update through StateService
         if not self._current_state_key:
             return
         # Update state via StateService
@@ -769,12 +769,11 @@ class DoroWindow(QtWidgets.QWidget):
             self._current_state_key,
             bubble_visible=checked
         ):
-            # Update UI
-            self._bubble_visible = checked
+            # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)
 
     def _rename_pet(self):
-        # NEW: Update through StateService
+        # Update through StateService
         if not self._current_state_key:
             return
         current_state = self._state_service.get_state(self._current_state_key)
@@ -789,13 +788,11 @@ class DoroWindow(QtWidgets.QWidget):
             current_state.name_tag,
         )
         if ok and text.strip():
-            # Update state via StateService
-            if self._state_service.update_state(
+            # Update state via StateService (ViewModel will be updated by state change event)
+            self._state_service.update_state(
                 self._current_state_key,
                 name_tag=text.strip()
-            ):
-                # Update local cache
-                self._name_tag = text.strip()
+            )
             self.update()
 
     def _add_state(self, checked: bool = False) -> str | None:
@@ -839,7 +836,7 @@ class DoroWindow(QtWidgets.QWidget):
             self._panel_rect_cache = None
             return
 
-        target_width = max(160.0, float(self._sprite_size.width()))
+        target_width = max(160.0, float(self._view_model.sprite_size.width()))
         panel_width = max(
             80.0,
             min(target_width, float(self.width()) - 24.0),
@@ -865,7 +862,7 @@ class DoroWindow(QtWidgets.QWidget):
         panel_height = max(self._panel_height_hint, text_height + inner_padding_y * 2.0)
 
         sprite_center = self._sprite_center()
-        sprite_half_h = float(max(tokens.sprite.min_half_height, self._sprite_size.height() / 2.0))
+        sprite_half_h = float(max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0))
         gap = tokens.spacing.sprite_bubble_gap
         margin_top = tokens.spacing.margin_top
         margin_bottom = tokens.spacing.margin_bottom
@@ -894,11 +891,11 @@ class DoroWindow(QtWidgets.QWidget):
             top = max(margin_top, below_top)
             if top + adjusted_panel_height + margin_bottom > self.height():
                 adjusted_panel_height = max(0.0, self.height() - margin_bottom - top)
-            self._bubble_side = "below"
+            self._view_model.set_bubble_side("below")
         else:
             bottom_edge = min(above_bottom, self.height() - margin_bottom)
             top = max(margin_top, bottom_edge - adjusted_panel_height)
-            self._bubble_side = "above"
+            self._view_model.set_bubble_side("above")
 
         if adjusted_panel_height <= 0.0:
             self._panel_rect_cache = None
