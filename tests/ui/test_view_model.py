@@ -103,18 +103,21 @@ class TestAnimationLogic:
         vm.tick(math.pi / 8.0)  # time * 2.0 = π/4
         bob_positive = vm.calculate_bob()
         assert bob_positive > 0.0
+        assert bob_positive == pytest.approx(10.0 * math.sin(math.pi / 4.0))
 
-        # Advance to 3π/4 (still positive, near peak)
+        # Advance to π/2 (actual peak where sin = 1.0)
         vm.reset_animation_time()
-        vm.tick(3 * math.pi / 8.0)
+        vm.tick(math.pi / 4.0)  # time * 2.0 = π/2
         bob_peak = vm.calculate_bob()
+        assert bob_peak == pytest.approx(10.0)  # amplitude * sin(π/2) = 10 * 1 = 10
         assert bob_peak > bob_positive
 
         # Advance past π (sine becomes negative)
         vm.reset_animation_time()
-        vm.tick(3 * math.pi / 4.0)
+        vm.tick(3 * math.pi / 4.0)  # time * 2.0 = 3π/2
         bob_negative = vm.calculate_bob()
         assert bob_negative < 0.0
+        assert bob_negative == pytest.approx(-10.0)  # sin(3π/2) = -1
 
     def test_calculate_scale_returns_one_when_no_amplitude(self):
         """Test scale calculation returns 1.0 when amplitude is 0."""
