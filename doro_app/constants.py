@@ -71,46 +71,6 @@ DEFAULT_GRADIENT_MID = "#FF9BE3FF"
 DEFAULT_GRADIENT_BOTTOM = "#FF6CC1F0"
 DEFAULT_BLUSH_COLOR = "#FFC0C0"
 DEFAULT_EYE_COLOR = "#222222"
-DEFAULT_BORDER_COLOR = "#FF5C9ED6"
-DEFAULT_BORDER_WIDTH = 3
-
-# ═══════════════════════════════════════════════════════════
-# Fallback Sprite Geometry (when no GIF loaded)
-# ═══════════════════════════════════════════════════════════
-
-# Face outline path control points (cubic bezier)
-FACE_CENTER_X = 90
-FACE_CENTER_Y_TOP = 20
-FACE_CENTER_Y_BOTTOM = 160
-FACE_LEFT_X = 30
-FACE_RIGHT_X = 150
-FACE_CONTROL_X_LEFT = 50
-FACE_CONTROL_X_RIGHT = 130
-
-# Blush (cheeks) positions and size
-BLUSH_LEFT_X = 55
-BLUSH_RIGHT_X = 107
-BLUSH_Y = 85
-BLUSH_WIDTH = 18
-BLUSH_HEIGHT = 10
-
-# Eyes positions and size
-EYE_LEFT_X = 70
-EYE_RIGHT_X = 100
-EYE_Y = 70
-EYE_WIDTH = 10
-EYE_HEIGHT = 14
-
-# Mouth path control points (smile curve)
-MOUTH_START_X = 80
-MOUTH_START_Y = 95
-MOUTH_CONTROL1_X = 90
-MOUTH_CONTROL1_Y = 105
-MOUTH_CONTROL2_X = 100
-MOUTH_CONTROL2_Y = 105
-MOUTH_END_X = 110
-MOUTH_END_Y = 95
-MOUTH_PEN_WIDTH = 2
 
 # ═══════════════════════════════════════════════════════════
 # Protected State Keys
