@@ -13,18 +13,10 @@ from ..constants import (
     TIMER_INTERVAL_MS, BUBBLE_AUTO_HIDE_MS, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
     WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT,
     SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
-    MOVEMENT_STEP_PX, BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
-    BUBBLE_DEFAULT_SCALE, BUBBLE_DEFAULT_ALPHA, MOVEMENT_ONLY_STATE_KEYS,
+    BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
+    BUBBLE_DEFAULT_SCALE, MOVEMENT_ONLY_STATE_KEYS,
     DEFAULT_MOVE_STATE_KEY, CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
     SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
-    # Fallback sprite geometry
-    FACE_CENTER_X, FACE_CENTER_Y_TOP, FACE_CENTER_Y_BOTTOM, FACE_LEFT_X, FACE_RIGHT_X,
-    FACE_CONTROL_X_LEFT, FACE_CONTROL_X_RIGHT,
-    BLUSH_LEFT_X, BLUSH_RIGHT_X, BLUSH_Y, BLUSH_WIDTH, BLUSH_HEIGHT,
-    EYE_LEFT_X, EYE_RIGHT_X, EYE_Y, EYE_WIDTH, EYE_HEIGHT,
-    MOUTH_START_X, MOUTH_START_Y, MOUTH_CONTROL1_X, MOUTH_CONTROL1_Y,
-    MOUTH_CONTROL2_X, MOUTH_CONTROL2_Y, MOUTH_END_X, MOUTH_END_Y, MOUTH_PEN_WIDTH,
-    DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH,
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .components.bubble_controller import BubbleConfig, BubbleController
@@ -38,9 +30,7 @@ from ..core.chat.orchestrator import ChatOrchestrator
 from ..utils.logger import get_logger
 from ..core.movement.manager import MovementManager
 from ..utils.models import MoveStateSettings
-from ..utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 from ..core.state import State, StateChangeEvent
-from ..core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
 from ..core.state import StateService
 from ..core.state.transition_player import TransitionPlayer
 from .theme.theme import ensure_application_theme
@@ -52,10 +42,31 @@ logger = get_logger(__name__)
 
 
 class DoroWindow(QtWidgets.QWidget):
-    def __init__(self, not_topmost: bool = False):
+    def __init__(
+        self,
+        state_service: StateService,
+        config: QtCore.QSettings,
+        not_topmost: bool = False,
+    ):
+        """
+        Initialize the Doro window (UI layer only).
+
+        Args:
+            state_service: State management service (injected)
+            config: QSettings for configuration (injected)
+            not_topmost: If True, window will not stay on top
+
+        Note:
+            Managers and controllers are wired after construction via wire_dependencies().
+            This is due to circular dependencies that will be resolved in Phase 3.
+        """
         super().__init__()
         logger.info("Initializing Doro window")
         ensure_application_theme()
+
+        # ─────────────────────────────────────────────────────────
+        # Qt Widget Setup
+        # ─────────────────────────────────────────────────────────
         self.resize(WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -68,29 +79,50 @@ class DoroWindow(QtWidgets.QWidget):
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
 
-        # NEW: Presentation state managed by ViewModel
+        # ─────────────────────────────────────────────────────────
+        # Injected Dependencies
+        # ─────────────────────────────────────────────────────────
+        self._state_service = state_service
+        self._config = config
+
+        # Connect state change callbacks
+        self._state_service.on_state_changed = self._on_state_changed
+        self._state_service.on_states_modified = self._on_states_modified
+
+        # ─────────────────────────────────────────────────────────
+        # Dependencies wired later (due to circular dependency)
+        # ─────────────────────────────────────────────────────────
+        self._transition_player: TransitionPlayer | None = None
+        self._bubble_controller: BubbleController | None = None
+        self._movement: MovementManager | None = None
+        self._chat_controller: ChatController | None = None
+        self._chat_orchestrator: ChatOrchestrator | None = None
+
+        # ─────────────────────────────────────────────────────────
+        # ViewModel (Presentation State)
+        # ─────────────────────────────────────────────────────────
         self._view_model = DoroViewModel()
-        # Initialize sprite geometry
         self._view_model.set_sprite_size(QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT))
         self._view_model.set_sprite_offset_x(SPRITE_OFFSET_X)
 
-        # Animation clock
+        # ─────────────────────────────────────────────────────────
+        # Animation Timer
+        # ─────────────────────────────────────────────────────────
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(TIMER_INTERVAL_MS)
 
-        # Appearance/animation parameters
-        # State data now managed by StateService
+        # ─────────────────────────────────────────────────────────
+        # UI State Variables
+        # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
-        # NOTE: All presentation state moved to _view_model (ViewModel)
-        # Removed: _amplitude, _scale_amp, _fill_colors, _cheek_alpha, _blush_base, _eye_color
-        # Removed: _bubble_visible, _bubble_alpha, _bubble_side, _name_tag
-        # Removed: _bubble_offset, _bubble_scale, _sprite_size, _sprite_offset_x
+
         self._gif_player = GifPlayer()
-        self._gif_movie: QtGui.QMovie | None = None  # Current movie from player
+        self._gif_movie: QtGui.QMovie | None = None
+
         self._bubble_text = ""
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
@@ -103,105 +135,34 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_initial_scale = 1.0
         self._bubble_resize_cursor_active = False
         self._last_user_activity = time.monotonic()
+
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
-        # Removed: _sprite_size, _sprite_offset_x → now in ViewModel
         self._sprite_anchor_top: float | None = None
-        self._movement_step_px = MOVEMENT_STEP_PX
+
         self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
-        # Removed: self._move_state_defs - now using StateService.all_move_state_keys()
-
-        # NEW architecture - state management without Window coupling
-        # Repositories are created and injected into StateService
-        # Window does NOT retain direct references to repositories
-        gif_repo = GifRepository(STATE_DIR)
-        state_repo = StateRepository(STATE_DIR / "states.json")
-        move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
-        transition_repo = TransitionStateRepository(ACTION_TRANSITION_DIR / "transitions.json")
-        self._state_service = StateService(
-            state_repo,
-            move_repo,
-            gif_repo,
-            STATE_DIR / "state_list.txt",
-            transition_repo,
-        )
-
-        # Connect state change events
-        self._state_service.on_state_changed = self._on_state_changed
-        self._state_service.on_states_modified = self._on_states_modified
-
-        # Create transition player for state change animations
-        self._transition_player = TransitionPlayer(self, self._state_service)
-        # Connect transition player signals (breaks circular dependency)
-        self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
-        self._transition_player.transition_completed.connect(self._on_transition_completed)
-
-        self._bubble_controller = BubbleController(self)
-        self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
-        self._state_storage_dir = STATE_DIR
-        self._state_storage_dir.mkdir(parents=True, exist_ok=True)
-        self._move_storage_dir = MOVE_DIR
-        self._move_storage_dir.mkdir(parents=True, exist_ok=True)
-        self._transition_action_dir = ACTION_TRANSITION_DIR
-        self._transition_action_dir.mkdir(parents=True, exist_ok=True)
-        self._default_idle_gif = self._state_storage_dir / "idle.gif"
-        self._state_list_path = self._state_storage_dir / "state_list.txt"
-        self._move_state_list_path = self._state_storage_dir / "move_state_list.txt"
-        self._state_config_path = self._state_storage_dir / "states.json"
-        self._prompt_file_path = PROMPT_PATH
-        self._click_actions_path = CLICK_ACTIONS_PATH
         self._click_press_pos: QtCore.QPointF | None = None
         self._click_was_dragging = False
+        self._drag_pos: QtCore.QPoint | None = None
 
-        # QSettings must be created before reading/writing
-        self._config = QtCore.QSettings("doro-pet", "doro")
-
-        # Write default idle.gif once (if user hasn't set any)
-        if not self._config.contains("state/idle/gif_path") and self._default_idle_gif.is_file():
-            self._config.setValue("state/idle/gif_path", str(self._default_idle_gif))
-
-        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
-        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
-        scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
-        self._bubble_controller.apply_persisted_config(
-            BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
-        )
-        self._apply_window_preferred_size()
-
-        self._chat_controller = ChatController(
-            self._config,
-            self._prompt_file_path,
-            state_service=self._state_service,
-            state_text_provider=lambda: self._state_list_text or "",
-            movement_hint_provider=lambda: self._movement.instruction_text(),
-            parent=self,
-        )
-        self._chat_orchestrator = ChatOrchestrator(self._chat_controller, self._movement, self._state_service)
-
-        # Connect ChatOrchestrator signals to Window methods
-        self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
-        self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
-        self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
-
+        # ─────────────────────────────────────────────────────────
+        # Chat UI Helper
+        # ─────────────────────────────────────────────────────────
         self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
 
-        # Initialize state system (NEW architecture)
-        self._state_service.initialize(default_gif_path=self._default_idle_gif)
+        # ─────────────────────────────────────────────────────────
+        # Apply UI Preferences from Config
+        # ─────────────────────────────────────────────────────────
+        self._apply_window_preferred_size()
 
-        # Restore last state from QSettings
-        saved_state_key = self._config.value("current_state", "idle")
-        if not self._state_service.set_state(saved_state_key):
-            self._state_service.set_state("idle")
-
-        # Drag move support
-        self._drag_pos: QtCore.QPoint | None = None
-
-        # Context menu
+        # ─────────────────────────────────────────────────────────
+        # Context Menu and Window Positioning
+        # ─────────────────────────────────────────────────────────
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.DefaultContextMenu)
 
         # Place near bottom-right of primary screen
@@ -211,6 +172,57 @@ class DoroWindow(QtWidgets.QWidget):
             self.move(g.right() - self.width() - 40, g.bottom() - self.height() - 120)
 
         self.setWindowTitle("doro")
+
+    def wire_dependencies(
+        self,
+        transition_player: TransitionPlayer,
+        bubble_controller: BubbleController,
+        movement_manager: MovementManager,
+        chat_controller: ChatController,
+        chat_orchestrator: ChatOrchestrator,
+    ):
+        """
+        Wire dependencies after window construction.
+
+        This two-phase initialization is necessary due to circular dependencies:
+        - Managers need window reference (for update(), move(), etc.)
+        - Window needs managers for event handling
+
+        In Phase 3, this will be refactored to use Qt Signals instead.
+
+        Args:
+            transition_player: Handles state transition animations
+            bubble_controller: Manages bubble UI state
+            movement_manager: Handles window movement
+            chat_controller: Handles chat interactions
+            chat_orchestrator: Coordinates chat and movement
+        """
+        self._transition_player = transition_player
+        self._bubble_controller = bubble_controller
+        self._movement = movement_manager
+        self._chat_controller = chat_controller
+        self._chat_orchestrator = chat_orchestrator
+
+        # Connect signals from managers to window
+        self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
+        self._transition_player.transition_completed.connect(self._on_transition_completed)
+
+        self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
+        self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
+        self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+
+        # Apply bubble config from settings
+        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
+        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
+        scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
+        self._bubble_controller.apply_persisted_config(
+            BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
+        )
+
+    @property
+    def state_list_text(self) -> str:
+        """Get current state list text (used by ChatController)."""
+        return self._state_list_text or ""
 
     # --- Animation -------------------------------------------------------
     def _tick(self):
