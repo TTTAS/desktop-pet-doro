@@ -31,6 +31,7 @@ from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .ui.components.gif_player import GifPlayer
 from .ui.design_tokens import tokens
 from .ui.fallback_sprite import draw_fallback_sprite
+from .ui.layout_manager import WindowLayoutManager
 from .ui.view_model import DoroViewModel
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
@@ -330,22 +331,14 @@ class DoroWindow(QtWidgets.QWidget):
         self._view_model.set_bubble_side("center")
 
     def _available_screen_geometry(self) -> QtCore.QRect:
-        handle = self.windowHandle()
-        screen = handle.screen() if handle else None
-        if not screen:
-            screen = QtWidgets.QApplication.primaryScreen()
-        return screen.availableGeometry() if screen else QtCore.QRect(0, 0, 1920, 1080)
+        """Get available screen geometry. Delegates to WindowLayoutManager."""
+        return WindowLayoutManager.get_available_screen_geometry(self)
 
     def _clamp_window_position(self, desired: QtCore.QPoint) -> QtCore.QPoint:
-        geo = self.frameGeometry()
-        rect = self._available_screen_geometry()
-        max_x = rect.left() + max(0, rect.width() - geo.width())
-        max_y = rect.top() + max(0, rect.height() - geo.height())
-        min_x = rect.left()
-        min_y = rect.top()
-        clamped_x = max(min_x, min(max_x, desired.x()))
-        clamped_y = max(min_y, min(max_y, desired.y()))
-        return QtCore.QPoint(clamped_x, clamped_y)
+        """Clamp window position to screen bounds. Delegates to WindowLayoutManager."""
+        window_size = self.frameGeometry().size()
+        screen_rect = self._available_screen_geometry()
+        return WindowLayoutManager.clamp_position(desired, window_size, screen_rect)
 
     def _move_window_to(self, point: QtCore.QPoint):
         if not isinstance(point, QtCore.QPoint):
@@ -367,33 +360,11 @@ class DoroWindow(QtWidgets.QWidget):
             pass
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
-        text = (self._bubble_text or "").strip()
-        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
-        panel_width = max(160.0, sprite_w)
-        available_text_width = max(80.0, panel_width - 56.0)
-
-        font = QtGui.QFont()
-        font.setPointSizeF(12.0)
-        font.setWeight(QtGui.QFont.Weight.Bold)
-        metrics = QtGui.QFontMetrics(font)
-
-        if text:
-            flags = int(
-                QtCore.Qt.AlignmentFlag.AlignLeft
-                | QtCore.Qt.AlignmentFlag.AlignTop
-            )
-            flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
-            text_rect = metrics.boundingRect(
-                QtCore.QRect(0, 0, int(round(available_text_width)), 4000),
-                flags,
-                text,
-            )
-            text_height = float(text_rect.height())
-        else:
-            text_height = float(metrics.lineSpacing())
-
-        panel_height = max(80.0, text_height + 56.0)
-        return panel_width, panel_height
+        """Compute panel size hint. Delegates to WindowLayoutManager."""
+        return WindowLayoutManager.compute_panel_size_hint(
+            self._view_model.sprite_size,
+            self._bubble_text or "",
+        )
 
     def _apply_window_preferred_size(self):
         sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
