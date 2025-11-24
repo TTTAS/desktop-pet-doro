@@ -26,6 +26,12 @@ dev = [
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = ["doro_app"]
+
+[tool.setuptools.package-data]
+doro_app = ["**/*.json", "**/*.txt", "**/*.gif", "**/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
