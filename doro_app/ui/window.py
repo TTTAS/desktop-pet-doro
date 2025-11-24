@@ -85,16 +85,22 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service = state_service
         self._config = config
 
-        # Connect state change callbacks
-        self._state_service.on_state_changed = self._on_state_changed
-        self._state_service.on_states_modified = self._on_states_modified
+        # NOTE: StateController now handles state change callbacks
+        # (previously set here, now done in StateController.__init__)
 
         # ─────────────────────────────────────────────────────────
         # Dependencies wired later (due to circular dependency)
         # ─────────────────────────────────────────────────────────
+        # Controllers
+        self._state_controller = None
+        self._gif_controller = None
+        self._dialog_manager = None
+        self._click_action_controller = None
+        # Managers
         self._transition_player: TransitionPlayer | None = None
         self._bubble_controller: BubbleController | None = None
         self._movement: MovementManager | None = None
+        # Chat
         self._chat_controller: ChatController | None = None
         self._chat_orchestrator: ChatOrchestrator | None = None
 
@@ -173,8 +179,22 @@ class DoroWindow(QtWidgets.QWidget):
 
         self.setWindowTitle("doro")
 
+    @property
+    def view_model(self):
+        """Get ViewModel (needed by controllers)."""
+        return self._view_model
+
+    @property
+    def state_list_text(self) -> str:
+        """Get current state list text (used by ChatController)."""
+        return self._state_list_text or ""
+
     def wire_dependencies(
         self,
+        state_controller,
+        gif_controller,
+        dialog_manager,
+        click_action_controller,
         transition_player: TransitionPlayer,
         bubble_controller: BubbleController,
         movement_manager: MovementManager,
@@ -191,19 +211,45 @@ class DoroWindow(QtWidgets.QWidget):
         In Phase 3, this will be refactored to use Qt Signals instead.
 
         Args:
+            state_controller: Coordinates state changes with ViewModel
+            gif_controller: Handles GIF loading and playback
+            dialog_manager: Manages dialog windows
+            click_action_controller: Handles click actions
             transition_player: Handles state transition animations
             bubble_controller: Manages bubble UI state
             movement_manager: Handles window movement
             chat_controller: Handles chat interactions
             chat_orchestrator: Coordinates chat and movement
         """
+        # Wire controllers
+        self._state_controller = state_controller
+        self._gif_controller = gif_controller
+        self._dialog_manager = dialog_manager
+        self._click_action_controller = click_action_controller
+
+        # Wire managers
         self._transition_player = transition_player
         self._bubble_controller = bubble_controller
         self._movement = movement_manager
+
+        # Wire chat components
         self._chat_controller = chat_controller
         self._chat_orchestrator = chat_orchestrator
 
-        # Connect signals from managers to window
+        # ─────────────────────────────────────────────────────────
+        # Connect controller signals
+        # ─────────────────────────────────────────────────────────
+        self._state_controller.repaint_requested.connect(self.update)
+        self._state_controller.state_changed.connect(self._on_controller_state_changed)
+        self._state_controller.state_list_updated.connect(self._on_state_list_updated)
+
+        self._gif_controller.repaint_requested.connect(self.update)
+        self._gif_controller.gif_loaded.connect(self._on_gif_loaded)
+        self._gif_controller.sprite_size_changed.connect(self._on_sprite_size_changed)
+
+        # ─────────────────────────────────────────────────────────
+        # Connect manager signals
+        # ─────────────────────────────────────────────────────────
         self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
         self._transition_player.transition_completed.connect(self._on_transition_completed)
 
@@ -211,7 +257,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
         self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
 
-        # Apply bubble config from settings
+        # ─────────────────────────────────────────────────────────
+        # Apply configuration
+        # ─────────────────────────────────────────────────────────
         offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
         offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
         scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
@@ -219,10 +267,38 @@ class DoroWindow(QtWidgets.QWidget):
             BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
         )
 
-    @property
-    def state_list_text(self) -> str:
-        """Get current state list text (used by ChatController)."""
-        return self._state_list_text or ""
+    # ─────────────────────────────────────────────────────────
+    # Controller signal handlers
+    # ─────────────────────────────────────────────────────────
+
+    def _on_controller_state_changed(self, state_key: str):
+        """
+        Handle state change from StateController.
+
+        StateController handles ViewModel updates, we just need to load the GIF.
+        """
+        self._current_state_key = state_key
+
+        # Check if transition should play
+        # (TransitionPlayer will handle loading the target GIF after transition)
+        # For now, just load the GIF directly if no transition
+        gif_resource_id = self._state_service.get_gif_id(state_key)
+        if gif_resource_id:
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
+            if gif_path:
+                self._gif_controller.load_gif(str(gif_path))
+
+    def _on_state_list_updated(self, state_list_text: str):
+        """Handle state list update from StateController."""
+        self._state_list_text = state_list_text
+
+    def _on_gif_loaded(self, movie):
+        """Handle GIF loaded from GifController."""
+        self._gif_movie = movie
+
+    def _on_sprite_size_changed(self, size):
+        """Handle sprite size change from GifController."""
+        self._apply_window_preferred_size()
 
     # --- Animation -------------------------------------------------------
     def _tick(self):

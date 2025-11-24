@@ -14,6 +14,7 @@ from .core.state import GifRepository, MoveStateRepository, StateRepository, Tra
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleController
+from .ui.controllers import ClickActionController, DialogManager, GifController, StateController
 from .ui.window import DoroWindow
 from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 
@@ -89,7 +90,8 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         # 5. Create Window first (needed by managers due to circular deps)
         # ─────────────────────────────────────────────────────────
-        # NOTE: This is temporary. In Phase 3, managers won't need window reference.
+        # NOTE: Window is created before controllers because some controllers
+        # need window reference. This will be fixed in Phase 3.
         self.window = DoroWindow(
             state_service=self._state_service,
             config=self._config,
@@ -97,20 +99,34 @@ class DoroApp:
         )
 
         # ─────────────────────────────────────────────────────────
-        # 6. Create Managers (need window reference - circular dependency)
+        # 6. Create UI Controllers (coordinate between services and UI)
+        # ─────────────────────────────────────────────────────────
+        self._state_controller = StateController(
+            state_service=self._state_service,
+            view_model=self.window.view_model,
+            config=self._config,
+        )
+        self._gif_controller = GifController(view_model=self.window.view_model)
+        self._dialog_manager = DialogManager(
+            parent_window=self.window,
+            state_service=self._state_service,
+        )
+
+        # ─────────────────────────────────────────────────────────
+        # 7. Create Managers (need window reference - circular dependency)
         # ─────────────────────────────────────────────────────────
         self._transition_player = TransitionPlayer(self.window, self._state_service)
         self._bubble_controller = BubbleController(self.window)
         self._movement = MovementManager(self.window, self._state_service, MOVEMENT_STEP_PX)
 
         # ─────────────────────────────────────────────────────────
-        # 7. Create Chat components
+        # 8. Create Chat components
         # ─────────────────────────────────────────────────────────
         self._chat_controller = ChatController(
             self._config,
             self._prompt_file_path,
             state_service=self._state_service,
-            state_text_provider=lambda: self.window.state_list_text,
+            state_text_provider=lambda: self._state_controller.get_state_list_text(),
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self.window,
         )
@@ -120,10 +136,20 @@ class DoroApp:
             self._state_service,
         )
 
+        # Create ClickActionController after ChatOrchestrator
+        self._click_action_controller = ClickActionController(
+            actions_file=self._click_actions_path,
+            chat_orchestrator=self._chat_orchestrator,
+        )
+
         # ─────────────────────────────────────────────────────────
-        # 8. Wire dependencies into Window
+        # 9. Wire all dependencies into Window
         # ─────────────────────────────────────────────────────────
         self.window.wire_dependencies(
+            state_controller=self._state_controller,
+            gif_controller=self._gif_controller,
+            dialog_manager=self._dialog_manager,
+            click_action_controller=self._click_action_controller,
             transition_player=self._transition_player,
             bubble_controller=self._bubble_controller,
             movement_manager=self._movement,
@@ -132,7 +158,7 @@ class DoroApp:
         )
 
         # ─────────────────────────────────────────────────────────
-        # 9. Initialize StateService and restore last state
+        # 10. Initialize StateService and restore last state
         # ─────────────────────────────────────────────────────────
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
 
