@@ -28,7 +28,10 @@ from .constants import (
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.components.gif_player import GifPlayer
+from .ui.design_tokens import tokens
 from .ui.fallback_sprite import draw_fallback_sprite
+from .ui.view_model import DoroViewModel
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .utils.logger import get_logger
@@ -64,34 +67,32 @@ class DoroWindow(QtWidgets.QWidget):
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
 
+        # NEW: Presentation state managed by ViewModel
+        self._view_model = DoroViewModel()
+        # Initialize sprite geometry
+        self._view_model.set_sprite_size(QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT))
+        self._view_model.set_sprite_offset_x(SPRITE_OFFSET_X)
+
         # Animation clock
-        self._t = 0.0
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(TIMER_INTERVAL_MS)
 
         # Appearance/animation parameters
-        # OLD state data removed - now managed by StateService
+        # State data now managed by StateService
         self._current_state_key: str = ""
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
-        self._amplitude = 0.0
-        self._scale_amp = 0.0
-        self._fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor] = get_default_fill_colors()
-        self._cheek_alpha = 0.0
-        self._blush_base = get_default_blush_color()
-        self._eye_color = get_default_eye_color()
-        self._bubble_visible = True
-        self._bubble_alpha = BUBBLE_DEFAULT_ALPHA
-        self._bubble_side = "center"
-        self._name_tag = "doro"
-        self._gif_movie: QtGui.QMovie | None = None
+        # NOTE: All presentation state moved to _view_model (ViewModel)
+        # Removed: _amplitude, _scale_amp, _fill_colors, _cheek_alpha, _blush_base, _eye_color
+        # Removed: _bubble_visible, _bubble_alpha, _bubble_side, _name_tag
+        # Removed: _bubble_offset, _bubble_scale, _sprite_size, _sprite_offset_x
+        self._gif_player = GifPlayer()
+        self._gif_movie: QtGui.QMovie | None = None  # Current movie from player
         self._bubble_text = ""
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
-        self._bubble_offset = QtCore.QPointF(0.0, 0.0)
-        self._bubble_scale = 1.0
         self._bubble_dragging = False
         self._bubble_resizing = False
         self._bubble_drag_start: QtCore.QPointF | None = None
@@ -104,8 +105,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
-        self._sprite_size = QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT)
-        self._sprite_offset_x = SPRITE_OFFSET_X
+        # Removed: _sprite_size, _sprite_offset_x → now in ViewModel
         self._sprite_anchor_top: float | None = None
         self._movement_step_px = MOVEMENT_STEP_PX
         self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
@@ -132,6 +132,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Create transition player for state change animations
         self._transition_player = TransitionPlayer(self, self._state_service)
+        # Connect transition player signals (breaks circular dependency)
+        self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
+        self._transition_player.transition_completed.connect(self._on_transition_completed)
 
         self._bubble_controller = BubbleController(self)
         self._movement = MovementManager(self, self._state_service, MOVEMENT_STEP_PX)
@@ -215,9 +218,11 @@ class DoroWindow(QtWidgets.QWidget):
         self._last_tick_time = now
         if dt < 0.0:
             dt = 0.0
-        dt = min(dt, 0.1)
+        dt = min(dt, tokens.animation.max_delta_time)
         self._movement.process_active_movement(dt)
-        self._t += dt
+
+        # NEW: Use ViewModel for animation time
+        self._view_model.tick(dt)
         self.update()
 
     # --- Interaction -----------------------------------------------------
@@ -289,15 +294,15 @@ class DoroWindow(QtWidgets.QWidget):
         super().keyPressEvent(e)
 
     def _sprite_center(self) -> QtCore.QPointF:
-        base_x = self.width() / 2.0 + getattr(self, "_sprite_offset_x", 0.0)
-        half_w = max(SPRITE_MIN_SIZE, self._sprite_size.width() / 2.0)
-        half_h = max(SPRITE_MIN_SIZE, self._sprite_size.height() / 2.0)
+        base_x = self.width() / 2.0 + self._view_model.sprite_offset_x
+        half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
+        half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
         margin_x = SPRITE_MARGIN_X
         min_center_x = half_w + margin_x
         max_center_x = self.width() - half_w - margin_x
         if min_center_x <= max_center_x:
             base_x = max(min_center_x, min(max_center_x, base_x))
-        bob_allowance = abs(getattr(self, "_amplitude", 0.0)) + SPRITE_BOB_ALLOWANCE
+        bob_allowance = abs(self._view_model.bob_amplitude) + SPRITE_BOB_ALLOWANCE
         margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
         max_center_y = self.height() - half_h - margin_bottom
@@ -322,7 +327,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
-        self._bubble_side = "center"
+        self._view_model.set_bubble_side("center")
 
     def _available_screen_geometry(self) -> QtCore.QRect:
         handle = self.windowHandle()
@@ -363,7 +368,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
         text = (self._bubble_text or "").strip()
-        sprite_w = max(120.0, float(self._sprite_size.width()))
+        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
         panel_width = max(160.0, sprite_w)
         available_text_width = max(80.0, panel_width - 56.0)
 
@@ -391,8 +396,8 @@ class DoroWindow(QtWidgets.QWidget):
         return panel_width, panel_height
 
     def _apply_window_preferred_size(self):
-        sprite_w = max(120.0, float(self._sprite_size.width()))
-        sprite_h = max(120.0, float(self._sprite_size.height()))
+        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
+        sprite_h = max(120.0, float(self._view_model.sprite_size.height()))
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
         self._panel_height_hint = panel_h_hint
@@ -432,10 +437,10 @@ class DoroWindow(QtWidgets.QWidget):
         if movie and movie.isValid():
             rect = movie.frameRect()
             if rect.width() > 0 and rect.height() > 0:
-                self._sprite_size = rect.size()
+                self._view_model.set_sprite_size(rect.size())
                 self._apply_window_preferred_size()
                 return
-        self._sprite_size = QtCore.QSize(200, 200)
+        self._view_model.set_sprite_size(QtCore.QSize(200, 200))
         self._apply_window_preferred_size()
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
@@ -454,6 +459,7 @@ class DoroWindow(QtWidgets.QWidget):
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
         # Disable animations - no bob (floating) or scale (breathing) effects
+        # NOTE: ViewModel can calculate these, but we keep animations disabled for now
         bob = 0.0
         scale = 1.0
 
@@ -467,18 +473,24 @@ class DoroWindow(QtWidgets.QWidget):
             p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             p.drawPixmap(0, 0, pixmap)
         else:
-            # Draw fallback sprite when no GIF is available
-            draw_fallback_sprite(p, self._fill_colors, self._cheek_alpha, self._blush_base, self._eye_color)
+            # Draw fallback sprite when no GIF is available (use ViewModel colors)
+            draw_fallback_sprite(
+                p,
+                self._view_model.fill_colors,
+                self._view_model.cheek_alpha,
+                self._view_model.blush_color,
+                self._view_model.eye_color
+            )
 
         p.restore()
 
         panel_should_draw = (
-            (self._bubble_visible or self._bubble_text_show_override)
-            and self._bubble_alpha > 0
+            (self._view_model.bubble_visible or self._bubble_text_show_override)
+            and self._view_model.bubble_alpha > 0
             and bool((self._bubble_text or "").strip())
         )
         if panel_should_draw:
-            alpha = min(max(int(self._bubble_alpha), 0), 255)
+            alpha = min(max(int(self._view_model.bubble_alpha), 0), 255)
             self._draw_text_panel(p, alpha)
         else:
             self._panel_rect_cache = None
@@ -501,10 +513,39 @@ class DoroWindow(QtWidgets.QWidget):
         self._move_window_to(pos)
 
     # ═══════════════════════════════════════════════════════════
-    # Event Callbacks from StateService
+    # Event Callbacks from StateService and TransitionPlayer
     # ═══════════════════════════════════════════════════════════
 
-    # NEW: Event callbacks from StateService
+    def _on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
+        """
+        Handle transition movie loaded signal from TransitionPlayer.
+
+        Args:
+            movie: The transition QMovie
+            sprite_size: The sprite size from the transition GIF
+        """
+        # Set movie to window's GIF movie (temporarily for transition)
+        self._gif_movie = movie
+        # Update sprite size from transition GIF
+        self._view_model.set_sprite_size(sprite_size)
+        self._apply_window_preferred_size()
+        self.update()
+
+    def _on_transition_completed(self, target_state_key: str):
+        """
+        Handle transition completion signal from TransitionPlayer.
+
+        Args:
+            target_state_key: The target state key to load after transition
+        """
+        logger.debug(f"Transition completed, loading target state: {target_state_key}")
+        # Load target state GIF
+        gif_resource_id = self._state_service.get_gif_id(target_state_key)
+        if gif_resource_id:
+            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
+            if gif_path:
+                self._load_gif(str(gif_path))
+
     def _on_state_changed(self, event: StateChangeEvent) -> None:
         """Handle state change events from StateService."""
         state = event.new_state
@@ -528,21 +569,21 @@ class DoroWindow(QtWidgets.QWidget):
                 if gif_path:
                     self._load_gif(str(gif_path))
 
-        # Apply visual config (even during transitions, for when it completes)
+        # Apply visual config to ViewModel (even during transitions)
         visual = state.visual
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = (
+        self._view_model.set_bob_amplitude(visual.bob_amplitude)
+        self._view_model.set_scale_amplitude(visual.scale_amplitude)
+        self._view_model.set_fill_colors(
             QtGui.QColor(visual.gradient_top),
             QtGui.QColor(visual.gradient_mid),
             QtGui.QColor(visual.gradient_bottom),
         )
-        self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = QtGui.QColor(visual.blush_color)
-        self._eye_color = QtGui.QColor(visual.eye_color)
-        self._bubble_visible = visual.bubble_visible
-        self._bubble_alpha = visual.bubble_alpha
-        self._name_tag = state.name_tag
+        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
+        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
+        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
+        self._view_model.set_bubble_visible(visual.bubble_visible)
+        self._view_model.set_bubble_alpha(visual.bubble_alpha)
+        self._view_model.set_name_tag(state.name_tag)
 
         # Persist to QSettings
         self._config.setValue("current_state", event.new_key)
@@ -592,21 +633,21 @@ class DoroWindow(QtWidgets.QWidget):
         if not state:
             return
 
-        # Apply visual config
+        # Apply visual config to ViewModel
         visual = state.visual
-        self._amplitude = visual.bob_amplitude
-        self._scale_amp = visual.scale_amplitude
-        self._fill_colors = (
+        self._view_model.set_bob_amplitude(visual.bob_amplitude)
+        self._view_model.set_scale_amplitude(visual.scale_amplitude)
+        self._view_model.set_fill_colors(
             QtGui.QColor(visual.gradient_top),
             QtGui.QColor(visual.gradient_mid),
             QtGui.QColor(visual.gradient_bottom),
         )
-        self._cheek_alpha = visual.cheeks_alpha
-        self._blush_base = QtGui.QColor(visual.blush_color)
-        self._eye_color = QtGui.QColor(visual.eye_color)
-        self._bubble_visible = visual.bubble_visible
-        self._bubble_alpha = visual.bubble_alpha
-        self._name_tag = state.name_tag
+        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
+        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
+        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
+        self._view_model.set_bubble_visible(visual.bubble_visible)
+        self._view_model.set_bubble_alpha(visual.bubble_alpha)
+        self._view_model.set_name_tag(state.name_tag)
 
         # Load GIF
         gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
@@ -626,13 +667,16 @@ class DoroWindow(QtWidgets.QWidget):
             self._load_gif(None)
 
     def _load_gif(self, path: str | None):
+        # Disconnect old movie if exists
         if self._gif_movie:
             try:
                 self._gif_movie.frameChanged.disconnect(self._on_movie_frame_changed)
             except (RuntimeError, TypeError):
                 pass
-            self._gif_movie.stop()
-            self._gif_movie = None
+
+        # Clear all movies from player
+        self._gif_player.clear()
+        self._gif_movie = None
 
         if not path:
             self._update_sprite_size_hint(None)
@@ -643,14 +687,14 @@ class DoroWindow(QtWidgets.QWidget):
             self._update_sprite_size_hint(None)
             return
 
-        movie = QtGui.QMovie(str(path_obj))
-        if not movie.isValid():
+        # Load using GifPlayer for unified resource management
+        movie = self._gif_player.load(path_obj)
+        if not movie:
             self._update_sprite_size_hint(None)
             return
 
         movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
         movie.frameChanged.connect(self._on_movie_frame_changed)
-        movie.start()
         self._gif_movie = movie
         self._update_sprite_size_hint(movie)
 
@@ -659,8 +703,8 @@ class DoroWindow(QtWidgets.QWidget):
             pixmap = self._gif_movie.currentPixmap()
             if not pixmap.isNull():
                 frame_size = pixmap.size()
-                if frame_size != self._sprite_size:
-                    self._sprite_size = QtCore.QSize(frame_size)
+                if frame_size != self._view_model.sprite_size:
+                    self._view_model.set_sprite_size(QtCore.QSize(frame_size))
                     self._apply_window_preferred_size()
         self.update()
 
@@ -673,11 +717,11 @@ class DoroWindow(QtWidgets.QWidget):
         return self._state_service.set_primary_gif(key, Path(source_path))
 
     def _show_state_manager(self):
-        from .ui.dialogs.state_dialogs import show_state_manager
+        from .ui.dialogs.state import show_state_manager
         show_state_manager(self._state_service, parent=self)
 
     def _show_move_gif_manager(self):
-        from .ui.dialogs.state_dialogs import show_move_state_manager
+        from .ui.dialogs.move_state import show_move_state_manager
         show_move_state_manager(self._state_service, parent=self)
 
     def _clear_state_gif(self):
@@ -717,7 +761,7 @@ class DoroWindow(QtWidgets.QWidget):
             self._chat_cursor_overridden = False
 
     def _toggle_bubble(self, checked: bool):
-        # NEW: Update through StateService
+        # Update through StateService
         if not self._current_state_key:
             return
         # Update state via StateService
@@ -725,12 +769,11 @@ class DoroWindow(QtWidgets.QWidget):
             self._current_state_key,
             bubble_visible=checked
         ):
-            # Update UI
-            self._bubble_visible = checked
+            # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)
 
     def _rename_pet(self):
-        # NEW: Update through StateService
+        # Update through StateService
         if not self._current_state_key:
             return
         current_state = self._state_service.get_state(self._current_state_key)
@@ -745,18 +788,16 @@ class DoroWindow(QtWidgets.QWidget):
             current_state.name_tag,
         )
         if ok and text.strip():
-            # Update state via StateService
-            if self._state_service.update_state(
+            # Update state via StateService (ViewModel will be updated by state change event)
+            self._state_service.update_state(
                 self._current_state_key,
                 name_tag=text.strip()
-            ):
-                # Update local cache
-                self._name_tag = text.strip()
+            )
             self.update()
 
     def _add_state(self, checked: bool = False) -> str | None:
         # NEW: Use dialog
-        from .ui.dialogs.state_dialogs import show_add_state_dialog
+        from .ui.dialogs.state import show_add_state_dialog
         return show_add_state_dialog(self._state_service, parent=self)
 
     def _remove_state_by_key(
@@ -795,14 +836,14 @@ class DoroWindow(QtWidgets.QWidget):
             self._panel_rect_cache = None
             return
 
-        target_width = max(160.0, float(self._sprite_size.width()))
+        target_width = max(160.0, float(self._view_model.sprite_size.width()))
         panel_width = max(
             80.0,
             min(target_width, float(self.width()) - 24.0),
         )
 
-        inner_padding_x = 28.0
-        inner_padding_y = 22.0
+        inner_padding_x = tokens.spacing.bubble_inner_x
+        inner_padding_y = tokens.spacing.bubble_inner_y
         font = QtGui.QFont()
         font.setPointSizeF(12.0)
         font.setWeight(QtGui.QFont.Weight.DemiBold)
@@ -821,10 +862,10 @@ class DoroWindow(QtWidgets.QWidget):
         panel_height = max(self._panel_height_hint, text_height + inner_padding_y * 2.0)
 
         sprite_center = self._sprite_center()
-        sprite_half_h = float(max(20.0, self._sprite_size.height() / 2.0))
-        gap = 28.0
-        margin_top = 18.0
-        margin_bottom = 24.0
+        sprite_half_h = float(max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0))
+        gap = tokens.spacing.sprite_bubble_gap
+        margin_top = tokens.spacing.margin_top
+        margin_bottom = tokens.spacing.margin_bottom
 
         below_top = sprite_center.y() + sprite_half_h + gap
         available_below = self.height() - margin_bottom - below_top
@@ -850,30 +891,35 @@ class DoroWindow(QtWidgets.QWidget):
             top = max(margin_top, below_top)
             if top + adjusted_panel_height + margin_bottom > self.height():
                 adjusted_panel_height = max(0.0, self.height() - margin_bottom - top)
-            self._bubble_side = "below"
+            self._view_model.set_bubble_side("below")
         else:
             bottom_edge = min(above_bottom, self.height() - margin_bottom)
             top = max(margin_top, bottom_edge - adjusted_panel_height)
-            self._bubble_side = "above"
+            self._view_model.set_bubble_side("above")
 
         if adjusted_panel_height <= 0.0:
             self._panel_rect_cache = None
             return
 
         left = sprite_center.x() - panel_width / 2.0
-        min_left = 12.0
-        max_left = self.width() - panel_width - 12.0
+        min_left = tokens.spacing.margin_horizontal
+        max_left = self.width() - panel_width - tokens.spacing.margin_horizontal
         if max_left < min_left:
             min_left = max_left = max(self.width() - panel_width, 0.0)
         left = max(min_left, min(max_left, left))
         panel_rect = QtCore.QRectF(left, top, panel_width, adjusted_panel_height)
 
-        shadow_rect = panel_rect.adjusted(0.0, 8.0 if place_below else -12.0, 0.0, 12.0 if place_below else 4.0)
-        corner_radius = 18.0
+        shadow_rect = panel_rect.adjusted(
+            0.0,
+            tokens.spacing.shadow_offset_below if place_below else tokens.spacing.shadow_offset_above,
+            0.0,
+            tokens.spacing.shadow_extend_below if place_below else tokens.spacing.shadow_extend_above
+        )
+        corner_radius = tokens.radius.bubble
 
-        base_alpha = max(140, min(255, alpha))
-        outline_alpha = int(base_alpha * 0.55)
-        fill_alpha = int(base_alpha * 0.92)
+        base_alpha = max(tokens.opacity.min_base_alpha, min(tokens.opacity.max_base_alpha, alpha))
+        outline_alpha = tokens.calculate_outline_alpha(base_alpha)
+        fill_alpha = tokens.calculate_fill_alpha(base_alpha)
 
         fill_gradient = QtGui.QLinearGradient(
             QtCore.QPointF(panel_rect.left(), panel_rect.top()),
@@ -974,12 +1020,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Clean up resources
         try:
-            if self._gif_movie:
-                try:
-                    self._gif_movie.stop()
-                except Exception:
-                    pass
-                self._gif_movie = None
+            # Clear all GIF resources using GifPlayer
+            self._gif_player.clear()
+            self._gif_movie = None
 
             if self._timer:
                 try:

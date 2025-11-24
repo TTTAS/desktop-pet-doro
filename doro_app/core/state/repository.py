@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ...utils.logger import get_logger
+from ..exceptions import (
+    ConfigLoadError,
+    ConfigSaveError,
+    GifNotFoundError,
+    GifStorageError,
+)
 from .models import MoveState, State, TransitionState, VisualConfig
 
 logger = get_logger(__name__)
@@ -30,7 +36,7 @@ class GifRepository:
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-    def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+    def store_gif(self, source_path: Path, state_key: str) -> str:
         """
         Copy a GIF into storage.
 
@@ -39,10 +45,14 @@ class GifRepository:
             state_key: State this GIF belongs to
 
         Returns:
-            Resource ID (relative path) or None if failed
+            Resource ID (relative path)
+
+        Raises:
+            GifNotFoundError: Source file does not exist
+            GifStorageError: Failed to copy file
         """
         if not source_path.is_file():
-            return None
+            raise GifNotFoundError(str(source_path))
 
         dest_path = self._primary_path(state_key)
 
@@ -50,14 +60,14 @@ class GifRepository:
         try:
             if source_path.resolve() == dest_path.resolve():
                 return self._to_resource_id(dest_path)
-        except OSError:
-            pass
+        except OSError as e:
+            raise GifStorageError(f"Failed to resolve path: {e}")
 
         try:
             shutil.copy2(source_path, dest_path)
             return self._to_resource_id(dest_path)
-        except OSError:
-            return None
+        except OSError as e:
+            raise GifStorageError(f"Failed to copy GIF: {e}")
 
     def get_path(self, resource_id: str) -> Optional[Path]:
         """
@@ -94,7 +104,15 @@ class GifRepository:
             return None
 
     def delete(self, resource_id: str) -> bool:
-        """Delete a GIF by resource ID."""
+        """
+        Delete a GIF by resource ID.
+
+        Returns:
+            False if file doesn't exist, True if deleted successfully
+
+        Raises:
+            GifStorageError: Failed to delete file
+        """
         path = self.get_path(resource_id)
         if not path:
             return False
@@ -102,8 +120,8 @@ class GifRepository:
         try:
             path.unlink()
             return True
-        except OSError:
-            return False
+        except OSError as e:
+            raise GifStorageError(f"Failed to delete GIF: {e}")
 
     # ═══════════════════════════════════════════════════════════
     # Public API - Path Utilities
@@ -185,7 +203,10 @@ class StateRepository:
         Load all custom states from JSON.
 
         Returns:
-            Dict of state_key -> State
+            Dict of state_key -> State (empty dict if no config file exists)
+
+        Raises:
+            ConfigLoadError: Failed to read or parse config file
         """
         if not self.config_path.is_file():
             logger.debug(f"No state config file found at {self.config_path}")
@@ -197,10 +218,10 @@ class StateRepository:
             logger.info(f"Loaded state config from {self.config_path}")
         except OSError as e:
             logger.error(f"Failed to read state config {self.config_path}: {e}")
-            return {}
+            raise ConfigLoadError(str(self.config_path), str(e))
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in state config {self.config_path}: {e}")
-            return {}
+            raise ConfigLoadError(str(self.config_path), f"Invalid JSON: {e}")
 
         if not isinstance(data, dict):
             logger.error(f"State config is not a dict: {type(data)}")
@@ -221,7 +242,7 @@ class StateRepository:
         logger.info(f"Loaded {len(states)} custom states")
         return states
 
-    def save_all(self, states: dict[str, State], protected_keys: set[str]) -> bool:
+    def save_all(self, states: dict[str, State], protected_keys: set[str]) -> None:
         """
         Save custom states to JSON.
 
@@ -229,8 +250,8 @@ class StateRepository:
             states: All states
             protected_keys: Keys to exclude from save (built-in states)
 
-        Returns:
-            True if successful
+        Raises:
+            ConfigSaveError: Failed to save config file
         """
         # Only save custom states
         custom_states = {
@@ -250,10 +271,9 @@ class StateRepository:
                 if self.config_path.exists():
                     self.config_path.unlink()
                     logger.info(f"Removed empty state config {self.config_path}")
-            return True
         except OSError as e:
             logger.error(f"Failed to save states to {self.config_path}: {e}")
-            return False
+            raise ConfigSaveError(str(self.config_path), str(e))
 
     def _to_dict(self, state: State) -> dict[str, Any]:
         """Convert State to JSON-serializable dict."""
@@ -318,15 +338,25 @@ class MoveStateRepository:
         self.config_path = config_path
 
     def load_all(self) -> dict[str, MoveState]:
-        """Load movement states from JSON."""
+        """
+        Load movement states from JSON.
+
+        Returns:
+            Dict of move_key -> MoveState (empty dict if no config file exists)
+
+        Raises:
+            ConfigLoadError: Failed to read or parse config file
+        """
         if not self.config_path.is_file():
             return {}
 
         try:
             raw = self.config_path.read_text(encoding="utf-8")
             data = json.loads(raw)
-        except (OSError, json.JSONDecodeError):
-            return {}
+        except OSError as e:
+            raise ConfigLoadError(str(self.config_path), str(e))
+        except json.JSONDecodeError as e:
+            raise ConfigLoadError(str(self.config_path), f"Invalid JSON: {e}")
 
         if not isinstance(data, dict):
             return {}
@@ -349,8 +379,13 @@ class MoveStateRepository:
 
         return move_states
 
-    def save_all(self, move_states: dict[str, MoveState]) -> bool:
-        """Save movement states to JSON."""
+    def save_all(self, move_states: dict[str, MoveState]) -> None:
+        """
+        Save movement states to JSON.
+
+        Raises:
+            ConfigSaveError: Failed to save config file
+        """
         data = {
             key: {
                 "state_key": ms.state_key,
@@ -369,9 +404,8 @@ class MoveStateRepository:
             else:
                 if self.config_path.exists():
                     self.config_path.unlink()
-            return True
-        except OSError:
-            return False
+        except OSError as e:
+            raise ConfigSaveError(str(self.config_path), str(e))
 
 
 class TransitionStateRepository:
@@ -381,15 +415,25 @@ class TransitionStateRepository:
         self.config_path = config_path
 
     def load_all(self) -> dict[str, TransitionState]:
-        """Load transition states from JSON."""
+        """
+        Load transition states from JSON.
+
+        Returns:
+            Dict of transition_key -> TransitionState (empty dict if no config file exists)
+
+        Raises:
+            ConfigLoadError: Failed to read or parse config file
+        """
         if not self.config_path.is_file():
             return {}
 
         try:
             raw = self.config_path.read_text(encoding="utf-8")
             data = json.loads(raw)
-        except (OSError, json.JSONDecodeError):
-            return {}
+        except OSError as e:
+            raise ConfigLoadError(str(self.config_path), str(e))
+        except json.JSONDecodeError as e:
+            raise ConfigLoadError(str(self.config_path), f"Invalid JSON: {e}")
 
         if not isinstance(data, dict):
             return {}
@@ -411,8 +455,13 @@ class TransitionStateRepository:
 
         return transitions
 
-    def save_all(self, transitions: dict[str, TransitionState]) -> bool:
-        """Save transition states to JSON."""
+    def save_all(self, transitions: dict[str, TransitionState]) -> None:
+        """
+        Save transition states to JSON.
+
+        Raises:
+            ConfigSaveError: Failed to save config file
+        """
         data = {
             key: {
                 "from_state": ts.from_state,
@@ -430,9 +479,8 @@ class TransitionStateRepository:
             else:
                 if self.config_path.exists():
                     self.config_path.unlink()
-            return True
-        except OSError:
-            return False
+        except OSError as e:
+            raise ConfigSaveError(str(self.config_path), str(e))
 
 
 class StateListWriter:

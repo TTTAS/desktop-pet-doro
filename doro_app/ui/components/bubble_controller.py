@@ -19,10 +19,27 @@ class BubbleConfig:
     auto_hide_ms: int = 6000
 
 
-class BubbleController:
-    """Encapsulates bubble offset/scale storage and drag interactions."""
+class BubbleController(QtCore.QObject):
+    """
+    Manages bubble (speech panel) display, positioning, and auto-hide behavior.
+
+    Uses Signal/Slot pattern to decouple from Window implementation.
+
+    Signals:
+        text_changed: Emitted when bubble text changes (str: text, bool: override_visibility)
+        visibility_changed: Emitted when bubble visibility changes (bool: visible)
+        preferences_changed: Emitted when user preferences need saving (dict: config)
+        repaint_requested: Emitted when window needs repaint
+    """
+
+    # Signals for decoupling from Window
+    text_changed = QtCore.Signal(str, bool)  # text, override_visibility
+    visibility_changed = QtCore.Signal(bool)  # visible
+    preferences_changed = QtCore.Signal(dict)  # config dict for persistence
+    repaint_requested = QtCore.Signal()  # request window update
 
     def __init__(self, window: DoroWindow):
+        super().__init__(window)
         self._window = window
         self._offset = QtCore.QPointF(0.0, 0.0)
         self._scale = 1.0
@@ -34,9 +51,15 @@ class BubbleController:
         self._resize_anchor: QtCore.QPointF | None = None
         self._initial_scale = 1.0
         self._resize_cursor_active = False
-        self._hide_timer = QtCore.QTimer(window)
+
+        # Auto-hide timer (owned by BubbleController, not Window)
+        self._hide_timer = QtCore.QTimer(self)
         self._hide_timer.setSingleShot(True)
-        self._hide_timer.timeout.connect(self.clear_text)
+        self._hide_timer.timeout.connect(self._on_hide_timer_timeout)
+
+        # Auto-hide default delay (can be overridden per-message)
+        self._default_auto_hide_ms = 6000
+
         # expose timer for legacy references
         window._bubble_hide_timer = self._hide_timer
 
@@ -129,18 +152,47 @@ class BubbleController:
         auto_hide: bool = True,
         hide_delay_ms: int | None = None,
     ):
+        """
+        Set bubble text and optionally schedule auto-hide.
+
+        Args:
+            text: Text to display (empty string clears the bubble)
+            override_visibility: Show bubble even if visibility is disabled
+            auto_hide: If True and delay > 0, automatically hide after delay
+            hide_delay_ms: Custom delay in milliseconds (None = use default)
+
+        Fixed: Previously, auto_hide=False would prevent timer from working.
+        Now: If auto_hide=False, message stays forever (until manually cleared).
+                If auto_hide=True with delay=0, also stays forever.
+                Otherwise, hides after delay.
+        """
         window = self._window
         clean = (text or "").strip()
+
+        # Update Window state (will be removed when we move to ViewModel)
         window._bubble_text = clean
         window._bubble_text_show_override = override_visibility and bool(clean)
+
+        # Stop any existing timer
         self._hide_timer.stop()
-        if auto_hide and clean:
-            delay = hide_delay_ms if hide_delay_ms is not None else window._bubble_auto_hide_ms
-            if delay > 0:
-                self._hide_timer.start(int(delay))
+
+        # Schedule auto-hide if requested
+        if clean:  # Only schedule if there's actually text
+            if auto_hide:
+                delay = hide_delay_ms if hide_delay_ms is not None else self._default_auto_hide_ms
+                if delay > 0:
+                    self._hide_timer.start(int(delay))
+            # else: auto_hide=False means keep message visible indefinitely
+
+        # Request repaint
         window.update()
 
+    def _on_hide_timer_timeout(self):
+        """Called when auto-hide timer expires."""
+        self.clear_text()
+
     def clear_text(self):
+        """Clear bubble text immediately."""
         window = self._window
         window._bubble_text = ""
         window._bubble_text_show_override = False
