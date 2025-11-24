@@ -9,7 +9,7 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .constants import (
+from ..constants import (
     TIMER_INTERVAL_MS, BUBBLE_AUTO_HIDE_MS, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
     WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT,
     SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
@@ -27,26 +27,26 @@ from .constants import (
     DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH,
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
-from .ui.components.bubble_controller import BubbleConfig, BubbleController
-from .ui.components.gif_player import GifPlayer
-from .ui.design_tokens import tokens
-from .ui.fallback_sprite import draw_fallback_sprite
-from .ui.layout_manager import WindowLayoutManager
-from .ui.view_model import DoroViewModel
-from .core.chat.controller import ChatController
-from .core.chat.orchestrator import ChatOrchestrator
-from .utils.logger import get_logger
-from .core.movement.manager import MovementManager
-from .utils.models import MoveStateSettings
-from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
-from .core.state import State, StateChangeEvent
-from .core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
-from .core.state import StateService
-from .core.state.transition_player import TransitionPlayer
-from .ui.theme.theme import ensure_application_theme
-from .ui.theme.themed_menu import build_context_menu_content, create_doro_menu
-from .ui.helpers import ChatUIHelper
-from .utils.utils import safe_float as _safe_float, safe_int as _safe_int
+from .components.bubble_controller import BubbleConfig, BubbleController
+from .components.gif_player import GifPlayer
+from .design_tokens import tokens
+from .fallback_sprite import draw_fallback_sprite
+from .layout_manager import WindowLayoutManager
+from .view_model import DoroViewModel
+from ..core.chat.controller import ChatController
+from ..core.chat.orchestrator import ChatOrchestrator
+from ..utils.logger import get_logger
+from ..core.movement.manager import MovementManager
+from ..utils.models import MoveStateSettings
+from ..utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from ..core.state import State, StateChangeEvent
+from ..core.state import GifRepository, MoveStateRepository, StateRepository, TransitionStateRepository
+from ..core.state import StateService
+from ..core.state.transition_player import TransitionPlayer
+from .theme.theme import ensure_application_theme
+from .theme.themed_menu import build_context_menu_content, create_doro_menu
+from .helpers import ChatUIHelper
+from ..utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
 
