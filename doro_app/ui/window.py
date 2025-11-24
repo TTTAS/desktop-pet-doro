@@ -29,10 +29,10 @@ from ..constants import (
 )
 from .components.bubble_controller import BubbleConfig, BubbleController
 from .components.gif_player import GifPlayer
-from .design_tokens import tokens
-from .fallback_sprite import draw_fallback_sprite
-from .layout_manager import WindowLayoutManager
-from .view_model import DoroViewModel
+from .rendering.design_tokens import tokens
+from .rendering.fallback_sprite import draw_fallback_sprite
+from .layout.layout_manager import WindowLayoutManager
+from .viewmodels.doro_viewmodel import DoroViewModel
 from ..core.chat.controller import ChatController
 from ..core.chat.orchestrator import ChatOrchestrator
 from ..utils.logger import get_logger

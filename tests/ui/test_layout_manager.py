@@ -3,7 +3,7 @@
 import pytest
 from PySide6 import QtCore, QtGui
 
-from doro_app.ui.layout_manager import WindowLayoutManager
+from doro_app.ui.layout.layout_manager import WindowLayoutManager
 
 
 class TestGetAvailableScreenGeometry:

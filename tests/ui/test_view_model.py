@@ -4,7 +4,7 @@ import math
 import pytest
 from PySide6 import QtCore, QtGui
 
-from doro_app.ui.view_model import DoroViewModel
+from doro_app.ui.viewmodels.doro_viewmodel import DoroViewModel
 
 
 class TestDoroViewModelInitialization:
