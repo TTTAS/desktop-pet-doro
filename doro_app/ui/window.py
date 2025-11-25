@@ -85,6 +85,10 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service = state_service
         self._config = config
 
+        # File paths (reconstructed from constants)
+        from ..utils.paths import STATE_DIR
+        self._default_idle_gif = STATE_DIR / "idle.gif"
+
         # NOTE: StateController now handles state change callbacks
         # (previously set here, now done in StateController.__init__)
 
