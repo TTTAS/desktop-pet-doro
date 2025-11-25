@@ -289,7 +289,7 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     """
     # States submenu
     states_menu = menu.addMenu("States")
-    for key in window._visible_state_keys():
+    for key in window._state_controller.visible_state_keys():
         state = window._state_service.get_state(key)
         if not state:
             continue
@@ -297,22 +297,25 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
         action = states_menu.addAction(label)
         action.setCheckable(True)
         action.setChecked(key == window._current_state_key)
-        action.triggered.connect(lambda checked, s=key: window._set_state(s))
+        action.triggered.connect(lambda checked, s=key: window._state_controller.set_state(s))
 
     edit_states_action = states_menu.addAction("Edit states")
-    edit_states_action.triggered.connect(window._show_state_manager)
+    edit_states_action.triggered.connect(window._dialog_manager.show_state_manager)
 
     remove_action = states_menu.addAction("Remove current state")
     remove_action.setEnabled(
         bool(window._current_state_key)
         and not window._state_service.is_state_protected(window._current_state_key)
     )
-    remove_action.triggered.connect(window._remove_current_state)
+    remove_action.triggered.connect(
+        lambda: window._dialog_manager.show_remove_state_confirmation(window._current_state_key)
+        if window._current_state_key else None
+    )
 
     # Actions submenu
     actions_menu = menu.addMenu("Actions")
     edit_actions_action = actions_menu.addAction("Edit actions")
-    edit_actions_action.triggered.connect(window._show_move_gif_manager)
+    edit_actions_action.triggered.connect(window._dialog_manager.show_move_state_manager)
 
     menu.addSeparator()
 
@@ -344,10 +347,15 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     clear_gif_action = visuals_menu.addAction("Reset GIF to default")
     clear_gif_action.setEnabled(window._default_idle_gif.is_file())
-    clear_gif_action.triggered.connect(window._clear_state_gif)
+    clear_gif_action.triggered.connect(
+        lambda: window._state_controller.clear_state_gif(window._current_state_key)
+    )
 
     name_tag_action = visuals_menu.addAction("Rename pet")
-    name_tag_action.triggered.connect(window._rename_pet)
+    name_tag_action.triggered.connect(
+        lambda: window._dialog_manager.show_rename_dialog(window._current_state_key) and window.update()
+        if window._current_state_key else None
+    )
 
     # Chat submenu
     chat_menu = menu.addMenu("Chat")

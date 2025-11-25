@@ -204,5 +204,5 @@ class BubbleController(QtCore.QObject):
         window._bubble_visible = bool(visible)
         if not visible:
             window._bubble_text_show_override = False
-        window._apply_state_settings()
+        window._state_controller.apply_state_settings(window._current_state_key)
         window.update()

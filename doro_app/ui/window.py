@@ -245,7 +245,9 @@ class DoroWindow(QtWidgets.QWidget):
             click_threshold=CLICK_DRAG_THRESHOLD_PX
         )
         self._mouse_handler.window_drag_requested.connect(self.move)
-        self._mouse_handler.click_detected.connect(self._trigger_click_action)
+        self._mouse_handler.click_detected.connect(
+            lambda: (self._mark_user_activity(), self._click_action_controller.trigger_random_action())
+        )
         self._mouse_handler.user_activity_detected.connect(self._mark_user_activity)
 
         # ─────────────────────────────────────────────────────────
@@ -507,15 +509,7 @@ class DoroWindow(QtWidgets.QWidget):
         if gif_resource_id:
             gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
-                self._load_gif(str(gif_path))
-
-    def _is_movement_only_state(self, key: str) -> bool:
-        """Check if state is movement-only (delegates to StateController)."""
-        return self._state_controller.is_movement_only_state(key)
-
-    def _visible_state_keys(self) -> list[str]:
-        """Get visible state keys (delegates to StateController)."""
-        return self._state_controller.visible_state_keys()
+                self._gif_controller.load_gif(str(gif_path))
 
     def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state configuration."""
@@ -538,39 +532,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         return normalized, settings
 
-    def _apply_state_settings(self):
-        """Apply state settings (delegates to StateController)."""
-        self._state_controller.apply_state_settings(self._current_state_key)
-
-    def _load_gif(self, path: str | None):
-        """Load GIF (delegates to GifController)."""
-        self._gif_controller.load_gif(path)
-
-    def _set_state(self, key: str):
-        """Set state (delegates to StateController)."""
-        self._state_controller.set_state(key)
-
-    def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
-        """Set state GIF (delegates to StateController)."""
-        return self._state_controller.set_state_gif(key, Path(source_path))
-
-    def _show_state_manager(self):
-        """Show state manager dialog (delegates to DialogManager)."""
-        self._dialog_manager.show_state_manager()
-
-    def _show_move_gif_manager(self):
-        """Show move state manager dialog (delegates to DialogManager)."""
-        self._dialog_manager.show_move_state_manager()
-
-    def _clear_state_gif(self):
-        """Clear state GIF (delegates to StateController)."""
-        self._state_controller.clear_state_gif(self._current_state_key)
-
-    def _trigger_click_action(self):
-        """Trigger random click action (delegates to ClickActionController)."""
-        self._mark_user_activity()
-        self._click_action_controller.trigger_random_action()
-
     def _set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
@@ -590,34 +551,6 @@ class DoroWindow(QtWidgets.QWidget):
         ):
             # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)
-
-    def _rename_pet(self):
-        """Rename pet (delegates to DialogManager)."""
-        if self._current_state_key:
-            if self._dialog_manager.show_rename_dialog(self._current_state_key):
-                self.update()
-
-    def _add_state(self, checked: bool = False) -> str | None:
-        """Add state (delegates to DialogManager)."""
-        return self._dialog_manager.show_add_state_dialog()
-
-    def _remove_state_by_key(
-        self,
-        key: str,
-        *,
-        confirm: bool = True,
-        parent: QtWidgets.QWidget | None = None,
-    ) -> bool:
-        """Remove state by key (delegates to DialogManager)."""
-        if confirm:
-            return self._dialog_manager.show_remove_state_confirmation(key)
-        else:
-            return self._state_service.remove_state(key)
-
-    def _remove_current_state(self):
-        """Remove current state (delegates to DialogManager)."""
-        if self._current_state_key:
-            self._dialog_manager.show_remove_state_confirmation(self._current_state_key)
 
     def _on_bubble_text_requested(self, text: str, kwargs: dict):
         """
