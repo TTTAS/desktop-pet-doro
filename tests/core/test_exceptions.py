@@ -6,6 +6,7 @@ from doro_app.core.exceptions import (
     ChatConnectionError,
     ChatTimeoutError,
     ConfigLoadError,
+    ConfigSaveError,
     DoroError,
     DuplicateStateError,
     GifNotFoundError,
