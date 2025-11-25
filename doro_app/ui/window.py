@@ -609,62 +609,13 @@ class DoroWindow(QtWidgets.QWidget):
             if gif_path:
                 self._load_gif(str(gif_path))
 
-    def _on_state_changed(self, event: StateChangeEvent) -> None:
-        """Handle state change events from StateService."""
-        state = event.new_state
-
-        # Update current state tracking (for compatibility with old code)
-        self._current_state_key = event.new_key
-        self._state_list_text = self._state_service.write_state_list()
-
-        # Try to play transition animation
-        # If transition exists and plays, it will load the target state GIF when complete
-        if self._transition_player.play_transition(event.old_key, event.new_key):
-            logger.debug(f"Transition animation started: {event.old_key} -> {event.new_key}")
-            # Visual config will be applied when transition completes
-            # For now, just update the visual parameters (transition GIF is playing)
-            # The target state GIF will be loaded by TransitionPlayer after transition completes
-        else:
-            # No transition available - load target state GIF directly
-            gif_resource_id = self._state_service.get_gif_id(event.new_key)
-            if gif_resource_id:
-                gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-                if gif_path:
-                    self._load_gif(str(gif_path))
-
-        # Apply visual config to ViewModel (even during transitions)
-        visual = state.visual
-        self._view_model.set_bob_amplitude(visual.bob_amplitude)
-        self._view_model.set_scale_amplitude(visual.scale_amplitude)
-        self._view_model.set_fill_colors(
-            QtGui.QColor(visual.gradient_top),
-            QtGui.QColor(visual.gradient_mid),
-            QtGui.QColor(visual.gradient_bottom),
-        )
-        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
-        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
-        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
-        self._view_model.set_bubble_visible(visual.bubble_visible)
-        self._view_model.set_bubble_alpha(visual.bubble_alpha)
-        self._view_model.set_name_tag(state.name_tag)
-
-        # Persist to QSettings
-        self._config.setValue("current_state", event.new_key)
-
-        # Trigger repaint
-        self.update()
-
-    def _on_states_modified(self) -> None:
-        """Handle state list modifications (add/remove states)."""
-        self._state_list_text = self._state_service.write_state_list()
-
     def _is_movement_only_state(self, key: str) -> bool:
-        # NEW: Use StateService
-        return self._state_service.is_movement_only_state(key)
+        """Check if state is movement-only (delegates to StateController)."""
+        return self._state_controller.is_movement_only_state(key)
 
     def _visible_state_keys(self) -> list[str]:
-        # NEW: Use StateService
-        return self._state_service.visible_state_keys()
+        """Get visible state keys (delegates to StateController)."""
+        return self._state_controller.visible_state_keys()
 
     def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state configuration."""
@@ -688,132 +639,37 @@ class DoroWindow(QtWidgets.QWidget):
         return normalized, settings
 
     def _apply_state_settings(self):
-        """Apply current state settings from StateService."""
-        if not self._current_state_key:
-            return
-
-        state = self._state_service.get_state(self._current_state_key)
-        if not state:
-            return
-
-        # Apply visual config to ViewModel
-        visual = state.visual
-        self._view_model.set_bob_amplitude(visual.bob_amplitude)
-        self._view_model.set_scale_amplitude(visual.scale_amplitude)
-        self._view_model.set_fill_colors(
-            QtGui.QColor(visual.gradient_top),
-            QtGui.QColor(visual.gradient_mid),
-            QtGui.QColor(visual.gradient_bottom),
-        )
-        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
-        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
-        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
-        self._view_model.set_bubble_visible(visual.bubble_visible)
-        self._view_model.set_bubble_alpha(visual.bubble_alpha)
-        self._view_model.set_name_tag(state.name_tag)
-
-        # Load GIF
-        gif_resource_id = self._state_service.get_gif_id(self._current_state_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._load_gif(str(gif_path))
-                return
-
-        # Fallback to default idle GIF
-        if self._default_idle_gif.is_file():
-            try:
-                self._load_gif(str(self._default_idle_gif.resolve()))
-            except OSError:
-                self._load_gif(str(self._default_idle_gif))
-        else:
-            self._load_gif(None)
+        """Apply state settings (delegates to StateController)."""
+        self._state_controller.apply_state_settings(self._current_state_key)
 
     def _load_gif(self, path: str | None):
-        # Disconnect old movie if exists
-        if self._gif_movie:
-            try:
-                self._gif_movie.frameChanged.disconnect(self._on_movie_frame_changed)
-            except (RuntimeError, TypeError):
-                pass
-
-        # Clear all movies from player
-        self._gif_player.clear()
-        self._gif_movie = None
-
-        if not path:
-            self._update_sprite_size_hint(None)
-            return
-
-        path_obj = Path(path)
-        if not path_obj.is_file():
-            self._update_sprite_size_hint(None)
-            return
-
-        # Load using GifPlayer for unified resource management
-        movie = self._gif_player.load(path_obj)
-        if not movie:
-            self._update_sprite_size_hint(None)
-            return
-
-        movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-        movie.frameChanged.connect(self._on_movie_frame_changed)
-        self._gif_movie = movie
-        self._update_sprite_size_hint(movie)
-
-    def _on_movie_frame_changed(self, _frame: int):
-        if self._gif_movie:
-            pixmap = self._gif_movie.currentPixmap()
-            if not pixmap.isNull():
-                frame_size = pixmap.size()
-                if frame_size != self._view_model.sprite_size:
-                    self._view_model.set_sprite_size(QtCore.QSize(frame_size))
-                    self._apply_window_preferred_size()
-        self.update()
+        """Load GIF (delegates to GifController)."""
+        self._gif_controller.load_gif(path)
 
     def _set_state(self, key: str):
-        # NEW: Use StateService
-        self._state_service.set_state(key)
+        """Set state (delegates to StateController)."""
+        self._state_controller.set_state(key)
 
     def _set_state_gif_from_path(self, key: str, source_path: str) -> bool:
-        # NEW: Use StateService
-        return self._state_service.set_primary_gif(key, Path(source_path))
+        """Set state GIF (delegates to StateController)."""
+        return self._state_controller.set_state_gif(key, Path(source_path))
 
     def _show_state_manager(self):
-        from .ui.dialogs.state import show_state_manager
-        show_state_manager(self._state_service, parent=self)
+        """Show state manager dialog (delegates to DialogManager)."""
+        self._dialog_manager.show_state_manager()
 
     def _show_move_gif_manager(self):
-        from .ui.dialogs.move_state import show_move_state_manager
-        show_move_state_manager(self._state_service, parent=self)
+        """Show move state manager dialog (delegates to DialogManager)."""
+        self._dialog_manager.show_move_state_manager()
 
     def _clear_state_gif(self):
-        # Clear GIF for current state
-        if self._current_state_key:
-            state = self._state_service.get_state(self._current_state_key)
-            if state and state.gif_id:
-                self._state_service.delete_gif(state.gif_id)
-                self._state_service.update_state(self._current_state_key, gif_id=None)
-
-    def _load_click_actions(self) -> list[str]:
-        path = getattr(self, "_click_actions_path", None)
-        if not path:
-            return []
-        try:
-            raw = Path(path).read_text(encoding="utf-8")
-        except OSError:
-            return []
-        return [line.strip() for line in raw.splitlines() if line.strip()]
+        """Clear state GIF (delegates to StateController)."""
+        self._state_controller.clear_state_gif(self._current_state_key)
 
     def _trigger_click_action(self):
+        """Trigger random click action (delegates to ClickActionController)."""
         self._mark_user_activity()
-        actions = self._load_click_actions()
-        if not actions or self._chat_orchestrator.is_inflight:
-            return
-        message = random.choice(actions).strip()
-        if not message:
-            return
-        self._chat_orchestrator.send_message(message)
+        self._click_action_controller.trigger_random_action()
 
     def _set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
@@ -836,32 +692,14 @@ class DoroWindow(QtWidgets.QWidget):
             self._bubble_controller.set_visible(checked)
 
     def _rename_pet(self):
-        # Update through StateService
-        if not self._current_state_key:
-            return
-        current_state = self._state_service.get_state(self._current_state_key)
-        if not current_state:
-            return
-
-        text, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Rename pet",
-            "Name tag:",
-            QtWidgets.QLineEdit.EchoMode.Normal,
-            current_state.name_tag,
-        )
-        if ok and text.strip():
-            # Update state via StateService (ViewModel will be updated by state change event)
-            self._state_service.update_state(
-                self._current_state_key,
-                name_tag=text.strip()
-            )
-            self.update()
+        """Rename pet (delegates to DialogManager)."""
+        if self._current_state_key:
+            if self._dialog_manager.show_rename_dialog(self._current_state_key):
+                self.update()
 
     def _add_state(self, checked: bool = False) -> str | None:
-        # NEW: Use dialog
-        from .ui.dialogs.state import show_add_state_dialog
-        return show_add_state_dialog(self._state_service, parent=self)
+        """Add state (delegates to DialogManager)."""
+        return self._dialog_manager.show_add_state_dialog()
 
     def _remove_state_by_key(
         self,
@@ -870,27 +708,16 @@ class DoroWindow(QtWidgets.QWidget):
         confirm: bool = True,
         parent: QtWidgets.QWidget | None = None,
     ) -> bool:
-        # NEW: Use StateService with confirmation
+        """Remove state by key (delegates to DialogManager)."""
         if confirm:
-            state = self._state_service.get_state(key)
-            if not state:
-                return False
-
-            reply = QtWidgets.QMessageBox.question(
-                parent or self,
-                "Remove state",
-                f"Remove state '{state.label}'?",
-                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-            )
-            if reply != QtWidgets.QMessageBox.StandardButton.Yes:
-                return False
-
-        return self._state_service.remove_state(key)
+            return self._dialog_manager.show_remove_state_confirmation(key)
+        else:
+            return self._state_service.remove_state(key)
 
     def _remove_current_state(self):
-        # NEW: Remove current state
+        """Remove current state (delegates to DialogManager)."""
         if self._current_state_key:
-            self._remove_state_by_key(self._current_state_key, confirm=True)
+            self._dialog_manager.show_remove_state_confirmation(self._current_state_key)
 
     # --- Chat panel rendering --------------------------------------
     def _draw_text_panel(self, p: QtGui.QPainter, alpha: int):
