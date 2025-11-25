@@ -372,23 +372,8 @@ class DoroWindow(QtWidgets.QWidget):
         return WindowLayoutManager.clamp_position(desired, window_size, screen_rect)
 
     def _move_window_to(self, point: QtCore.QPoint):
-        if not isinstance(point, QtCore.QPoint):
-            return
-        current = self.frameGeometry().topLeft()
-        if current == point:
-            return
-        handle = self.windowHandle()
-        if handle is not None:
-            try:
-                handle.setPosition(point)
-            except Exception:
-                pass
-        self.move(point)
-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        try:
-            self.raise_()
-        except Exception:
-            pass
+        """Move window to position. Delegates to WindowLayoutManager."""
+        WindowLayoutManager.move_window_safely(self, point)
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
         """Compute panel size hint. Delegates to WindowLayoutManager."""
@@ -398,51 +383,29 @@ class DoroWindow(QtWidgets.QWidget):
         )
 
     def _apply_window_preferred_size(self):
-        sprite_w = max(120.0, float(self._view_model.sprite_size.width()))
-        sprite_h = max(120.0, float(self._view_model.sprite_size.height()))
+        """Apply preferred window size. Delegates to WindowLayoutManager."""
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
         self._panel_height_hint = panel_h_hint
 
-        desired_w = max(
-            380,
-            int(round(max(sprite_w + 120.0, panel_w_hint + 48.0))),
-        )
-        desired_h = max(
-            320,
-            int(round(sprite_h + panel_h_hint + 120.0)),
-        )
-        current_size = self.size()
-        min_size = self.minimumSize()
-        min_changed = (
-            min_size.width() != desired_w or min_size.height() != desired_h
-        )
-        needs_resize = (
-            current_size.width() < desired_w or current_size.height() < desired_h
-        )
-
-        if min_changed or needs_resize:
-            self._sizing_in_progress = True
-            try:
-                if min_changed:
-                    self.setMinimumSize(desired_w, desired_h)
-                if needs_resize:
-                    self.resize(
-                        max(current_size.width(), desired_w),
-                        max(current_size.height(), desired_h),
-                    )
-            finally:
-                self._sizing_in_progress = False
-        self.update()
+        self._sizing_in_progress = True
+        try:
+            WindowLayoutManager.apply_window_preferred_size(
+                self,
+                self._view_model.sprite_size,
+                panel_w_hint,
+                panel_h_hint,
+            )
+        finally:
+            self._sizing_in_progress = False
 
     def _update_sprite_size_hint(self, movie: QtGui.QMovie | None):
-        if movie and movie.isValid():
-            rect = movie.frameRect()
-            if rect.width() > 0 and rect.height() > 0:
-                self._view_model.set_sprite_size(rect.size())
-                self._apply_window_preferred_size()
-                return
-        self._view_model.set_sprite_size(QtCore.QSize(200, 200))
+        """Update sprite size from movie. Uses WindowLayoutManager to extract size."""
+        sprite_size = WindowLayoutManager.extract_sprite_size_from_movie(movie)
+        if sprite_size:
+            self._view_model.set_sprite_size(sprite_size)
+        else:
+            self._view_model.set_sprite_size(QtCore.QSize(200, 200))
         self._apply_window_preferred_size()
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
