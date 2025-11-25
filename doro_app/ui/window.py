@@ -24,6 +24,7 @@ from .components.gif_player import GifPlayer
 from .rendering.design_tokens import tokens
 from .rendering.fallback_sprite import draw_fallback_sprite
 from .rendering.rendering_engine import RenderingEngine
+from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
 from ..core.chat.controller import ChatController
@@ -105,6 +106,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._transition_player: TransitionPlayer | None = None
         self._bubble_controller: BubbleController | None = None
         self._movement: MovementManager | None = None
+        # Event handlers
+        self._mouse_handler: MouseEventHandler | None = None
         # Chat
         self._chat_controller: ChatController | None = None
         self._chat_orchestrator: ChatOrchestrator | None = None
@@ -142,14 +145,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_text = ""
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
-        self._bubble_dragging = False
-        self._bubble_resizing = False
-        self._bubble_drag_start: QtCore.QPointF | None = None
-        self._bubble_initial_offset = QtCore.QPointF(0.0, 0.0)
-        self._bubble_resize_start: QtCore.QPointF | None = None
-        self._bubble_resize_anchor: QtCore.QPointF | None = None
-        self._bubble_initial_scale = 1.0
-        self._bubble_resize_cursor_active = False
         self._last_user_activity = time.monotonic()
 
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
@@ -160,10 +155,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._default_move_state_key = DEFAULT_MOVE_STATE_KEY
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
-
-        self._click_press_pos: QtCore.QPointF | None = None
-        self._click_was_dragging = False
-        self._drag_pos: QtCore.QPoint | None = None
 
         # ─────────────────────────────────────────────────────────
         # Chat UI Helper
@@ -247,6 +238,17 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator = chat_orchestrator
 
         # ─────────────────────────────────────────────────────────
+        # Create and wire event handlers
+        # ─────────────────────────────────────────────────────────
+        self._mouse_handler = MouseEventHandler(
+            bubble_controller=bubble_controller,
+            click_threshold=CLICK_DRAG_THRESHOLD_PX
+        )
+        self._mouse_handler.window_drag_requested.connect(self.move)
+        self._mouse_handler.click_detected.connect(self._trigger_click_action)
+        self._mouse_handler.user_activity_detected.connect(self._mark_user_activity)
+
+        # ─────────────────────────────────────────────────────────
         # Connect controller signals
         # ─────────────────────────────────────────────────────────
         self._state_controller.repaint_requested.connect(self.update)
@@ -326,66 +328,26 @@ class DoroWindow(QtWidgets.QWidget):
 
     # --- Interaction -----------------------------------------------------
     def mousePressEvent(self, e: QtGui.QMouseEvent):
-        self._mark_user_activity()
-        if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._bubble_controller.begin_transform(e.position()):
-                self._bubble_controller.update_cursor(e.position())
-                e.accept()
-                return
-            self._drag_pos = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            self._click_press_pos = e.position()
-            self._click_was_dragging = False
+        if self._mouse_handler.handle_press(e, self.frameGeometry()):
             e.accept()
         else:
             super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e: QtGui.QMouseEvent):
-        if e.buttons() & QtCore.Qt.MouseButton.LeftButton:
-            self._mark_user_activity()
-        if self._bubble_controller.update_transform(e.position()):
-            self._bubble_controller.update_cursor(e.position())
-            e.accept()
-            return
-        if not self._bubble_dragging and not self._bubble_resizing:
-            self._bubble_controller.update_cursor(e.position())
-        if self._drag_pos is not None and e.buttons() & QtCore.Qt.MouseButton.LeftButton:
-            if (
-                self._click_press_pos is not None
-                and not self._click_was_dragging
-                and (e.position() - self._click_press_pos).manhattanLength() > CLICK_DRAG_THRESHOLD_PX
-            ):
-                self._click_was_dragging = True
-            self.move(e.globalPosition().toPoint() - self._drag_pos)
+        if self._mouse_handler.handle_move(e):
             e.accept()
         else:
             super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
-        self._mark_user_activity()
-        if e.button() == QtCore.Qt.MouseButton.LeftButton:
-            if self._bubble_controller.end_transform():
-                self._bubble_controller.update_cursor(e.position())
-                e.accept()
-                return
-            was_click = (
-                not self._click_was_dragging
-                and self._click_press_pos is not None
-                and (e.position() - self._click_press_pos).manhattanLength() <= CLICK_DRAG_THRESHOLD_PX
-            )
-            self._drag_pos = None
-            self._click_press_pos = None
-            self._click_was_dragging = False
+        handled, _was_click = self._mouse_handler.handle_release(e)
+        if handled:
+            e.accept()
+        else:
             super().mouseReleaseEvent(e)
-            if was_click:
-                self._trigger_click_action()
-            return
-        self._drag_pos = None
-        self._click_press_pos = None
-        self._click_was_dragging = False
-        super().mouseReleaseEvent(e)
 
     def leaveEvent(self, e: QtCore.QEvent):
-        self._bubble_controller.update_cursor(None)
+        self._mouse_handler.handle_leave()
         super().leaveEvent(e)
 
     def keyPressEvent(self, e: QtGui.QKeyEvent):
