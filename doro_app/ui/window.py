@@ -23,6 +23,7 @@ from .components.bubble_controller import BubbleConfig, BubbleController
 from .components.gif_player import GifPlayer
 from .rendering.design_tokens import tokens
 from .rendering.fallback_sprite import draw_fallback_sprite
+from .rendering.rendering_engine import RenderingEngine
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
 from ..core.chat.controller import ChatController
@@ -114,6 +115,11 @@ class DoroWindow(QtWidgets.QWidget):
         self._view_model = DoroViewModel()
         self._view_model.set_sprite_size(QtCore.QSize(SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT))
         self._view_model.set_sprite_offset_x(SPRITE_OFFSET_X)
+
+        # ─────────────────────────────────────────────────────────
+        # Rendering Engine
+        # ─────────────────────────────────────────────────────────
+        self._rendering_engine = RenderingEngine(self._view_model)
 
         # ─────────────────────────────────────────────────────────
         # Animation Timer
@@ -386,35 +392,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._mark_user_activity()
         super().keyPressEvent(e)
 
-    def _sprite_center(self) -> QtCore.QPointF:
-        base_x = self.width() / 2.0 + self._view_model.sprite_offset_x
-        half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
-        half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
-        margin_x = SPRITE_MARGIN_X
-        min_center_x = half_w + margin_x
-        max_center_x = self.width() - half_w - margin_x
-        if min_center_x <= max_center_x:
-            base_x = max(min_center_x, min(max_center_x, base_x))
-        bob_allowance = abs(self._view_model.bob_amplitude) + SPRITE_BOB_ALLOWANCE
-        margin_bottom = SPRITE_MARGIN_BOTTOM
-        min_center_y = half_h + bob_allowance
-        max_center_y = self.height() - half_h - margin_bottom
-        if max_center_y < min_center_y:
-            max_center_y = min_center_y
-        if getattr(self, "_sprite_anchor_top", None) is None:
-            panel_reserve = getattr(self, "_panel_height_hint", PANEL_DEFAULT_HEIGHT_HINT) + SPRITE_PANEL_RESERVE_OFFSET
-            initial_base_y = (self.height() - panel_reserve) / 2.0
-            initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
-            self._sprite_anchor_top = max(0.0, initial_base_y - half_h)
-        anchor_top = max(0.0, float(self._sprite_anchor_top or 0.0))
-        base_y = anchor_top + half_h
-        clamped_base_y = max(min_center_y, min(max_center_y, base_y))
-        if clamped_base_y != base_y:
-            anchor_top = max(0.0, clamped_base_y - half_h)
-            self._sprite_anchor_top = anchor_top
-            base_y = anchor_top + half_h
-        return QtCore.QPointF(base_x, base_y)
-
     def _mark_user_activity(self):
         self._last_user_activity = time.monotonic()
 
@@ -526,27 +503,18 @@ class DoroWindow(QtWidgets.QWidget):
         bob = 0.0
         scale = 1.0
 
-        sprite_center = self._sprite_center()
-        p.save()
-        p.translate(sprite_center.x(), sprite_center.y() + bob)
-        p.scale(scale, scale)
+        # Calculate sprite center using RenderingEngine
+        sprite_center, new_anchor = self._rendering_engine.calculate_sprite_center(
+            self.size(),
+            self._sprite_anchor_top
+        )
+        if new_anchor is not None:
+            self._sprite_anchor_top = new_anchor
 
-        if self._gif_movie and not self._gif_movie.currentPixmap().isNull():
-            pixmap = self._gif_movie.currentPixmap()
-            p.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
-            p.drawPixmap(0, 0, pixmap)
-        else:
-            # Draw fallback sprite when no GIF is available (use ViewModel colors)
-            draw_fallback_sprite(
-                p,
-                self._view_model.fill_colors,
-                self._view_model.cheek_alpha,
-                self._view_model.blush_color,
-                self._view_model.eye_color
-            )
+        # Render sprite using RenderingEngine
+        self._rendering_engine.render_sprite(p, self._gif_movie, sprite_center, bob, scale)
 
-        p.restore()
-
+        # Render text panel using RenderingEngine
         panel_should_draw = (
             (self._view_model.bubble_visible or self._bubble_text_show_override)
             and self._view_model.bubble_alpha > 0
@@ -554,7 +522,14 @@ class DoroWindow(QtWidgets.QWidget):
         )
         if panel_should_draw:
             alpha = min(max(int(self._view_model.bubble_alpha), 0), 255)
-            self._draw_text_panel(p, alpha)
+            self._panel_rect_cache = self._rendering_engine.render_text_panel(
+                p,
+                self._bubble_text,
+                alpha,
+                sprite_center,
+                self.size(),
+                self._panel_height_hint
+            )
         else:
             self._panel_rect_cache = None
 
@@ -718,163 +693,6 @@ class DoroWindow(QtWidgets.QWidget):
         """Remove current state (delegates to DialogManager)."""
         if self._current_state_key:
             self._dialog_manager.show_remove_state_confirmation(self._current_state_key)
-
-    # --- Chat panel rendering --------------------------------------
-    def _draw_text_panel(self, p: QtGui.QPainter, alpha: int):
-        text = (self._bubble_text or "").strip()
-        if not text or alpha <= 0:
-            self._panel_rect_cache = None
-            return
-
-        target_width = max(160.0, float(self._view_model.sprite_size.width()))
-        panel_width = max(
-            80.0,
-            min(target_width, float(self.width()) - 24.0),
-        )
-
-        inner_padding_x = tokens.spacing.bubble_inner_x
-        inner_padding_y = tokens.spacing.bubble_inner_y
-        font = QtGui.QFont()
-        font.setPointSizeF(12.0)
-        font.setWeight(QtGui.QFont.Weight.DemiBold)
-        metrics = QtGui.QFontMetrics(font)
-        text_flags = int(
-            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
-        )
-        text_flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
-        available_text_width = max(60.0, panel_width - inner_padding_x * 2.0)
-        text_metrics = metrics.boundingRect(
-            QtCore.QRect(0, 0, int(round(available_text_width)), 4000),
-            text_flags,
-            text,
-        )
-        text_height = max(float(metrics.lineSpacing()), float(text_metrics.height()))
-        panel_height = max(self._panel_height_hint, text_height + inner_padding_y * 2.0)
-
-        sprite_center = self._sprite_center()
-        sprite_half_h = float(max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0))
-        gap = tokens.spacing.sprite_bubble_gap
-        margin_top = tokens.spacing.margin_top
-        margin_bottom = tokens.spacing.margin_bottom
-
-        below_top = sprite_center.y() + sprite_half_h + gap
-        available_below = self.height() - margin_bottom - below_top
-        above_bottom = sprite_center.y() - sprite_half_h - gap
-        available_above = max(0.0, above_bottom - margin_top)
-
-        place_below = True
-        adjusted_panel_height = panel_height
-
-        if available_below < adjusted_panel_height and available_above > available_below:
-            adjusted_panel_height = min(adjusted_panel_height, available_above)
-            place_below = False
-        else:
-            adjusted_panel_height = min(adjusted_panel_height, max(available_below, 0.0))
-            if adjusted_panel_height <= 0.0 and available_above > 0.0:
-                adjusted_panel_height = min(panel_height, available_above)
-                place_below = False
-
-        if adjusted_panel_height <= 0.0:
-            adjusted_panel_height = min(panel_height, self.height() - margin_top - margin_bottom)
-
-        if place_below:
-            top = max(margin_top, below_top)
-            if top + adjusted_panel_height + margin_bottom > self.height():
-                adjusted_panel_height = max(0.0, self.height() - margin_bottom - top)
-            self._view_model.set_bubble_side("below")
-        else:
-            bottom_edge = min(above_bottom, self.height() - margin_bottom)
-            top = max(margin_top, bottom_edge - adjusted_panel_height)
-            self._view_model.set_bubble_side("above")
-
-        if adjusted_panel_height <= 0.0:
-            self._panel_rect_cache = None
-            return
-
-        left = sprite_center.x() - panel_width / 2.0
-        min_left = tokens.spacing.margin_horizontal
-        max_left = self.width() - panel_width - tokens.spacing.margin_horizontal
-        if max_left < min_left:
-            min_left = max_left = max(self.width() - panel_width, 0.0)
-        left = max(min_left, min(max_left, left))
-        panel_rect = QtCore.QRectF(left, top, panel_width, adjusted_panel_height)
-
-        shadow_rect = panel_rect.adjusted(
-            0.0,
-            tokens.spacing.shadow_offset_below if place_below else tokens.spacing.shadow_offset_above,
-            0.0,
-            tokens.spacing.shadow_extend_below if place_below else tokens.spacing.shadow_extend_above
-        )
-        corner_radius = tokens.radius.bubble
-
-        base_alpha = max(tokens.opacity.min_base_alpha, min(tokens.opacity.max_base_alpha, alpha))
-        outline_alpha = tokens.calculate_outline_alpha(base_alpha)
-        fill_alpha = tokens.calculate_fill_alpha(base_alpha)
-
-        fill_gradient = QtGui.QLinearGradient(
-            QtCore.QPointF(panel_rect.left(), panel_rect.top()),
-            QtCore.QPointF(panel_rect.left(), panel_rect.bottom()),
-        )
-        fill_gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255, fill_alpha))
-        fill_gradient.setColorAt(1.0, QtGui.QColor(236, 240, 255, fill_alpha))
-
-        outline_gradient = QtGui.QLinearGradient(
-            QtCore.QPointF(panel_rect.left(), panel_rect.top()),
-            QtCore.QPointF(panel_rect.right(), panel_rect.bottom()),
-        )
-        outline_gradient.setColorAt(0.0, QtGui.QColor(134, 180, 255, outline_alpha))
-        outline_gradient.setColorAt(1.0, QtGui.QColor(255, 255, 255, outline_alpha))
-
-        sheen_clip = QtGui.QPainterPath()
-        sheen_clip.addRoundedRect(
-            panel_rect.adjusted(12.0, 12.0, -12.0, -panel_rect.height() * 0.55),
-            corner_radius - 6.0,
-            corner_radius - 6.0,
-        )
-        sheen_gradient = QtGui.QLinearGradient(
-            QtCore.QPointF(panel_rect.left(), panel_rect.top()),
-            QtCore.QPointF(panel_rect.right(), panel_rect.top()),
-        )
-        sheen_gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255, int(base_alpha * 0.28)))
-        sheen_gradient.setColorAt(0.6, QtGui.QColor(255, 255, 255, int(base_alpha * 0.12)))
-        sheen_gradient.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
-
-        text_rect = panel_rect.adjusted(inner_padding_x, inner_padding_y, -inner_padding_x, -inner_padding_y)
-
-        text_option = QtGui.QTextOption(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        text_option.setWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
-
-        p.save()
-        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
-
-        shadow_color = QtGui.QColor(4, 8, 20, int(base_alpha * 0.4))
-        shadow_path = QtGui.QPainterPath()
-        shadow_path.addRoundedRect(shadow_rect, corner_radius, corner_radius)
-        p.fillPath(shadow_path, shadow_color)
-
-        panel_path = QtGui.QPainterPath()
-        panel_path.addRoundedRect(panel_rect, corner_radius, corner_radius)
-
-        p.setBrush(QtGui.QBrush(fill_gradient))
-        outline_pen = QtGui.QPen(QtGui.QBrush(outline_gradient), 2.6)
-        outline_pen.setJoinStyle(QtCore.Qt.RoundJoin)
-        p.setPen(outline_pen)
-        p.drawPath(panel_path)
-
-        sheen_shape = panel_path.intersected(sheen_clip)
-        if not sheen_shape.isEmpty():
-            p.setBrush(QtGui.QBrush(sheen_gradient))
-            p.setPen(QtCore.Qt.NoPen)
-            p.drawPath(sheen_shape)
-
-        text_pen = QtGui.QPen(QtGui.QColor(0, 0, 0, 255))
-
-        p.setFont(font)
-        p.setPen(text_pen)
-        p.drawText(text_rect, text, text_option)
-
-        p.restore()
-        self._panel_rect_cache = QtCore.QRectF(panel_rect)
 
     def _on_bubble_text_requested(self, text: str, kwargs: dict):
         """
