@@ -4,7 +4,7 @@ import math
 import pytest
 from PySide6 import QtCore, QtGui
 
-from doro_app.ui.view_model import DoroViewModel
+from doro_app.ui.viewmodels.doro_viewmodel import DoroViewModel
 
 
 class TestDoroViewModelInitialization:
@@ -38,6 +38,35 @@ class TestDoroViewModelInitialization:
 
         # Name tag
         assert vm.name_tag == "doro"
+
+    def test_multiple_instances_have_independent_state(self):
+        """Test that multiple ViewModel instances don't share mutable defaults.
+
+        This is a regression test for the dataclass mutable default bug.
+        Before the fix, QColor/QPointF/QSize defaults were shared across instances.
+        """
+        vm1 = DoroViewModel()
+        vm2 = DoroViewModel()
+
+        # Modify vm1's colors
+        vm1.set_blush_color(QtGui.QColor(255, 0, 0))
+        vm1.set_eye_color(QtGui.QColor(0, 255, 0))
+
+        # vm2 should still have default colors (not affected by vm1)
+        assert vm2.blush_color == QtGui.QColor(255, 150, 150)
+        assert vm2.eye_color == QtGui.QColor(50, 50, 50)
+
+        # Modify vm1's bubble offset
+        vm1.set_bubble_offset(QtCore.QPointF(100.0, 200.0))
+
+        # vm2 should still have default offset
+        assert vm2.bubble_offset == QtCore.QPointF(0.0, 0.0)
+
+        # Modify vm1's sprite size
+        vm1.set_sprite_size(QtCore.QSize(500, 500))
+
+        # vm2 should still have default size
+        assert vm2.sprite_size == QtCore.QSize(200, 200)
 
 
 class TestAnimationLogic:
@@ -74,18 +103,21 @@ class TestAnimationLogic:
         vm.tick(math.pi / 8.0)  # time * 2.0 = π/4
         bob_positive = vm.calculate_bob()
         assert bob_positive > 0.0
+        assert bob_positive == pytest.approx(10.0 * math.sin(math.pi / 4.0))
 
-        # Advance to 3π/4 (still positive, near peak)
+        # Advance to π/2 (actual peak where sin = 1.0)
         vm.reset_animation_time()
-        vm.tick(3 * math.pi / 8.0)
+        vm.tick(math.pi / 4.0)  # time * 2.0 = π/2
         bob_peak = vm.calculate_bob()
+        assert bob_peak == pytest.approx(10.0)  # amplitude * sin(π/2) = 10 * 1 = 10
         assert bob_peak > bob_positive
 
         # Advance past π (sine becomes negative)
         vm.reset_animation_time()
-        vm.tick(3 * math.pi / 4.0)
+        vm.tick(3 * math.pi / 4.0)  # time * 2.0 = 3π/2
         bob_negative = vm.calculate_bob()
         assert bob_negative < 0.0
+        assert bob_negative == pytest.approx(-10.0)  # sin(3π/2) = -1
 
     def test_calculate_scale_returns_one_when_no_amplitude(self):
         """Test scale calculation returns 1.0 when amplitude is 0."""

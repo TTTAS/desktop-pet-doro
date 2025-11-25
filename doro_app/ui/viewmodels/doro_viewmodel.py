@@ -7,7 +7,7 @@ making it testable without Qt dependencies.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from PySide6 import QtCore, QtGui
@@ -30,8 +30,8 @@ class VisualState:
     """Visual appearance configuration."""
     fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]
     cheek_alpha: float = 0.0
-    blush_color: QtGui.QColor = QtGui.QColor(255, 150, 150)
-    eye_color: QtGui.QColor = QtGui.QColor(50, 50, 50)
+    blush_color: QtGui.QColor = field(default_factory=lambda: QtGui.QColor(255, 150, 150))
+    eye_color: QtGui.QColor = field(default_factory=lambda: QtGui.QColor(50, 50, 50))
 
 
 @dataclass
@@ -40,25 +40,15 @@ class BubbleState:
     visible: bool = True
     alpha: int = 255
     side: str = "center"  # "left", "right", "center"
-    offset: QtCore.QPointF = QtCore.QPointF(0.0, 0.0)
+    offset: QtCore.QPointF = field(default_factory=lambda: QtCore.QPointF(0.0, 0.0))
     scale: float = 1.0
-
-    def __post_init__(self):
-        # Ensure offset is a QPointF instance
-        if not isinstance(self.offset, QtCore.QPointF):
-            self.offset = QtCore.QPointF(0.0, 0.0)
 
 
 @dataclass
 class SpriteState:
     """Sprite appearance state."""
-    size: QtCore.QSize = QtCore.QSize(200, 200)
+    size: QtCore.QSize = field(default_factory=lambda: QtCore.QSize(200, 200))
     offset_x: float = -110.0
-
-    def __post_init__(self):
-        # Ensure size is a QSize instance
-        if not isinstance(self.size, QtCore.QSize):
-            self.size = QtCore.QSize(200, 200)
 
 
 class DoroViewModel:

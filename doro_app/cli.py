@@ -12,7 +12,7 @@ from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
 from .utils.config_defaults import DEFAULT_CHAT_SERVER_URL
 from .utils.paths import PROMPT_PATH
 from .utils.prompts import load_prompt_text
-from .window import DoroWindow
+from .app import DoroApp
 
 
 def run_chat_test(message: str | None) -> int:
@@ -104,7 +104,7 @@ def main():
     if args.test_chat is not None:
         sys.exit(run_chat_test(args.test_chat))
 
-    app = QtWidgets.QApplication(sys.argv)
-    w = DoroWindow(not_topmost=args.not_topmost)
-    w.show()
-    sys.exit(app.exec())
+    qt_app = QtWidgets.QApplication(sys.argv)
+    doro_app = DoroApp(not_topmost=args.not_topmost)
+    doro_app.run()
+    sys.exit(qt_app.exec())
