@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
@@ -26,6 +26,7 @@ class ChatOrchestrator(QtCore.QObject):
     bubble_text_requested = QtCore.Signal(str, dict)  # (text, kwargs)
     bubble_clear_requested = QtCore.Signal()
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
+    notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
 
     def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
         super().__init__()  # No parent
@@ -49,8 +50,8 @@ class ChatOrchestrator(QtCore.QObject):
         if self._controller.is_inflight:
             logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
-                QtWidgets.QMessageBox.information(
-                    None,  # No parent - Window handles user activity tracking
+                self.notification_requested.emit(
+                    "info",
                     "Chat",
                     "I am already replying, please wait a moment.",
                 )
@@ -60,7 +61,7 @@ class ChatOrchestrator(QtCore.QObject):
         if not started:
             logger.error(f"Failed to start chat request: {error_message}")
             if not silent and error_message:
-                QtWidgets.QMessageBox.warning(None, "Chat", error_message)
+                self.notification_requested.emit("warning", "Chat", error_message)
             return False
 
         # Window handles user activity tracking before calling send_message()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -41,6 +41,31 @@ from .helpers import ChatUIHelper
 from ..utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
+
+
+class MovementWindowPort(Protocol):
+    """Interface for movement-related window operations."""
+
+    def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
+        ...
+
+    def current_position(self) -> QtCore.QPoint:
+        ...
+
+    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
+        ...
+
+    def move_window_to(self, pos: QtCore.QPoint):
+        ...
+
+    def get_bubble_offset(self) -> QtCore.QPointF:
+        ...
+
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
+        ...
+
+    def reset_tick_timer(self, value: float):
+        ...
 
 
 class DoroWindow(QtWidgets.QWidget):
@@ -146,6 +171,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
         self._last_user_activity = time.monotonic()
+        self._bubble_offset = QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
@@ -270,6 +296,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
         self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
         self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+        self._chat_orchestrator.notification_requested.connect(self._on_chat_notification)
 
         # ─────────────────────────────────────────────────────────
         # Apply configuration
@@ -473,9 +500,30 @@ class DoroWindow(QtWidgets.QWidget):
         """Clamp window position to stay on screen (public API)."""
         return self._clamp_window_position(pos)
 
+    def current_position(self) -> QtCore.QPoint:
+        """Get the current top-left position of the window (public API)."""
+        return self.frameGeometry().topLeft()
+
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
         self._move_window_to(pos)
+
+    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        """Resolve movement state configuration (public API)."""
+        return self._resolve_move_state(key)
+
+    def get_bubble_offset(self) -> QtCore.QPointF:
+        """Get the current bubble offset (public API for movement)."""
+        return QtCore.QPointF(self._bubble_offset)
+
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
+        """Apply bubble offset via BubbleController (public API)."""
+        if self._bubble_controller:
+            self._bubble_controller.apply_offset(offset, persist=persist)
+
+    def reset_tick_timer(self, value: float):
+        """Reset the tick timer used for movement animation (public API)."""
+        self._last_tick_time = value
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService and TransitionPlayer
@@ -561,6 +609,13 @@ class DoroWindow(QtWidgets.QWidget):
             kwargs: Additional arguments for _set_bubble_text() (dict)
         """
         self._set_bubble_text(text, **kwargs)
+
+    def _on_chat_notification(self, severity: str, title: str, message: str):
+        """Show chat-related notifications initiated by ChatOrchestrator."""
+        icon = QtWidgets.QMessageBox.Icon.Information
+        if severity == "warning":
+            icon = QtWidgets.QMessageBox.Icon.Warning
+        QtWidgets.QMessageBox(icon, title, message, parent=self).exec()
 
     def _set_bubble_text(
         self,
