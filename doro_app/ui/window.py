@@ -270,6 +270,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
         self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
         self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+        self._chat_orchestrator.notification_requested.connect(self._on_chat_notification)
 
         # ─────────────────────────────────────────────────────────
         # Apply configuration
@@ -561,6 +562,13 @@ class DoroWindow(QtWidgets.QWidget):
             kwargs: Additional arguments for _set_bubble_text() (dict)
         """
         self._set_bubble_text(text, **kwargs)
+
+    def _on_chat_notification(self, severity: str, title: str, message: str):
+        """Show chat-related notifications initiated by ChatOrchestrator."""
+        icon = QtWidgets.QMessageBox.Icon.Information
+        if severity == "warning":
+            icon = QtWidgets.QMessageBox.Icon.Warning
+        QtWidgets.QMessageBox(icon, title, message, parent=self).exec()
 
     def _set_bubble_text(
         self,
