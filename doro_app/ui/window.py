@@ -49,13 +49,13 @@ class MovementWindowPort(Protocol):
     def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
         ...
 
+    def current_position(self) -> QtCore.QPoint:
+        ...
+
     def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
         ...
 
     def move_window_to(self, pos: QtCore.QPoint):
-        ...
-
-    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         ...
 
     def get_bubble_offset(self) -> QtCore.QPointF:
@@ -499,6 +499,10 @@ class DoroWindow(QtWidgets.QWidget):
     def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
         """Clamp window position to stay on screen (public API)."""
         return self._clamp_window_position(pos)
+
+    def current_position(self) -> QtCore.QPoint:
+        """Get the current top-left position of the window (public API)."""
+        return self.frameGeometry().topLeft()
 
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""

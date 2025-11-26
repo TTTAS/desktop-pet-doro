@@ -133,10 +133,10 @@ class MovementManager:
                 or params.get("movestate")
                 or params.get("移動狀態")
             )
-            move_state_key, move_state_settings = self._window.resolve_move_state(move_state_param)
+            move_state_key, move_state_settings = self._resolve_move_state_settings(move_state_param)
             if move_state_settings is None:
                 default_key = self._state_service.get_default_movement_state()
-                move_state_key, move_state_settings = self._window.resolve_move_state(default_key)
+                move_state_key, move_state_settings = self._resolve_move_state_settings(default_key)
 
             direction_vec = None
             if direction_key:
@@ -164,7 +164,7 @@ class MovementManager:
             else:
                 distance_val = float(step_default)
 
-            current = window.frameGeometry().topLeft()
+            current = window.current_position()
             target_guess = QtCore.QPoint(
                 round(current.x() + direction_vec[0] * distance_val),
                 round(current.y() + direction_vec[1] * distance_val),
@@ -221,7 +221,7 @@ class MovementManager:
             return
 
         window = self._window
-        current_pos = window.frameGeometry().topLeft()
+        current_pos = window.current_position()
         desired = QtCore.QPoint(round(current_pos.x() + step_dx), round(current_pos.y() + step_dy))
         clamped = window.clamp_window_position(desired)
         actual_dx = clamped.x() - current_pos.x()
@@ -240,7 +240,7 @@ class MovementManager:
         if dx == 0 and dy == 0:
             return None
         step = max(12, self._movement_step_px)
-        current = self._window.frameGeometry().topLeft()
+        current = self._window.current_position()
         target = QtCore.QPoint(round(current.x() + dx * step), round(current.y() + dy * step))
         clamped = self._window.clamp_window_position(target)
         actual_dx = clamped.x() - current.x()
@@ -258,7 +258,7 @@ class MovementManager:
         window = self._window
         report = self._movement_pending_report
         if final_position is None:
-            final_position = window.frameGeometry().topLeft()
+            final_position = window.current_position()
         if report is None:
             direction_label_text = direction_label(self._active_movement.direction)
             report = format_move_report(final_position, direction_label_text, 0, 0)
@@ -321,7 +321,7 @@ class MovementManager:
         velocity = QtCore.QPointF(unit_x * speed_value, unit_y * speed_value)
         self._movement_velocity = velocity
         self._movement_remaining = distance
-        self._movement_start_pos = window.frameGeometry().topLeft()
+        self._movement_start_pos = window.current_position()
         self._movement_direction_key = self._direction_slug(direction)
         self._movement_pending_report = report
         current_state = self._state_service.get_current_state()
@@ -406,3 +406,21 @@ class MovementManager:
             "fast": SPEED_FAST,
         }
         return lookup.get(speed_name.lower(), SPEED_MEDIUM)
+
+    def _resolve_move_state_settings(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        """Resolve movement state settings via StateService only."""
+        if not key:
+            return None, None
+
+        normalized = key.strip().lower()
+        move_state = self._state_service.get_move_state(normalized)
+        if not move_state:
+            return None, None
+
+        settings = MoveStateSettings(
+            state_key=move_state.state_key,
+            direction=move_state.direction,
+            default_distance=move_state.default_distance,
+            default_speed=move_state.default_speed,
+        )
+        return normalized, settings
