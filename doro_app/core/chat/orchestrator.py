@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
@@ -26,12 +26,16 @@ class ChatOrchestrator(QtCore.QObject):
     bubble_text_requested = QtCore.Signal(str, dict)  # (text, kwargs)
     bubble_clear_requested = QtCore.Signal()
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
+    notification_requested = QtCore.Signal(str, str, str)  # level, title, message
 
     def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
         super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
         self._state_service = state_service
+        self._network_fail_messages: list[str] = []
+
+        self._load_network_fail_messages()
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -49,10 +53,8 @@ class ChatOrchestrator(QtCore.QObject):
         if self._controller.is_inflight:
             logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
-                QtWidgets.QMessageBox.information(
-                    None,  # No parent - Window handles user activity tracking
-                    "Chat",
-                    "I am already replying, please wait a moment.",
+                self.notification_requested.emit(
+                    "info", "Chat", "I am already replying, please wait a moment."
                 )
             return False
 
@@ -60,7 +62,7 @@ class ChatOrchestrator(QtCore.QObject):
         if not started:
             logger.error(f"Failed to start chat request: {error_message}")
             if not silent and error_message:
-                QtWidgets.QMessageBox.warning(None, "Chat", error_message)
+                self.notification_requested.emit("warning", "Chat", error_message)
             return False
 
         # Window handles user activity tracking before calling send_message()
@@ -140,21 +142,17 @@ class ChatOrchestrator(QtCore.QObject):
                 self.bubble_clear_requested.emit()
         self.busy_cursor_requested.emit(False)
 
-    def _get_random_network_fail_message(self) -> str:
-        """
-        Get a random network failure message from network_fail_doro.txt.
-
-        Returns:
-            Random message from file, or default message if file not found
-        """
+    def _load_network_fail_messages(self) -> None:
         try:
             if NETWORK_FAIL_MESSAGES_PATH.exists():
                 with open(NETWORK_FAIL_MESSAGES_PATH, "r", encoding="utf-8") as f:
-                    lines = [line.strip() for line in f if line.strip()]
-                if lines:
-                    return random.choice(lines)
+                    self._network_fail_messages = [line.strip() for line in f if line.strip()]
         except Exception as e:
             logger.warning(f"Failed to read network fail messages: {e}")
+
+    def _get_random_network_fail_message(self) -> str:
+        if self._network_fail_messages:
+            return random.choice(self._network_fail_messages)
 
         # Fallback message
         return "嗚嗚……人，doro找不到回應了……"

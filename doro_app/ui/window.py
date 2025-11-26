@@ -270,6 +270,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
         self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
         self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
+        self._chat_orchestrator.notification_requested.connect(self._on_chat_notification)
 
         # ─────────────────────────────────────────────────────────
         # Apply configuration
@@ -358,6 +359,15 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _mark_user_activity(self):
         self._last_user_activity = time.monotonic()
+
+    def _on_chat_notification(self, level: str, title: str, message: str):
+        self._mark_user_activity()
+
+        if level == "warning":
+            QtWidgets.QMessageBox.warning(self, title, message)
+            return
+
+        QtWidgets.QMessageBox.information(self, title, message)
 
     def _update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
