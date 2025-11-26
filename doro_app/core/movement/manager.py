@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import time
+import math
 from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
@@ -11,6 +11,14 @@ from PySide6 import QtCore
 from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
 from ...utils.models import MoveStateSettings, MovementRequest
 from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
+from .parser import (
+    direction_label,
+    direction_vector_from_string,
+    direction_key,
+    format_move_report,
+    normalize_direction_key,
+    parse_move_bracket,
+)
 
 if TYPE_CHECKING:
     from ...ui.window import MovementWindowPort
@@ -28,7 +36,6 @@ MAX_MOVE_REPORTS = 50
 # Movement thresholds
 MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels
 MIN_MOVEMENT_STEP = 0.01  # pixels
-DIRECTION_COMPONENT_THRESHOLD = 0.2  # for direction classification
 
 
 class MovementManager:
@@ -95,11 +102,11 @@ class MovementManager:
         if not match:
             return None
         direction = match.group(1)
-        key = self._normalize_direction_key(direction)
+        key = normalize_direction_key(direction)
         return MOVE_DIRECTIONS.get(key)
 
     def handle_move_bracket(self, token: str, reports: list[str]) -> bool:
-        parsed = self._parse_move_bracket(token)
+        parsed = parse_move_bracket(token)
         if not parsed:
             return False
         action, params = parsed
@@ -133,7 +140,7 @@ class MovementManager:
 
             direction_vec = None
             if direction_key:
-                direction_vec = self._direction_vector_from_string(direction_key)
+                direction_vec = direction_vector_from_string(direction_key)
 
             if direction_vec is None and (dx_param is not None or dy_param is not None):
                 dx_val = float(_safe_int(dx_param, 0))
@@ -170,10 +177,10 @@ class MovementManager:
                 return True
 
             direction_vector = (actual_dx / actual_distance, actual_dy / actual_distance)
-            direction_label = self._direction_label(direction_vector)
-            report = self._format_move_report(
+            direction_label_text = direction_label(direction_vector)
+            report = format_move_report(
                 target,
-                direction_label,
+                direction_label_text,
                 int(round(actual_dx)),
                 int(round(actual_dy)),
             )
@@ -240,70 +247,10 @@ class MovementManager:
         actual_dy = clamped.y() - current.y()
         self._window.move_window_to(clamped)
         direction_vector = (actual_dx, actual_dy)
-        direction_label = self._direction_label(direction_vector)
-        return self._format_move_report(clamped, direction_label, actual_dx, actual_dy)
+        direction_label_text = direction_label(direction_vector)
+        return format_move_report(clamped, direction_label_text, actual_dx, actual_dy)
 
     # ------------------------------------------------------------------ Internals
-
-    def _parse_move_bracket(self, token: str) -> tuple[str, dict[str, str]] | None:
-        parts = [part.strip() for part in token.split(";") if part.strip()]
-        if not parts:
-            return None
-        header = parts[0]
-        prefix = header
-        action_part = ""
-        if ":" in header:
-            prefix, action_part = header.split(":", 1)
-        if prefix.strip().lower() != "move":
-            return None
-        action_key = ""
-        params: dict[str, str] = {}
-        param_candidates: list[str] = []
-
-        action_part = action_part.strip()
-        if action_part:
-            if "=" in action_part:
-                param_candidates.append(action_part)
-            else:
-                action_key = action_part
-
-        for part in parts[1:]:
-            if "=" not in part:
-                continue
-            param_candidates.append(part)
-
-        for part in param_candidates:
-            if "=" not in part:
-                continue
-            key, value = part.split("=", 1)
-            params[key.strip().lower()] = value.strip()
-
-        return action_key, params
-
-    def _direction_vector_from_string(self, value: str) -> tuple[int, int] | None:
-        key = self._normalize_direction_key(value)
-        vec = MOVE_DIRECTIONS.get(key)
-        if vec:
-            return vec
-        if ";" in value:
-            dx = None
-            dy = None
-            try:
-                for part in value.split(";"):
-                    if "=" not in part:
-                        continue
-                    k, v = part.split("=", 1)
-                    if k.strip().lower() == "dx":
-                        dx = float(v.strip())
-                    elif k.strip().lower() == "dy":
-                        dy = float(v.strip())
-            except ValueError:
-                return None
-            if dx is not None and dy is not None:
-                length = math.hypot(dx, dy)
-                if length > 0:
-                    return (dx / length, dy / length)
-        return None
 
     def _finish_movement(self, final_position: QtCore.QPoint | None = None):
         if not self._active_movement:
@@ -313,8 +260,8 @@ class MovementManager:
         if final_position is None:
             final_position = window.frameGeometry().topLeft()
         if report is None:
-            direction_label = self._direction_label(self._active_movement.direction)
-            report = self._format_move_report(final_position, direction_label, 0, 0)
+            direction_label_text = direction_label(self._active_movement.direction)
+            report = format_move_report(final_position, direction_label_text, 0, 0)
         self._record_move_report(report)
         self._active_movement = None
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -328,40 +275,8 @@ class MovementManager:
                 self._state_service.set_state(self._movement_previous_state)
         self._movement_previous_state = None
 
-    def _format_move_report(self, pos: QtCore.QPoint, direction_label: str | None, dx: int, dy: int) -> str:
-        prefix = f"往{direction_label}" if direction_label else "移動"
-        deltas = []
-        if dx:
-            deltas.append(f"dx={dx}")
-        if dy:
-            deltas.append(f"dy={dy}")
-        delta_info = f" ({', '.join(deltas)})" if deltas else ""
-        return f"{prefix}，位置 {pos.x()}, {pos.y()}{delta_info}"
-
-    def _direction_key(self, direction: tuple[float, float]) -> tuple[int, int]:
-        """Convert continuous direction vector to discrete direction key."""
-        dx, dy = direction
-        return (
-            int(math.copysign(1, dx)) if abs(dx) > DIRECTION_COMPONENT_THRESHOLD else 0,
-            int(math.copysign(1, dy)) if abs(dy) > DIRECTION_COMPONENT_THRESHOLD else 0,
-        )
-
-    def _direction_label(self, direction: tuple[float, float]) -> str:
-        key = self._direction_key(direction)
-        mapping = {
-            (-1, 0): "左",
-            (1, 0): "右",
-            (0, -1): "上",
-            (0, 1): "下",
-            (-1, -1): "左上",
-            (1, -1): "右上",
-            (-1, 1): "左下",
-            (1, 1): "右下",
-        }
-        return mapping.get(key, "未知方向")
-
     def _direction_slug(self, direction: tuple[float, float]) -> Optional[str]:
-        key = self._direction_key(direction)
+        key = direction_key(direction)
         mapping = {
             (-1, 0): "left",
             (1, 0): "right",
@@ -383,13 +298,6 @@ class MovementManager:
             print(f"[doro move] {report}")
         except Exception:
             pass
-
-    def _normalize_direction_key(self, value: str) -> str:
-        key = (value or "").strip()
-        if not key:
-            return ""
-        key = key.replace(" ", "").replace("_", "").replace("-", "")
-        return key.lower() if key.isascii() else key
 
     def _start_movement(
         self,
