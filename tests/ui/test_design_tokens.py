@@ -2,7 +2,7 @@
 
 import pytest
 
-from doro_app.ui.design_tokens import DesignTokens, tokens
+from doro_app.ui.rendering.design_tokens import DesignTokens, tokens
 
 
 class TestDesignTokens:

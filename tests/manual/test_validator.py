@@ -1,11 +1,54 @@
 #!/usr/bin/env python3
 """Test the response validator without requiring PySide6."""
 
+import importlib.util
 import sys
 from pathlib import Path
 
-# Add project to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Load validator module directly from file without triggering parent __init__.py
+# Import dependencies first (these don't require PySide6)
+actions_module = importlib.import_module("doro_app.utils.actions")
+
+# Create minimal parent package modules to support relative imports
+# Only create dummy packages if they don't exist already (avoid interfering with real imports)
+_needs_dummy_packages = "doro_app.core.chat" not in sys.modules
+
+if _needs_dummy_packages:
+    # Check if real packages can be imported (without triggering PySide6)
+    try:
+        # Try importing just the doro_app package itself
+        if "doro_app" not in sys.modules:
+            doro_app_pkg = importlib.import_module("doro_app")
+    except ImportError:
+        # Create dummy if import fails
+        doro_app_pkg = type(sys)("doro_app")
+        doro_app_pkg.__path__ = []
+        sys.modules["doro_app"] = doro_app_pkg
+
+    # For nested packages, create minimal stubs
+    if "doro_app.core" not in sys.modules:
+        core_pkg = type(sys)("doro_app.core")
+        core_pkg.__path__ = []
+        sys.modules["doro_app.core"] = core_pkg
+
+    if "doro_app.core.chat" not in sys.modules:
+        chat_pkg = type(sys)("doro_app.core.chat")
+        chat_pkg.__path__ = []
+        sys.modules["doro_app.core.chat"] = chat_pkg
+
+# Now load validator directly
+project_root = Path(__file__).parent.parent.parent
+validator_path = project_root / "doro_app" / "core" / "chat" / "validator.py"
+spec = importlib.util.spec_from_file_location(
+    "doro_app.core.chat.validator", validator_path
+)
+validator = importlib.util.module_from_spec(spec)
+validator.__package__ = "doro_app.core.chat"
+sys.modules["doro_app.core.chat.validator"] = validator
+spec.loader.exec_module(validator)
+
+ResponseValidator = validator.ResponseValidator
+ValidationResult = validator.ValidationResult
 
 
 class MockStateService:
@@ -26,17 +69,6 @@ class MockStateService:
 
     def visible_state_keys(self) -> list[str]:
         return self._states
-
-
-# Import validator directly from module file to avoid PySide6 dependency
-import importlib.util
-spec = importlib.util.spec_from_file_location("validator", Path(__file__).parent / "doro_app" / "core" / "chat" / "validator.py")
-validator_module = importlib.util.module_from_spec(spec)
-sys.modules["validator"] = validator_module
-spec.loader.exec_module(validator_module)
-
-ResponseValidator = validator_module.ResponseValidator
-ValidationResult = validator_module.ValidationResult
 
 
 def test_valid_response():
