@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -41,6 +41,31 @@ from .helpers import ChatUIHelper
 from ..utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
+
+
+class MovementWindowPort(Protocol):
+    """Interface for movement-related window operations."""
+
+    def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
+        ...
+
+    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
+        ...
+
+    def move_window_to(self, pos: QtCore.QPoint):
+        ...
+
+    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        ...
+
+    def get_bubble_offset(self) -> QtCore.QPointF:
+        ...
+
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
+        ...
+
+    def reset_tick_timer(self, value: float):
+        ...
 
 
 class DoroWindow(QtWidgets.QWidget):
@@ -146,6 +171,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_text_show_override = False
         self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
         self._last_user_activity = time.monotonic()
+        self._bubble_offset = QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
@@ -477,6 +503,23 @@ class DoroWindow(QtWidgets.QWidget):
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
         self._move_window_to(pos)
+
+    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+        """Resolve movement state configuration (public API)."""
+        return self._resolve_move_state(key)
+
+    def get_bubble_offset(self) -> QtCore.QPointF:
+        """Get the current bubble offset (public API for movement)."""
+        return QtCore.QPointF(self._bubble_offset)
+
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
+        """Apply bubble offset via BubbleController (public API)."""
+        if self._bubble_controller:
+            self._bubble_controller.apply_offset(offset, persist=persist)
+
+    def reset_tick_timer(self, value: float):
+        """Reset the tick timer used for movement animation (public API)."""
+        self._last_tick_time = value
 
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from StateService and TransitionPlayer

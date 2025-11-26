@@ -13,7 +13,7 @@ from ...utils.models import MoveStateSettings, MovementRequest
 from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 if TYPE_CHECKING:
-    from .window import DoroWindow
+    from ...ui.window import MovementWindowPort
     from ..state import StateService
 
 
@@ -34,7 +34,7 @@ DIRECTION_COMPONENT_THRESHOLD = 0.2  # for direction classification
 class MovementManager:
     """Encapsulates movement parsing, execution, and reporting."""
 
-    def __init__(self, window: DoroWindow, state_service: StateService, movement_step_px: int):
+    def __init__(self, window: "MovementWindowPort", state_service: StateService, movement_step_px: int):
         self._window = window
         self._state_service = state_service
         self._movement_step_px = movement_step_px
@@ -126,10 +126,10 @@ class MovementManager:
                 or params.get("movestate")
                 or params.get("移動狀態")
             )
-            move_state_key, move_state_settings = self._window._resolve_move_state(move_state_param)
+            move_state_key, move_state_settings = self._window.resolve_move_state(move_state_param)
             if move_state_settings is None:
                 default_key = self._state_service.get_default_movement_state()
-                move_state_key, move_state_settings = self._window._resolve_move_state(default_key)
+                move_state_key, move_state_settings = self._window.resolve_move_state(default_key)
 
             direction_vec = None
             if direction_key:
@@ -195,11 +195,11 @@ class MovementManager:
 
         if action_lower == "face":
             dir_hint = params.get("dir", "").strip().lower()
-            bubble_offset = window._bubble_offset
+            bubble_offset = window.get_bubble_offset()
             if dir_hint in ("left", "l", "左"):
-                window._bubble_controller.apply_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             elif dir_hint in ("right", "r", "右"):
-                window._bubble_controller.apply_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
             return True
         return True
 
@@ -418,7 +418,7 @@ class MovementManager:
         self._movement_pending_report = report
         current_state = self._state_service.get_current_state()
         self._movement_previous_state = current_state.key if current_state else None
-        window._last_tick_time = time.monotonic()
+        window.reset_tick_timer(time.monotonic())
         self._set_movement_state(
             direction,
             speed_name,
