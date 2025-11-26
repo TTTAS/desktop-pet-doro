@@ -116,3 +116,139 @@ class WindowLayoutManager:
 
         panel_height = max(80.0, text_height + 56.0)
         return panel_width, panel_height
+
+    @staticmethod
+    def compute_preferred_window_size(
+        sprite_size: QtCore.QSize,
+        panel_width_hint: float,
+        panel_height_hint: float,
+    ) -> tuple[int, int]:
+        """
+        Compute preferred window size based on sprite and panel dimensions.
+
+        Args:
+            sprite_size: Current sprite size
+            panel_width_hint: Panel width hint
+            panel_height_hint: Panel height hint
+
+        Returns:
+            Tuple of (desired_width, desired_height) in pixels
+        """
+        sprite_w = max(120.0, float(sprite_size.width()))
+        sprite_h = max(120.0, float(sprite_size.height()))
+
+        desired_w = max(
+            380,
+            int(round(max(sprite_w + 120.0, panel_width_hint + 48.0))),
+        )
+        desired_h = max(
+            320,
+            int(round(sprite_h + panel_height_hint + 120.0)),
+        )
+
+        return desired_w, desired_h
+
+    @staticmethod
+    def apply_window_preferred_size(
+        window: QtWidgets.QWidget,
+        sprite_size: QtCore.QSize,
+        panel_width_hint: float,
+        panel_height_hint: float,
+    ) -> tuple[float, float]:
+        """
+        Apply preferred window size to a widget.
+
+        This method has side effects - it modifies the window's size.
+
+        Args:
+            window: Window to resize
+            sprite_size: Current sprite size
+            panel_width_hint: Panel width hint
+            panel_height_hint: Panel height hint
+
+        Returns:
+            Tuple of (panel_width_hint, panel_height_hint) (same as input)
+        """
+        desired_w, desired_h = WindowLayoutManager.compute_preferred_window_size(
+            sprite_size, panel_width_hint, panel_height_hint
+        )
+
+        current_size = window.size()
+        min_size = window.minimumSize()
+
+        min_changed = (
+            min_size.width() != desired_w or min_size.height() != desired_h
+        )
+        needs_resize = (
+            current_size.width() < desired_w or current_size.height() < desired_h
+        )
+
+        if min_changed or needs_resize:
+            if min_changed:
+                window.setMinimumSize(desired_w, desired_h)
+            if needs_resize:
+                window.resize(
+                    max(current_size.width(), desired_w),
+                    max(current_size.height(), desired_h),
+                )
+            window.update()
+
+        return panel_width_hint, panel_height_hint
+
+    @staticmethod
+    def move_window_safely(window: QtWidgets.QWidget, point: QtCore.QPoint):
+        """
+        Move window to specified position safely.
+
+        This method has side effects - it moves the window.
+        Handles edge cases like invalid point, same position, and window handle.
+
+        Args:
+            window: Window to move
+            point: Target position (top-left corner)
+        """
+        if not isinstance(point, QtCore.QPoint):
+            return
+
+        current = window.frameGeometry().topLeft()
+        if current == point:
+            return
+
+        # Try using window handle for more reliable positioning
+        handle = window.windowHandle()
+        if handle is not None:
+            try:
+                handle.setPosition(point)
+            except Exception:
+                pass
+
+        # Fallback to regular move
+        window.move(point)
+
+        # Process events to ensure window is moved before continuing
+        QtWidgets.QApplication.processEvents(
+            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+        )
+
+        # Raise window to top
+        try:
+            window.raise_()
+        except Exception:
+            pass
+
+    @staticmethod
+    def extract_sprite_size_from_movie(movie: QtGui.QMovie | None) -> QtCore.QSize | None:
+        """
+        Extract sprite size from QMovie.
+
+        Args:
+            movie: QMovie to extract size from (or None)
+
+        Returns:
+            Sprite size if movie is valid, None otherwise
+        """
+        if movie and movie.isValid():
+            rect = movie.frameRect()
+            if rect.width() > 0 and rect.height() > 0:
+                return rect.size()
+        return None

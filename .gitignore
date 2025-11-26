@@ -49,3 +49,10 @@ res/state/*.gif
 
 # Runtime generated state files
 doro_app/state/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+coverage.xml
+.coverage.*
