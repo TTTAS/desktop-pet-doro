@@ -15,6 +15,7 @@ MOVE_DIR = ACTION_MOVE_DIR
 CORE_DIR = PROJECT_ROOT / "core"
 CHAT_DIR = CORE_DIR / "chat"
 PROMPT_PATH = CHAT_DIR / "dia_prompt.txt"
+MOVEMENT_INSTRUCTION_PATH = CHAT_DIR / "movement_instruction.txt"
 NETWORK_FAIL_MESSAGES_PATH = CHAT_DIR / "network_fail_doro.txt"
 CLICK_ACTIONS_PATH = RESOURCES_DIR / "click.txt"
 COMPANION_PROMPTS_PATH = RESOURCES_DIR / "companion.txt"

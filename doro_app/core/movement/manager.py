@@ -10,6 +10,8 @@ from PySide6 import QtCore
 
 from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
 from ...utils.models import MoveStateSettings, MovementRequest
+from ...utils.paths import MOVEMENT_INSTRUCTION_PATH
+from ...utils.prompts import load_prompt_text
 from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
 from .parser import (
     direction_label,
@@ -67,28 +69,10 @@ class MovementManager:
         self._last_error = None
 
     def instruction_text(self) -> str:
+        """Load movement instruction text from file and replace {{STEP}} placeholder."""
         step = max(12, self._movement_step_px)
-        return (
-            "【移動指令規則——與狀態格式完全分離】\n"
-            "- 允許在同一行句尾追加一個以「方括號」表示的移動指令，格式為：\n"
-            "  [MOVE:dir=方向;distance=像素;其他可選參數]\n"
-            "- 狀態用( )、移動用[ ]，兩者絕對分離；方括號內容同樣不會被念出或顯示。\n"
-            "- 若無需移動，可省略移動指令；如需穩定解析，也可輸出 [MOVE:NONE]。\n"
-            "- dir 只能是下列「八方向擇一」，嚴禁使用其他任何字詞或角度：\n"
-            "  左｜右｜上｜下｜左上｜右上｜左下｜右下\n"
-            "  或其英文字：left｜right｜up｜down｜up-left｜up-right｜down-left｜down-right\n"
-            f"- distance 為像素距離（>0 依 dir 方向前進），一次建議約 {step}px；speed 必須是 slow｜med｜fast。\n"
-            "- 參數鍵名只能使用：dir、distance、speed、easing、delay；不得增加新鍵名。\n"
-            "- 仍支援舊版 dx、dy 參數，但優先使用方向 + distance + speed。\n"
-            "\n"
-            "【範例輸出（單行）】\n"
-            "(HAPPY) 嘿嘿，人今天也在啊～ [MOVE:dir=right;distance=120]\n"
-            "(IDLE) 呼～我去那邊坐一下喔。 [MOVE:dir=left;distance=80]\n"
-            "(SHY) 咦、你靠太近了啦…… [MOVE:dir=left;distance=40]\n"
-            "(SLEEPY) 呼啊～再五分鐘…… [MOVE:NONE]\n"
-            "\n"
-            "請保持順暢的中文對話內容，括號與方括號僅供程式解析，不會顯示給使用者。"
-        )
+        template = load_prompt_text(MOVEMENT_INSTRUCTION_PATH)
+        return template.replace("{{STEP}}", str(step))
 
     def record_manual_report(self, report: str | None):
         if report:
