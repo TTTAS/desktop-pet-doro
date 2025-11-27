@@ -24,10 +24,10 @@ def temp_state_dir():
 @pytest.fixture
 def state_service(temp_state_dir):
     """Create StateService with temp repositories."""
-    state_repo = StateRepository(temp_state_dir)
-    move_repo = MoveStateRepository(temp_state_dir)
+    state_repo = StateRepository(temp_state_dir / "states.json")
+    move_repo = MoveStateRepository(temp_state_dir / "move_states.json")
     gif_repo = GifRepository(temp_state_dir)
-    transition_repo = TransitionStateRepository(temp_state_dir)
+    transition_repo = TransitionStateRepository(temp_state_dir / "transitions.json")
     state_list_path = temp_state_dir / "state_list.txt"
 
     service = StateService(
@@ -63,16 +63,16 @@ class TestStateLifecycle:
 
     def test_state_persistence(self, state_service):
         """Test that states persist across service instances."""
-        temp_dir = state_service._state_repo._state_dir
+        temp_dir = state_service._state_repo.config_path.parent
 
         # Create state
         state_service.add_state("excited", "Excited")
 
         # Create new service instance
-        new_repo = StateRepository(temp_dir)
-        new_move_repo = MoveStateRepository(temp_dir)
+        new_repo = StateRepository(temp_dir / "states.json")
+        new_move_repo = MoveStateRepository(temp_dir / "move_states.json")
         new_gif_repo = GifRepository(temp_dir)
-        new_transition_repo = TransitionStateRepository(temp_dir)
+        new_transition_repo = TransitionStateRepository(temp_dir / "transitions.json")
         new_service = StateService(
             state_repo=new_repo,
             move_repo=new_move_repo,
@@ -138,8 +138,7 @@ class TestMovementIntegration:
 
     def test_create_move_state_with_visual_state(self, state_service):
         """Test creating movement state linked to visual state."""
-        # Create visual state
-        state_service.add_state("walking", "Walking")
+        # Note: 'walking' state is created by default in initialize()
 
         # Create movement state
         move_state = state_service.add_move_state(
@@ -159,15 +158,18 @@ class TestMovementIntegration:
 
     def test_find_move_states_by_direction(self, state_service):
         """Test finding movement states by direction."""
+        # Note: 'walking' state is created by default in initialize()
         # Create movement states
-        state_service.add_state("walking", "Walking")
         state_service.add_move_state("walk_left", "walking", "left")
         state_service.add_move_state("walk_right", "walking", "right")
 
         # Find left movements
         left_moves = state_service.find_move_states_by_direction("left")
         assert len(left_moves) > 0
-        assert all(m.direction == "left" for m in left_moves)
+        # Should include states with direction="left" and direction="any"
+        # (Default walking state has direction="any")
+        assert any(m.key == "walk_left" for m in left_moves)
+        assert all("left" in m.direction or "any" in m.direction for m in left_moves)
 
 
 class TestTransitionIntegration:
@@ -229,7 +231,7 @@ class TestCompleteWorkflow:
         success = state_service.update_visual_config(
             "excited",
             bob_amplitude=10.0,
-            bob_frequency=3.0,
+            scale_amplitude=0.08,
         )
         assert success is True
 
