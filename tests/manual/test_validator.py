@@ -167,8 +167,8 @@ def test_retry_prompt_building():
     mock_service = MockStateService(["HAPPY", "SAD", "EXCITED", "idle", "walking"])
     validator = ResponseValidator(mock_service)
 
-    # Invalid response
-    response = "(CONFUSED) 我不知道..."
+    # Invalid response - invalid movement direction
+    response = "(HAPPY) 我要往這裡走～ [MOVE:dir=diagonal;distance=50]"
     result = validator.validate(response)
 
     # Should retry
@@ -181,9 +181,12 @@ def test_retry_prompt_building():
     print(f"  Original message: 跟我打招呼")
     print(f"  Invalid response: {response}")
     print(f"  Should retry: {should_retry}")
-    print(f"  Retry prompt includes error: {result.error_message in retry_prompt}")
-    print(f"  Retry prompt includes original: {'跟我打招呼' in retry_prompt}")
-    print(f"  ✅ PASS" if should_retry and result.error_message in retry_prompt and "跟我打招呼" in retry_prompt else f"  ❌ FAIL")
+    if result.error_message:
+        print(f"  Retry prompt includes error: {result.error_message in retry_prompt}")
+        print(f"  Retry prompt includes original: {'跟我打招呼' in retry_prompt}")
+        print(f"  ✅ PASS" if should_retry and result.error_message in retry_prompt and "跟我打招呼" in retry_prompt else f"  ❌ FAIL")
+    else:
+        print(f"  ❌ FAIL - No error message generated")
     print()
 
 
