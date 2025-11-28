@@ -1,7 +1,5 @@
 """Constants for Doro application - extracted from Window to improve readability."""
 
-from PySide6 import QtGui
-
 # ═══════════════════════════════════════════════════════════
 # Animation and Timing Constants
 # ═══════════════════════════════════════════════════════════
@@ -109,6 +107,7 @@ CHAT_THREAD_CLEANUP_DELAY_MS = 150  # Qt thread cleanup requires ~100-200ms
 MOVEMENT_SPEED_SLOW = 80.0  # pixels per second
 MOVEMENT_SPEED_MEDIUM = 140.0  # pixels per second
 MOVEMENT_SPEED_FAST = 220.0  # pixels per second
+MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels - movement is "done" when within this distance
 
 # ═══════════════════════════════════════════════════════════
 # Bubble Scale Limits
@@ -140,18 +139,27 @@ WINDOW_INITIAL_POSITION_OFFSET_Y = 120  # Offset from bottom edge on startup
 # Helper Functions for Color Construction
 # ═══════════════════════════════════════════════════════════
 
-def get_default_fill_colors() -> tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]:
+
+def get_default_fill_colors():
     """Get default gradient fill colors for fallback sprite."""
+    from PySide6 import QtGui
+
     return (
         QtGui.QColor(DEFAULT_GRADIENT_TOP),
         QtGui.QColor(DEFAULT_GRADIENT_MID),
         QtGui.QColor(DEFAULT_GRADIENT_BOTTOM),
     )
 
-def get_default_blush_color() -> QtGui.QColor:
+
+def get_default_blush_color():
     """Get default blush color."""
+    from PySide6 import QtGui
+
     return QtGui.QColor(DEFAULT_BLUSH_COLOR)
 
-def get_default_eye_color() -> QtGui.QColor:
+
+def get_default_eye_color():
     """Get default eye color."""
+    from PySide6 import QtGui
+
     return QtGui.QColor(DEFAULT_EYE_COLOR)
