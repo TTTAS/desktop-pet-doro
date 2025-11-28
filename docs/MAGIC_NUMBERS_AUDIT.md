@@ -284,3 +284,61 @@ These remain local for good reasons:
 **Audit Completed:** 2025-11-28
 **Extraction Completed:** 2025-11-28 ✅
 **Test Status:** 108/108 passing ✅
+
+---
+
+## Phase 2.2: Smoke Tests ✅ (Completed 2025-11-28)
+
+**Commit:** `888462f`
+
+Added comprehensive smoke test suite to provide safety net for future refactoring.
+
+### Tests Added (9 total, 100% passing)
+
+**StateService Smoke Tests (4):**
+- ✅ Can be created without crashing
+- ✅ Can add and retrieve states
+- ✅ Can set and get current state
+- ✅ Can save and load states to/from disk
+
+**ChatController Smoke Tests (2):**
+- ✅ Can be initialized without crashing
+- ✅ Has expected basic properties
+
+**MovementManager Smoke Tests (2):**
+- ✅ Can be created without crashing
+- ✅ Movement instruction text loads correctly
+
+**Constants Smoke Test (1):**
+- ✅ All 18 extracted constants are importable
+
+### Critical Fix
+
+**Issue:** Qt GUI import at module level caused headless test failures
+**Solution:** Moved PySide6 imports to function level (lazy loading)
+
+```python
+# Before (module level - crashes in headless)
+from PySide6 import QtGui
+
+def get_default_fill_colors() -> tuple[QtGui.QColor, ...]:
+    return (QtGui.QColor(...), ...)
+
+# After (function level - works in headless)
+def get_default_fill_colors():
+    from PySide6 import QtGui
+    return (QtGui.QColor(...), ...)
+```
+
+### Added Constant
+
+**MOVEMENT_COMPLETION_THRESHOLD** - Previously missed, now defined:
+```python
+MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels - movement is "done" when within this distance
+```
+
+### Test Run Time
+
+- **Execution:** 0.26 seconds
+- **Result:** 9/9 passing (100%)
+- **Environment:** Headless Linux (no GUI)
