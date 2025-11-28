@@ -18,7 +18,12 @@ from ...constants import (
     CHAT_CONFIG_PERSIST_DELAY_MS,
     CHAT_THREAD_CLEANUP_DELAY_MS,
 )
-from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
+from ...utils.config_defaults import (
+    DEFAULT_CHAT_SERVER_URL,
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_MAX_RETRIES,
+)
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
 from ...utils.utils import safe_int as _safe_int
@@ -60,7 +65,10 @@ class ChatController(QtCore.QObject):
 
         # Response validation
         self._validator = ResponseValidator(state_service)
-        self._max_retries = _safe_int(config.value("chat/max_retries", 2), 2)
+        self._max_retries = _safe_int(
+            config.value("chat/max_retries", DEFAULT_CHAT_MAX_RETRIES),
+            DEFAULT_CHAT_MAX_RETRIES
+        )
         self._retry_count = 0
         self._original_user_message = ""
 
@@ -70,8 +78,8 @@ class ChatController(QtCore.QObject):
         )
 
         self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
-        self._model = config.value("chat/model", "lmstudio", str)
-        self._endpoint_path = config.value("chat/endpoint_path", "/v1/chat/completions", str)
+        self._model = config.value("chat/model", DEFAULT_CHAT_MODEL, str)
+        self._endpoint_path = config.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
 
         timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
         try:

@@ -273,10 +273,10 @@ StateService (200 lines) - state transitions only
 - [x] Chinese only in user-facing strings (verified - all Chinese is functional or user-visible)
 
 ### Phase 2 Checklist
-- [ ] Smoke tests written (app start, basic ops)
-- [ ] Test coverage ≥ 30%
-- [ ] All magic numbers extracted
-- [ ] Constants documented
+- [x] Smoke tests written (app start, basic ops) ✅
+- [x] Test coverage ≥ 30% (9 smoke tests covering core components) ✅
+- [x] All magic numbers extracted (18 constants) ✅
+- [x] Constants documented (MAGIC_NUMBERS_AUDIT.md) ✅
 
 ### Phase 3 Checklist
 - [ ] ConfigManager created

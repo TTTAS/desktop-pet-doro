@@ -9,7 +9,12 @@ from PySide6 import QtCore, QtWidgets
 
 from .utils.actions import parse_actions_from_text
 from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
-from .utils.config_defaults import DEFAULT_CHAT_SERVER_URL
+from .utils.config_defaults import (
+    DEFAULT_CHAT_SERVER_URL,
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_CHAT_ENDPOINT_PATH,
+)
+from .constants import CHAT_DEFAULT_TIMEOUT_SECONDS, CHAT_DEFAULT_TEMPERATURE
 from .utils.paths import PROMPT_PATH
 from .utils.prompts import load_prompt_text
 from .bootstrap import BootstrapError, bootstrap_environment
@@ -27,20 +32,20 @@ def run_chat_test(message: str | None) -> int:
 
     settings = QtCore.QSettings("doro-pet", "doro")
     server_url = settings.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
-    model = settings.value("chat/model", "lmstudio", str)
-    endpoint_path = settings.value("chat/endpoint_path", "/v1/chat/completions", str)
-    timeout_value = settings.value("chat/timeout_seconds", 30)
-    temp_value = settings.value("chat/temperature", 0.7)
+    model = settings.value("chat/model", DEFAULT_CHAT_MODEL, str)
+    endpoint_path = settings.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
+    timeout_value = settings.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
+    temp_value = settings.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
 
     try:
         timeout_seconds = int(timeout_value)
     except (TypeError, ValueError):
-        timeout_seconds = 30
+        timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
 
     try:
         temperature = float(temp_value)
     except (TypeError, ValueError):
-        temperature = 0.7
+        temperature = CHAT_DEFAULT_TEMPERATURE
 
     endpoint_url = resolve_chat_endpoint(server_url, endpoint_path)
     if not endpoint_url:
