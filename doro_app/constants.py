@@ -86,6 +86,38 @@ DEFAULT_MOVE_STATE_KEY = "walking"
 TRANSITION_WILDCARD = "*"  # Wildcard for transition matching (e.g., "idle" -> "*")
 
 # ═══════════════════════════════════════════════════════════
+# Color Constants
+# ═══════════════════════════════════════════════════════════
+
+COLOR_ALPHA_MAX = 255  # Maximum alpha value for QColor (0-255)
+
+# ═══════════════════════════════════════════════════════════
+# Chat Configuration Defaults
+# ═══════════════════════════════════════════════════════════
+
+CHAT_DEFAULT_HISTORY_TURNS = 8  # Number of conversation turns to keep in memory
+CHAT_DEFAULT_TIMEOUT_SECONDS = 30  # Request timeout in seconds
+CHAT_DEFAULT_TEMPERATURE = 0.7  # LLM temperature (creativity level)
+CHAT_DEFAULT_MAX_TOKENS = 512  # Maximum tokens per response
+CHAT_CONFIG_PERSIST_DELAY_MS = 50  # Debounce delay before saving config
+CHAT_THREAD_CLEANUP_DELAY_MS = 150  # Qt thread cleanup requires ~100-200ms
+
+# ═══════════════════════════════════════════════════════════
+# Movement Speed Constants
+# ═══════════════════════════════════════════════════════════
+
+MOVEMENT_SPEED_SLOW = 80.0  # pixels per second
+MOVEMENT_SPEED_MEDIUM = 140.0  # pixels per second
+MOVEMENT_SPEED_FAST = 220.0  # pixels per second
+
+# ═══════════════════════════════════════════════════════════
+# Bubble Scale Limits
+# ═══════════════════════════════════════════════════════════
+
+BUBBLE_SCALE_MIN = 0.5  # Minimum scale factor for bubble
+BUBBLE_SCALE_MAX = 2.0  # Maximum scale factor for bubble
+
+# ═══════════════════════════════════════════════════════════
 # Helper Functions for Color Construction
 # ═══════════════════════════════════════════════════════════
 

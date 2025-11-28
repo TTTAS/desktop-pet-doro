@@ -144,7 +144,7 @@ class RenderingEngine:
         Args:
             painter: Qt painter to render with
             bubble_text: Text to display
-            alpha: Panel alpha (0-255)
+            alpha: Panel alpha (0-COLOR_ALPHA_MAX)
             sprite_center: Center position of sprite
             window_size: Current window size
             panel_height_hint: Panel height hint

@@ -7,6 +7,8 @@ from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ...constants import BUBBLE_SCALE_MIN, BUBBLE_SCALE_MAX
+
 if TYPE_CHECKING:
     from .window import DoroWindow
 
@@ -88,7 +90,7 @@ class BubbleController(QtCore.QObject):
 
     def set_scale(self, value: float, *, persist: bool = False):
         window = self._window
-        self._scale = max(0.5, min(2.0, float(value)))
+        self._scale = max(BUBBLE_SCALE_MIN, min(BUBBLE_SCALE_MAX, float(value)))
         window._bubble_scale = self._scale
         if persist:
             self.persist_preferences()

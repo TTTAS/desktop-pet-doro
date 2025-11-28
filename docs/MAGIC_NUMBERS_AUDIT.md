@@ -1,0 +1,250 @@
+# Magic Numbers Audit Report
+
+**Generated:** 2025-11-28
+**Scan Tool:** `tools/find_magic_numbers.py`
+
+---
+
+## Summary
+
+Found **25 distinct magic numbers** across 8 core files.
+
+### By Priority
+
+| Priority | Count | Category |
+|----------|-------|----------|
+| 🔴 HIGH | 10 | Configuration defaults, repeated values |
+| 🟡 MEDIUM | 8 | UI layout, thresholds |
+| 🟢 LOW | 7 | Rendering internals, local logic |
+
+---
+
+## 🔴 HIGH Priority - Extract Now
+
+### 1. Color Alpha Maximum (255)
+**Occurrences:** 20 times
+**Files:** `window.py`, `rendering_engine.py`
+
+```python
+# Current
+alpha = min(max(int(self._view_model.bubble_alpha), 0), 255)
+
+# Should be
+COLOR_ALPHA_MAX = 255
+alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
+```
+
+**Reason:** Repeated 20 times, fundamental constant.
+
+---
+
+### 2. Chat Configuration Defaults
+**File:** `doro_app/core/chat/controller.py`
+
+| Number | Usage | Occurrences |
+|--------|-------|-------------|
+| `8` | History turns | 5 |
+| `30` | Timeout seconds | 2 |
+| `0.7` | Temperature | 2 |
+| `512` | Max tokens | 2 |
+| `50` | Config persist delay | 1 |
+| `150` | Thread cleanup delay | 1 |
+
+```python
+# Should extract to constants.py
+CHAT_DEFAULT_HISTORY_TURNS = 8
+CHAT_DEFAULT_TIMEOUT_SECONDS = 30
+CHAT_DEFAULT_TEMPERATURE = 0.7
+CHAT_DEFAULT_MAX_TOKENS = 512
+CHAT_CONFIG_PERSIST_DELAY_MS = 50
+CHAT_THREAD_CLEANUP_DELAY_MS = 150  # Qt thread cleanup requires ~100-200ms
+```
+
+**Reason:** Configuration values that users might want to adjust.
+
+---
+
+### 3. Movement Speed Constants
+**File:** `doro_app/core/movement/manager.py`
+
+Already defined locally:
+```python
+SPEED_SLOW = 80.0
+SPEED_MEDIUM = 140.0
+SPEED_FAST = 220.0
+```
+
+**Action:** Move to `constants.py` for centralization.
+
+---
+
+### 4. Bubble Scale Limits
+**File:** `doro_app/ui/components/bubble_controller.py`
+
+```python
+# Current
+self._scale = max(0.5, min(2.0, float(value)))
+
+# Should be
+BUBBLE_SCALE_MIN = 0.5
+BUBBLE_SCALE_MAX = 2.0
+self._scale = max(BUBBLE_SCALE_MIN, min(BUBBLE_SCALE_MAX, float(value)))
+```
+
+**Reason:** User-facing constraints.
+
+---
+
+### 5. Movement Distance Threshold
+**File:** `doro_app/core/movement/manager.py`
+
+```python
+# Current
+MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels
+
+# Already good - but verify it's used consistently
+if actual_distance <= 0.5:  # Should use constant
+```
+
+**Action:** Replace hardcoded `0.5` with constant.
+
+---
+
+## 🟡 MEDIUM Priority - Consider Extracting
+
+### 6. UI Layout Constants
+**Files:** `rendering_engine.py`, `layout_manager.py`
+
+| Number | Usage | Occurrences |
+|--------|-------|-------------|
+| `160.0` | Min panel width | 2 |
+| `80.0` | Min panel height | 4 |
+| `56.0` | Panel padding | 2 |
+| `4000` | Max panel width | 2 |
+
+```python
+# Recommended constants
+PANEL_MIN_WIDTH = 160.0
+PANEL_MIN_HEIGHT = 80.0
+PANEL_PADDING = 56.0
+PANEL_MAX_WIDTH = 4000.0
+```
+
+**Reason:** Layout calculations, might need adjustment for different screen sizes.
+
+---
+
+### 7. Fallback Screen Resolution
+**File:** `doro_app/ui/layout/layout_manager.py`
+
+```python
+# Current
+QtCore.QRect(0, 0, 1920, 1080)  # Fallback if no screen
+
+# Should be
+FALLBACK_SCREEN_WIDTH = 1920
+FALLBACK_SCREEN_HEIGHT = 1080
+```
+
+**Reason:** Makes fallback resolution explicit and configurable.
+
+---
+
+### 8. Window Positioning Offset
+**File:** `doro_app/ui/window.py:205`
+
+```python
+# Current
+self.move(g.right() - self.width() - 40, g.bottom() - self.height() - 120)
+
+# Already has WINDOW_POSITION_OFFSET_X somewhere?
+WINDOW_INITIAL_POSITION_OFFSET_X = 40
+WINDOW_INITIAL_POSITION_OFFSET_Y = 120
+```
+
+**Reason:** Initial window placement magic numbers.
+
+---
+
+## 🟢 LOW Priority - Keep Local
+
+### 9. Rendering Engine Gradients
+**File:** `doro_app/ui/rendering/rendering_engine.py`
+
+These are **rendering internals** for artistic effect:
+- `0.28`, `0.6`, `0.12` - Gradient alpha multipliers
+- `2.6` - Outline pen width
+- RGB values: `(134, 180, 255)`, `(236, 240, 255)`, `(4, 8, 20)`
+
+**Reason:** These are tweaked through experimentation. Extracting makes code less readable without benefit.
+
+**Recommendation:** Add inline comments explaining visual effect instead:
+```python
+# Subtle shadow gradient (28% opacity at top, 12% at bottom)
+gradient.setColorAt(0.0, QtGui.QColor(255, 255, 255, int(base_alpha * 0.28)))
+gradient.setColorAt(0.6, QtGui.QColor(255, 255, 255, int(base_alpha * 0.12)))
+```
+
+---
+
+### 10. Direction Threshold
+**File:** `doro_app/core/movement/parser.py`
+
+```python
+# Current
+sign(dx) if abs(dx) > 0.2 else 0
+```
+
+**Reason:** Local logic threshold. Clear in context, not reused elsewhere.
+
+---
+
+## Recommended Action Plan
+
+### Step 1: High Priority (now)
+1. Add to `constants.py`:
+   - `COLOR_ALPHA_MAX = 255`
+   - Chat defaults (6 constants)
+   - Bubble scale limits (2 constants)
+   - Move movement speeds from `manager.py` to `constants.py`
+
+2. Update usages:
+   - Replace all `255` → `COLOR_ALPHA_MAX`
+   - Replace chat defaults with constants
+   - Replace bubble scale limits
+   - Fix `0.5` → `MOVEMENT_COMPLETION_THRESHOLD`
+
+### Step 2: Medium Priority (next)
+1. Add UI layout constants
+2. Add fallback screen resolution
+3. Add window positioning offsets
+
+### Step 3: Low Priority (optional)
+1. Add inline comments to rendering gradients
+2. Document why certain numbers are local-only
+
+---
+
+## Metrics
+
+| Metric | Count |
+|--------|-------|
+| Total numbers found | 25 |
+| High priority (extract) | 10 |
+| Medium priority (consider) | 8 |
+| Low priority (keep local) | 7 |
+| Estimated lines to add | ~20 |
+| Estimated replacements | ~50 |
+
+---
+
+## Next Steps
+
+After extracting constants:
+1. Run tests (verify no regressions)
+2. Update this document with "Completed" status
+3. Document magic number policy in `REFACTORING_PLAN.md`
+
+---
+
+**Audit Completed:** 2025-11-28

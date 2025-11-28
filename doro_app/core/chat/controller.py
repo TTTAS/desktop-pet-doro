@@ -10,6 +10,14 @@ from PySide6 import QtConcurrent, QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from .validator import ResponseValidator
+from ...constants import (
+    CHAT_DEFAULT_HISTORY_TURNS,
+    CHAT_DEFAULT_TIMEOUT_SECONDS,
+    CHAT_DEFAULT_TEMPERATURE,
+    CHAT_DEFAULT_MAX_TOKENS,
+    CHAT_CONFIG_PERSIST_DELAY_MS,
+    CHAT_THREAD_CLEANUP_DELAY_MS,
+)
 from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
@@ -56,25 +64,34 @@ class ChatController(QtCore.QObject):
         self._retry_count = 0
         self._original_user_message = ""
 
-        self._history_turns = _safe_int(config.value("chat/history_turns", 8), 8)
+        self._history_turns = _safe_int(
+            config.value("chat/history_turns", CHAT_DEFAULT_HISTORY_TURNS),
+            CHAT_DEFAULT_HISTORY_TURNS,
+        )
 
         self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
         self._model = config.value("chat/model", "lmstudio", str)
         self._endpoint_path = config.value("chat/endpoint_path", "/v1/chat/completions", str)
 
-        timeout_value = config.value("chat/timeout_seconds", 30)
+        timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
         try:
             self._timeout_seconds = int(timeout_value)
         except (TypeError, ValueError):
-            logger.warning(f"Invalid timeout value: {timeout_value}, using default 30")
-            self._timeout_seconds = 30
+            logger.warning(
+                f"Invalid timeout value: {timeout_value}, "
+                f"using default {CHAT_DEFAULT_TIMEOUT_SECONDS}"
+            )
+            self._timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
 
-        temp_value = config.value("chat/temperature", 0.7)
+        temp_value = config.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
         try:
             self._temperature = float(temp_value)
         except (TypeError, ValueError):
-            logger.warning(f"Invalid temperature value: {temp_value}, using default 0.7")
-            self._temperature = 0.7
+            logger.warning(
+                f"Invalid temperature value: {temp_value}, "
+                f"using default {CHAT_DEFAULT_TEMPERATURE}"
+            )
+            self._temperature = CHAT_DEFAULT_TEMPERATURE
 
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
@@ -89,7 +106,7 @@ class ChatController(QtCore.QObject):
 
         self._persist_timer = QtCore.QTimer(self)
         self._persist_timer.setSingleShot(True)
-        self._persist_timer.setInterval(50)
+        self._persist_timer.setInterval(CHAT_CONFIG_PERSIST_DELAY_MS)
         self._persist_timer.timeout.connect(self._persist_chat_settings)
 
         logger.info(f"ChatController initialized: server={self._server_url}, model={self._model}, timeout={self._timeout_seconds}s")
@@ -277,8 +294,8 @@ class ChatController(QtCore.QObject):
                             was_auto,
                         )
 
-                # Wait 150ms for thread cleanup before retrying
-                QtCore.QTimer.singleShot(150, _delayed_retry)
+                # Wait for Qt thread cleanup before retrying
+                QtCore.QTimer.singleShot(CHAT_THREAD_CLEANUP_DELAY_MS, _delayed_retry)
                 return
 
             # Max retries exceeded or shouldn't retry
@@ -351,7 +368,10 @@ class ChatController(QtCore.QObject):
         messages.extend(history)
         messages.extend(first_entry)
 
-        max_tokens = _safe_int(self._config.value("chat/max_tokens", 512), 512)
+        max_tokens = _safe_int(
+            self._config.value("chat/max_tokens", CHAT_DEFAULT_MAX_TOKENS),
+            CHAT_DEFAULT_MAX_TOKENS,
+        )
 
         return {
             "model": self._model,
@@ -385,8 +405,8 @@ class ChatController(QtCore.QObject):
     def _resolve_chat_endpoint(self) -> str:
         return resolve_chat_endpoint(self._server_url, self._endpoint_path)
 
-    def _trim_history(self, max_turns: int = 8):
-        max_turns = max(1, self._history_turns if max_turns == 8 else max_turns)
+    def _trim_history(self, max_turns: int = CHAT_DEFAULT_HISTORY_TURNS):
+        max_turns = max(1, self._history_turns if max_turns == CHAT_DEFAULT_HISTORY_TURNS else max_turns)
         max_entries = max_turns * 2
         if len(self._history) > max_entries:
             self._history = self._history[-max_entries:]

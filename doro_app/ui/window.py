@@ -475,7 +475,8 @@ class DoroWindow(QtWidgets.QWidget):
             and bool((self._bubble_text or "").strip())
         )
         if panel_should_draw:
-            alpha = min(max(int(self._view_model.bubble_alpha), 0), 255)
+            from ..constants import COLOR_ALPHA_MAX
+            alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
                 p,
                 self._bubble_text,
