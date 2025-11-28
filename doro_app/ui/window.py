@@ -17,6 +17,7 @@ from ..constants import (
     BUBBLE_DEFAULT_SCALE, MOVEMENT_ONLY_STATE_KEYS,
     DEFAULT_MOVE_STATE_KEY, CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
     SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
+    WINDOW_INITIAL_POSITION_OFFSET_X, WINDOW_INITIAL_POSITION_OFFSET_Y,
     get_default_fill_colors, get_default_blush_color, get_default_eye_color,
 )
 from .components.bubble_controller import BubbleConfig, BubbleController
@@ -202,7 +203,10 @@ class DoroWindow(QtWidgets.QWidget):
         screen = QtWidgets.QApplication.primaryScreen()
         if screen:
             g = screen.availableGeometry()
-            self.move(g.right() - self.width() - 40, g.bottom() - self.height() - 120)
+            self.move(
+                g.right() - self.width() - WINDOW_INITIAL_POSITION_OFFSET_X,
+                g.bottom() - self.height() - WINDOW_INITIAL_POSITION_OFFSET_Y,
+            )
 
         self.setWindowTitle("doro")
 

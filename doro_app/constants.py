@@ -118,6 +118,25 @@ BUBBLE_SCALE_MIN = 0.5  # Minimum scale factor for bubble
 BUBBLE_SCALE_MAX = 2.0  # Maximum scale factor for bubble
 
 # ═══════════════════════════════════════════════════════════
+# UI Layout Constants
+# ═══════════════════════════════════════════════════════════
+
+PANEL_MIN_WIDTH = 160.0  # Minimum width for text panel
+PANEL_MIN_HEIGHT = 80.0  # Minimum height for text panel
+PANEL_PADDING = 56.0  # Internal padding for panel content
+PANEL_MAX_WIDTH = 4000.0  # Maximum width to prevent excessive stretching
+
+# ═══════════════════════════════════════════════════════════
+# Screen and Window Positioning
+# ═══════════════════════════════════════════════════════════
+
+FALLBACK_SCREEN_WIDTH = 1920  # Fallback screen width if detection fails
+FALLBACK_SCREEN_HEIGHT = 1080  # Fallback screen height if detection fails
+
+WINDOW_INITIAL_POSITION_OFFSET_X = 40  # Offset from right edge on startup
+WINDOW_INITIAL_POSITION_OFFSET_Y = 120  # Offset from bottom edge on startup
+
+# ═══════════════════════════════════════════════════════════
 # Helper Functions for Color Construction
 # ═══════════════════════════════════════════════════════════
 
