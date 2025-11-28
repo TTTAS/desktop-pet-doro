@@ -60,9 +60,6 @@ class BubbleController(QtCore.QObject):
         # Auto-hide default delay (can be overridden per-message)
         self._default_auto_hide_ms = 6000
 
-        # expose timer for legacy references
-        window._bubble_hide_timer = self._hide_timer
-
     # ------------------------------------------------------------------ State access
     @property
     def offset(self) -> QtCore.QPointF:

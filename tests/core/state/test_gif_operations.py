@@ -146,19 +146,6 @@ class TestSetGifOperations:
         result = state_service_with_mocks.set_gif("missing", Path("/fake.gif"))
         assert result is False
 
-    def test_set_primary_gif_delegates_to_set_gif(
-        self, state_service_with_mocks: StateService, mock_gif_repo: Mock
-    ):
-        """Test set_primary_gif calls set_gif."""
-        state_service_with_mocks.add_state("test", "Test")
-        mock_gif_repo.store_gif.return_value = "primary_gif_id"
-
-        source_path = Path("/source/primary.gif")
-        result = state_service_with_mocks.set_primary_gif("test", source_path)
-
-        assert result is True
-        mock_gif_repo.store_gif.assert_called_with(source_path, "test")
-
     def test_get_gif_id_returns_id_for_state(
         self, state_service_with_mocks: StateService
     ):

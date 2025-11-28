@@ -145,7 +145,7 @@ class StateController(QtCore.QObject):
 
     def set_state_gif(self, key: str, source_path: Path) -> bool:
         """Set GIF for a state (delegates to StateService)."""
-        return self._state_service.set_primary_gif(key, source_path)
+        return self._state_service.set_gif(key, source_path)
 
     def clear_state_gif(self, state_key: str | None = None) -> bool:
         """

@@ -690,11 +690,6 @@ class StateService:
 
         return True
 
-    # Legacy method name for compatibility
-    def set_primary_gif(self, state_key: str, gif_path: Path) -> bool:
-        """Legacy method. Use set_gif() instead."""
-        return self.set_gif(state_key, gif_path)
-
     def get_gif_id(self, state_key: str) -> Optional[str]:
         """
         Get GIF resource ID for a state.
