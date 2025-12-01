@@ -277,7 +277,10 @@ class ChatController(QtCore.QObject):
 
         try:
             result = self._future.result() if self._future else (None, "No future result")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Qt Future can raise any exception from the worker thread.
+            # We catch broadly here because we cannot predict what the worker will throw.
+            # All exceptions are logged with full traceback and handled gracefully.
             logger.error(f"Future raised exception: {exc}", exc_info=True)
             self._handle_worker_error(str(exc))
             return
@@ -422,9 +425,28 @@ class ChatController(QtCore.QObject):
         return prompt
 
     def _safe_call_provider(self, provider: TextProvider) -> str:
+        """
+        Safely call a text provider function, returning empty string on any error.
+
+        This method is intentionally defensive - provider functions are lambdas
+        that may access external state and could fail for various reasons.
+        We prefer to return empty string rather than crashing the chat system.
+
+        Args:
+            provider: Function that returns a string (e.g., state list, movement hint)
+
+        Returns:
+            Stripped string from provider, or empty string if provider fails
+        """
         try:
             value = provider() or ""
-        except Exception:  # noqa: BLE001
+        except Exception as exc:
+            # Provider functions are external and can fail for many reasons:
+            # - StateService not ready
+            # - MovementManager in invalid state
+            # - File I/O errors
+            # Rather than propagate these errors and break chat, we log and continue.
+            logger.warning(f"Provider function failed, using empty string: {exc}")
             return ""
         return value.strip()
 
