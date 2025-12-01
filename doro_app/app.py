@@ -53,8 +53,9 @@ class DoroApp:
         # need window reference. This will be fixed in Phase 3.
         self.window = DoroWindow(
             state_service=self._state_service,
-            config=self._config,
+            config=self._config,  # Legacy
             not_topmost=not_topmost,
+            config_manager=self._config_manager,  # New: Type-safe config
         )
 
         # ─────────────────────────────────────────────────────────
@@ -76,7 +77,10 @@ class DoroApp:
         # Create Managers (need window reference - circular dependency)
         # ─────────────────────────────────────────────────────────
         self._transition_player = TransitionPlayer(self.window, self._state_service)
-        self._bubble_controller = BubbleController(self.window)
+        self._bubble_controller = BubbleController(
+            self.window,
+            config_manager=self._config_manager,  # Type-safe config access
+        )
         self._movement = MovementManager(self.window, self._state_service, MOVEMENT_STEP_PX)
 
         # ─────────────────────────────────────────────────────────

@@ -39,6 +39,7 @@ from ..core.state.transition_player import TransitionPlayer
 from .theme.theme import ensure_application_theme
 from .theme.themed_menu import build_context_menu_content, create_doro_menu
 from .helpers import ChatUIHelper
+from ..utils.config_manager import ConfigManager
 from ..utils.utils import safe_float as _safe_float, safe_int as _safe_int
 
 logger = get_logger(__name__)
@@ -75,14 +76,16 @@ class DoroWindow(QtWidgets.QWidget):
         state_service: StateService,
         config: QtCore.QSettings,
         not_topmost: bool = False,
+        config_manager: ConfigManager | None = None,
     ):
         """
         Initialize the Doro window (UI layer only).
 
         Args:
             state_service: State management service (injected)
-            config: QSettings for configuration (injected)
+            config: (Legacy) QSettings for configuration
             not_topmost: If True, window will not stay on top
+            config_manager: ConfigManager for type-safe config access
 
         Note:
             Managers and controllers are wired after construction via wire_dependencies().
@@ -111,7 +114,8 @@ class DoroWindow(QtWidgets.QWidget):
         # Injected Dependencies
         # ─────────────────────────────────────────────────────────
         self._state_service = state_service
-        self._config = config
+        self._config = config  # Legacy QSettings
+        self._config_manager = config_manager  # New: Type-safe config
 
         # File paths (reconstructed from constants)
         from ..utils.paths import STATE_DIR
@@ -305,9 +309,17 @@ class DoroWindow(QtWidgets.QWidget):
         # ─────────────────────────────────────────────────────────
         # Apply configuration
         # ─────────────────────────────────────────────────────────
-        offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
-        offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
-        scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
+        if self._config_manager:
+            # Use ConfigManager for type-safe config access
+            offset_x = self._config_manager.ui.bubble_offset_x
+            offset_y = self._config_manager.ui.bubble_offset_y
+            scale_pref = self._config_manager.ui.bubble_scale
+        else:
+            # Fallback to legacy QSettings
+            offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
+            offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
+            scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
+
         self._bubble_controller.apply_persisted_config(
             BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
         )
@@ -656,7 +668,10 @@ class DoroWindow(QtWidgets.QWidget):
                 except Exception:
                     pass
 
-            if self._config:
+            # Save configuration on close
+            if self._config_manager:
+                self._config_manager.save()
+            elif self._config:
                 self._config.sync()
         except Exception:
             pass

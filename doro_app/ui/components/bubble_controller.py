@@ -8,9 +8,10 @@ from typing import Optional, TYPE_CHECKING
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...constants import BUBBLE_SCALE_MIN, BUBBLE_SCALE_MAX
+from ...utils.config_manager import ConfigManager
 
 if TYPE_CHECKING:
-    from .window import DoroWindow
+    from ..window import DoroWindow
 
 
 @dataclass
@@ -40,9 +41,10 @@ class BubbleController(QtCore.QObject):
     preferences_changed = QtCore.Signal(dict)  # config dict for persistence
     repaint_requested = QtCore.Signal()  # request window update
 
-    def __init__(self, window: DoroWindow):
+    def __init__(self, window: DoroWindow, config_manager: ConfigManager | None = None):
         super().__init__(window)
         self._window = window
+        self._config_manager = config_manager
         self._offset = QtCore.QPointF(0.0, 0.0)
         self._scale = 1.0
         self._dragging = False
@@ -107,13 +109,23 @@ class BubbleController(QtCore.QObject):
         self.set_text("", override_visibility=False, auto_hide=False)
 
     def persist_preferences(self):
-        window = self._window
-        if not getattr(window, "_config", None):
-            return
-        window._config.setValue("ui/bubble_offset_x", float(self._offset.x()))
-        window._config.setValue("ui/bubble_offset_y", float(self._offset.y()))
-        window._config.setValue("ui/bubble_scale", float(self._scale))
-        window._config.sync()
+        """Persist bubble preferences to configuration."""
+        if self._config_manager:
+            # Use ConfigManager for type-safe, validated config access
+            self._config_manager.update_ui(
+                bubble_offset_x=float(self._offset.x()),
+                bubble_offset_y=float(self._offset.y()),
+                bubble_scale=float(self._scale),
+            )
+            self._config_manager.save()
+        else:
+            # Fallback to legacy method if no config_manager provided
+            window = self._window
+            if getattr(window, "_config", None):
+                window._config.setValue("ui/bubble_offset_x", float(self._offset.x()))
+                window._config.setValue("ui/bubble_offset_y", float(self._offset.y()))
+                window._config.setValue("ui/bubble_scale", float(self._scale))
+                window._config.sync()
 
     # ------------------------------------------------------------------ Drag/resize handling
     def begin_transform(self, pos: QtCore.QPointF) -> bool:
