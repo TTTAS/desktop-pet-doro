@@ -2,10 +2,17 @@
 
 import pytest
 from pathlib import Path
-from PySide6 import QtCore
+
+try:
+    from PySide6 import QtCore
+    HAS_PYSIDE6 = True
+except ImportError:
+    HAS_PYSIDE6 = False
 
 from doro_app.utils.config_manager import ConfigManager
 from doro_app.utils.config_schema import ChatConfig, UIConfig, AppConfig
+
+pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 
 
 class TestConfigManagerInitialization:

@@ -93,6 +93,7 @@ class DoroApp:
             state_text_provider=lambda: self._state_controller.get_state_list_text(),
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self.window,
+            config_manager=self._config_manager,
         )
         self._chat_orchestrator = ChatOrchestrator(
             self._chat_controller,

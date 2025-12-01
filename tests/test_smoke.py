@@ -12,7 +12,14 @@ Think of smoke tests as "turn it on, does it smoke?" tests.
 
 import pytest
 from pathlib import Path
-from PySide6 import QtCore
+
+try:
+    from PySide6 import QtCore
+    HAS_PYSIDE6 = True
+except ImportError:
+    HAS_PYSIDE6 = False
+
+pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 
 
 class TestStateServiceSmoke:

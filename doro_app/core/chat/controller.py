@@ -24,6 +24,7 @@ from ...utils.config_defaults import (
     DEFAULT_CHAT_ENDPOINT_PATH,
     DEFAULT_CHAT_MAX_RETRIES,
 )
+from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
 from ...utils.utils import safe_int as _safe_int
@@ -53,11 +54,13 @@ class ChatController(QtCore.QObject):
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
         parent: QtCore.QObject | None = None,
+        config_manager: ConfigManager | None = None,
     ):
         super().__init__(parent)
         logger.debug("Initializing ChatController")
 
-        self._config = config
+        self._config = config  # Legacy QSettings
+        self._config_manager = config_manager  # New: Type-safe config
         self._prompt_path = prompt_path
         self._state_service = state_service
         self._state_text_provider = state_text_provider
@@ -65,41 +68,53 @@ class ChatController(QtCore.QObject):
 
         # Response validation
         self._validator = ResponseValidator(state_service)
-        self._max_retries = _safe_int(
-            config.value("chat/max_retries", DEFAULT_CHAT_MAX_RETRIES),
-            DEFAULT_CHAT_MAX_RETRIES
-        )
+
+        # Load configuration (use ConfigManager if available)
+        if config_manager:
+            # Type-safe config access with automatic validation
+            self._max_retries = config_manager.chat.max_retries
+            self._history_turns = config_manager.chat.history_turns
+            self._server_url = config_manager.chat.server_url
+            self._model = config_manager.chat.model
+            self._endpoint_path = config_manager.chat.endpoint_path
+            self._timeout_seconds = config_manager.chat.timeout_seconds
+            self._temperature = config_manager.chat.temperature
+        else:
+            # Fallback to legacy QSettings
+            self._max_retries = _safe_int(
+                config.value("chat/max_retries", DEFAULT_CHAT_MAX_RETRIES),
+                DEFAULT_CHAT_MAX_RETRIES
+            )
+            self._history_turns = _safe_int(
+                config.value("chat/history_turns", CHAT_DEFAULT_HISTORY_TURNS),
+                CHAT_DEFAULT_HISTORY_TURNS,
+            )
+            self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
+            self._model = config.value("chat/model", DEFAULT_CHAT_MODEL, str)
+            self._endpoint_path = config.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
+
+            timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
+            try:
+                self._timeout_seconds = int(timeout_value)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid timeout value: {timeout_value}, "
+                    f"using default {CHAT_DEFAULT_TIMEOUT_SECONDS}"
+                )
+                self._timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
+
+            temp_value = config.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
+            try:
+                self._temperature = float(temp_value)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid temperature value: {temp_value}, "
+                    f"using default {CHAT_DEFAULT_TEMPERATURE}"
+                )
+                self._temperature = CHAT_DEFAULT_TEMPERATURE
+
         self._retry_count = 0
         self._original_user_message = ""
-
-        self._history_turns = _safe_int(
-            config.value("chat/history_turns", CHAT_DEFAULT_HISTORY_TURNS),
-            CHAT_DEFAULT_HISTORY_TURNS,
-        )
-
-        self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
-        self._model = config.value("chat/model", DEFAULT_CHAT_MODEL, str)
-        self._endpoint_path = config.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
-
-        timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
-        try:
-            self._timeout_seconds = int(timeout_value)
-        except (TypeError, ValueError):
-            logger.warning(
-                f"Invalid timeout value: {timeout_value}, "
-                f"using default {CHAT_DEFAULT_TIMEOUT_SECONDS}"
-            )
-            self._timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
-
-        temp_value = config.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
-        try:
-            self._temperature = float(temp_value)
-        except (TypeError, ValueError):
-            logger.warning(
-                f"Invalid temperature value: {temp_value}, "
-                f"using default {CHAT_DEFAULT_TEMPERATURE}"
-            )
-            self._temperature = CHAT_DEFAULT_TEMPERATURE
 
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
@@ -376,10 +391,13 @@ class ChatController(QtCore.QObject):
         messages.extend(history)
         messages.extend(first_entry)
 
-        max_tokens = _safe_int(
-            self._config.value("chat/max_tokens", CHAT_DEFAULT_MAX_TOKENS),
-            CHAT_DEFAULT_MAX_TOKENS,
-        )
+        if self._config_manager:
+            max_tokens = self._config_manager.chat.max_tokens
+        else:
+            max_tokens = _safe_int(
+                self._config.value("chat/max_tokens", CHAT_DEFAULT_MAX_TOKENS),
+                CHAT_DEFAULT_MAX_TOKENS,
+            )
 
         return {
             "model": self._model,
@@ -420,13 +438,25 @@ class ChatController(QtCore.QObject):
             self._history = self._history[-max_entries:]
 
     def _persist_chat_settings(self):
-        self._config.setValue("chat/server_url", self._server_url)
-        self._config.setValue("chat/model", self._model)
-        self._config.setValue("chat/endpoint_path", self._endpoint_path)
-        self._config.setValue("chat/temperature", float(self._temperature))
-        self._config.setValue("chat/timeout_seconds", int(self._timeout_seconds))
-        self._config.remove("chat/system_prompt")
-        self._config.sync()
+        if self._config_manager:
+            # Use ConfigManager for type-safe, validated config access
+            self._config_manager.update_chat(
+                server_url=self._server_url,
+                model=self._model,
+                endpoint_path=self._endpoint_path,
+                temperature=self._temperature,
+                timeout_seconds=self._timeout_seconds,
+            )
+            self._config_manager.save()
+        else:
+            # Fallback to legacy QSettings
+            self._config.setValue("chat/server_url", self._server_url)
+            self._config.setValue("chat/model", self._model)
+            self._config.setValue("chat/endpoint_path", self._endpoint_path)
+            self._config.setValue("chat/temperature", float(self._temperature))
+            self._config.setValue("chat/timeout_seconds", int(self._timeout_seconds))
+            self._config.remove("chat/system_prompt")
+            self._config.sync()
 
     def _schedule_persist(self):
         # Debounce config writes to avoid synchronous UI stalls

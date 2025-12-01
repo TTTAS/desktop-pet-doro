@@ -13,9 +13,10 @@ Benefits over direct QSettings access:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from PySide6 import QtCore
+if TYPE_CHECKING:
+    from PySide6 import QtCore
 
 from .config_schema import ChatConfig, UIConfig, AppConfig, DoroConfig
 from ..constants import (
@@ -105,6 +106,9 @@ class ConfigManager:
         Args:
             settings_path: Path to QSettings file. If None, uses default location.
         """
+        # Lazy import to avoid requiring PySide6 at module load time
+        from PySide6 import QtCore
+
         if settings_path:
             self._settings = QtCore.QSettings(
                 str(settings_path),
