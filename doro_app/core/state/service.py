@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
 from .gif_manager import GifManager
+from .transition_coordinator import TransitionCoordinator
 from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
@@ -53,14 +54,11 @@ class StateService:
 
         # Private - managers for specialized operations
         self._gif_manager = GifManager(gif_repo)
+        self._transition_coordinator = TransitionCoordinator(transition_repo)
 
         # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
-        self._transitions = TransitionStateCollection()
-
-        # Transition protection flag
-        self._is_transitioning: bool = False
 
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
@@ -232,15 +230,15 @@ class StateService:
 
     def get_transition(self, key: str) -> Optional[TransitionState]:
         """Get a transition by key."""
-        return self._transitions.get(key)
+        return self._transition_coordinator.get(key)
 
     def all_transition_keys(self) -> list[str]:
         """Get all transition keys."""
-        return self._transitions.all_keys()
+        return self._transition_coordinator.all_keys()
 
     def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
         """Find a transition between two states."""
-        return self._transitions.find_transition(from_state, to_state)
+        return self._transition_coordinator.find(from_state, to_state)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - State Modification
@@ -337,10 +335,7 @@ class StateService:
             self._move_states.add(move_state)
 
         # Load transition states
-        if self._transition_repo:
-            transitions = self._transition_repo.load_all()
-            for transition in transitions.values():
-                self._transitions.add(transition)
+        self._transition_coordinator.load_from_repo()
 
         # Set initial state
         self._states.set_current("idle")
@@ -403,7 +398,7 @@ class StateService:
             - Ensures state integrity during transition animations
         """
         # Check transition protection
-        if self._is_transitioning and not force:
+        if self._transition_coordinator.is_active() and not force:
             logger.warning(f"State change rejected: '{key}' (transition in progress)")
             return False
 
@@ -443,13 +438,7 @@ class StateService:
                 # ... wait for completion ...
                 service.end_transition()
         """
-        if self._is_transitioning:
-            logger.warning("Transition already in progress, cannot begin new transition")
-            return False
-
-        self._is_transitioning = True
-        logger.debug("Transition lock acquired")
-        return True
+        return self._transition_coordinator.begin()
 
     def end_transition(self) -> bool:
         """
@@ -464,13 +453,7 @@ class StateService:
             # After transition GIF completes
             service.end_transition()
         """
-        if not self._is_transitioning:
-            logger.warning("No transition in progress, cannot end")
-            return False
-
-        self._is_transitioning = False
-        logger.debug("Transition lock released")
-        return True
+        return self._transition_coordinator.end()
 
     def is_transitioning(self) -> bool:
         """
@@ -479,7 +462,7 @@ class StateService:
         Returns:
             True if transition lock is active, False otherwise
         """
-        return self._is_transitioning
+        return self._transition_coordinator.is_active()
 
     def parse_state_from_action(self, action: str) -> Optional[str]:
         """
@@ -745,10 +728,10 @@ class StateService:
         transition: TransitionState,
     ) -> bool:
         """Create or update a transition state."""
-        self._transitions.add(transition)
+        self._transition_coordinator.add(transition)
         if self._transition_repo:
             try:
-                self._transition_repo.save_all(self._transitions._items)
+                self._transition_repo.save_all(self._transition_coordinator.get_all_items())
             except ConfigSaveError as e:
                 logger.error(f"Failed to save transitions: {e}")
                 return False
@@ -756,12 +739,12 @@ class StateService:
 
     def remove_transition(self, key: str) -> bool:
         """Remove a transition state."""
-        if not self._transitions.remove(key):
+        if not self._transition_coordinator.remove(key):
             return False
 
         if self._transition_repo:
             try:
-                self._transition_repo.save_all(self._transitions._items)
+                self._transition_repo.save_all(self._transition_coordinator.get_all_items())
             except ConfigSaveError as e:
                 logger.error(f"Failed to save transitions: {e}")
                 return False

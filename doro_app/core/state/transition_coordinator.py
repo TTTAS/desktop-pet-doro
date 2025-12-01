@@ -169,3 +169,12 @@ class TransitionCoordinator:
             True if removed, False if not found
         """
         return self._transitions.remove(key)
+
+    def get_all_items(self) -> dict[str, TransitionState]:
+        """
+        Get all transitions as a dictionary (for persistence).
+
+        Returns:
+            Dictionary mapping transition keys to TransitionState objects
+        """
+        return self._transitions._items

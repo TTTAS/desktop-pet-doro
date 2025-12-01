@@ -38,7 +38,7 @@ class TestTransitionProtection:
         service.set_state("idle")
 
         # Simulate transition in progress
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Try to change state during transition
         result = service.set_state("happy")
@@ -67,8 +67,8 @@ class TestTransitionProtection:
         service.set_state("idle")
 
         # Simulate transition lifecycle
-        service._is_transitioning = True
-        service._is_transitioning = False
+        service.begin_transition()
+        service.end_transition()
 
         # Act - Try to change state after transition completes
         result = service.set_state("happy")
@@ -100,7 +100,7 @@ class TestTransitionProtection:
         service.set_state("idle")
 
         # Simulate transition in progress
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Force state change
         result = service.set_state("walking", force=True)
@@ -132,7 +132,7 @@ class TestTransitionProtection:
         service.on_state_changed = mock_callback
 
         # Simulate transition in progress
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Try to change state (will be rejected)
         result = service.set_state("happy")
@@ -159,8 +159,8 @@ class TestTransitionProtection:
         mock_callback = Mock()
         service.on_state_changed = mock_callback
 
-        # Ensure no transition in progress
-        service._is_transitioning = False
+        # Ensure no transition in progress (default state)
+        # No action needed - service starts with transition inactive
 
         # Act - Change state normally
         result = service.set_state("happy")
@@ -179,7 +179,7 @@ class TestTransitionProtection:
     def test_initial_state_has_no_transition_lock(
         self, state_service_with_mocks: StateService
     ):
-        """After initialization, _is_transitioning should be False.
+        """After initialization, should not be transitioning.
 
         Ensures the service starts in a ready state.
         """
@@ -187,8 +187,7 @@ class TestTransitionProtection:
         service = state_service_with_mocks
 
         # Assert
-        assert hasattr(service, "_is_transitioning"), "Service should have _is_transitioning attribute"
-        assert service._is_transitioning is False, "Initially should not be transitioning"
+        assert service.is_transitioning() is False, "Initially should not be transitioning"
 
     def test_multiple_rejected_requests_remain_rejected(
         self, state_service_with_mocks: StateService
@@ -206,7 +205,7 @@ class TestTransitionProtection:
         service.set_state("idle")
 
         # Simulate transition in progress
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Rapid state change attempts
         result1 = service.set_state("state1")
@@ -237,7 +236,7 @@ class TestTransitionProtectionEdgeCases:
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.set_state("idle")
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Force change to non-existent state
         result = service.set_state("does_not_exist", force=True)
@@ -258,7 +257,7 @@ class TestTransitionProtectionEdgeCases:
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.set_state("idle")
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Try to "change" to same state
         result = service.set_state("idle")
@@ -277,7 +276,7 @@ class TestTransitionProtectionEdgeCases:
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.set_state("idle")
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act
         result = service.set_state("idle", force=True)
@@ -302,7 +301,7 @@ class TestTransitionProtectionWithCallbacks:
         mock_callback = Mock()
         service.on_state_changed = mock_callback
 
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act
         service.set_state("walking", force=True)
@@ -326,7 +325,7 @@ class TestTransitionProtectionWithCallbacks:
 
         mock_callback = Mock()
         service.on_state_changed = mock_callback
-        service._is_transitioning = True
+        service.begin_transition()
 
         # Act - Rapid requests
         service.set_state("state1")
