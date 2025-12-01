@@ -187,9 +187,11 @@ class TransitionPlayer(QtCore.QObject):
                 self._on_transition_complete()
             else:
                 self._last_frame_number = frame_number
-        except Exception as e:
-            # If any error occurs during transition playback, clean up to prevent lock leak
-            logger.error(f"Error during transition playback: {e}")
+        except (RuntimeError, AttributeError) as e:
+            # RuntimeError: Qt object deleted during playback
+            # AttributeError: Object state inconsistent (e.g., _transition_movie cleared)
+            # Critical: Must clean up to prevent transition lock leak
+            logger.error(f"Error during transition playback: {e}", exc_info=True)
             self._cleanup_failed_transition()
 
     def _on_transition_complete(self):
