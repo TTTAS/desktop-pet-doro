@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional
 
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
+from .gif_manager import GifManager
 from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
@@ -50,6 +51,9 @@ class StateService:
         self._transition_repo = transition_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
+        # Private - managers for specialized operations
+        self._gif_manager = GifManager(gif_repo)
+
         # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
@@ -79,7 +83,7 @@ class StateService:
         state = self._states.get(state_key)
         if not state or not state.gif_id:
             return None
-        return self._gif_repo.get_path(state.gif_id)
+        return self._gif_manager.get_path_by_id(state.gif_id)
 
     def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
         """
@@ -91,7 +95,7 @@ class StateService:
         Returns:
             Absolute path to GIF file or None if not found
         """
-        return self._gif_repo.get_path(gif_id)
+        return self._gif_manager.get_path_by_id(gif_id)
 
     def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
         """
@@ -104,11 +108,7 @@ class StateService:
         Returns:
             Resource ID or None if failed
         """
-        try:
-            return self._gif_repo.store_gif(source_path, state_key)
-        except (GifNotFoundError, GifStorageError) as e:
-            logger.error(f"Failed to store GIF for '{state_key}': {e}")
-            return None
+        return self._gif_manager.store(source_path, state_key)
 
     def delete_gif(self, gif_id: str) -> bool:
         """
@@ -120,7 +120,7 @@ class StateService:
         Returns:
             True if deleted, False otherwise
         """
-        return self._gif_repo.delete(gif_id)
+        return self._gif_manager.delete(gif_id)
 
     def get_state_storage_path(self, state_key: str) -> Path:
         """
@@ -132,7 +132,7 @@ class StateService:
         Returns:
             Path where the state's GIF should be stored
         """
-        return self._gif_repo.get_state_storage_path(state_key)
+        return self._gif_manager.get_state_storage_path(state_key)
 
     def get_move_storage_path(self, move_key: str) -> Path:
         """
@@ -144,7 +144,7 @@ class StateService:
         Returns:
             Path where the move GIF should be stored
         """
-        return self._gif_repo.get_move_storage_path(move_key)
+        return self._gif_manager.get_move_storage_path(move_key)
 
     def sanitize_state_key(self, key: str) -> str:
         """
@@ -315,7 +315,7 @@ class StateService:
         # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
-            default_gif_id = self._gif_repo.store_gif(default_gif_path, "idle")
+            default_gif_id = self._gif_manager.store(default_gif_path, "idle")
 
         idle_state = State(
             key="idle",
@@ -673,7 +673,7 @@ class StateService:
         if not state:
             return False
 
-        resource_id = self._gif_repo.store_gif(gif_path, state_key)
+        resource_id = self._gif_manager.store(gif_path, state_key)
         if not resource_id:
             return False
 
