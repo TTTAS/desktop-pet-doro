@@ -39,7 +39,8 @@ class DoroApp:
         """
         deps = deps or bootstrap_environment()
 
-        self._config = deps.config
+        self._config = deps.config  # Legacy QSettings
+        self._config_manager = deps.config_manager  # New ConfigManager
         self._state_service: StateService = deps.state_service
         self._default_idle_gif = deps.default_idle_gif
         self._prompt_file_path = deps.prompt_file_path
@@ -62,7 +63,8 @@ class DoroApp:
         self._state_controller = StateController(
             state_service=self._state_service,
             view_model=self.window.view_model,
-            config=self._config,
+            config=self._config,  # Legacy
+            config_manager=self._config_manager,  # New: Type-safe config
         )
         self._gif_controller = GifController(view_model=self.window.view_model)
         self._dialog_manager = DialogManager(
@@ -120,7 +122,8 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
 
-        saved_state_key = self._config.value("current_state", "idle")
+        # Use ConfigManager for type-safe config access
+        saved_state_key = self._config_manager.app.current_state
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
 
