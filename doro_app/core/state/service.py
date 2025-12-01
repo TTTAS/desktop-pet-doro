@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
 from .gif_manager import GifManager
+from .state_parser import StateParser
 from .transition_coordinator import TransitionCoordinator
 from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
@@ -55,6 +56,7 @@ class StateService:
         # Private - managers for specialized operations
         self._gif_manager = GifManager(gif_repo)
         self._transition_coordinator = TransitionCoordinator(transition_repo)
+        self._state_parser = StateParser()
 
         # Private - encapsulated collections
         self._states = StateCollection()
@@ -486,61 +488,7 @@ class StateService:
         Returns:
             State key if valid non-movement state exists, None otherwise
         """
-        from ...utils.actions import ACTION_ALIASES
-
-        # Normalize action token
-        raw = (action or "").strip()
-        if not raw:
-            return None
-
-        lowered = raw.lower()
-
-        # Remove common prefixes: "state", "mode", "status"
-        for prefix in ("state", "mode", "status"):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix):]
-                break
-        else:
-            # Handle Chinese prefixes
-            if raw.startswith(("狀態", "模式")):
-                raw = raw[2:]
-
-        # Clean up separators
-        raw = raw.lstrip(":：-_ ")
-        normalized = raw.strip().lower()
-
-        if not normalized:
-            return None
-
-        # Check aliases (e.g., "sleep" -> "idle")
-        alias_target = ACTION_ALIASES.get(normalized)
-        if alias_target and self.get_state(alias_target):
-            if not self.is_movement_only_state(alias_target):
-                return alias_target
-
-        # Try various normalized forms
-        candidates = {
-            normalized,
-            normalized.replace(" ", "_"),
-            normalized.replace(" ", ""),
-        }
-
-        # Sanitize: keep only alphanumeric, -, _
-        sanitized = "".join(ch for ch in normalized if ch.isalnum() or ch in ("-", "_"))
-        if sanitized:
-            candidates.add(sanitized)
-
-        for candidate in candidates:
-            if self.get_state(candidate):
-                if not self.is_movement_only_state(candidate):
-                    return candidate
-
-        # Try matching by label
-        result = self.find_state_by_label(normalized)
-        if result and not self.is_movement_only_state(result):
-            return result
-
-        return None
+        return self._state_parser.parse(action, self)
 
     def add_state(self, key: str, label: str, copy_from: Optional[str] = None) -> Optional[State]:
         """
