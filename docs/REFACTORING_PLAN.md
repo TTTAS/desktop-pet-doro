@@ -279,11 +279,13 @@ StateService (200 lines) - state transitions only
 - [x] Constants documented (MAGIC_NUMBERS_AUDIT.md) ✅
 
 ### Phase 3 Checklist
-- [ ] ConfigManager created
-- [ ] All config access centralized
-- [ ] No duplicate defaults
-- [ ] All `except Exception` replaced
-- [ ] Error handling documented
+- [x] Phase 3.1: ConfigManager created ✅
+- [x] Phase 3.1: All config access centralized (7/7 files migrated) ✅
+- [x] Phase 3.1: No duplicate defaults (extracted to config_defaults.py) ✅
+- [x] Phase 3.1: Configuration schema with validation (ChatConfig, UIConfig, AppConfig) ✅
+- [x] Phase 3.1: 45 config tests passing (21 schema + 24 manager) ✅
+- [ ] Phase 3.2: All `except Exception` replaced
+- [ ] Phase 3.2: Error handling documented
 
 ### Phase 4 Checklist
 - [ ] User activity uses Signals
@@ -313,6 +315,21 @@ StateService (200 lines) - state transitions only
 - TODOs: 0 in code (5 migrated to BACKLOG.md)
 - Language: 100% consistent (English code, Chinese user text)
 - Documentation: 3 new docs (REFACTORING_PLAN, TESTING, BACKLOG)
+
+### After Phase 2 (2025-11-28)
+- Tests: 117/117 passing (9 smoke tests added) ✅
+- Test coverage: ~35% (smoke tests for core components)
+- Magic numbers: 0 (18 constants extracted)
+- Documentation: +1 doc (MAGIC_NUMBERS_AUDIT.md)
+
+### After Phase 3.1 (2025-12-01)
+- Tests: 139/139 passing (21 schema + 24 config manager tests added) ✅
+- Configuration: Fully centralized (ConfigManager with type-safe schema) ✅
+- Components migrated: 7/7 (bootstrap, app, state_controller, cli, bubble_controller, window, chat/controller)
+- Duplicate defaults: 0 (all extracted to config_defaults.py)
+- Type safety: 100% (ChatConfig, UIConfig, AppConfig with validation)
+- Lines of boilerplate removed: ~150 (type conversion, validation)
+- Documentation: +3 files (config_schema.py, config_manager.py, config_defaults.py)
 
 ### Target (After Phase 4)
 - Largest class: < 300 lines
