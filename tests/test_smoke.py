@@ -1,0 +1,277 @@
+"""
+Smoke tests for Doro application.
+
+Smoke tests verify basic functionality - "does it run without crashing?"
+These are NOT detailed unit tests. They check:
+1. Can components be created?
+2. Do basic operations work?
+3. Does the app crash on startup?
+
+Think of smoke tests as "turn it on, does it smoke?" tests.
+"""
+
+import pytest
+from pathlib import Path
+
+try:
+    from PySide6 import QtCore
+    HAS_PYSIDE6 = True
+except ImportError:
+    HAS_PYSIDE6 = False
+
+pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
+
+
+class TestStateServiceSmoke:
+    """Smoke tests for StateService - basic operations only."""
+
+    @pytest.fixture
+    def state_service(self, tmp_path):
+        """Create a StateService instance for testing."""
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+
+        # Create repositories
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_list_path = tmp_path / "state_list.txt"
+
+        # Create service
+        return StateService(state_repo, move_repo, gif_repo, state_list_path)
+
+    def test_state_service_can_be_created(self, state_service):
+        """StateService can be initialized without crashing."""
+        # Just create it - if this crashes, something is very wrong
+        assert state_service is not None
+
+    def test_can_add_and_retrieve_state(self, state_service):
+        """Basic state operations work."""
+        # Add a state
+        state_service.add_state("happy", "Happy State")
+
+        # Can we get it back?
+        state = state_service.get_state("happy")
+        assert state is not None
+        assert state.key == "happy"
+
+    def test_can_set_current_state(self, state_service):
+        """Can set and retrieve current state."""
+        state_service.add_state("idle", "Idle")
+
+        # Set current state
+        result = state_service.set_state("idle")
+        assert result is True
+
+        # Can we get it back?
+        current = state_service.get_current_state_key()
+        assert current == "idle"
+
+    def test_can_save_and_load_states(self, tmp_path):
+        """States can be persisted to disk."""
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+
+        # Create service, add state, save
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_list_path = tmp_path / "state_list.txt"
+
+        service = StateService(state_repo, move_repo, gif_repo, state_list_path)
+        service.add_state("test", "Test State")
+        service.save_states()
+
+        # Create new service, load
+        state_repo2 = StateRepository(tmp_path / "states.json")
+        move_repo2 = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo2 = GifRepository(tmp_path / "resources")
+
+        service2 = StateService(state_repo2, move_repo2, gif_repo2, state_list_path)
+        # Need to call initialize() to load states from disk
+        service2.initialize()
+
+        # Check if state persisted
+        state = service2.get_state("test")
+        assert state is not None
+
+
+class TestChatControllerSmoke:
+    """Smoke tests for ChatController - initialization only."""
+
+    def test_chat_controller_can_be_created(self, tmp_path):
+        """ChatController can be initialized without crashing."""
+        from doro_app.core.chat.controller import ChatController
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+
+        # Create minimal config
+        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+
+        # Create a temporary prompt file
+        prompt_path = tmp_path / "system_prompt.txt"
+        prompt_path.write_text("You are a helpful assistant.")
+
+        # Create state service (required for ChatController)
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+
+        # This should not crash
+        controller = ChatController(
+            config=config,
+            prompt_path=prompt_path,
+            state_service=state_service,
+            state_text_provider=lambda: "States: idle, happy",
+            movement_hint_provider=lambda: "Movement: none",
+        )
+        assert controller is not None
+
+    def test_chat_controller_has_basic_properties(self, tmp_path):
+        """ChatController has expected properties."""
+        from doro_app.core.chat.controller import ChatController
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+
+        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+        prompt_path = tmp_path / "system_prompt.txt"
+        prompt_path.write_text("Test prompt")
+
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+
+        controller = ChatController(
+            config=config,
+            prompt_path=prompt_path,
+            state_service=state_service,
+            state_text_provider=lambda: "",
+            movement_hint_provider=lambda: "",
+        )
+
+        # Basic properties should exist and have defaults
+        assert controller.server_url is not None
+        assert controller.model is not None
+        assert controller.temperature > 0
+
+
+class TestMovementManagerSmoke:
+    """Smoke tests for MovementManager - basic operations."""
+
+    def test_movement_manager_can_be_created(self, tmp_path):
+        """MovementManager can be initialized."""
+        from doro_app.core.movement.manager import MovementManager
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+        from unittest.mock import Mock
+
+        # Create mock window
+        mock_window = Mock()
+        mock_window.pos.return_value = QtCore.QPoint(100, 100)
+        mock_window.size.return_value = QtCore.QSize(400, 300)
+
+        # Create state service
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+
+        # This should not crash
+        manager = MovementManager(
+            window=mock_window,
+            state_service=state_service,
+            movement_step_px=60,
+        )
+        assert manager is not None
+
+    def test_movement_instruction_text_loads(self, tmp_path):
+        """Movement instruction text can be loaded."""
+        from doro_app.core.movement.manager import MovementManager
+        from doro_app.core.state import StateService
+        from doro_app.core.state.repository import (
+            StateRepository,
+            MoveStateRepository,
+            GifRepository,
+        )
+        from unittest.mock import Mock
+
+        mock_window = Mock()
+
+        # Create state service
+        state_repo = StateRepository(tmp_path / "states.json")
+        move_repo = MoveStateRepository(tmp_path / "moves.json")
+        gif_repo = GifRepository(tmp_path / "resources")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+
+        manager = MovementManager(mock_window, state_service, 60)
+
+        # Should return instruction text (not empty)
+        instructions = manager.instruction_text()
+        assert instructions is not None
+        assert len(instructions) > 0
+
+
+class TestConstantsSmoke:
+    """Smoke test for constants - ensure they're all defined."""
+
+    def test_all_critical_constants_exist(self):
+        """All newly added constants are importable."""
+        from doro_app.constants import (
+            # Color
+            COLOR_ALPHA_MAX,
+            # Chat
+            CHAT_DEFAULT_HISTORY_TURNS,
+            CHAT_DEFAULT_TIMEOUT_SECONDS,
+            CHAT_DEFAULT_TEMPERATURE,
+            CHAT_DEFAULT_MAX_TOKENS,
+            CHAT_CONFIG_PERSIST_DELAY_MS,
+            CHAT_THREAD_CLEANUP_DELAY_MS,
+            # Movement
+            MOVEMENT_SPEED_SLOW,
+            MOVEMENT_SPEED_MEDIUM,
+            MOVEMENT_SPEED_FAST,
+            # Bubble
+            BUBBLE_SCALE_MIN,
+            BUBBLE_SCALE_MAX,
+            # UI Layout
+            PANEL_MIN_WIDTH,
+            PANEL_MIN_HEIGHT,
+            PANEL_PADDING,
+            PANEL_MAX_WIDTH,
+            # Screen/Window
+            FALLBACK_SCREEN_WIDTH,
+            FALLBACK_SCREEN_HEIGHT,
+            WINDOW_INITIAL_POSITION_OFFSET_X,
+            WINDOW_INITIAL_POSITION_OFFSET_Y,
+        )
+
+        # If any constant is missing, this test will fail at import time
+        # Just check they have reasonable values
+        assert COLOR_ALPHA_MAX == 255
+        assert CHAT_DEFAULT_HISTORY_TURNS > 0
+        assert MOVEMENT_SPEED_SLOW < MOVEMENT_SPEED_MEDIUM < MOVEMENT_SPEED_FAST
+        assert BUBBLE_SCALE_MIN < BUBBLE_SCALE_MAX
+        assert PANEL_MIN_WIDTH > 0
+        assert FALLBACK_SCREEN_WIDTH > 0

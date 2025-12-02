@@ -8,6 +8,12 @@ from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 
+from ...constants import (
+    MOVEMENT_COMPLETION_THRESHOLD,
+    MOVEMENT_SPEED_SLOW,
+    MOVEMENT_SPEED_MEDIUM,
+    MOVEMENT_SPEED_FAST,
+)
 from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
 from ...utils.models import MoveStateSettings, MovementRequest
 from ...utils.paths import MOVEMENT_INSTRUCTION_PATH
@@ -27,17 +33,11 @@ if TYPE_CHECKING:
     from ..state import StateService
 
 
-# Movement constants
-SPEED_SLOW = 80.0
-SPEED_MEDIUM = 140.0
-SPEED_FAST = 220.0
-
 # Movement history size limit
 MAX_MOVE_REPORTS = 50
 
-# Movement thresholds
-MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels
-MIN_MOVEMENT_STEP = 0.01  # pixels
+# Movement threshold for minimum step (pixels)
+MIN_MOVEMENT_STEP = 0.01
 
 
 class MovementManager:
@@ -157,7 +157,7 @@ class MovementManager:
             actual_dx = target.x() - current.x()
             actual_dy = target.y() - current.y()
             actual_distance = math.hypot(actual_dx, actual_dy)
-            if actual_distance <= 0.5:
+            if actual_distance <= MOVEMENT_COMPLETION_THRESHOLD:
                 return True
 
             direction_vector = (actual_dx / actual_distance, actual_dy / actual_distance)
@@ -280,7 +280,10 @@ class MovementManager:
             self._movement_reports = self._movement_reports[-MAX_MOVE_REPORTS:]
         try:
             print(f"[doro move] {report}")
-        except Exception:
+        except (OSError, UnicodeEncodeError):
+            # OSError: stdout not available (redirected to closed file, etc.)
+            # UnicodeEncodeError: Cannot encode output (rare in Python 3)
+            # This is debug output, safe to ignore if it fails
             pass
 
     def _start_movement(
@@ -384,12 +387,12 @@ class MovementManager:
 
     def _resolve_speed_value(self, speed_name: str) -> float:
         lookup = {
-            "slow": SPEED_SLOW,
-            "med": SPEED_MEDIUM,
-            "medium": SPEED_MEDIUM,
-            "fast": SPEED_FAST,
+            "slow": MOVEMENT_SPEED_SLOW,
+            "med": MOVEMENT_SPEED_MEDIUM,
+            "medium": MOVEMENT_SPEED_MEDIUM,
+            "fast": MOVEMENT_SPEED_FAST,
         }
-        return lookup.get(speed_name.lower(), SPEED_MEDIUM)
+        return lookup.get(speed_name.lower(), MOVEMENT_SPEED_MEDIUM)
 
     def _resolve_move_state_settings(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state settings via StateService only."""

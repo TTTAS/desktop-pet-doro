@@ -18,6 +18,7 @@ from .repository import (
     TransitionStateRepository,
 )
 from .service import StateService
+from .state_parser import StateParser
 
 __all__ = [
     # Models
@@ -37,4 +38,5 @@ __all__ = [
     "StateListWriter",
     # Service
     "StateService",
+    "StateParser",
 ]

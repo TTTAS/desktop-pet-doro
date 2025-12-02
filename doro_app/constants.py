@@ -1,7 +1,5 @@
 """Constants for Doro application - extracted from Window to improve readability."""
 
-from PySide6 import QtGui
-
 # ═══════════════════════════════════════════════════════════
 # Animation and Timing Constants
 # ═══════════════════════════════════════════════════════════
@@ -86,21 +84,82 @@ DEFAULT_MOVE_STATE_KEY = "walking"
 TRANSITION_WILDCARD = "*"  # Wildcard for transition matching (e.g., "idle" -> "*")
 
 # ═══════════════════════════════════════════════════════════
+# Color Constants
+# ═══════════════════════════════════════════════════════════
+
+COLOR_ALPHA_MAX = 255  # Maximum alpha value for QColor (0-255)
+
+# ═══════════════════════════════════════════════════════════
+# Chat Configuration Defaults
+# ═══════════════════════════════════════════════════════════
+
+CHAT_DEFAULT_HISTORY_TURNS = 8  # Number of conversation turns to keep in memory
+CHAT_DEFAULT_TIMEOUT_SECONDS = 30  # Request timeout in seconds
+CHAT_DEFAULT_TEMPERATURE = 0.7  # LLM temperature (creativity level)
+CHAT_DEFAULT_MAX_TOKENS = 512  # Maximum tokens per response
+CHAT_CONFIG_PERSIST_DELAY_MS = 50  # Debounce delay before saving config
+CHAT_THREAD_CLEANUP_DELAY_MS = 150  # Qt thread cleanup requires ~100-200ms
+
+# ═══════════════════════════════════════════════════════════
+# Movement Speed Constants
+# ═══════════════════════════════════════════════════════════
+
+MOVEMENT_SPEED_SLOW = 80.0  # pixels per second
+MOVEMENT_SPEED_MEDIUM = 140.0  # pixels per second
+MOVEMENT_SPEED_FAST = 220.0  # pixels per second
+MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels - movement is "done" when within this distance
+
+# ═══════════════════════════════════════════════════════════
+# Bubble Scale Limits
+# ═══════════════════════════════════════════════════════════
+
+BUBBLE_SCALE_MIN = 0.5  # Minimum scale factor for bubble
+BUBBLE_SCALE_MAX = 2.0  # Maximum scale factor for bubble
+
+# ═══════════════════════════════════════════════════════════
+# UI Layout Constants
+# ═══════════════════════════════════════════════════════════
+
+PANEL_MIN_WIDTH = 160.0  # Minimum width for text panel
+PANEL_MIN_HEIGHT = 80.0  # Minimum height for text panel
+PANEL_PADDING = 56.0  # Internal padding for panel content
+PANEL_MAX_WIDTH = 4000.0  # Maximum width to prevent excessive stretching
+
+# ═══════════════════════════════════════════════════════════
+# Screen and Window Positioning
+# ═══════════════════════════════════════════════════════════
+
+FALLBACK_SCREEN_WIDTH = 1920  # Fallback screen width if detection fails
+FALLBACK_SCREEN_HEIGHT = 1080  # Fallback screen height if detection fails
+
+WINDOW_INITIAL_POSITION_OFFSET_X = 40  # Offset from right edge on startup
+WINDOW_INITIAL_POSITION_OFFSET_Y = 120  # Offset from bottom edge on startup
+
+# ═══════════════════════════════════════════════════════════
 # Helper Functions for Color Construction
 # ═══════════════════════════════════════════════════════════
 
-def get_default_fill_colors() -> tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]:
+
+def get_default_fill_colors():
     """Get default gradient fill colors for fallback sprite."""
+    from PySide6 import QtGui
+
     return (
         QtGui.QColor(DEFAULT_GRADIENT_TOP),
         QtGui.QColor(DEFAULT_GRADIENT_MID),
         QtGui.QColor(DEFAULT_GRADIENT_BOTTOM),
     )
 
-def get_default_blush_color() -> QtGui.QColor:
+
+def get_default_blush_color():
     """Get default blush color."""
+    from PySide6 import QtGui
+
     return QtGui.QColor(DEFAULT_BLUSH_COLOR)
 
-def get_default_eye_color() -> QtGui.QColor:
+
+def get_default_eye_color():
     """Get default eye color."""
+    from PySide6 import QtGui
+
     return QtGui.QColor(DEFAULT_EYE_COLOR)

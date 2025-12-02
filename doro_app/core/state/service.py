@@ -13,6 +13,9 @@ from typing import Any, Callable, Optional
 
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
+from .gif_manager import GifManager
+from .state_parser import StateParser
+from .transition_coordinator import TransitionCoordinator
 from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
 from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
 
@@ -50,13 +53,14 @@ class StateService:
         self._transition_repo = transition_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
+        # Private - managers for specialized operations
+        self._gif_manager = GifManager(gif_repo)
+        self._transition_coordinator = TransitionCoordinator(transition_repo)
+        self._state_parser = StateParser()
+
         # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
-        self._transitions = TransitionStateCollection()
-
-        # Transition protection flag
-        self._is_transitioning: bool = False
 
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
@@ -79,7 +83,7 @@ class StateService:
         state = self._states.get(state_key)
         if not state or not state.gif_id:
             return None
-        return self._gif_repo.get_path(state.gif_id)
+        return self._gif_manager.get_path_by_id(state.gif_id)
 
     def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
         """
@@ -91,7 +95,7 @@ class StateService:
         Returns:
             Absolute path to GIF file or None if not found
         """
-        return self._gif_repo.get_path(gif_id)
+        return self._gif_manager.get_path_by_id(gif_id)
 
     def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
         """
@@ -104,11 +108,7 @@ class StateService:
         Returns:
             Resource ID or None if failed
         """
-        try:
-            return self._gif_repo.store_gif(source_path, state_key)
-        except (GifNotFoundError, GifStorageError) as e:
-            logger.error(f"Failed to store GIF for '{state_key}': {e}")
-            return None
+        return self._gif_manager.store(source_path, state_key)
 
     def delete_gif(self, gif_id: str) -> bool:
         """
@@ -120,7 +120,7 @@ class StateService:
         Returns:
             True if deleted, False otherwise
         """
-        return self._gif_repo.delete(gif_id)
+        return self._gif_manager.delete(gif_id)
 
     def get_state_storage_path(self, state_key: str) -> Path:
         """
@@ -132,7 +132,7 @@ class StateService:
         Returns:
             Path where the state's GIF should be stored
         """
-        return self._gif_repo.get_state_storage_path(state_key)
+        return self._gif_manager.get_state_storage_path(state_key)
 
     def get_move_storage_path(self, move_key: str) -> Path:
         """
@@ -144,7 +144,7 @@ class StateService:
         Returns:
             Path where the move GIF should be stored
         """
-        return self._gif_repo.get_move_storage_path(move_key)
+        return self._gif_manager.get_move_storage_path(move_key)
 
     def sanitize_state_key(self, key: str) -> str:
         """
@@ -232,15 +232,15 @@ class StateService:
 
     def get_transition(self, key: str) -> Optional[TransitionState]:
         """Get a transition by key."""
-        return self._transitions.get(key)
+        return self._transition_coordinator.get(key)
 
     def all_transition_keys(self) -> list[str]:
         """Get all transition keys."""
-        return self._transitions.all_keys()
+        return self._transition_coordinator.all_keys()
 
     def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
         """Find a transition between two states."""
-        return self._transitions.find_transition(from_state, to_state)
+        return self._transition_coordinator.find(from_state, to_state)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - State Modification
@@ -315,7 +315,7 @@ class StateService:
         # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
-            default_gif_id = self._gif_repo.store_gif(default_gif_path, "idle")
+            default_gif_id = self._gif_manager.store(default_gif_path, "idle")
 
         idle_state = State(
             key="idle",
@@ -337,10 +337,7 @@ class StateService:
             self._move_states.add(move_state)
 
         # Load transition states
-        if self._transition_repo:
-            transitions = self._transition_repo.load_all()
-            for transition in transitions.values():
-                self._transitions.add(transition)
+        self._transition_coordinator.load_from_repo()
 
         # Set initial state
         self._states.set_current("idle")
@@ -403,7 +400,7 @@ class StateService:
             - Ensures state integrity during transition animations
         """
         # Check transition protection
-        if self._is_transitioning and not force:
+        if self._transition_coordinator.is_active() and not force:
             logger.warning(f"State change rejected: '{key}' (transition in progress)")
             return False
 
@@ -443,13 +440,7 @@ class StateService:
                 # ... wait for completion ...
                 service.end_transition()
         """
-        if self._is_transitioning:
-            logger.warning("Transition already in progress, cannot begin new transition")
-            return False
-
-        self._is_transitioning = True
-        logger.debug("Transition lock acquired")
-        return True
+        return self._transition_coordinator.begin()
 
     def end_transition(self) -> bool:
         """
@@ -464,13 +455,7 @@ class StateService:
             # After transition GIF completes
             service.end_transition()
         """
-        if not self._is_transitioning:
-            logger.warning("No transition in progress, cannot end")
-            return False
-
-        self._is_transitioning = False
-        logger.debug("Transition lock released")
-        return True
+        return self._transition_coordinator.end()
 
     def is_transitioning(self) -> bool:
         """
@@ -479,7 +464,7 @@ class StateService:
         Returns:
             True if transition lock is active, False otherwise
         """
-        return self._is_transitioning
+        return self._transition_coordinator.is_active()
 
     def parse_state_from_action(self, action: str) -> Optional[str]:
         """
@@ -503,61 +488,7 @@ class StateService:
         Returns:
             State key if valid non-movement state exists, None otherwise
         """
-        from ...utils.actions import ACTION_ALIASES
-
-        # Normalize action token
-        raw = (action or "").strip()
-        if not raw:
-            return None
-
-        lowered = raw.lower()
-
-        # Remove common prefixes: "state", "mode", "status"
-        for prefix in ("state", "mode", "status"):
-            if lowered.startswith(prefix):
-                raw = raw[len(prefix):]
-                break
-        else:
-            # Handle Chinese prefixes
-            if raw.startswith(("狀態", "模式")):
-                raw = raw[2:]
-
-        # Clean up separators
-        raw = raw.lstrip(":：-_ ")
-        normalized = raw.strip().lower()
-
-        if not normalized:
-            return None
-
-        # Check aliases (e.g., "sleep" -> "idle")
-        alias_target = ACTION_ALIASES.get(normalized)
-        if alias_target and self.get_state(alias_target):
-            if not self.is_movement_only_state(alias_target):
-                return alias_target
-
-        # Try various normalized forms
-        candidates = {
-            normalized,
-            normalized.replace(" ", "_"),
-            normalized.replace(" ", ""),
-        }
-
-        # Sanitize: keep only alphanumeric, -, _
-        sanitized = "".join(ch for ch in normalized if ch.isalnum() or ch in ("-", "_"))
-        if sanitized:
-            candidates.add(sanitized)
-
-        for candidate in candidates:
-            if self.get_state(candidate):
-                if not self.is_movement_only_state(candidate):
-                    return candidate
-
-        # Try matching by label
-        result = self.find_state_by_label(normalized)
-        if result and not self.is_movement_only_state(result):
-            return result
-
-        return None
+        return self._state_parser.parse(action, self)
 
     def add_state(self, key: str, label: str, copy_from: Optional[str] = None) -> Optional[State]:
         """
@@ -673,7 +604,7 @@ class StateService:
         if not state:
             return False
 
-        resource_id = self._gif_repo.store_gif(gif_path, state_key)
+        resource_id = self._gif_manager.store(gif_path, state_key)
         if not resource_id:
             return False
 
@@ -689,11 +620,6 @@ class StateService:
             self.on_state_changed(event)
 
         return True
-
-    # Legacy method name for compatibility
-    def set_primary_gif(self, state_key: str, gif_path: Path) -> bool:
-        """Legacy method. Use set_gif() instead."""
-        return self.set_gif(state_key, gif_path)
 
     def get_gif_id(self, state_key: str) -> Optional[str]:
         """
@@ -750,10 +676,10 @@ class StateService:
         transition: TransitionState,
     ) -> bool:
         """Create or update a transition state."""
-        self._transitions.add(transition)
+        self._transition_coordinator.add(transition)
         if self._transition_repo:
             try:
-                self._transition_repo.save_all(self._transitions._items)
+                self._transition_repo.save_all(self._transition_coordinator.get_all_items())
             except ConfigSaveError as e:
                 logger.error(f"Failed to save transitions: {e}")
                 return False
@@ -761,12 +687,12 @@ class StateService:
 
     def remove_transition(self, key: str) -> bool:
         """Remove a transition state."""
-        if not self._transitions.remove(key):
+        if not self._transition_coordinator.remove(key):
             return False
 
         if self._transition_repo:
             try:
-                self._transition_repo.save_all(self._transitions._items)
+                self._transition_repo.save_all(self._transition_coordinator.get_all_items())
             except ConfigSaveError as e:
                 logger.error(f"Failed to save transitions: {e}")
                 return False

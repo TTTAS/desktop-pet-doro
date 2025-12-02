@@ -14,6 +14,9 @@ from ...constants import (
     SPRITE_BOB_ALLOWANCE,
     SPRITE_PANEL_RESERVE_OFFSET,
     PANEL_DEFAULT_HEIGHT_HINT,
+    PANEL_MIN_WIDTH,
+    PANEL_MIN_HEIGHT,
+    PANEL_MAX_WIDTH,
 )
 
 
@@ -144,7 +147,7 @@ class RenderingEngine:
         Args:
             painter: Qt painter to render with
             bubble_text: Text to display
-            alpha: Panel alpha (0-255)
+            alpha: Panel alpha (0-COLOR_ALPHA_MAX)
             sprite_center: Center position of sprite
             window_size: Current window size
             panel_height_hint: Panel height hint
@@ -157,9 +160,9 @@ class RenderingEngine:
             return None
 
         # Calculate panel dimensions
-        target_width = max(160.0, float(self._view_model.sprite_size.width()))
+        target_width = max(PANEL_MIN_WIDTH, float(self._view_model.sprite_size.width()))
         panel_width = max(
-            80.0,
+            PANEL_MIN_HEIGHT,
             min(target_width, float(window_size.width()) - 24.0),
         )
 
@@ -178,7 +181,7 @@ class RenderingEngine:
 
         available_text_width = max(60.0, panel_width - inner_padding_x * 2.0)
         text_metrics = metrics.boundingRect(
-            QtCore.QRect(0, 0, int(round(available_text_width)), 4000),
+            QtCore.QRect(0, 0, int(round(available_text_width)), int(PANEL_MAX_WIDTH)),
             text_flags,
             text,
         )

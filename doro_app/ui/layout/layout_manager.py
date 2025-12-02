@@ -8,6 +8,15 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ...constants import (
+    PANEL_MIN_WIDTH,
+    PANEL_MIN_HEIGHT,
+    PANEL_PADDING,
+    PANEL_MAX_WIDTH,
+    FALLBACK_SCREEN_WIDTH,
+    FALLBACK_SCREEN_HEIGHT,
+)
+
 
 class WindowLayoutManager:
     """
@@ -43,7 +52,7 @@ class WindowLayoutManager:
             return screen.availableGeometry()
 
         # Fallback if no screen found
-        return QtCore.QRect(0, 0, 1920, 1080)
+        return QtCore.QRect(0, 0, FALLBACK_SCREEN_WIDTH, FALLBACK_SCREEN_HEIGHT)
 
     @staticmethod
     def clamp_position(
@@ -91,8 +100,8 @@ class WindowLayoutManager:
         """
         text = bubble_text.strip()
         sprite_w = max(120.0, float(sprite_size.width()))
-        panel_width = max(160.0, sprite_w)
-        available_text_width = max(80.0, panel_width - 56.0)
+        panel_width = max(PANEL_MIN_WIDTH, sprite_w)
+        available_text_width = max(PANEL_MIN_HEIGHT, panel_width - PANEL_PADDING)
 
         # Calculate text height
         font = QtGui.QFont()
@@ -106,7 +115,7 @@ class WindowLayoutManager:
             )
             flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
             text_rect = metrics.boundingRect(
-                QtCore.QRect(0, 0, int(round(available_text_width)), 4000),
+                QtCore.QRect(0, 0, int(round(available_text_width)), int(PANEL_MAX_WIDTH)),
                 flags,
                 text,
             )
@@ -114,7 +123,7 @@ class WindowLayoutManager:
         else:
             text_height = float(metrics.lineSpacing())
 
-        panel_height = max(80.0, text_height + 56.0)
+        panel_height = max(PANEL_MIN_HEIGHT, text_height + PANEL_PADDING)
         return panel_width, panel_height
 
     @staticmethod

@@ -154,7 +154,9 @@ class ChatOrchestrator(QtCore.QObject):
                     lines = [line.strip() for line in f if line.strip()]
                 if lines:
                     return random.choice(lines)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError) as e:
+            # OSError: File read errors (permissions, disk errors, etc.)
+            # UnicodeDecodeError: Invalid UTF-8 in messages file
             logger.warning(f"Failed to read network fail messages: {e}")
 
         # Fallback message

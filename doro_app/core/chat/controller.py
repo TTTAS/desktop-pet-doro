@@ -10,7 +10,21 @@ from PySide6 import QtConcurrent, QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from .validator import ResponseValidator
-from ...utils.config_defaults import DEFAULT_CHAT_SERVER_URL
+from ...constants import (
+    CHAT_DEFAULT_HISTORY_TURNS,
+    CHAT_DEFAULT_TIMEOUT_SECONDS,
+    CHAT_DEFAULT_TEMPERATURE,
+    CHAT_DEFAULT_MAX_TOKENS,
+    CHAT_CONFIG_PERSIST_DELAY_MS,
+    CHAT_THREAD_CLEANUP_DELAY_MS,
+)
+from ...utils.config_defaults import (
+    DEFAULT_CHAT_SERVER_URL,
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_MAX_RETRIES,
+)
+from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
 from ...utils.utils import safe_int as _safe_int
@@ -40,11 +54,13 @@ class ChatController(QtCore.QObject):
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
         parent: QtCore.QObject | None = None,
+        config_manager: ConfigManager | None = None,
     ):
         super().__init__(parent)
         logger.debug("Initializing ChatController")
 
-        self._config = config
+        self._config = config  # Legacy QSettings
+        self._config_manager = config_manager  # New: Type-safe config
         self._prompt_path = prompt_path
         self._state_service = state_service
         self._state_text_provider = state_text_provider
@@ -52,29 +68,53 @@ class ChatController(QtCore.QObject):
 
         # Response validation
         self._validator = ResponseValidator(state_service)
-        self._max_retries = _safe_int(config.value("chat/max_retries", 2), 2)
+
+        # Load configuration (use ConfigManager if available)
+        if config_manager:
+            # Type-safe config access with automatic validation
+            self._max_retries = config_manager.chat.max_retries
+            self._history_turns = config_manager.chat.history_turns
+            self._server_url = config_manager.chat.server_url
+            self._model = config_manager.chat.model
+            self._endpoint_path = config_manager.chat.endpoint_path
+            self._timeout_seconds = config_manager.chat.timeout_seconds
+            self._temperature = config_manager.chat.temperature
+        else:
+            # Fallback to legacy QSettings
+            self._max_retries = _safe_int(
+                config.value("chat/max_retries", DEFAULT_CHAT_MAX_RETRIES),
+                DEFAULT_CHAT_MAX_RETRIES
+            )
+            self._history_turns = _safe_int(
+                config.value("chat/history_turns", CHAT_DEFAULT_HISTORY_TURNS),
+                CHAT_DEFAULT_HISTORY_TURNS,
+            )
+            self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
+            self._model = config.value("chat/model", DEFAULT_CHAT_MODEL, str)
+            self._endpoint_path = config.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
+
+            timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
+            try:
+                self._timeout_seconds = int(timeout_value)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid timeout value: {timeout_value}, "
+                    f"using default {CHAT_DEFAULT_TIMEOUT_SECONDS}"
+                )
+                self._timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
+
+            temp_value = config.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
+            try:
+                self._temperature = float(temp_value)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid temperature value: {temp_value}, "
+                    f"using default {CHAT_DEFAULT_TEMPERATURE}"
+                )
+                self._temperature = CHAT_DEFAULT_TEMPERATURE
+
         self._retry_count = 0
         self._original_user_message = ""
-
-        self._history_turns = _safe_int(config.value("chat/history_turns", 8), 8)
-
-        self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
-        self._model = config.value("chat/model", "lmstudio", str)
-        self._endpoint_path = config.value("chat/endpoint_path", "/v1/chat/completions", str)
-
-        timeout_value = config.value("chat/timeout_seconds", 30)
-        try:
-            self._timeout_seconds = int(timeout_value)
-        except (TypeError, ValueError):
-            logger.warning(f"Invalid timeout value: {timeout_value}, using default 30")
-            self._timeout_seconds = 30
-
-        temp_value = config.value("chat/temperature", 0.7)
-        try:
-            self._temperature = float(temp_value)
-        except (TypeError, ValueError):
-            logger.warning(f"Invalid temperature value: {temp_value}, using default 0.7")
-            self._temperature = 0.7
 
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
@@ -89,7 +129,7 @@ class ChatController(QtCore.QObject):
 
         self._persist_timer = QtCore.QTimer(self)
         self._persist_timer.setSingleShot(True)
-        self._persist_timer.setInterval(50)
+        self._persist_timer.setInterval(CHAT_CONFIG_PERSIST_DELAY_MS)
         self._persist_timer.timeout.connect(self._persist_chat_settings)
 
         logger.info(f"ChatController initialized: server={self._server_url}, model={self._model}, timeout={self._timeout_seconds}s")
@@ -237,7 +277,10 @@ class ChatController(QtCore.QObject):
 
         try:
             result = self._future.result() if self._future else (None, "No future result")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            # Qt Future can raise any exception from the worker thread.
+            # We catch broadly here because we cannot predict what the worker will throw.
+            # All exceptions are logged with full traceback and handled gracefully.
             logger.error(f"Future raised exception: {exc}", exc_info=True)
             self._handle_worker_error(str(exc))
             return
@@ -277,8 +320,8 @@ class ChatController(QtCore.QObject):
                             was_auto,
                         )
 
-                # Wait 150ms for thread cleanup before retrying
-                QtCore.QTimer.singleShot(150, _delayed_retry)
+                # Wait for Qt thread cleanup before retrying
+                QtCore.QTimer.singleShot(CHAT_THREAD_CLEANUP_DELAY_MS, _delayed_retry)
                 return
 
             # Max retries exceeded or shouldn't retry
@@ -351,7 +394,13 @@ class ChatController(QtCore.QObject):
         messages.extend(history)
         messages.extend(first_entry)
 
-        max_tokens = _safe_int(self._config.value("chat/max_tokens", 512), 512)
+        if self._config_manager:
+            max_tokens = self._config_manager.chat.max_tokens
+        else:
+            max_tokens = _safe_int(
+                self._config.value("chat/max_tokens", CHAT_DEFAULT_MAX_TOKENS),
+                CHAT_DEFAULT_MAX_TOKENS,
+            )
 
         return {
             "model": self._model,
@@ -376,29 +425,60 @@ class ChatController(QtCore.QObject):
         return prompt
 
     def _safe_call_provider(self, provider: TextProvider) -> str:
+        """
+        Safely call a text provider function, returning empty string on any error.
+
+        This method is intentionally defensive - provider functions are lambdas
+        that may access external state and could fail for various reasons.
+        We prefer to return empty string rather than crashing the chat system.
+
+        Args:
+            provider: Function that returns a string (e.g., state list, movement hint)
+
+        Returns:
+            Stripped string from provider, or empty string if provider fails
+        """
         try:
             value = provider() or ""
-        except Exception:  # noqa: BLE001
+        except Exception as exc:
+            # Provider functions are external and can fail for many reasons:
+            # - StateService not ready
+            # - MovementManager in invalid state
+            # - File I/O errors
+            # Rather than propagate these errors and break chat, we log and continue.
+            logger.warning(f"Provider function failed, using empty string: {exc}")
             return ""
         return value.strip()
 
     def _resolve_chat_endpoint(self) -> str:
         return resolve_chat_endpoint(self._server_url, self._endpoint_path)
 
-    def _trim_history(self, max_turns: int = 8):
-        max_turns = max(1, self._history_turns if max_turns == 8 else max_turns)
+    def _trim_history(self, max_turns: int = CHAT_DEFAULT_HISTORY_TURNS):
+        max_turns = max(1, self._history_turns if max_turns == CHAT_DEFAULT_HISTORY_TURNS else max_turns)
         max_entries = max_turns * 2
         if len(self._history) > max_entries:
             self._history = self._history[-max_entries:]
 
     def _persist_chat_settings(self):
-        self._config.setValue("chat/server_url", self._server_url)
-        self._config.setValue("chat/model", self._model)
-        self._config.setValue("chat/endpoint_path", self._endpoint_path)
-        self._config.setValue("chat/temperature", float(self._temperature))
-        self._config.setValue("chat/timeout_seconds", int(self._timeout_seconds))
-        self._config.remove("chat/system_prompt")
-        self._config.sync()
+        if self._config_manager:
+            # Use ConfigManager for type-safe, validated config access
+            self._config_manager.update_chat(
+                server_url=self._server_url,
+                model=self._model,
+                endpoint_path=self._endpoint_path,
+                temperature=self._temperature,
+                timeout_seconds=self._timeout_seconds,
+            )
+            self._config_manager.save()
+        else:
+            # Fallback to legacy QSettings
+            self._config.setValue("chat/server_url", self._server_url)
+            self._config.setValue("chat/model", self._model)
+            self._config.setValue("chat/endpoint_path", self._endpoint_path)
+            self._config.setValue("chat/temperature", float(self._temperature))
+            self._config.setValue("chat/timeout_seconds", int(self._timeout_seconds))
+            self._config.remove("chat/system_prompt")
+            self._config.sync()
 
     def _schedule_persist(self):
         # Debounce config writes to avoid synchronous UI stalls

@@ -39,7 +39,8 @@ class DoroApp:
         """
         deps = deps or bootstrap_environment()
 
-        self._config = deps.config
+        self._config = deps.config  # Legacy QSettings
+        self._config_manager = deps.config_manager  # New ConfigManager
         self._state_service: StateService = deps.state_service
         self._default_idle_gif = deps.default_idle_gif
         self._prompt_file_path = deps.prompt_file_path
@@ -52,8 +53,9 @@ class DoroApp:
         # need window reference. This will be fixed in Phase 3.
         self.window = DoroWindow(
             state_service=self._state_service,
-            config=self._config,
+            config=self._config,  # Legacy
             not_topmost=not_topmost,
+            config_manager=self._config_manager,  # New: Type-safe config
         )
 
         # ─────────────────────────────────────────────────────────
@@ -62,7 +64,8 @@ class DoroApp:
         self._state_controller = StateController(
             state_service=self._state_service,
             view_model=self.window.view_model,
-            config=self._config,
+            config=self._config,  # Legacy
+            config_manager=self._config_manager,  # New: Type-safe config
         )
         self._gif_controller = GifController(view_model=self.window.view_model)
         self._dialog_manager = DialogManager(
@@ -74,7 +77,10 @@ class DoroApp:
         # Create Managers (need window reference - circular dependency)
         # ─────────────────────────────────────────────────────────
         self._transition_player = TransitionPlayer(self.window, self._state_service)
-        self._bubble_controller = BubbleController(self.window)
+        self._bubble_controller = BubbleController(
+            self.window,
+            config_manager=self._config_manager,  # Type-safe config access
+        )
         self._movement = MovementManager(self.window, self._state_service, MOVEMENT_STEP_PX)
 
         # ─────────────────────────────────────────────────────────
@@ -87,6 +93,7 @@ class DoroApp:
             state_text_provider=lambda: self._state_controller.get_state_list_text(),
             movement_hint_provider=lambda: self._movement.instruction_text(),
             parent=self.window,
+            config_manager=self._config_manager,
         )
         self._chat_orchestrator = ChatOrchestrator(
             self._chat_controller,
@@ -120,7 +127,8 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
 
-        saved_state_key = self._config.value("current_state", "idle")
+        # Use ConfigManager for type-safe config access
+        saved_state_key = self._config_manager.app.current_state
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
 

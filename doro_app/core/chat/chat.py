@@ -35,6 +35,21 @@ def perform_chat_request(
     payload: dict,
     timeout_seconds: int,
 ) -> tuple[str | None, str | None]:
+    """
+    Perform a chat completion request to the LLM server.
+
+    Args:
+        url: Full endpoint URL (e.g., http://localhost:1234/v1/chat/completions)
+        payload: JSON payload with model, messages, etc.
+        timeout_seconds: Request timeout in seconds
+
+    Returns:
+        Tuple of (assistant_text, error_message). On success, returns (text, None).
+        On failure, returns (None, error_message).
+
+    Raises:
+        None - All errors are caught and returned as error messages
+    """
     logger.debug(f"Sending chat request to {url}")
 
     try:
@@ -56,8 +71,10 @@ def perform_chat_request(
                 decoded = body.decode("utf-8", errors="replace").strip()
                 if decoded:
                     detail = decoded
-        except Exception:  # noqa: BLE001
-            pass
+        except (OSError, AttributeError) as read_exc:
+            # OSError: Network issues reading error body
+            # AttributeError: exc.read() not available (shouldn't happen but defensive)
+            logger.debug(f"Could not read HTTP error body: {read_exc}")
         reason = exc.reason or ""
         combined = reason
         if detail:
@@ -70,9 +87,12 @@ def perform_chat_request(
         error_msg = f"Network error: {exc.reason}"
         logger.error(f"Chat request failed: {error_msg} (URL: {url})")
         return None, error_msg
-    except Exception as exc:  # noqa: BLE001
-        error_msg = str(exc)
-        logger.error(f"Chat request failed with unexpected error: {error_msg} (URL: {url})", exc_info=True)
+    except (OSError, ValueError, TimeoutError) as exc:
+        # OSError: Socket/connection errors not wrapped by URLError
+        # ValueError: Invalid URL or request parameters
+        # TimeoutError: Request timeout (rare, usually wrapped by URLError)
+        error_msg = f"Request error: {exc}"
+        logger.error(f"Chat request failed: {error_msg} (URL: {url})", exc_info=True)
         return None, error_msg
 
     try:

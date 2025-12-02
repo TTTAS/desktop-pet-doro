@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from PySide6 import QtCore, QtGui
 
 from ...core.state import StateChangeEvent, StateService
+from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -36,7 +37,8 @@ class StateController(QtCore.QObject):
         self,
         state_service: StateService,
         view_model: DoroViewModel,
-        config: QtCore.QSettings,
+        config: QtCore.QSettings | None = None,
+        config_manager: ConfigManager | None = None,
     ):
         """
         Initialize StateController.
@@ -44,12 +46,14 @@ class StateController(QtCore.QObject):
         Args:
             state_service: State management service
             view_model: Presentation state ViewModel
-            config: QSettings for persistence
+            config: (Legacy) QSettings for persistence
+            config_manager: ConfigManager for type-safe config access
         """
         super().__init__()
         self._state_service = state_service
         self._view_model = view_model
-        self._config = config
+        self._config = config  # Legacy - kept for backward compatibility
+        self._config_manager = config_manager
         self._current_state_key = ""
 
         # Connect to StateService events
@@ -90,8 +94,14 @@ class StateController(QtCore.QObject):
         self._view_model.set_bubble_alpha(visual.bubble_alpha)
         self._view_model.set_name_tag(state.name_tag)
 
-        # Persist to QSettings
-        self._config.setValue("current_state", event.new_key)
+        # Persist to config
+        if self._config_manager:
+            # Use ConfigManager for type-safe config access
+            self._config_manager.update_app(current_state=event.new_key)
+            self._config_manager.save()
+        elif self._config:
+            # Fallback to legacy QSettings
+            self._config.setValue("current_state", event.new_key)
 
         # Notify
         self.state_changed.emit(event.new_key)
@@ -145,7 +155,7 @@ class StateController(QtCore.QObject):
 
     def set_state_gif(self, key: str, source_path: Path) -> bool:
         """Set GIF for a state (delegates to StateService)."""
-        return self._state_service.set_primary_gif(key, source_path)
+        return self._state_service.set_gif(key, source_path)
 
     def clear_state_gif(self, state_key: str | None = None) -> bool:
         """

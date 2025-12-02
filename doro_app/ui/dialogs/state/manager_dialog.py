@@ -215,7 +215,7 @@ class StateManagerDialog(QtWidgets.QDialog):
             return
 
         key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        # TODO: Implement edit state dialog
+        # Edit dialog not yet implemented - see docs/BACKLOG.md
         QtWidgets.QMessageBox.information(self, "Edit state", f"Edit functionality for '{key}' will be implemented soon.")
 
     def _on_remove(self):
