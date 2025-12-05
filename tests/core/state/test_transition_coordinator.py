@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock
 
 from doro_app.core.state.transition_coordinator import TransitionCoordinator
-from doro_app.core.state.models import TransitionState
+from doro_app.core.state.models import Transition
 
 
 class TestTransitionCoordinatorFinding:
@@ -14,7 +14,7 @@ class TestTransitionCoordinatorFinding:
         """Can find transition between states."""
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
-        transition = TransitionState(
+        transition = Transition(
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
@@ -44,7 +44,7 @@ class TestTransitionCoordinatorFinding:
         """Can get transition by key."""
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
-        transition = TransitionState(
+        transition = Transition(
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
@@ -85,8 +85,8 @@ class TestTransitionCoordinatorFinding:
         """Returns all transition keys."""
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
-        coordinator.add(TransitionState("trans1", "a", "b", "gif1"))
-        coordinator.add(TransitionState("trans2", "b", "c", "gif2"))
+        coordinator.add(Transition("trans1", "a", "b", "gif1"))
+        coordinator.add(Transition("trans2", "b", "c", "gif2"))
 
         # Act
         result = coordinator.all_keys()
@@ -176,8 +176,8 @@ class TestTransitionCoordinatorRepository:
         """Can load transitions from repository."""
         # Arrange
         repo = Mock()
-        trans1 = TransitionState("t1", "a", "b", "gif1")
-        trans2 = TransitionState("t2", "b", "c", "gif2")
+        trans1 = Transition("t1", "a", "b", "gif1")
+        trans2 = Transition("t2", "b", "c", "gif2")
         repo.load_all.return_value = {"t1": trans1, "t2": trans2}
         coordinator = TransitionCoordinator(transition_repo=repo)
 
@@ -197,7 +197,7 @@ class TestTransitionCoordinatorModification:
         """Can add a transition."""
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
-        transition = TransitionState("t1", "a", "b", "gif1")
+        transition = Transition("t1", "a", "b", "gif1")
 
         # Act
         coordinator.add(transition)
@@ -209,7 +209,7 @@ class TestTransitionCoordinatorModification:
         """Can remove an existing transition."""
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
-        transition = TransitionState("t1", "a", "b", "gif1")
+        transition = Transition("t1", "a", "b", "gif1")
         coordinator.add(transition)
 
         # Act

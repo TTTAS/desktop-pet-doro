@@ -12,12 +12,25 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ...utils.logger import get_logger
-from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
+from ..exceptions import ConfigSaveError
 from .gif_manager import GifManager
 from .state_parser import StateParser
 from .transition_coordinator import TransitionCoordinator
-from .models import MoveState, MoveStateCollection, State, StateChangeEvent, StateCollection, TransitionState, TransitionStateCollection, VisualConfig
-from .repository import GifRepository, MoveStateRepository, StateListWriter, StateRepository, TransitionStateRepository
+from .models import (
+    MoveState,
+    MoveStateCollection,
+    State,
+    StateChangeEvent,
+    StateCollection,
+    Transition,
+)
+from .repository import (
+    GifRepository,
+    MoveStateRepository,
+    StateListWriter,
+    StateRepository,
+    TransitionRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -44,7 +57,7 @@ class StateService:
         move_repo: MoveStateRepository,
         gif_repo: GifRepository,
         state_list_path: Path,
-        transition_repo: Optional[TransitionStateRepository] = None,
+        transition_repo: Optional[TransitionRepository] = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
@@ -230,7 +243,7 @@ class StateService:
     # Public API - Transition Query Methods
     # ═══════════════════════════════════════════════════════════
 
-    def get_transition(self, key: str) -> Optional[TransitionState]:
+    def get_transition(self, key: str) -> Optional[Transition]:
         """Get a transition by key."""
         return self._transition_coordinator.get(key)
 
@@ -238,7 +251,7 @@ class StateService:
         """Get all transition keys."""
         return self._transition_coordinator.all_keys()
 
-    def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
+    def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
         """Find a transition between two states."""
         return self._transition_coordinator.find(from_state, to_state)
 
@@ -287,10 +300,7 @@ class StateService:
     def _save_states(self) -> bool:
         """Internal method to save states."""
         try:
-            self._state_repo.save_all(
-                self._states._items,
-                self._states._protected_keys
-            )
+            self._state_repo.save_all(self._states._items, self._states._protected_keys)
             return True
         except ConfigSaveError as e:
             logger.error(f"Failed to save states: {e}")
@@ -524,7 +534,9 @@ class StateService:
                 logger.info(f"Added state '{key}' (copied from '{copy_from}')")
             else:
                 new_state = State(key=key, label=label)
-                logger.info(f"Added state '{key}' (copy source '{copy_from}' not found, using defaults)")
+                logger.info(
+                    f"Added state '{key}' (copy source '{copy_from}' not found, using defaults)"
+                )
         else:
             new_state = State(key=key, label=label)
             logger.info(f"Added state '{key}'")
@@ -673,9 +685,9 @@ class StateService:
 
     def add_transition(
         self,
-        transition: TransitionState,
+        transition: Transition,
     ) -> bool:
-        """Create or update a transition state."""
+        """Create or update a transition."""
         self._transition_coordinator.add(transition)
         if self._transition_repo:
             try:

@@ -9,14 +9,19 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....utils import paths
-from ....core.state import StateService, TransitionState
+from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
 
 
 class EditMoveStateDialog(QtWidgets.QDialog):
     """Dialog for adding or editing a movement state or transition."""
 
-    def __init__(self, service: StateService, move_state_key: Optional[str], parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(
+        self,
+        service: StateService,
+        move_state_key: Optional[str],
+        parent: Optional[QtWidgets.QWidget] = None,
+    ):
         super().__init__(parent)
         self.service = service
         self.move_state_key = move_state_key
@@ -86,7 +91,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.direction_label = QtWidgets.QLabel("Direction:")
         self.direction_label.setStyleSheet("color: #ffffff;")
         self.direction_combo = QtWidgets.QComboBox()
-        self.direction_combo.addItems(["none", "any", "left", "right", "up", "down", "left|right", "up|down"])
+        self.direction_combo.addItems(
+            ["none", "any", "left", "right", "up", "down", "left|right", "up|down"]
+        )
         self.direction_combo.setEditable(True)
         self.direction_row = self.form_layout.addRow(self.direction_label, self.direction_combo)
 
@@ -149,7 +156,8 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # Buttons
         buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
@@ -157,7 +165,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
     def _on_action_type_changed(self, action_type_text: str):
         """Handle action type change (Movement/Transition)."""
-        is_movement = (action_type_text == "Movement")
+        is_movement = action_type_text == "Movement"
         self.action_type = "movement" if is_movement else "transition"
 
         # Show/hide movement fields
@@ -191,10 +199,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
     def _on_select_gif(self):
         """Handle GIF file selection."""
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Select GIF file",
-            "",
-            "GIF Files (*.gif);;All Files (*.*)"
+            self, "Select GIF file", "", "GIF Files (*.gif);;All Files (*.*)"
         )
 
         if file_path:
@@ -297,7 +302,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # Check duplicate key (only for new)
         if not self.is_edit and self.service.get_move_state(key):
-            QtWidgets.QMessageBox.warning(self, "Validation", "A movement state with this key already exists.")
+            QtWidgets.QMessageBox.warning(
+                self, "Validation", "A movement state with this key already exists."
+            )
             return
 
         state_key = self.state_combo.currentText()
@@ -315,9 +322,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if self.selected_gif_path:
             if not self.service.set_gif(state_key, self.selected_gif_path):
                 QtWidgets.QMessageBox.warning(
-                    self,
-                    "Warning",
-                    "Movement state will be saved, but failed to upload GIF."
+                    self, "Warning", "Movement state will be saved, but failed to upload GIF."
                 )
 
         # Save movement state (service.add_move_state takes individual parameters, not MoveState object)
@@ -339,18 +344,24 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # Check duplicate key (only for new)
         if not self.is_edit and self.service.get_transition(key):
-            QtWidgets.QMessageBox.warning(self, "Validation", "A transition with this key already exists.")
+            QtWidgets.QMessageBox.warning(
+                self, "Validation", "A transition with this key already exists."
+            )
             return
 
         from_state = self.from_state_combo.currentText()
         to_state = self.to_state_combo.currentText()
 
         if not from_state or not to_state:
-            QtWidgets.QMessageBox.warning(self, "Validation", "Please select both from and to states.")
+            QtWidgets.QMessageBox.warning(
+                self, "Validation", "Please select both from and to states."
+            )
             return
 
         if from_state == to_state:
-            QtWidgets.QMessageBox.warning(self, "Validation", "From and To states must be different.")
+            QtWidgets.QMessageBox.warning(
+                self, "Validation", "From and To states must be different."
+            )
             return
 
         # Upload custom transition GIF if selected
@@ -377,11 +388,11 @@ class EditMoveStateDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Warning",
-                    f"Failed to upload GIF: {e}\nTransition will be saved without custom GIF."
+                    f"Failed to upload GIF: {e}\nTransition will be saved without custom GIF.",
                 )
 
-        # Create TransitionState
-        transition = TransitionState(
+        # Create Transition
+        transition = Transition(
             key=key,
             from_state=from_state,
             to_state=to_state,
@@ -394,7 +405,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             if result:
                 self.accept()
             else:
-                QtWidgets.QMessageBox.warning(self, "Save", "Failed to save transition (save_all returned False).")
+                QtWidgets.QMessageBox.warning(
+                    self, "Save", "Failed to save transition (save_all returned False)."
+                )
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Save", f"Failed to save transition: {e}")
 

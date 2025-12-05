@@ -2,7 +2,7 @@
 
 import pytest
 
-from doro_app.core.state.models import TransitionState, TransitionStateCollection
+from doro_app.core.state.models import Transition, TransitionCollection
 
 # Wildcard constant for transitions (matches doro_app.constants.TRANSITION_WILDCARD)
 WILDCARD = "*"
@@ -14,16 +14,16 @@ class TestTransitionPriorityMatching:
     @pytest.fixture
     def collection(self):
         """Create a collection with various transition patterns."""
-        coll = TransitionStateCollection()
+        coll = TransitionCollection()
 
         # Priority 1: Exact matches
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
             transition_gif_id="idle_happy.gif"
         ))
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="idle_to_sad",
             from_state="idle",
             to_state="sad",
@@ -31,7 +31,7 @@ class TestTransitionPriorityMatching:
         ))
 
         # Priority 2a: from specific -> any
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="excited_to_any",
             from_state="excited",
             to_state=WILDCARD,
@@ -39,7 +39,7 @@ class TestTransitionPriorityMatching:
         ))
 
         # Priority 2b: from any -> specific
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="any_to_sleeping",
             from_state=WILDCARD,
             to_state="sleeping",
@@ -47,7 +47,7 @@ class TestTransitionPriorityMatching:
         ))
 
         # Priority 3: Universal
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="universal",
             from_state=WILDCARD,
             to_state=WILDCARD,
@@ -89,9 +89,9 @@ class TestTransitionPriorityMatching:
 
     def test_no_match_returns_none(self):
         """Return None when no transition matches (even wildcards)."""
-        coll = TransitionStateCollection()
+        coll = TransitionCollection()
         # Only add one specific transition
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
@@ -117,8 +117,8 @@ class TestTransitionWildcardEdgeCases:
 
     def test_same_state_transition(self):
         """Test transition from state to itself."""
-        coll = TransitionStateCollection()
-        coll.add(TransitionState(
+        coll = TransitionCollection()
+        coll.add(Transition(
             key="idle_to_idle",
             from_state="idle",
             to_state="idle",
@@ -131,8 +131,8 @@ class TestTransitionWildcardEdgeCases:
 
     def test_wildcard_only_collection(self):
         """Collection with only wildcard transitions."""
-        coll = TransitionStateCollection()
-        coll.add(TransitionState(
+        coll = TransitionCollection()
+        coll.add(Transition(
             key="any_to_any",
             from_state=WILDCARD,
             to_state=WILDCARD,
@@ -146,15 +146,15 @@ class TestTransitionWildcardEdgeCases:
 
     def test_multiple_exact_matches_use_first_added(self):
         """If multiple exact matches exist (shouldn't happen), use first added."""
-        coll = TransitionStateCollection()
-        coll.add(TransitionState(
+        coll = TransitionCollection()
+        coll.add(Transition(
             key="idle_happy_1",
             from_state="idle",
             to_state="happy",
             transition_gif_id="first.gif"
         ))
         # This should overwrite the first one due to same key pair
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="idle_happy_2",
             from_state="idle",
             to_state="happy",
@@ -168,7 +168,7 @@ class TestTransitionWildcardEdgeCases:
 
     def test_empty_collection(self):
         """Empty collection returns None."""
-        coll = TransitionStateCollection()
+        coll = TransitionCollection()
         result = coll.find_transition("idle", "happy")
         assert result is None
 
@@ -178,8 +178,8 @@ class TestTransitionCollectionOperations:
 
     def test_add_and_find_wildcard_transition(self):
         """Add and find wildcard transitions."""
-        coll = TransitionStateCollection()
-        coll.add(TransitionState(
+        coll = TransitionCollection()
+        coll.add(Transition(
             key="exit_any",
             from_state="exiting",
             to_state=WILDCARD,
@@ -193,8 +193,8 @@ class TestTransitionCollectionOperations:
 
     def test_remove_wildcard_transition(self):
         """Remove wildcard transition."""
-        coll = TransitionStateCollection()
-        coll.add(TransitionState(
+        coll = TransitionCollection()
+        coll.add(Transition(
             key="any_enter",
             from_state=WILDCARD,
             to_state="entering",
@@ -213,10 +213,10 @@ class TestTransitionCollectionOperations:
 
     def test_overwrite_transition_updates_index(self):
         """Overwriting a transition should update the index correctly."""
-        coll = TransitionStateCollection()
+        coll = TransitionCollection()
 
         # Add initial transition
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="t1",
             from_state="idle",
             to_state="happy",
@@ -224,7 +224,7 @@ class TestTransitionCollectionOperations:
         ))
 
         # Overwrite with different from/to but same key
-        coll.add(TransitionState(
+        coll.add(Transition(
             key="t1",
             from_state="sad",
             to_state="angry",

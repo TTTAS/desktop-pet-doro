@@ -15,7 +15,7 @@ from ..exceptions import (
     GifNotFoundError,
     GifStorageError,
 )
-from .models import MoveState, State, TransitionState, VisualConfig
+from .models import MoveState, State, Transition, VisualConfig
 
 logger = get_logger(__name__)
 
@@ -255,9 +255,7 @@ class StateRepository:
         """
         # Only save custom states
         custom_states = {
-            key: self._to_dict(state)
-            for key, state in states.items()
-            if key not in protected_keys
+            key: self._to_dict(state) for key, state in states.items() if key not in protected_keys
         }
 
         try:
@@ -408,18 +406,18 @@ class MoveStateRepository:
             raise ConfigSaveError(str(self.config_path), str(e))
 
 
-class TransitionStateRepository:
-    """Manages transition state persistence."""
+class TransitionRepository:
+    """Manages transition persistence."""
 
     def __init__(self, config_path: Path):
         self.config_path = config_path
 
-    def load_all(self) -> dict[str, TransitionState]:
+    def load_all(self) -> dict[str, Transition]:
         """
-        Load transition states from JSON.
+        Load transitions from JSON.
 
         Returns:
-            Dict of transition_key -> TransitionState (empty dict if no config file exists)
+            Dict of transition_key -> Transition (empty dict if no config file exists)
 
         Raises:
             ConfigLoadError: Failed to read or parse config file
@@ -443,7 +441,7 @@ class TransitionStateRepository:
             if not isinstance(value, dict):
                 continue
             try:
-                transition = TransitionState(
+                transition = Transition(
                     key=key,
                     from_state=value["from_state"],
                     to_state=value["to_state"],
@@ -455,9 +453,9 @@ class TransitionStateRepository:
 
         return transitions
 
-    def save_all(self, transitions: dict[str, TransitionState]) -> None:
+    def save_all(self, transitions: dict[str, Transition]) -> None:
         """
-        Save transition states to JSON.
+        Save transitions to JSON.
 
         Raises:
             ConfigSaveError: Failed to save config file
@@ -534,7 +532,9 @@ class StateListWriter:
                     continue
                 gif_info = self._gif_summary(key, gif_paths)
                 direction = self._direction_for_state(key, move_states)
-                lines.append(f"- ({key}) {move_state.label} | type: movement ({direction}) | GIF: {gif_info}")
+                lines.append(
+                    f"- ({key}) {move_state.label} | type: movement ({direction}) | GIF: {gif_info}"
+                )
 
         output = "\n".join(lines) + "\n"
 

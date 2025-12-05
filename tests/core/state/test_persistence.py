@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 import pytest
 
-from doro_app.core.state import TransitionState
+from doro_app.core.state import Transition
 from doro_app.core.state import StateService
 
 
@@ -181,7 +181,7 @@ class TestTransitionOperations:
         state_service_with_mocks.add_state("idle", "Idle")
         state_service_with_mocks.add_state("happy", "Happy")
 
-        transition = TransitionState(
+        transition = Transition(
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
@@ -203,7 +203,7 @@ class TestTransitionOperations:
         state_service_with_mocks.add_state("a", "State A")
         state_service_with_mocks.add_state("b", "State B")
 
-        trans = TransitionState(key="a_to_b", from_state="a", to_state="b")
+        trans = Transition(key="a_to_b", from_state="a", to_state="b")
         state_service_with_mocks.add_transition(trans)
 
         transition = state_service_with_mocks.get_transition("a_to_b")
@@ -219,7 +219,7 @@ class TestTransitionOperations:
         state_service_with_mocks.add_state("idle", "Idle")
         state_service_with_mocks.add_state("happy", "Happy")
 
-        trans = TransitionState(key="trans", from_state="idle", to_state="happy")
+        trans = Transition(key="trans", from_state="idle", to_state="happy")
         state_service_with_mocks.add_transition(trans)
 
         found = state_service_with_mocks.find_transition("idle", "happy")
@@ -235,8 +235,8 @@ class TestTransitionOperations:
         state_service_with_mocks.add_state("a", "A")
         state_service_with_mocks.add_state("b", "B")
 
-        trans1 = TransitionState(key="t1", from_state="a", to_state="b")
-        trans2 = TransitionState(key="t2", from_state="b", to_state="a")
+        trans1 = Transition(key="t1", from_state="a", to_state="b")
+        trans2 = Transition(key="t2", from_state="b", to_state="a")
         state_service_with_mocks.add_transition(trans1)
         state_service_with_mocks.add_transition(trans2)
 
@@ -252,7 +252,7 @@ class TestTransitionOperations:
         state_service_with_mocks.add_state("x", "X")
         state_service_with_mocks.add_state("y", "Y")
 
-        trans = TransitionState(key="to_remove", from_state="x", to_state="y")
+        trans = Transition(key="to_remove", from_state="x", to_state="y")
         state_service_with_mocks.add_transition(trans)
 
         result = state_service_with_mocks.remove_transition("to_remove")

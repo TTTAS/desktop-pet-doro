@@ -49,6 +49,7 @@ class StateParser:
         """
         if action_aliases is None:
             from ...utils.actions import ACTION_ALIASES
+
             action_aliases = ACTION_ALIASES
         self._action_aliases = action_aliases
 
