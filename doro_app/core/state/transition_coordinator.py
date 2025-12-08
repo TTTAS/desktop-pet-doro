@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import Optional
 
 from ...utils.logger import get_logger
-from .models import TransitionState, TransitionStateCollection
-from .repository import TransitionStateRepository
+from .models import Transition, TransitionCollection
+from .repository import TransitionRepository
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ class TransitionCoordinator:
     - Know about Qt or UI
     """
 
-    def __init__(self, transition_repo: Optional[TransitionStateRepository]):
+    def __init__(self, transition_repo: Optional[TransitionRepository]):
         """
         Initialize TransitionCoordinator.
 
@@ -40,10 +40,10 @@ class TransitionCoordinator:
             transition_repo: Repository for transition persistence (optional)
         """
         self._transition_repo = transition_repo
-        self._transitions = TransitionStateCollection()
+        self._transitions = TransitionCollection()
         self._is_transitioning = False
 
-    def find(self, from_state: str, to_state: str) -> Optional[TransitionState]:
+    def find(self, from_state: str, to_state: str) -> Optional[Transition]:
         """
         Find transition for state change.
 
@@ -52,11 +52,11 @@ class TransitionCoordinator:
             to_state: Target state key
 
         Returns:
-            TransitionState if found, None otherwise
+            Transition if found, None otherwise
         """
         return self._transitions.find_transition(from_state, to_state)
 
-    def get(self, key: str) -> Optional[TransitionState]:
+    def get(self, key: str) -> Optional[Transition]:
         """
         Get transition by key.
 
@@ -64,7 +64,7 @@ class TransitionCoordinator:
             key: Transition key
 
         Returns:
-            TransitionState if found, None otherwise
+            Transition if found, None otherwise
         """
         return self._transitions.get(key)
 
@@ -149,12 +149,12 @@ class TransitionCoordinator:
 
         logger.debug(f"Loaded {len(transitions)} transitions from repository")
 
-    def add(self, transition: TransitionState) -> None:
+    def add(self, transition: Transition) -> None:
         """
         Add a transition to the collection.
 
         Args:
-            transition: TransitionState to add
+            transition: Transition to add
         """
         self._transitions.add(transition)
 
@@ -170,11 +170,11 @@ class TransitionCoordinator:
         """
         return self._transitions.remove(key)
 
-    def get_all_items(self) -> dict[str, TransitionState]:
+    def get_all_items(self) -> dict[str, Transition]:
         """
         Get all transitions as a dictionary (for persistence).
 
         Returns:
-            Dictionary mapping transition keys to TransitionState objects
+            Dictionary mapping transition keys to Transition objects
         """
         return self._transitions._items

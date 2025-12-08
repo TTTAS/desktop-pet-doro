@@ -90,7 +90,9 @@ class TransitionPlayer(QtCore.QObject):
         # Get transition GIF path
         gif_path = self._get_transition_gif_path(transition.transition_gif_id)
         if not gif_path or not gif_path.exists():
-            logger.warning(f"Transition GIF not found: {transition.transition_gif_id}, switching directly")
+            logger.warning(
+                f"Transition GIF not found: {transition.transition_gif_id}, switching directly"
+            )
             return False
 
         # Acquire transition lock
@@ -99,7 +101,9 @@ class TransitionPlayer(QtCore.QObject):
             return False
 
         # Play transition
-        logger.info(f"Playing transition: {from_state} -> {to_state} ({transition.transition_gif_id})")
+        logger.info(
+            f"Playing transition: {from_state} -> {to_state} ({transition.transition_gif_id})"
+        )
         self._is_playing = True
         self._target_state_key = to_state
         self._last_frame_number = -1
@@ -125,7 +129,7 @@ class TransitionPlayer(QtCore.QObject):
             return gif_path
 
         # Try without extension
-        if not gif_id.lower().endswith('.gif'):
+        if not gif_id.lower().endswith(".gif"):
             gif_path = ACTION_TRANSITION_DIR / f"{gif_id}.gif"
             if gif_path.exists():
                 return gif_path
@@ -159,7 +163,11 @@ class TransitionPlayer(QtCore.QObject):
 
         # Update sprite size from transition GIF
         frame_rect = self._transition_movie.frameRect()
-        sprite_size = frame_rect.size() if (frame_rect.width() > 0 and frame_rect.height() > 0) else QtCore.QSize(200, 200)
+        sprite_size = (
+            frame_rect.size()
+            if (frame_rect.width() > 0 and frame_rect.height() > 0)
+            else QtCore.QSize(200, 200)
+        )
 
         # Emit signal to notify Window (decouples TransitionPlayer from Window internals)
         self.transition_movie_loaded.emit(self._transition_movie, sprite_size)
@@ -180,7 +188,9 @@ class TransitionPlayer(QtCore.QObject):
             # Detect loop completion: frame number wraps back to 0 or -1 after we've played
             if self._last_frame_number > 0 and frame_number <= 0:
                 # One complete loop detected
-                logger.debug(f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})")
+                logger.debug(
+                    f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})"
+                )
                 self._has_played_once = True
                 # Stop the movie and trigger completion
                 self._transition_movie.stop()

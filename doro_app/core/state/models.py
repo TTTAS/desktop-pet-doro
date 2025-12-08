@@ -86,7 +86,7 @@ class HasKey(Protocol):
 
 
 # Generic type variable for collection items
-T = TypeVar('T', bound=HasKey)
+T = TypeVar("T", bound=HasKey)
 
 
 class BaseCollection(Generic[T]):
@@ -237,8 +237,7 @@ class MoveStateCollection(BaseCollection[MoveState]):
 
             # Only remove from movement_only_keys if no other move_state uses this state
             still_in_use = any(
-                ms.state_key.lower() == removed_state_key
-                for ms in self._items.values()
+                ms.state_key.lower() == removed_state_key for ms in self._items.values()
             )
             if not still_in_use:
                 self._movement_only_keys.discard(removed_state_key)
@@ -277,11 +276,12 @@ class StateChangeEvent:
 
 
 @dataclass(frozen=True)
-class TransitionState:
+class Transition:
     """
     State transition configuration.
 
     Represents a transition animation between two states.
+    This is NOT a state itself, but a relationship between two states.
     Example: idle -> transition_gif -> happy
     """
 
@@ -290,12 +290,12 @@ class TransitionState:
     to_state: str  # Target state key
     transition_gif_id: Optional[str] = None  # Reference to transition GIF
 
-    def with_changes(self, **changes: Any) -> TransitionState:
-        """Return a new TransitionState with specified changes."""
+    def with_changes(self, **changes: Any) -> Transition:
+        """Return a new Transition with specified changes."""
         return replace(self, **changes)
 
 
-class TransitionStateCollection(BaseCollection[TransitionState]):
+class TransitionCollection(BaseCollection[Transition]):
     """
     Manages state transition animations.
 
@@ -309,7 +309,7 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
         # Index for fast from->to lookup
         self._transition_map: dict[tuple[str, str], str] = {}
 
-    def add(self, transition: TransitionState) -> None:
+    def add(self, transition: Transition) -> None:
         """Add or update a transition."""
         # If overwriting an existing key, remove old index first
         old_transition = self.get(transition.key)
@@ -330,7 +330,7 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
             self._transition_map.pop(pair, None)
         return super().remove(key)
 
-    def find_transition(self, from_state: str, to_state: str) -> Optional[TransitionState]:
+    def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
         """
         Find a transition between two states with priority-based matching.
 
@@ -346,7 +346,7 @@ class TransitionStateCollection(BaseCollection[TransitionState]):
             to_state: Target state key
 
         Returns:
-            TransitionState if found, None otherwise
+            Transition if found, None otherwise
 
         Example:
             # Priority 1: Exact match

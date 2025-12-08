@@ -2,28 +2,35 @@
 
 from __future__ import annotations
 
-import random
 import time
-from pathlib import Path
 from typing import Optional, Protocol
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
-    TIMER_INTERVAL_MS, BUBBLE_AUTO_HIDE_MS, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT,
-    WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SPRITE_DEFAULT_WIDTH, SPRITE_DEFAULT_HEIGHT,
-    SPRITE_OFFSET_X, PANEL_DEFAULT_WIDTH_HINT, PANEL_DEFAULT_HEIGHT_HINT,
-    BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y,
-    BUBBLE_DEFAULT_SCALE, MOVEMENT_ONLY_STATE_KEYS,
-    DEFAULT_MOVE_STATE_KEY, CLICK_DRAG_THRESHOLD_PX, SPRITE_MIN_SIZE, SPRITE_MARGIN_X,
-    SPRITE_MARGIN_BOTTOM, SPRITE_BOB_ALLOWANCE, SPRITE_PANEL_RESERVE_OFFSET,
-    WINDOW_INITIAL_POSITION_OFFSET_X, WINDOW_INITIAL_POSITION_OFFSET_Y,
-    get_default_fill_colors, get_default_blush_color, get_default_eye_color,
+    TIMER_INTERVAL_MS,
+    BUBBLE_AUTO_HIDE_MS,
+    WINDOW_INITIAL_WIDTH,
+    WINDOW_INITIAL_HEIGHT,
+    WINDOW_MIN_WIDTH,
+    WINDOW_MIN_HEIGHT,
+    SPRITE_DEFAULT_WIDTH,
+    SPRITE_DEFAULT_HEIGHT,
+    SPRITE_OFFSET_X,
+    PANEL_DEFAULT_WIDTH_HINT,
+    PANEL_DEFAULT_HEIGHT_HINT,
+    BUBBLE_DEFAULT_OFFSET_X,
+    BUBBLE_DEFAULT_OFFSET_Y,
+    BUBBLE_DEFAULT_SCALE,
+    MOVEMENT_ONLY_STATE_KEYS,
+    DEFAULT_MOVE_STATE_KEY,
+    CLICK_DRAG_THRESHOLD_PX,
+    WINDOW_INITIAL_POSITION_OFFSET_X,
+    WINDOW_INITIAL_POSITION_OFFSET_Y,
 )
 from .components.bubble_controller import BubbleConfig, BubbleController
 from .components.gif_player import GifPlayer
 from .rendering.design_tokens import tokens
-from .rendering.fallback_sprite import draw_fallback_sprite
 from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
@@ -33,14 +40,13 @@ from ..core.chat.orchestrator import ChatOrchestrator
 from ..utils.logger import get_logger
 from ..core.movement.manager import MovementManager
 from ..utils.models import MoveStateSettings
-from ..core.state import State, StateChangeEvent
 from ..core.state import StateService
 from ..core.state.transition_player import TransitionPlayer
 from .theme.theme import ensure_application_theme
 from .theme.themed_menu import build_context_menu_content, create_doro_menu
 from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
-from ..utils.utils import safe_float as _safe_float, safe_int as _safe_int
+from ..utils.utils import safe_float as _safe_float
 
 logger = get_logger(__name__)
 
@@ -51,23 +57,17 @@ class MovementWindowPort(Protocol):
     def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
         ...
 
-    def current_position(self) -> QtCore.QPoint:
-        ...
+    def current_position(self) -> QtCore.QPoint: ...
 
-    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint:
-        ...
+    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint: ...
 
-    def move_window_to(self, pos: QtCore.QPoint):
-        ...
+    def move_window_to(self, pos: QtCore.QPoint): ...
 
-    def get_bubble_offset(self) -> QtCore.QPointF:
-        ...
+    def get_bubble_offset(self) -> QtCore.QPointF: ...
 
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
-        ...
+    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False): ...
 
-    def reset_tick_timer(self, value: float):
-        ...
+    def reset_tick_timer(self, value: float): ...
 
 
 class DoroWindow(QtWidgets.QWidget):
@@ -119,6 +119,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # File paths (reconstructed from constants)
         from ..utils.paths import STATE_DIR
+
         self._default_idle_gif = STATE_DIR / "idle.gif"
 
         # NOTE: StateController now handles state change callbacks
@@ -165,6 +166,7 @@ class DoroWindow(QtWidgets.QWidget):
         # UI State Variables
         # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
+        self._previous_state_key: Optional[str] = None  # Track previous state for transitions
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
@@ -275,12 +277,14 @@ class DoroWindow(QtWidgets.QWidget):
         # Create and wire event handlers
         # ─────────────────────────────────────────────────────────
         self._mouse_handler = MouseEventHandler(
-            bubble_controller=bubble_controller,
-            click_threshold=CLICK_DRAG_THRESHOLD_PX
+            bubble_controller=bubble_controller, click_threshold=CLICK_DRAG_THRESHOLD_PX
         )
         self._mouse_handler.window_drag_requested.connect(self.move)
         self._mouse_handler.click_detected.connect(
-            lambda: (self._mark_user_activity(), self._click_action_controller.trigger_random_action())
+            lambda: (
+                self._mark_user_activity(),
+                self._click_action_controller.trigger_random_action(),
+            )
         )
         self._mouse_handler.user_activity_detected.connect(self._mark_user_activity)
 
@@ -316,34 +320,74 @@ class DoroWindow(QtWidgets.QWidget):
             scale_pref = self._config_manager.ui.bubble_scale
         else:
             # Fallback to legacy QSettings
-            offset_x = _safe_float(self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X), BUBBLE_DEFAULT_OFFSET_X)
-            offset_y = _safe_float(self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y), BUBBLE_DEFAULT_OFFSET_Y)
-            scale_pref = _safe_float(self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE)
+            offset_x = _safe_float(
+                self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X),
+                BUBBLE_DEFAULT_OFFSET_X,
+            )
+            offset_y = _safe_float(
+                self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y),
+                BUBBLE_DEFAULT_OFFSET_Y,
+            )
+            scale_pref = _safe_float(
+                self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE
+            )
 
         self._bubble_controller.apply_persisted_config(
-            BubbleConfig(offset_x=offset_x, offset_y=offset_y, scale=scale_pref, auto_hide_ms=self._bubble_auto_hide_ms)
+            BubbleConfig(
+                offset_x=offset_x,
+                offset_y=offset_y,
+                scale=scale_pref,
+                auto_hide_ms=self._bubble_auto_hide_ms,
+            )
         )
 
     # ─────────────────────────────────────────────────────────
     # Controller signal handlers
     # ─────────────────────────────────────────────────────────
 
-    def _on_controller_state_changed(self, state_key: str):
+    def _load_state_gif(self, state_key: str):
         """
-        Handle state change from StateController.
+        Load the GIF for a given state.
 
-        StateController handles ViewModel updates, we just need to load the GIF.
+        Args:
+            state_key: The state key to load GIF for
         """
-        self._current_state_key = state_key
-
-        # Check if transition should play
-        # (TransitionPlayer will handle loading the target GIF after transition)
-        # For now, just load the GIF directly if no transition
         gif_resource_id = self._state_service.get_gif_id(state_key)
         if gif_resource_id:
             gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
             if gif_path:
                 self._gif_controller.load_gif(str(gif_path))
+
+    def _on_controller_state_changed(self, state_key: str):
+        """
+        Handle state change from StateController.
+
+        StateController handles ViewModel updates, we handle transitions and GIF loading.
+        """
+        # Track previous state for transition detection
+        old_state_key = self._previous_state_key
+        self._previous_state_key = state_key
+        self._current_state_key = state_key
+
+        # Skip transition on initial load (no previous state)
+        if old_state_key is None:
+            logger.debug(f"Initial state load: {state_key}")
+            self._load_state_gif(state_key)
+            return
+
+        # Skip transition if same state
+        if old_state_key == state_key:
+            logger.debug(f"Same state, no transition needed: {state_key}")
+            return
+
+        # Check if transition exists and play it
+        if self._transition_player.play_transition(old_state_key, state_key):
+            # Transition is playing, TransitionPlayer will load target GIF after completion
+            logger.debug(f"Playing transition: {old_state_key} -> {state_key}")
+        else:
+            # No transition, load GIF directly
+            logger.debug(f"No transition, loading GIF directly: {old_state_key} -> {state_key}")
+            self._load_state_gif(state_key)
 
     def _on_state_list_updated(self, state_list_text: str):
         """Handle state list update from StateController."""
@@ -456,9 +500,7 @@ class DoroWindow(QtWidgets.QWidget):
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self._mark_user_activity()
         menu = create_doro_menu(
-            parent=self,
-            avatar_position="top-center",
-            gif_movie=self._gif_movie
+            parent=self, avatar_position="top-center", gif_movie=self._gif_movie
         )
         build_context_menu_content(self, menu)
         menu.exec(e.globalPos())
@@ -475,8 +517,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Calculate sprite center using RenderingEngine
         sprite_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(),
-            self._sprite_anchor_top
+            self.size(), self._sprite_anchor_top
         )
         if new_anchor is not None:
             self._sprite_anchor_top = new_anchor
@@ -492,14 +533,10 @@ class DoroWindow(QtWidgets.QWidget):
         )
         if panel_should_draw:
             from ..constants import COLOR_ALPHA_MAX
+
             alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
-                p,
-                self._bubble_text,
-                alpha,
-                sprite_center,
-                self.size(),
-                self._panel_height_hint
+                p, self._bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint
             )
         else:
             self._panel_rect_cache = None
@@ -525,7 +562,9 @@ class DoroWindow(QtWidgets.QWidget):
         """Move window to position (public API)."""
         self._move_window_to(pos)
 
-    def resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+    def resolve_move_state(
+        self, key: str | None
+    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state configuration (public API)."""
         return self._resolve_move_state(key)
 
@@ -569,14 +608,12 @@ class DoroWindow(QtWidgets.QWidget):
             target_state_key: The target state key to load after transition
         """
         logger.debug(f"Transition completed, loading target state: {target_state_key}")
-        # Load target state GIF
-        gif_resource_id = self._state_service.get_gif_id(target_state_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._gif_controller.load_gif(str(gif_path))
+        # Load target state GIF using helper
+        self._load_state_gif(target_state_key)
 
-    def _resolve_move_state(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+    def _resolve_move_state(
+        self, key: str | None
+    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state configuration."""
         if not key:
             return None, None
@@ -611,8 +648,7 @@ class DoroWindow(QtWidgets.QWidget):
             return
         # Update state via StateService
         if self._state_service.update_visual_config(
-            self._current_state_key,
-            bubble_visible=checked
+            self._current_state_key, bubble_visible=checked
         ):
             # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)

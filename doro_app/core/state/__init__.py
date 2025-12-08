@@ -6,8 +6,8 @@ from .models import (
     State,
     StateChangeEvent,
     StateCollection,
-    TransitionState,
-    TransitionStateCollection,
+    Transition,
+    TransitionCollection,
     VisualConfig,
 )
 from .repository import (
@@ -15,7 +15,7 @@ from .repository import (
     MoveStateRepository,
     StateListWriter,
     StateRepository,
-    TransitionStateRepository,
+    TransitionRepository,
 )
 from .service import StateService
 from .state_parser import StateParser
@@ -24,17 +24,17 @@ __all__ = [
     # Models
     "State",
     "MoveState",
-    "TransitionState",
+    "Transition",
     "VisualConfig",
     "StateChangeEvent",
     "StateCollection",
     "MoveStateCollection",
-    "TransitionStateCollection",
+    "TransitionCollection",
     # Repositories
     "StateRepository",
     "MoveStateRepository",
     "GifRepository",
-    "TransitionStateRepository",
+    "TransitionRepository",
     "StateListWriter",
     # Service
     "StateService",

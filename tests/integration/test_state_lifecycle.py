@@ -5,12 +5,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
-from doro_app.core.state import State, StateService, MoveState, TransitionState
+from doro_app.core.state import State, StateService, MoveState, Transition
 from doro_app.core.state.repository import (
     StateRepository,
     MoveStateRepository,
     GifRepository,
-    TransitionStateRepository,
+    TransitionRepository,
 )
 
 
@@ -27,7 +27,7 @@ def state_service(temp_state_dir):
     state_repo = StateRepository(temp_state_dir / "states.json")
     move_repo = MoveStateRepository(temp_state_dir / "move_states.json")
     gif_repo = GifRepository(temp_state_dir)
-    transition_repo = TransitionStateRepository(temp_state_dir / "transitions.json")
+    transition_repo = TransitionRepository(temp_state_dir / "transitions.json")
     state_list_path = temp_state_dir / "state_list.txt"
 
     service = StateService(
@@ -72,7 +72,7 @@ class TestStateLifecycle:
         new_repo = StateRepository(temp_dir / "states.json")
         new_move_repo = MoveStateRepository(temp_dir / "move_states.json")
         new_gif_repo = GifRepository(temp_dir)
-        new_transition_repo = TransitionStateRepository(temp_dir / "transitions.json")
+        new_transition_repo = TransitionRepository(temp_dir / "transitions.json")
         new_service = StateService(
             state_repo=new_repo,
             move_repo=new_move_repo,
@@ -182,7 +182,7 @@ class TestTransitionIntegration:
         state_service.add_state("sad", "Sad")
 
         # Create transition
-        transition = TransitionState(
+        transition = Transition(
             key="happy_to_sad",
             from_state="happy",
             to_state="sad",

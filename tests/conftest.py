@@ -9,11 +9,11 @@ import pytest
 from doro_app.core.state import (
     State,
     MoveState,
-    TransitionState,
+    Transition,
     StateRepository,
     MoveStateRepository,
     GifRepository,
-    TransitionStateRepository,
+    TransitionRepository,
     StateService,
 )
 
@@ -91,8 +91,8 @@ def mock_gif_repo() -> Mock:
 
 @pytest.fixture
 def mock_transition_repo() -> Mock:
-    """Create a mock TransitionStateRepository."""
-    repo = Mock(spec=TransitionStateRepository)
+    """Create a mock TransitionRepository."""
+    repo = Mock(spec=TransitionRepository)
     repo.load_all.return_value = {}
     repo.save_all.return_value = True
     return repo
@@ -137,7 +137,7 @@ def real_state_service(
     state_repo = StateRepository(temp_state_file)
     move_repo = MoveStateRepository(temp_move_state_file)
     gif_repo = GifRepository(temp_gif_storage)
-    transition_repo = TransitionStateRepository(temp_transition_file)
+    transition_repo = TransitionRepository(temp_transition_file)
 
     service = StateService(
         state_repo=state_repo,
@@ -173,9 +173,9 @@ def sample_move_state() -> MoveState:
 
 
 @pytest.fixture
-def sample_transition() -> TransitionState:
-    """Create a sample TransitionState for testing."""
-    return TransitionState(
+def sample_transition() -> Transition:
+    """Create a sample Transition for testing."""
+    return Transition(
         key="idle_to_happy",
         from_state="idle",
         to_state="happy",

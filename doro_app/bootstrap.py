@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6 import QtCore
 
 from .core.state import GifRepository, MoveStateRepository, StateRepository, StateService
-from .core.state import TransitionStateRepository
+from .core.state import TransitionRepository
 from .utils.config_manager import ConfigManager
 from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 
@@ -66,7 +66,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
     gif_repo = GifRepository(STATE_DIR)
     state_repo = StateRepository(STATE_DIR / "states.json")
     move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
-    transition_repo = TransitionStateRepository(transition_action_dir / "transitions.json")
+    transition_repo = TransitionRepository(transition_action_dir / "transitions.json")
 
     state_service = StateService(
         state_repo,
