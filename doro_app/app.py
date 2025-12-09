@@ -145,6 +145,18 @@ class DoroApp:
         self._connect_business_to_ui()
         self._connect_ui_controllers()
 
+        # ═════════════════════════════════════════════════════════════
+        # Phase 6: Wire remaining UI-specific dependencies
+        # ═════════════════════════════════════════════════════════════
+        # TODO: Move this logic to DoroApp and remove wire_dependencies entirely
+        self.window.wire_dependencies(
+            state_controller=self._state_controller,
+            gif_controller=self._gif_controller,
+            dialog_manager=self._dialog_manager,
+            click_action_controller=self._click_action_controller,
+            bubble_controller=self._bubble_controller,
+        )
+
         # ─────────────────────────────────────────────────────────
         # Initialize StateService and restore last state
         # ─────────────────────────────────────────────────────────
@@ -253,15 +265,15 @@ class DoroApp:
         # (Window's click event will call click_action_controller.handle_click)
 
         # Store references in Window for backward compatibility
-        # These will be removed in future refactoring
+        # Only UI controllers and CoreManager are stored
         self.window._state_controller = self._state_controller
         self.window._gif_controller = self._gif_controller
         self.window._dialog_manager = self._dialog_manager
         self.window._click_action_controller = self._click_action_controller
         self.window._bubble_controller = self._bubble_controller
-        self.window._chat_controller = self._chat_controller
-        self.window._movement = self._movement
         self.window._core_manager = self.core_manager
+        # NOTE: _chat_controller, _movement, _chat_orchestrator removed
+        # Access these through _core_manager instead
 
     def run(self):
         """Start the application by showing the main window."""
