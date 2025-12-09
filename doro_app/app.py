@@ -168,44 +168,39 @@ class DoroApp:
             self._state_service.set_state("idle")
 
     def _connect_business_to_ui(self):
-        """Connect business logic layer (CoreManager) to UI layer (Window)."""
+        """Translate domain events to UI operations (Application Layer responsibility)."""
 
-        # ─────────────────────────────────────────────────────────
-        # CoreManager → Window connections
-        # ─────────────────────────────────────────────────────────
+        # ═════════════════════════════════════════════════════════════
+        # Domain Events → UI Operations (Translation Layer)
+        # ═════════════════════════════════════════════════════════════
 
-        # Bubble text requests from core → window
-        self.core_manager.bubble_text_requested.connect(
-            lambda text, kwargs: self._bubble_controller.set_text(text, **kwargs)
+        # Chat domain events
+        self.core_manager.chat_response_received.connect(
+            self._on_chat_response_received
         )
-        self.core_manager.bubble_clear_requested.connect(
-            self._bubble_controller.clear_text
+        self.core_manager.chat_operation_started.connect(
+            self._on_chat_operation_started
         )
-
-        # Cursor management
-        self.core_manager.busy_cursor_requested.connect(
-            lambda enabled: self.window.set_busy_cursor(enabled) if hasattr(self.window, 'set_busy_cursor') else None
+        self.core_manager.chat_operation_completed.connect(
+            self._on_chat_operation_completed
         )
-
-        # Notifications
-        self.core_manager.notification_requested.connect(
-            lambda severity, title, msg: self._dialog_manager.show_notification(severity, title, msg)
+        self.core_manager.chat_error_occurred.connect(
+            self._on_chat_error_occurred
         )
 
-        # Transition signals from core → window
-        self.core_manager.transition_gif_ready.connect(
-            self.window._on_transition_movie_loaded
+        # State domain events
+        self.core_manager.state_changed.connect(
+            self._on_domain_state_changed
         )
+
+        # Transition domain events
         self.core_manager.transition_completed.connect(
-            self.window._on_transition_completed
-        )
-        self.core_manager.load_state_gif_requested.connect(
-            self.window._load_state_gif
+            self._on_domain_transition_completed
         )
 
-        # ─────────────────────────────────────────────────────────
-        # BubbleController → Window connections
-        # ─────────────────────────────────────────────────────────
+        # ═════════════════════════════════════════════════════════════
+        # BubbleController → Window connections (UI Layer internal)
+        # ═════════════════════════════════════════════════════════════
 
         self._bubble_controller.text_changed.connect(
             lambda text, show_override: self.window._on_bubble_text_changed(text, show_override)
@@ -232,9 +227,9 @@ class DoroApp:
             lambda state_key: self._state_controller.apply_state_settings(state_key)
         )
 
-        # ─────────────────────────────────────────────────────────
-        # Window → CoreManager connections
-        # ─────────────────────────────────────────────────────────
+        # ═════════════════════════════════════════════════════════════
+        # UI → Business Logic (Upward calls - allowed)
+        # ═════════════════════════════════════════════════════════════
 
         # State changes from StateController → CoreManager
         self._state_controller.state_changed.connect(
@@ -247,16 +242,57 @@ class DoroApp:
         # Movement tick → CoreManager
         # (Window's tick timer will call core_manager.process_movement_tick)
 
+    # ═════════════════════════════════════════════════════════════
+    # Domain Event Translation Methods (Application Layer)
+    # ═════════════════════════════════════════════════════════════
+
+    def _on_chat_response_received(self, response_text: str):
+        """Translate chat response domain event to UI bubble display."""
+        self._bubble_controller.set_text(
+            response_text,
+            override_visibility=True,
+            auto_hide=True,
+            hide_delay_ms=6000
+        )
+
+    def _on_chat_operation_started(self):
+        """Translate chat operation started domain event to UI busy cursor."""
+        if hasattr(self.window, 'set_busy_cursor'):
+            self.window.set_busy_cursor(True)
+
+    def _on_chat_operation_completed(self):
+        """Translate chat operation completed domain event to UI cursor reset."""
+        if hasattr(self.window, 'set_busy_cursor'):
+            self.window.set_busy_cursor(False)
+
+    def _on_chat_error_occurred(self, error_message: str):
+        """Translate chat error domain event to UI notification."""
+        self._dialog_manager.show_notification(
+            severity="error",
+            title="聊天錯誤",
+            message=error_message
+        )
+
+    def _on_domain_state_changed(self, state_key: str):
+        """Translate state changed domain event to UI GIF loading."""
+        # Update Window's current state tracking
+        self.window._current_state_key = state_key
+        # Load the new state's GIF in the UI
+        self.window._load_state_gif(state_key)
+
+    def _on_domain_transition_completed(self, target_state_key: str):
+        """Translate transition completed domain event to UI transition completion."""
+        # Update Window's current state tracking
+        self.window._current_state_key = target_state_key
+        # Notify window that transition is complete
+        self.window._on_transition_completed(target_state_key)
+
     def _connect_ui_controllers(self):
         """Connect UI controllers to Window (legacy connections that remain in Window)."""
 
-        # Note: These connections are for UI controllers that still need to interact
-        # with Window directly. Eventually these should also be refactored.
-
-        # StateController → Window
-        self._state_controller.state_changed.connect(
-            self.window._on_controller_state_changed
-        )
+        # Note: StateController → CoreManager connection is in _connect_business_to_ui()
+        # The old StateController → Window direct connection has been removed
+        # to ensure proper layered architecture
 
         # GifController signals (if any)
         # DialogManager doesn't emit signals to Window

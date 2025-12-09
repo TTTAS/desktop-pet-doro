@@ -162,7 +162,7 @@ class DoroWindow(QtWidgets.QWidget):
         # UI State Variables
         # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
-        self._previous_state_key: Optional[str] = None  # Track previous state for transitions
+        self._previous_state_key: Optional[str] = None  # DEPRECATED: No longer used (CoreManager tracks state transitions)
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
@@ -325,34 +325,21 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _on_controller_state_changed(self, state_key: str):
         """
-        Handle state change from StateController.
+        DEPRECATED: This method is no longer used.
 
-        StateController handles ViewModel updates, we handle transitions and GIF loading.
+        State changes now flow through:
+        StateController → CoreManager.on_state_changed() → Domain Events → DoroApp → Window
+
+        The DoroApp translation layer (_on_domain_state_changed) handles:
+        - Updating Window._current_state_key
+        - Loading GIFs via _load_state_gif()
+
+        Transition logic is handled entirely in CoreManager, not in Window.
+
+        This method remains for reference during the refactoring but is not connected.
         """
-        # Track previous state for transition detection
-        old_state_key = self._previous_state_key
-        self._previous_state_key = state_key
-        self._current_state_key = state_key
-
-        # Skip transition on initial load (no previous state)
-        if old_state_key is None:
-            logger.debug(f"Initial state load: {state_key}")
-            self._load_state_gif(state_key)
-            return
-
-        # Skip transition if same state
-        if old_state_key == state_key:
-            logger.debug(f"Same state, no transition needed: {state_key}")
-            return
-
-        # Check if transition exists and play it (through CoreManager)
-        if self._core_manager.transition_player.play_transition(old_state_key, state_key):
-            # Transition is playing, TransitionPlayer will load target GIF after completion
-            logger.debug(f"Playing transition: {old_state_key} -> {state_key}")
-        else:
-            # No transition, load GIF directly
-            logger.debug(f"No transition, loading GIF directly: {old_state_key} -> {state_key}")
-            self._load_state_gif(state_key)
+        # DEAD CODE - No longer connected since DoroApp now handles the translation
+        pass
 
     def _on_state_list_updated(self, state_list_text: str):
         """Handle state list update from StateController."""
