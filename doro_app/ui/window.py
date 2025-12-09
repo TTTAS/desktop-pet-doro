@@ -611,6 +611,57 @@ class DoroWindow(QtWidgets.QWidget):
         # Load target state GIF using helper
         self._load_state_gif(target_state_key)
 
+    # ═══════════════════════════════════════════════════════════
+    # Event Callbacks from BubbleController
+    # ═══════════════════════════════════════════════════════════
+
+    def _on_bubble_text_changed(self, text: str, show_override: bool):
+        """
+        Handle bubble text change signal from BubbleController.
+
+        Args:
+            text: The new bubble text
+            show_override: Whether to show bubble even if visibility is disabled
+        """
+        self._bubble_text = text
+        self._bubble_text_show_override = show_override
+        self.update()
+
+    def _on_bubble_visibility_changed(self, visible: bool):
+        """
+        Handle bubble visibility change signal from BubbleController.
+
+        Args:
+            visible: Whether bubble should be visible
+        """
+        self._bubble_visible = visible
+        self.update()
+
+    def _on_bubble_offset_changed(self, offset: QtCore.QPointF):
+        """
+        Handle bubble offset change signal from BubbleController.
+
+        Args:
+            offset: The new bubble offset
+        """
+        self._bubble_offset = QtCore.QPointF(offset)
+        self._update_bubble_side_from_offset()
+        self.update()
+
+    def _on_bubble_scale_changed(self, scale: float):
+        """
+        Handle bubble scale change signal from BubbleController.
+
+        Args:
+            scale: The new bubble scale
+        """
+        self._bubble_scale = scale
+        self.update()
+
+    # ═══════════════════════════════════════════════════════════
+    # Movement State Resolution
+    # ═══════════════════════════════════════════════════════════
+
     def _resolve_move_state(
         self, key: str | None
     ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
