@@ -35,13 +35,11 @@ from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
-from ..core.chat.controller import ChatController
-from ..core.chat.orchestrator import ChatOrchestrator
+# NOTE: Removed imports for TransitionPlayer, MovementManager, ChatController, ChatOrchestrator
+# These are now accessed through CoreManager
 from ..utils.logger import get_logger
-from ..core.movement.manager import MovementManager
 from ..utils.models import MoveStateSettings
 from ..core.state import StateService
-from ..core.state.transition_player import TransitionPlayer
 from .theme.theme import ensure_application_theme
 from .theme.themed_menu import build_context_menu_content, create_doro_menu
 from .helpers import ChatUIHelper
@@ -134,14 +132,12 @@ class DoroWindow(QtWidgets.QWidget):
         self._dialog_manager = None
         self._click_action_controller = None
         # Managers
-        self._transition_player: TransitionPlayer | None = None
         self._bubble_controller: BubbleController | None = None
-        self._movement: MovementManager | None = None
+        self._core_manager = None  # Will be set by DoroApp
         # Event handlers
         self._mouse_handler: MouseEventHandler | None = None
-        # Chat
-        self._chat_controller: ChatController | None = None
-        self._chat_orchestrator: ChatOrchestrator | None = None
+        # NOTE: _transition_player, _movement, _chat_controller, _chat_orchestrator removed
+        # These are now accessed through _core_manager
 
         # ─────────────────────────────────────────────────────────
         # ViewModel (Presentation State)
@@ -166,7 +162,7 @@ class DoroWindow(QtWidgets.QWidget):
         # UI State Variables
         # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
-        self._previous_state_key: Optional[str] = None  # Track previous state for transitions
+        self._previous_state_key: Optional[str] = None  # DEPRECATED: No longer used (CoreManager tracks state transitions)
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
@@ -232,49 +228,26 @@ class DoroWindow(QtWidgets.QWidget):
         gif_controller,
         dialog_manager,
         click_action_controller,
-        transition_player: TransitionPlayer,
         bubble_controller: BubbleController,
-        movement_manager: MovementManager,
-        chat_controller: ChatController,
-        chat_orchestrator: ChatOrchestrator,
     ):
         """
-        Wire dependencies after window construction.
+        Wire UI-layer dependencies after window construction.
 
-        This two-phase initialization is necessary due to circular dependencies:
-        - Managers need window reference (for update(), move(), etc.)
-        - Window needs managers for event handling
-
-        In Phase 3, this will be refactored to use Qt Signals instead.
+        NOTE: This method is being phased out. Component storage and most signal
+        connections are now handled in DoroApp. Only UI-specific wiring remains here.
 
         Args:
             state_controller: Coordinates state changes with ViewModel
             gif_controller: Handles GIF loading and playback
             dialog_manager: Manages dialog windows
             click_action_controller: Handles click actions
-            transition_player: Handles state transition animations
             bubble_controller: Manages bubble UI state
-            movement_manager: Handles window movement
-            chat_controller: Handles chat interactions
-            chat_orchestrator: Coordinates chat and movement
         """
-        # Wire controllers
-        self._state_controller = state_controller
-        self._gif_controller = gif_controller
-        self._dialog_manager = dialog_manager
-        self._click_action_controller = click_action_controller
-
-        # Wire managers
-        self._transition_player = transition_player
-        self._bubble_controller = bubble_controller
-        self._movement = movement_manager
-
-        # Wire chat components
-        self._chat_controller = chat_controller
-        self._chat_orchestrator = chat_orchestrator
+        # NOTE: Component storage is now done in DoroApp._connect_ui_controllers()
+        # These are kept for backward compatibility during transition
 
         # ─────────────────────────────────────────────────────────
-        # Create and wire event handlers
+        # Create and wire event handlers (UI-specific)
         # ─────────────────────────────────────────────────────────
         self._mouse_handler = MouseEventHandler(
             bubble_controller=bubble_controller, click_threshold=CLICK_DRAG_THRESHOLD_PX
@@ -283,32 +256,24 @@ class DoroWindow(QtWidgets.QWidget):
         self._mouse_handler.click_detected.connect(
             lambda: (
                 self._mark_user_activity(),
-                self._click_action_controller.trigger_random_action(),
+                click_action_controller.trigger_random_action(),
             )
         )
         self._mouse_handler.user_activity_detected.connect(self._mark_user_activity)
 
         # ─────────────────────────────────────────────────────────
-        # Connect controller signals
+        # Connect UI controller signals (not handled by DoroApp yet)
         # ─────────────────────────────────────────────────────────
-        self._state_controller.repaint_requested.connect(self.update)
-        self._state_controller.state_changed.connect(self._on_controller_state_changed)
-        self._state_controller.state_list_updated.connect(self._on_state_list_updated)
+        state_controller.repaint_requested.connect(self.update)
+        # NOTE: state_changed connection is also in DoroApp (duplicate, will be removed)
+        state_controller.state_list_updated.connect(self._on_state_list_updated)
 
-        self._gif_controller.repaint_requested.connect(self.update)
-        self._gif_controller.gif_loaded.connect(self._on_gif_loaded)
-        self._gif_controller.sprite_size_changed.connect(self._on_sprite_size_changed)
+        gif_controller.repaint_requested.connect(self.update)
+        gif_controller.gif_loaded.connect(self._on_gif_loaded)
+        gif_controller.sprite_size_changed.connect(self._on_sprite_size_changed)
 
-        # ─────────────────────────────────────────────────────────
-        # Connect manager signals
-        # ─────────────────────────────────────────────────────────
-        self._transition_player.transition_movie_loaded.connect(self._on_transition_movie_loaded)
-        self._transition_player.transition_completed.connect(self._on_transition_completed)
-
-        self._chat_orchestrator.bubble_text_requested.connect(self._on_bubble_text_requested)
-        self._chat_orchestrator.bubble_clear_requested.connect(self._clear_bubble_text)
-        self._chat_orchestrator.busy_cursor_requested.connect(self._set_busy_cursor)
-        self._chat_orchestrator.notification_requested.connect(self._on_chat_notification)
+        # NOTE: TransitionPlayer and ChatOrchestrator connections removed
+        # These are now handled through CoreManager in DoroApp
 
         # ─────────────────────────────────────────────────────────
         # Apply configuration
@@ -360,34 +325,21 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _on_controller_state_changed(self, state_key: str):
         """
-        Handle state change from StateController.
+        DEPRECATED: This method is no longer used.
 
-        StateController handles ViewModel updates, we handle transitions and GIF loading.
+        State changes now flow through:
+        StateController → CoreManager.on_state_changed() → Domain Events → DoroApp → Window
+
+        The DoroApp translation layer (_on_domain_state_changed) handles:
+        - Updating Window._current_state_key
+        - Loading GIFs via _load_state_gif()
+
+        Transition logic is handled entirely in CoreManager, not in Window.
+
+        This method remains for reference during the refactoring but is not connected.
         """
-        # Track previous state for transition detection
-        old_state_key = self._previous_state_key
-        self._previous_state_key = state_key
-        self._current_state_key = state_key
-
-        # Skip transition on initial load (no previous state)
-        if old_state_key is None:
-            logger.debug(f"Initial state load: {state_key}")
-            self._load_state_gif(state_key)
-            return
-
-        # Skip transition if same state
-        if old_state_key == state_key:
-            logger.debug(f"Same state, no transition needed: {state_key}")
-            return
-
-        # Check if transition exists and play it
-        if self._transition_player.play_transition(old_state_key, state_key):
-            # Transition is playing, TransitionPlayer will load target GIF after completion
-            logger.debug(f"Playing transition: {old_state_key} -> {state_key}")
-        else:
-            # No transition, load GIF directly
-            logger.debug(f"No transition, loading GIF directly: {old_state_key} -> {state_key}")
-            self._load_state_gif(state_key)
+        # DEAD CODE - No longer connected since DoroApp now handles the translation
+        pass
 
     def _on_state_list_updated(self, state_list_text: str):
         """Handle state list update from StateController."""
@@ -409,7 +361,9 @@ class DoroWindow(QtWidgets.QWidget):
         if dt < 0.0:
             dt = 0.0
         dt = min(dt, tokens.animation.max_delta_time)
-        self._movement.process_active_movement(dt)
+
+        # Process movement through CoreManager
+        self._core_manager.process_movement_tick(dt)
 
         # NEW: Use ViewModel for animation time
         self._view_model.tick(dt)
@@ -611,6 +565,57 @@ class DoroWindow(QtWidgets.QWidget):
         # Load target state GIF using helper
         self._load_state_gif(target_state_key)
 
+    # ═══════════════════════════════════════════════════════════
+    # Event Callbacks from BubbleController
+    # ═══════════════════════════════════════════════════════════
+
+    def _on_bubble_text_changed(self, text: str, show_override: bool):
+        """
+        Handle bubble text change signal from BubbleController.
+
+        Args:
+            text: The new bubble text
+            show_override: Whether to show bubble even if visibility is disabled
+        """
+        self._bubble_text = text
+        self._bubble_text_show_override = show_override
+        self.update()
+
+    def _on_bubble_visibility_changed(self, visible: bool):
+        """
+        Handle bubble visibility change signal from BubbleController.
+
+        Args:
+            visible: Whether bubble should be visible
+        """
+        self._bubble_visible = visible
+        self.update()
+
+    def _on_bubble_offset_changed(self, offset: QtCore.QPointF):
+        """
+        Handle bubble offset change signal from BubbleController.
+
+        Args:
+            offset: The new bubble offset
+        """
+        self._bubble_offset = QtCore.QPointF(offset)
+        self._update_bubble_side_from_offset()
+        self.update()
+
+    def _on_bubble_scale_changed(self, scale: float):
+        """
+        Handle bubble scale change signal from BubbleController.
+
+        Args:
+            scale: The new bubble scale
+        """
+        self._bubble_scale = scale
+        self.update()
+
+    # ═══════════════════════════════════════════════════════════
+    # Movement State Resolution
+    # ═══════════════════════════════════════════════════════════
+
     def _resolve_move_state(
         self, key: str | None
     ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
@@ -653,22 +658,8 @@ class DoroWindow(QtWidgets.QWidget):
             # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)
 
-    def _on_bubble_text_requested(self, text: str, kwargs: dict):
-        """
-        Handle bubble text request from ChatOrchestrator signal.
-
-        Args:
-            text: Text to display in bubble
-            kwargs: Additional arguments for _set_bubble_text() (dict)
-        """
-        self._set_bubble_text(text, **kwargs)
-
-    def _on_chat_notification(self, severity: str, title: str, message: str):
-        """Show chat-related notifications initiated by ChatOrchestrator."""
-        icon = QtWidgets.QMessageBox.Icon.Information
-        if severity == "warning":
-            icon = QtWidgets.QMessageBox.Icon.Warning
-        QtWidgets.QMessageBox(icon, title, message, parent=self).exec()
+    # NOTE: _on_bubble_text_requested() and _on_chat_notification() removed
+    # These signals are now handled through CoreManager in DoroApp
 
     def _set_bubble_text(
         self,

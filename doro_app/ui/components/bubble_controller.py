@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...constants import BUBBLE_SCALE_MIN, BUBBLE_SCALE_MAX
 from ...utils.config_manager import ConfigManager
-
-if TYPE_CHECKING:
-    from ..window import DoroWindow
 
 
 @dataclass
@@ -31,22 +28,33 @@ class BubbleController(QtCore.QObject):
     Signals:
         text_changed: Emitted when bubble text changes (str: text, bool: override_visibility)
         visibility_changed: Emitted when bubble visibility changes (bool: visible)
+        offset_changed: Emitted when bubble offset changes (QPointF: offset)
+        scale_changed: Emitted when bubble scale changes (float: scale)
         preferences_changed: Emitted when user preferences need saving (dict: config)
         repaint_requested: Emitted when window needs repaint
+        cursor_unset_requested: Emitted when cursor should be unset
+        update_bubble_side_requested: Emitted when bubble side needs update based on offset
     """
 
     # Signals for decoupling from Window
     text_changed = QtCore.Signal(str, bool)  # text, override_visibility
     visibility_changed = QtCore.Signal(bool)  # visible
+    offset_changed = QtCore.Signal(QtCore.QPointF)  # offset
+    scale_changed = QtCore.Signal(float)  # scale
     preferences_changed = QtCore.Signal(dict)  # config dict for persistence
     repaint_requested = QtCore.Signal()  # request window update
+    cursor_unset_requested = QtCore.Signal()  # request cursor unset
+    update_bubble_side_requested = QtCore.Signal()  # request bubble side update
+    state_settings_apply_requested = QtCore.Signal(str)  # request state settings apply with state_key
 
-    def __init__(self, window: DoroWindow, config_manager: ConfigManager | None = None):
-        super().__init__(window)
-        self._window = window
+    def __init__(self, config_manager: ConfigManager | None = None):
+        super().__init__()
         self._config_manager = config_manager
         self._offset = QtCore.QPointF(0.0, 0.0)
         self._scale = 1.0
+        self._text = ""
+        self._text_show_override = False
+        self._visible = True
         self._dragging = False
         self._resizing = False
         self._drag_start: QtCore.QPointF | None = None
@@ -82,21 +90,19 @@ class BubbleController(QtCore.QObject):
 
     # ------------------------------------------------------------------ Offset/scale manipulation
     def apply_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
-        window = self._window
         self._offset = self.clamp_offset(candidate)
-        window._bubble_offset = QtCore.QPointF(self._offset)
-        window._update_bubble_side_from_offset()
+        self.offset_changed.emit(QtCore.QPointF(self._offset))
+        self.update_bubble_side_requested.emit()
         if persist:
             self.persist_preferences()
-        window.update()
+        self.repaint_requested.emit()
 
     def set_scale(self, value: float, *, persist: bool = False):
-        window = self._window
         self._scale = max(BUBBLE_SCALE_MIN, min(BUBBLE_SCALE_MAX, float(value)))
-        window._bubble_scale = self._scale
+        self.scale_changed.emit(self._scale)
         if persist:
             self.persist_preferences()
-        window.update()
+        self.repaint_requested.emit()
 
     def persist_defaults(self):
         config = BubbleConfig(
@@ -118,14 +124,6 @@ class BubbleController(QtCore.QObject):
                 bubble_scale=float(self._scale),
             )
             self._config_manager.save()
-        else:
-            # Fallback to legacy method if no config_manager provided
-            window = self._window
-            if getattr(window, "_config", None):
-                window._config.setValue("ui/bubble_offset_x", float(self._offset.x()))
-                window._config.setValue("ui/bubble_offset_y", float(self._offset.y()))
-                window._config.setValue("ui/bubble_scale", float(self._scale))
-                window._config.sync()
 
     # ------------------------------------------------------------------ Drag/resize handling
     def begin_transform(self, pos: QtCore.QPointF) -> bool:
@@ -148,7 +146,7 @@ class BubbleController(QtCore.QObject):
         del pos
         if self._resize_cursor_active:
             self._resize_cursor_active = False
-            self._window.unsetCursor()
+            self.cursor_unset_requested.emit()
 
     # ------------------------------------------------------------------ Helpers
     def _clamp_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
@@ -177,12 +175,14 @@ class BubbleController(QtCore.QObject):
                 If auto_hide=True with delay=0, also stays forever.
                 Otherwise, hides after delay.
         """
-        window = self._window
         clean = (text or "").strip()
 
-        # Update Window state (will be removed when we move to ViewModel)
-        window._bubble_text = clean
-        window._bubble_text_show_override = override_visibility and bool(clean)
+        # Update internal state
+        self._text = clean
+        self._text_show_override = override_visibility and bool(clean)
+
+        # Emit signal to notify observers
+        self.text_changed.emit(clean, self._text_show_override)
 
         # Stop any existing timer
         self._hide_timer.stop()
@@ -196,7 +196,7 @@ class BubbleController(QtCore.QObject):
             # else: auto_hide=False means keep message visible indefinitely
 
         # Request repaint
-        window.update()
+        self.repaint_requested.emit()
 
     def _on_hide_timer_timeout(self):
         """Called when auto-hide timer expires."""
@@ -204,16 +204,24 @@ class BubbleController(QtCore.QObject):
 
     def clear_text(self):
         """Clear bubble text immediately."""
-        window = self._window
-        window._bubble_text = ""
-        window._bubble_text_show_override = False
+        self._text = ""
+        self._text_show_override = False
         self._hide_timer.stop()
-        window.update()
+        self.text_changed.emit("", False)
+        self.repaint_requested.emit()
 
-    def set_visible(self, visible: bool):
-        window = self._window
-        window._bubble_visible = bool(visible)
+    def set_visible(self, visible: bool, current_state_key: str | None = None):
+        """
+        Set bubble visibility.
+
+        Args:
+            visible: Whether bubble should be visible
+            current_state_key: Current state key for applying settings (optional)
+        """
+        self._visible = bool(visible)
         if not visible:
-            window._bubble_text_show_override = False
-        window._state_controller.apply_state_settings(window._current_state_key)
-        window.update()
+            self._text_show_override = False
+        self.visibility_changed.emit(self._visible)
+        if current_state_key:
+            self.state_settings_apply_requested.emit(current_state_key)
+        self.repaint_requested.emit()

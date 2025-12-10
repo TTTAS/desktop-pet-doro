@@ -12,7 +12,6 @@ from ...utils.logger import get_logger
 from ...utils.paths import ACTION_TRANSITION_DIR
 
 if TYPE_CHECKING:
-    from ...window import DoroWindow
     from .service import StateService
 
 logger = get_logger(__name__)
@@ -37,16 +36,14 @@ class TransitionPlayer(QtCore.QObject):
     transition_movie_loaded = QtCore.Signal(object, QtCore.QSize)  # QMovie, sprite_size
     transition_completed = QtCore.Signal(str)  # target_state_key
 
-    def __init__(self, window: DoroWindow, state_service: StateService):
+    def __init__(self, state_service: StateService):
         """
         Initialize TransitionPlayer.
 
         Args:
-            window: The main DoroWindow instance
             state_service: StateService for state management
         """
-        super().__init__(window)
-        self._window = window
+        super().__init__()
         self._state_service = state_service
         self._is_playing = False
         self._target_state_key: Optional[str] = None
