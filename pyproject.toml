@@ -43,7 +43,6 @@ addopts = [
     "--cov=doro_app",
     "--cov-report=term-missing",
     "--cov-report=html",
-    "--ignore=tests/ui/test_layout_manager.py",  # Skip: crashes in headless environments
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
