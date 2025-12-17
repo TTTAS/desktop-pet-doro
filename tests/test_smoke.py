@@ -116,9 +116,11 @@ class TestChatControllerSmoke:
             MoveStateRepository,
             GifRepository,
         )
+        from doro_app.utils.config_manager import ConfigManager
 
-        # Create minimal config
-        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+        # Create ConfigManager
+        config_path = tmp_path / "config.toml"
+        config_manager = ConfigManager(config_path)
 
         # Create a temporary prompt file
         prompt_path = tmp_path / "system_prompt.txt"
@@ -132,11 +134,11 @@ class TestChatControllerSmoke:
 
         # This should not crash
         controller = ChatController(
-            config=config,
             prompt_path=prompt_path,
             state_service=state_service,
             state_text_provider=lambda: "States: idle, happy",
             movement_hint_provider=lambda: "Movement: none",
+            config_manager=config_manager,
         )
         assert controller is not None
 
@@ -149,8 +151,12 @@ class TestChatControllerSmoke:
             MoveStateRepository,
             GifRepository,
         )
+        from doro_app.utils.config_manager import ConfigManager
 
-        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+        # Create ConfigManager
+        config_path = tmp_path / "config.toml"
+        config_manager = ConfigManager(config_path)
+
         prompt_path = tmp_path / "system_prompt.txt"
         prompt_path.write_text("Test prompt")
 
@@ -160,11 +166,11 @@ class TestChatControllerSmoke:
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
         controller = ChatController(
-            config=config,
             prompt_path=prompt_path,
             state_service=state_service,
             state_text_provider=lambda: "",
             movement_hint_provider=lambda: "",
+            config_manager=config_manager,
         )
 
         # Basic properties should exist and have defaults

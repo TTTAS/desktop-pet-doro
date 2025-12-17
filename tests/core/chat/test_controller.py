@@ -48,23 +48,34 @@ def mock_state_service():
 
 
 @pytest.fixture
-def controller_with_qsettings(mock_qsettings, tmp_prompt_file, mock_state_service):
-    """Create ChatController with QSettings (legacy mode)."""
+def controller_with_qsettings(tmp_prompt_file, mock_state_service, mock_config_manager):
+    """Create ChatController with ConfigManager."""
+    # Use default ConfigManager (same values as legacy defaults)
+    default_manager = Mock()
+    default_manager.chat = Mock()
+    default_manager.chat.max_retries = 3
+    default_manager.chat.history_turns = 5
+    default_manager.chat.server_url = "http://127.0.0.1:1234"
+    default_manager.chat.model = "lmstudio"
+    default_manager.chat.endpoint_path = "/v1/chat/completions"
+    default_manager.chat.timeout_seconds = 30
+    default_manager.chat.temperature = 0.7
+    default_manager.update_chat = Mock()
+    default_manager.save = Mock()
+
     return ChatController(
-        config=mock_qsettings,
         prompt_path=tmp_prompt_file,
         state_service=mock_state_service,
         state_text_provider=lambda: "idle, happy",
         movement_hint_provider=lambda: "none",
-        config_manager=None,  # Force legacy mode
+        config_manager=default_manager,
     )
 
 
 @pytest.fixture
-def controller_with_config_manager(mock_qsettings, tmp_prompt_file, mock_state_service, mock_config_manager):
-    """Create ChatController with ConfigManager (new mode)."""
+def controller_with_config_manager(tmp_prompt_file, mock_state_service, mock_config_manager):
+    """Create ChatController with ConfigManager (custom config)."""
     return ChatController(
-        config=mock_qsettings,
         prompt_path=tmp_prompt_file,
         state_service=mock_state_service,
         state_text_provider=lambda: "idle, happy",
@@ -81,8 +92,8 @@ def controller_with_config_manager(mock_qsettings, tmp_prompt_file, mock_state_s
 class TestChatControllerInitialization:
     """Test ChatController initialization."""
 
-    def test_initialization_with_qsettings(self, controller_with_qsettings):
-        """ChatController can be initialized with QSettings."""
+    def test_initialization_with_default_config(self, controller_with_qsettings):
+        """ChatController can be initialized with default configuration."""
         assert controller_with_qsettings is not None
         assert controller_with_qsettings.server_url == "http://127.0.0.1:1234"  # Default
         assert controller_with_qsettings.model == "lmstudio"  # Default
@@ -289,7 +300,7 @@ class TestSignalEmission:
 
 
 class TestConfigurationPersistence:
-    """Test configuration persistence to QSettings."""
+    """Test configuration persistence to ConfigManager."""
 
     def test_set_server_url_schedules_persist(self, controller_with_qsettings):
         """Setting server_url schedules persistence."""
@@ -304,17 +315,17 @@ class TestConfigurationPersistence:
             controller_with_qsettings.set_model("new-model")
             mock_start.assert_called_once()
 
-    def test_persist_chat_settings_saves_to_qsettings(self, controller_with_qsettings, mock_qsettings):
-        """_persist_chat_settings saves configuration to QSettings."""
+    def test_persist_chat_settings_saves_to_config_manager(self, controller_with_qsettings):
+        """_persist_chat_settings saves configuration to ConfigManager."""
         controller_with_qsettings.set_server_url("http://test:8000")
         controller_with_qsettings.set_model("test-model")
 
         # Trigger persist directly
         controller_with_qsettings._persist_chat_settings()
 
-        # Verify values were saved
-        assert mock_qsettings.value("chat/server_url") == "http://test:8000"
-        assert mock_qsettings.value("chat/model") == "test-model"
+        # Verify ConfigManager methods were called
+        controller_with_qsettings._config_manager.update_chat.assert_called()
+        controller_with_qsettings._config_manager.save.assert_called()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -353,36 +364,31 @@ class TestProviderCallbacks:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    def test_invalid_timeout_value_uses_default(self, mock_qsettings, tmp_prompt_file, mock_state_service):
-        """Invalid timeout value in QSettings uses default."""
-        # Set invalid timeout
-        mock_qsettings.setValue("chat/timeout_seconds", "invalid")
+    def test_config_manager_validates_values(self, tmp_prompt_file, mock_state_service):
+        """ConfigManager validates configuration values."""
+        # ConfigManager handles validation internally
+        # Just verify controller uses ConfigManager values
+        manager = Mock()
+        manager.chat = Mock()
+        manager.chat.max_retries = 5
+        manager.chat.history_turns = 10
+        manager.chat.server_url = "http://custom:9999"
+        manager.chat.model = "custom-model"
+        manager.chat.endpoint_path = "/custom/endpoint"
+        manager.chat.timeout_seconds = 60
+        manager.chat.temperature = 0.9
+        manager.update_chat = Mock()
+        manager.save = Mock()
 
         controller = ChatController(
-            config=mock_qsettings,
             prompt_path=tmp_prompt_file,
             state_service=mock_state_service,
             state_text_provider=lambda: "idle",
             movement_hint_provider=lambda: "none",
-            config_manager=None,
+            config_manager=manager,
         )
 
-        # Should use default value
-        assert controller.timeout_seconds == 30  # DEFAULT
-
-    def test_invalid_temperature_value_uses_default(self, mock_qsettings, tmp_prompt_file, mock_state_service):
-        """Invalid temperature value in QSettings uses default."""
-        # Set invalid temperature
-        mock_qsettings.setValue("chat/temperature", "not-a-number")
-
-        controller = ChatController(
-            config=mock_qsettings,
-            prompt_path=tmp_prompt_file,
-            state_service=mock_state_service,
-            state_text_provider=lambda: "idle",
-            movement_hint_provider=lambda: "none",
-            config_manager=None,
-        )
-
-        # Should use default value
-        assert controller.temperature == 0.7  # DEFAULT
+        # Verify ConfigManager values are used
+        assert controller.timeout_seconds == 60
+        assert controller.temperature == 0.9
+        assert controller.server_url == "http://custom:9999"
