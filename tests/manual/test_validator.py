@@ -4,6 +4,11 @@
 import importlib.util
 import sys
 from pathlib import Path
+import pytest
+
+# Save original sys.modules state for cleanup
+_original_sys_modules = sys.modules.copy()
+_dummy_modules_created = []
 
 # Load validator module directly from file without triggering parent __init__.py
 # Import dependencies first (these don't require PySide6)
@@ -24,17 +29,20 @@ if _needs_dummy_packages:
         doro_app_pkg = type(sys)("doro_app")
         doro_app_pkg.__path__ = []
         sys.modules["doro_app"] = doro_app_pkg
+        _dummy_modules_created.append("doro_app")
 
     # For nested packages, create minimal stubs
     if "doro_app.core" not in sys.modules:
         core_pkg = type(sys)("doro_app.core")
         core_pkg.__path__ = []
         sys.modules["doro_app.core"] = core_pkg
+        _dummy_modules_created.append("doro_app.core")
 
     if "doro_app.core.chat" not in sys.modules:
         chat_pkg = type(sys)("doro_app.core.chat")
         chat_pkg.__path__ = []
         sys.modules["doro_app.core.chat"] = chat_pkg
+        _dummy_modules_created.append("doro_app.core.chat")
 
 # Now load validator directly
 project_root = Path(__file__).parent.parent.parent
@@ -69,6 +77,26 @@ class MockStateService:
 
     def visible_state_keys(self) -> list[str]:
         return self._states
+
+
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_sys_modules():
+    """Clean up dummy modules from sys.modules after tests complete."""
+    yield  # Run all tests first
+
+    # After all tests in this module complete, clean up dummy modules
+    for module_name in _dummy_modules_created:
+        if module_name in sys.modules:
+            # Only remove if it's still the dummy module we created
+            if not hasattr(sys.modules[module_name], '__file__'):
+                del sys.modules[module_name]
+
+    # Also clean up the validator module we manually loaded
+    if "doro_app.core.chat.validator" in sys.modules:
+        # Check if this is the manually loaded one (has __package__ but no __file__)
+        validator_module = sys.modules["doro_app.core.chat.validator"]
+        if not hasattr(validator_module, '__file__') or validator_module.__file__ is None:
+            del sys.modules["doro_app.core.chat.validator"]
 
 
 def test_valid_response():
