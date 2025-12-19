@@ -239,6 +239,100 @@ class TestMovementManagerSmoke:
         assert len(instructions) > 0
 
 
+class TestContextMenuSmoke:
+    """Smoke tests for context menu - ensure right-click menu works."""
+
+    def test_themed_menu_module_imports(self):
+        """Themed menu module can be imported without errors."""
+        from doro_app.ui.theme import themed_menu
+
+        # Check that key functions exist
+        assert hasattr(themed_menu, 'create_doro_menu')
+        assert hasattr(themed_menu, 'build_context_menu_content')
+        assert hasattr(themed_menu, 'DoroMenu')
+
+    def test_build_context_menu_accesses_correct_attributes(self):
+        """
+        Test that build_context_menu_content accesses the correct CoreManager properties.
+
+        This test ensures that after the refactoring (removing _chat_orchestrator and
+        _chat_controller from Window), the menu building code uses the correct API.
+        """
+        from unittest.mock import Mock
+        import inspect
+        from doro_app.ui.theme.themed_menu import build_context_menu_content
+
+        # Get the source code of build_context_menu_content
+        source = inspect.getsource(build_context_menu_content)
+
+        # Verify it uses CoreManager's public API (not removed attributes)
+        assert "_core_manager.is_chat_inflight" in source, \
+            "Menu should use window._core_manager.is_chat_inflight"
+        assert "_core_manager.has_chat_history" in source, \
+            "Menu should use window._core_manager.has_chat_history"
+
+        # Verify it does NOT use the removed attributes
+        assert "_chat_orchestrator.is_inflight" not in source, \
+            "Menu should NOT use window._chat_orchestrator (removed in refactoring)"
+        assert "_chat_controller.has_history" not in source, \
+            "Menu should NOT use window._chat_controller (removed in refactoring)"
+
+
+class TestMouseEventHandlingSmoke:
+    """Smoke tests for mouse event handling - ensure left/right click work."""
+
+    def test_mouse_event_handler_can_be_created(self):
+        """MouseEventHandler can be initialized."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        handler = MouseEventHandler(bubble_controller=mock_bubble, click_threshold=5)
+        assert handler is not None
+
+    def test_mouse_press_event_handles_left_button(self):
+        """MouseEventHandler handles left button press."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from PySide6 import QtCore, QtGui
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        mock_bubble.begin_transform.return_value = False
+
+        handler = MouseEventHandler(bubble_controller=mock_bubble)
+
+        # Create mock mouse event
+        mock_event = Mock(spec=QtGui.QMouseEvent)
+        mock_event.button.return_value = QtCore.Qt.MouseButton.LeftButton
+        mock_event.position.return_value = QtCore.QPointF(100, 100)
+        mock_event.globalPosition.return_value = QtCore.QPointF(500, 500)
+
+        mock_geometry = QtCore.QRect(400, 400, 200, 200)
+
+        # Should handle the event
+        result = handler.handle_press(mock_event, mock_geometry)
+        assert result is True
+
+    def test_mouse_press_event_ignores_right_button(self):
+        """MouseEventHandler ignores right button (for context menu)."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from PySide6 import QtCore, QtGui
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        handler = MouseEventHandler(bubble_controller=mock_bubble)
+
+        # Create mock right-click event
+        mock_event = Mock(spec=QtGui.QMouseEvent)
+        mock_event.button.return_value = QtCore.Qt.MouseButton.RightButton
+
+        mock_geometry = QtCore.QRect(400, 400, 200, 200)
+
+        # Should NOT handle the event (returns False to allow context menu)
+        result = handler.handle_press(mock_event, mock_geometry)
+        assert result is False
+
+
 class TestConstantsSmoke:
     """Smoke test for constants - ensure they're all defined."""
 
