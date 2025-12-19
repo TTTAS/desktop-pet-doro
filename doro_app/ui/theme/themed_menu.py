@@ -360,14 +360,14 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     # Chat submenu
     chat_menu = menu.addMenu("Chat")
     ask_action = chat_menu.addAction("Ask Doro")
-    ask_action.setEnabled(not window._chat_orchestrator.is_inflight)
+    ask_action.setEnabled(not window._core_manager.is_chat_inflight)
     ask_action.triggered.connect(window._chat_ui.prompt_chat)
 
     edit_prompt_action = chat_menu.addAction("Edit prompt")
     edit_prompt_action.triggered.connect(window._chat_ui.edit_chat_prompt)
 
     clear_history_action = chat_menu.addAction("Clear conversation history")
-    clear_history_action.setEnabled(window._chat_controller.has_history)
+    clear_history_action.setEnabled(window._core_manager.has_chat_history)
     clear_history_action.triggered.connect(window._chat_ui.clear_chat_history)
 
     configure_menu = chat_menu.addMenu("Configure")
