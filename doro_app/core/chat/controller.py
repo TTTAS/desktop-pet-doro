@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import copy
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from PySide6 import QtConcurrent, QtCore
+from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from .validator import ResponseValidator
@@ -81,9 +82,9 @@ class ChatController(QtCore.QObject):
 
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
-        self._pool = QtCore.QThreadPool.globalInstance()
-        self._future: QtCore.QFuture | None = None
-        self._watcher: QtCore.QFutureWatcher | None = None
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ChatRequest")
+        self._future: Future | None = None
+        self._result_timer: QtCore.QTimer | None = None
         self._current_request_id: str | None = None
         self._cancelled_requests: set[str] = set()
         self._inflight = False
@@ -184,20 +185,22 @@ class ChatController(QtCore.QObject):
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
-        # PySide6: QtConcurrent.run() doesn't take thread pool as first argument
-        future = QtConcurrent.run(
+        # Use Python concurrent.futures instead of QtConcurrent (not available in PySide6)
+        future = self._pool.submit(
             perform_chat_request,
             endpoint,
             payload,
             int(self._timeout_seconds),
         )
-        watcher = QtCore.QFutureWatcher()
-        watcher.setFuture(future)
-        watcher.finished.connect(lambda: self._handle_future_finished(self._current_request_id))
-        watcher.canceled.connect(lambda: self._handle_future_cancelled(self._current_request_id))
+
+        # Poll the future with a QTimer since we can't use QFutureWatcher
+        timer = QtCore.QTimer(self)
+        timer.setInterval(100)  # Check every 100ms
+        timer.timeout.connect(lambda: self._check_future_result(self._current_request_id))
+        timer.start()
 
         self._future = future
-        self._watcher = watcher
+        self._result_timer = timer
         self._inflight = True
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
@@ -212,38 +215,45 @@ class ChatController(QtCore.QObject):
             return
         logger.info(f"Cancelling chat request id={self._current_request_id}")
         self._cancelled_requests.add(self._current_request_id)
-        if self._future and self._future.isRunning():
+        if self._future and not self._future.done():
             self._future.cancel()
+        if self._result_timer:
+            self._result_timer.stop()
         self._reset_worker_state()
         self.request_cancelled.emit(self._current_request_id)
-
-    @QtCore.Slot()
-    def _handle_future_cancelled(self, request_id: str | None):
-        if request_id and request_id in self._cancelled_requests:
-            logger.info(f"Future cancelled for request id={request_id}")
-            self._cancelled_requests.discard(request_id)
-        self._reset_worker_state()
 
     # ------------------------------------------------------------------ Worker callbacks
 
     @QtCore.Slot()
-    def _handle_future_finished(self, request_id: str | None):
+    def _check_future_result(self, request_id: str | None):
+        """Poll the future to check if it's done."""
         if not request_id or request_id != self._current_request_id:
-            logger.debug(f"Ignoring finished signal for stale request id={request_id}")
+            logger.debug(f"Ignoring check for stale request id={request_id}")
+            if self._result_timer:
+                self._result_timer.stop()
             return
 
         if request_id in self._cancelled_requests:
             logger.info(f"Request id={request_id} was cancelled; ignoring result")
             self._cancelled_requests.discard(request_id)
+            if self._result_timer:
+                self._result_timer.stop()
             self._reset_worker_state()
             return
 
+        if not self._future or not self._future.done():
+            # Still running, keep polling
+            return
+
+        # Future is done, stop timer and process result
+        if self._result_timer:
+            self._result_timer.stop()
+            self._result_timer = None
+
         try:
-            result = self._future.result() if self._future else (None, "No future result")
+            result = self._future.result()
         except Exception as exc:
-            # Qt Future can raise any exception from the worker thread.
-            # We catch broadly here because we cannot predict what the worker will throw.
-            # All exceptions are logged with full traceback and handled gracefully.
+            # concurrent.futures can raise exceptions from the worker thread
             logger.error(f"Future raised exception: {exc}", exc_info=True)
             self._handle_worker_error(str(exc))
             return
@@ -337,9 +347,10 @@ class ChatController(QtCore.QObject):
         self._future = None
         self._retry_count = 0
         self._original_user_message = ""
-        if self._watcher:
-            self._watcher.deleteLater()
-            self._watcher = None
+        if self._result_timer:
+            self._result_timer.stop()
+            self._result_timer.deleteLater()
+            self._result_timer = None
 
     # ------------------------------------------------------------------ Payload helpers
 
