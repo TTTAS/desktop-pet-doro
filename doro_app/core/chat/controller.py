@@ -184,8 +184,8 @@ class ChatController(QtCore.QObject):
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
+        # PySide6: QtConcurrent.run() doesn't take thread pool as first argument
         future = QtConcurrent.run(
-            self._pool,
             perform_chat_request,
             endpoint,
             payload,
