@@ -230,10 +230,16 @@ class ChatController(QtCore.QObject):
         # Use QRunnable + QThreadPool (official PySide6 pattern)
         worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds))
 
-        # Connect worker signals to handlers
-        worker.signals.result.connect(self._handle_worker_result)
-        worker.signals.error.connect(self._handle_worker_exception)
-        worker.signals.finished.connect(self._handle_worker_finished)
+        # Connect worker signals to handlers (QueuedConnection for thread safety)
+        worker.signals.result.connect(
+            self._handle_worker_result, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.error.connect(
+            self._handle_worker_exception, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.finished.connect(
+            self._handle_worker_finished, QtCore.Qt.ConnectionType.QueuedConnection
+        )
 
         self._current_worker = worker
         self._pool.start(worker)
@@ -250,11 +256,12 @@ class ChatController(QtCore.QObject):
         if not self._inflight or not self._current_request_id:
             return
         logger.info(f"Cancelling chat request id={self._current_request_id}")
-        self._cancelled_requests.add(self._current_request_id)
+        request_id = self._current_request_id  # 保存 ID，避免 reset 後變 None
+        self._cancelled_requests.add(request_id)
         # Note: QRunnable cannot be cancelled once started in QThreadPool
         # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
-        self.request_cancelled.emit(self._current_request_id)
+        self.request_cancelled.emit(request_id)  # emit 保存的 ID
 
     # ------------------------------------------------------------------ Worker callbacks
 
@@ -354,11 +361,22 @@ class ChatController(QtCore.QObject):
 
     @QtCore.Slot(str)
     def _handle_worker_finished(self, request_id: str):
-        """Handle worker finished signal (cleanup)."""
+        """
+        Handle worker finished signal (cleanup/fallback).
+
+        保底邏輯：如果 worker 完成了但還在 inflight（沒收到 result/error），
+        視為異常並強制重置。
+        """
         if request_id != self._current_request_id:
             logger.debug(f"Ignoring finished for stale request id={request_id}")
             return
-        # Worker is done, cleanup happens in result/error handlers
+
+        # 保底：如果還在 inflight，代表沒收到 result 或 error 信號
+        if self._inflight and request_id == self._current_request_id:
+            logger.warning(f"Worker finished but still inflight (no result/error received), forcing cleanup")
+            was_auto = self._request_is_auto
+            self._reset_worker_state()
+            self.request_failed.emit("Worker completed without result", was_auto)
 
     @QtCore.Slot(str)
     def _handle_worker_error(self, error_message: str):
