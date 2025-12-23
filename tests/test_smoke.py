@@ -178,32 +178,39 @@ class TestChatControllerSmoke:
         assert controller.model is not None
         assert controller.temperature > 0
 
-    def test_uses_concurrent_futures_not_qtconcurrent(self):
+    def test_uses_qrunnable_not_qtconcurrent(self):
         """
-        Test that ChatController uses concurrent.futures instead of QtConcurrent.
+        Test that ChatController uses QRunnable + QThreadPool (official PySide6 pattern).
 
-        QtConcurrent.run is not available in PySide6, so we use Python's
-        concurrent.futures.ThreadPoolExecutor instead.
+        QtConcurrent.run is not available in PySide6 because it's template-based.
+        The official pattern is to use QRunnable with signals for background tasks.
 
-        This test ensures the code uses the correct approach.
+        This test ensures the code follows the official PySide6 approach.
         """
         import inspect
-        from doro_app.core.chat.controller import ChatController
+        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
+
+        # Verify ChatWorker exists and is a QRunnable
+        from PySide6.QtCore import QRunnable, QObject
+        assert issubclass(ChatWorker, QRunnable), "ChatWorker should inherit from QRunnable"
+
+        # Verify ChatWorkerSignals exists and is a QObject (needed for signals)
+        assert issubclass(ChatWorkerSignals, QObject), "ChatWorkerSignals should inherit from QObject"
 
         # Get source code of start_request method
         source = inspect.getsource(ChatController.start_request)
 
-        # Verify it uses concurrent.futures approach (self._pool.submit)
-        assert "self._pool.submit" in source, \
-            "start_request should use self._pool.submit (ThreadPoolExecutor)"
+        # Verify it uses QThreadPool (official Qt pattern)
+        assert "self._pool.start" in source, \
+            "start_request should use self._pool.start (QThreadPool)"
 
         # Verify it does NOT use QtConcurrent.run (not available in PySide6)
         assert "QtConcurrent.run" not in source, \
             "start_request should NOT use QtConcurrent.run (not available in PySide6)"
 
-        # Verify it uses QTimer for polling results
-        assert "QTimer" in source, \
-            "start_request should use QTimer to poll future results"
+        # Verify it uses ChatWorker
+        assert "ChatWorker" in source, \
+            "start_request should create ChatWorker instances"
 
 
 class TestMovementManagerSmoke:

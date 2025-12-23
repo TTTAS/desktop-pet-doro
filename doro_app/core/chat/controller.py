@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -36,6 +35,50 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 TextProvider = Callable[[], str]
+
+
+class ChatWorkerSignals(QtCore.QObject):
+    """
+    Signals for ChatWorker (QRunnable).
+
+    QRunnable cannot emit signals directly (not a QObject),
+    so we use this helper QObject to hold the signals.
+    """
+    finished = QtCore.Signal(str)  # request_id
+    result = QtCore.Signal(str, tuple)  # request_id, (assistant_text, error_message)
+    error = QtCore.Signal(str, str)  # request_id, error_message
+
+
+class ChatWorker(QtCore.QRunnable):
+    """
+    QRunnable worker for executing chat requests in QThreadPool.
+
+    This is the official PySide6 pattern for background tasks.
+    Uses signals (via ChatWorkerSignals) to return results.
+    """
+
+    def __init__(self, request_id: str, endpoint: str, payload: dict, timeout: int):
+        super().__init__()
+        self.request_id = request_id
+        self.endpoint = endpoint
+        self.payload = payload
+        self.timeout = timeout
+        self.signals = ChatWorkerSignals()
+        self.setAutoDelete(True)  # QThreadPool will delete this after run()
+
+    @QtCore.Slot()
+    def run(self):
+        """Execute the chat request and emit result signal."""
+        from .chat import perform_chat_request
+
+        try:
+            result = perform_chat_request(self.endpoint, self.payload, self.timeout)
+            self.signals.result.emit(self.request_id, result)
+        except Exception as e:
+            logger.error(f"Worker exception: {e}", exc_info=True)
+            self.signals.error.emit(self.request_id, str(e))
+        finally:
+            self.signals.finished.emit(self.request_id)
 
 
 class ChatController(QtCore.QObject):
@@ -82,9 +125,8 @@ class ChatController(QtCore.QObject):
 
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
-        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ChatRequest")
-        self._future: Future | None = None
-        self._result_timer: QtCore.QTimer | None = None
+        self._pool = QtCore.QThreadPool.globalInstance()
+        self._current_worker: ChatWorker | None = None
         self._current_request_id: str | None = None
         self._cancelled_requests: set[str] = set()
         self._inflight = False
@@ -185,22 +227,16 @@ class ChatController(QtCore.QObject):
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
-        # Use Python concurrent.futures instead of QtConcurrent (not available in PySide6)
-        future = self._pool.submit(
-            perform_chat_request,
-            endpoint,
-            payload,
-            int(self._timeout_seconds),
-        )
+        # Use QRunnable + QThreadPool (official PySide6 pattern)
+        worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds))
 
-        # Poll the future with a QTimer since we can't use QFutureWatcher
-        timer = QtCore.QTimer(self)
-        timer.setInterval(100)  # Check every 100ms
-        timer.timeout.connect(lambda: self._check_future_result(self._current_request_id))
-        timer.start()
+        # Connect worker signals to handlers
+        worker.signals.result.connect(self._handle_worker_result)
+        worker.signals.error.connect(self._handle_worker_exception)
+        worker.signals.finished.connect(self._handle_worker_finished)
 
-        self._future = future
-        self._result_timer = timer
+        self._current_worker = worker
+        self._pool.start(worker)
         self._inflight = True
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
@@ -215,47 +251,23 @@ class ChatController(QtCore.QObject):
             return
         logger.info(f"Cancelling chat request id={self._current_request_id}")
         self._cancelled_requests.add(self._current_request_id)
-        if self._future and not self._future.done():
-            self._future.cancel()
-        if self._result_timer:
-            self._result_timer.stop()
+        # Note: QRunnable cannot be cancelled once started in QThreadPool
+        # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
         self.request_cancelled.emit(self._current_request_id)
 
     # ------------------------------------------------------------------ Worker callbacks
 
-    @QtCore.Slot()
-    def _check_future_result(self, request_id: str | None):
-        """Poll the future to check if it's done."""
-        if not request_id or request_id != self._current_request_id:
-            logger.debug(f"Ignoring check for stale request id={request_id}")
-            if self._result_timer:
-                self._result_timer.stop()
+    @QtCore.Slot(str, tuple)
+    def _handle_worker_result(self, request_id: str, result: tuple):
+        """Handle successful worker result."""
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring result for stale request id={request_id}")
             return
 
         if request_id in self._cancelled_requests:
             logger.info(f"Request id={request_id} was cancelled; ignoring result")
             self._cancelled_requests.discard(request_id)
-            if self._result_timer:
-                self._result_timer.stop()
-            self._reset_worker_state()
-            return
-
-        if not self._future or not self._future.done():
-            # Still running, keep polling
-            return
-
-        # Future is done, stop timer and process result
-        if self._result_timer:
-            self._result_timer.stop()
-            self._result_timer = None
-
-        try:
-            result = self._future.result()
-        except Exception as exc:
-            # concurrent.futures can raise exceptions from the worker thread
-            logger.error(f"Future raised exception: {exc}", exc_info=True)
-            self._handle_worker_error(str(exc))
             return
 
         assistant_text, error_message = result
@@ -326,6 +338,28 @@ class ChatController(QtCore.QObject):
         logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
         self.request_succeeded.emit(assistant_text, was_auto)
 
+    @QtCore.Slot(str, str)
+    def _handle_worker_exception(self, request_id: str, error_message: str):
+        """Handle worker exception."""
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring exception for stale request id={request_id}")
+            return
+
+        if request_id in self._cancelled_requests:
+            logger.info(f"Request id={request_id} was cancelled; ignoring exception")
+            self._cancelled_requests.discard(request_id)
+            return
+
+        self._handle_worker_error(error_message)
+
+    @QtCore.Slot(str)
+    def _handle_worker_finished(self, request_id: str):
+        """Handle worker finished signal (cleanup)."""
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring finished for stale request id={request_id}")
+            return
+        # Worker is done, cleanup happens in result/error handlers
+
     @QtCore.Slot(str)
     def _handle_worker_error(self, error_message: str):
         logger.error(f"Worker error: {error_message}")
@@ -344,13 +378,9 @@ class ChatController(QtCore.QObject):
         self._last_user_message = ""
         self._request_is_auto = False
         self._current_request_id = None
-        self._future = None
+        self._current_worker = None
         self._retry_count = 0
         self._original_user_message = ""
-        if self._result_timer:
-            self._result_timer.stop()
-            self._result_timer.deleteLater()
-            self._result_timer = None
 
     # ------------------------------------------------------------------ Payload helpers
 
