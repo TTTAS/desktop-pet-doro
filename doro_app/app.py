@@ -197,6 +197,11 @@ class DoroApp:
             self._on_domain_transition_completed
         )
 
+        # TransitionPlayer → Window (UI-specific signal for playing GIF)
+        self._transition_player.transition_movie_loaded.connect(
+            self.window._on_transition_movie_loaded
+        )
+
         # ═════════════════════════════════════════════════════════════
         # BubbleController → Window connections (UI Layer internal)
         # ═════════════════════════════════════════════════════════════
