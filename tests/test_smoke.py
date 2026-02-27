@@ -311,6 +311,28 @@ class TestContextMenuSmoke:
         assert "_chat_controller.has_history" not in source, \
             "Menu should NOT use window._chat_controller (removed in refactoring)"
 
+    def test_context_menu_exec_compatibility(self):
+        """
+        Test that contextMenuEvent handles exec/exec_() compatibility.
+
+        PySide6 versions differ in QMenu method names:
+        - Newer: menu.exec(pos)
+        - Older: menu.exec_(pos)
+
+        This test ensures the window handles both cases.
+        """
+        import inspect
+        from doro_app.ui.window import DoroWindow
+
+        # Get the source code of contextMenuEvent
+        source = inspect.getsource(DoroWindow.contextMenuEvent)
+
+        # Verify it handles exec/exec_ compatibility
+        assert ("hasattr(menu, 'exec')" in source or "hasattr(menu, \"exec\")" in source), \
+            "contextMenuEvent should check for exec availability"
+        assert ("exec_" in source), \
+            "contextMenuEvent should fall back to exec_() for compatibility"
+
 
 class TestMouseEventHandlingSmoke:
     """Smoke tests for mouse event handling - ensure left/right click work."""
