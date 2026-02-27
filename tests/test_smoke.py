@@ -116,9 +116,11 @@ class TestChatControllerSmoke:
             MoveStateRepository,
             GifRepository,
         )
+        from doro_app.utils.config_manager import ConfigManager
 
-        # Create minimal config
-        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+        # Create ConfigManager
+        config_path = tmp_path / "config.toml"
+        config_manager = ConfigManager(config_path)
 
         # Create a temporary prompt file
         prompt_path = tmp_path / "system_prompt.txt"
@@ -132,11 +134,11 @@ class TestChatControllerSmoke:
 
         # This should not crash
         controller = ChatController(
-            config=config,
             prompt_path=prompt_path,
             state_service=state_service,
             state_text_provider=lambda: "States: idle, happy",
             movement_hint_provider=lambda: "Movement: none",
+            config_manager=config_manager,
         )
         assert controller is not None
 
@@ -149,8 +151,12 @@ class TestChatControllerSmoke:
             MoveStateRepository,
             GifRepository,
         )
+        from doro_app.utils.config_manager import ConfigManager
 
-        config = QtCore.QSettings(str(tmp_path / "test.ini"), QtCore.QSettings.Format.IniFormat)
+        # Create ConfigManager
+        config_path = tmp_path / "config.toml"
+        config_manager = ConfigManager(config_path)
+
         prompt_path = tmp_path / "system_prompt.txt"
         prompt_path.write_text("Test prompt")
 
@@ -160,17 +166,51 @@ class TestChatControllerSmoke:
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
         controller = ChatController(
-            config=config,
             prompt_path=prompt_path,
             state_service=state_service,
             state_text_provider=lambda: "",
             movement_hint_provider=lambda: "",
+            config_manager=config_manager,
         )
 
         # Basic properties should exist and have defaults
         assert controller.server_url is not None
         assert controller.model is not None
         assert controller.temperature > 0
+
+    def test_uses_qrunnable_not_qtconcurrent(self):
+        """
+        Test that ChatController uses QRunnable + QThreadPool (official PySide6 pattern).
+
+        QtConcurrent.run is not available in PySide6 because it's template-based.
+        The official pattern is to use QRunnable with signals for background tasks.
+
+        This test ensures the code follows the official PySide6 approach.
+        """
+        import inspect
+        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
+
+        # Verify ChatWorker exists and is a QRunnable
+        from PySide6.QtCore import QRunnable, QObject
+        assert issubclass(ChatWorker, QRunnable), "ChatWorker should inherit from QRunnable"
+
+        # Verify ChatWorkerSignals exists and is a QObject (needed for signals)
+        assert issubclass(ChatWorkerSignals, QObject), "ChatWorkerSignals should inherit from QObject"
+
+        # Get source code of start_request method
+        source = inspect.getsource(ChatController.start_request)
+
+        # Verify it uses QThreadPool (official Qt pattern)
+        assert "self._pool.start" in source, \
+            "start_request should use self._pool.start (QThreadPool)"
+
+        # Verify it does NOT use QtConcurrent.run (not available in PySide6)
+        assert "QtConcurrent.run" not in source, \
+            "start_request should NOT use QtConcurrent.run (not available in PySide6)"
+
+        # Verify it uses ChatWorker
+        assert "ChatWorker" in source, \
+            "start_request should create ChatWorker instances"
 
 
 class TestMovementManagerSmoke:
@@ -231,6 +271,122 @@ class TestMovementManagerSmoke:
         instructions = manager.instruction_text()
         assert instructions is not None
         assert len(instructions) > 0
+
+
+class TestContextMenuSmoke:
+    """Smoke tests for context menu - ensure right-click menu works."""
+
+    def test_themed_menu_module_imports(self):
+        """Themed menu module can be imported without errors."""
+        from doro_app.ui.theme import themed_menu
+
+        # Check that key functions exist
+        assert hasattr(themed_menu, 'create_doro_menu')
+        assert hasattr(themed_menu, 'build_context_menu_content')
+        assert hasattr(themed_menu, 'DoroMenu')
+
+    def test_build_context_menu_accesses_correct_attributes(self):
+        """
+        Test that build_context_menu_content accesses the correct CoreManager properties.
+
+        This test ensures that after the refactoring (removing _chat_orchestrator and
+        _chat_controller from Window), the menu building code uses the correct API.
+        """
+        from unittest.mock import Mock
+        import inspect
+        from doro_app.ui.theme.themed_menu import build_context_menu_content
+
+        # Get the source code of build_context_menu_content
+        source = inspect.getsource(build_context_menu_content)
+
+        # Verify it uses CoreManager's public API (not removed attributes)
+        assert "_core_manager.is_chat_inflight" in source, \
+            "Menu should use window._core_manager.is_chat_inflight"
+        assert "_core_manager.has_chat_history" in source, \
+            "Menu should use window._core_manager.has_chat_history"
+
+        # Verify it does NOT use the removed attributes
+        assert "_chat_orchestrator.is_inflight" not in source, \
+            "Menu should NOT use window._chat_orchestrator (removed in refactoring)"
+        assert "_chat_controller.has_history" not in source, \
+            "Menu should NOT use window._chat_controller (removed in refactoring)"
+
+    def test_context_menu_exec_compatibility(self):
+        """
+        Test that contextMenuEvent handles exec/exec_() compatibility.
+
+        PySide6 versions differ in QMenu method names:
+        - Newer: menu.exec(pos)
+        - Older: menu.exec_(pos)
+
+        This test ensures the window handles both cases.
+        """
+        import inspect
+        from doro_app.ui.window import DoroWindow
+
+        # Get the source code of contextMenuEvent
+        source = inspect.getsource(DoroWindow.contextMenuEvent)
+
+        # Verify it handles exec/exec_ compatibility
+        assert ("hasattr(menu, 'exec')" in source or "hasattr(menu, \"exec\")" in source), \
+            "contextMenuEvent should check for exec availability"
+        assert ("exec_" in source), \
+            "contextMenuEvent should fall back to exec_() for compatibility"
+
+
+class TestMouseEventHandlingSmoke:
+    """Smoke tests for mouse event handling - ensure left/right click work."""
+
+    def test_mouse_event_handler_can_be_created(self):
+        """MouseEventHandler can be initialized."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        handler = MouseEventHandler(bubble_controller=mock_bubble, click_threshold=5)
+        assert handler is not None
+
+    def test_mouse_press_event_handles_left_button(self):
+        """MouseEventHandler handles left button press."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from PySide6 import QtCore, QtGui
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        mock_bubble.begin_transform.return_value = False
+
+        handler = MouseEventHandler(bubble_controller=mock_bubble)
+
+        # Create mock mouse event
+        mock_event = Mock(spec=QtGui.QMouseEvent)
+        mock_event.button.return_value = QtCore.Qt.MouseButton.LeftButton
+        mock_event.position.return_value = QtCore.QPointF(100, 100)
+        mock_event.globalPosition.return_value = QtCore.QPointF(500, 500)
+
+        mock_geometry = QtCore.QRect(400, 400, 200, 200)
+
+        # Should handle the event
+        result = handler.handle_press(mock_event, mock_geometry)
+        assert result is True
+
+    def test_mouse_press_event_ignores_right_button(self):
+        """MouseEventHandler ignores right button (for context menu)."""
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
+        from PySide6 import QtCore, QtGui
+        from unittest.mock import Mock
+
+        mock_bubble = Mock()
+        handler = MouseEventHandler(bubble_controller=mock_bubble)
+
+        # Create mock right-click event
+        mock_event = Mock(spec=QtGui.QMouseEvent)
+        mock_event.button.return_value = QtCore.Qt.MouseButton.RightButton
+
+        mock_geometry = QtCore.QRect(400, 400, 200, 200)
+
+        # Should NOT handle the event (returns False to allow context menu)
+        result = handler.handle_press(mock_event, mock_geometry)
+        assert result is False
 
 
 class TestConstantsSmoke:

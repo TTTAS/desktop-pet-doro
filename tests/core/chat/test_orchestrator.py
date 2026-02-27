@@ -1,0 +1,318 @@
+"""Tests for ChatOrchestrator - chat coordination layer."""
+
+from unittest.mock import Mock, MagicMock, patch, call
+import pytest
+
+from doro_app.core.chat.orchestrator import ChatOrchestrator
+
+
+@pytest.fixture
+def mock_controller():
+    """Create mock ChatController."""
+    controller = Mock()
+    # Mock signals
+    controller.request_started = Mock()
+    controller.request_started.connect = Mock()
+    controller.request_succeeded = Mock()
+    controller.request_succeeded.connect = Mock()
+    controller.request_failed = Mock()
+    controller.request_failed.connect = Mock()
+
+    # Mock properties and methods
+    controller.is_inflight = False
+    controller.system_prompt = "You are Doro."
+    controller.server_url = "http://localhost:1234"
+    controller.model = "mistral"
+    controller.endpoint_path = "/v1/chat/completions"
+    controller.temperature = 0.7
+    controller.timeout_seconds = 30
+
+    # Mock methods
+    controller.start_request = Mock(return_value=(True, None))
+    controller.update_system_prompt = Mock()
+    controller.set_server_url = Mock()
+    controller.set_model = Mock()
+    controller.set_endpoint_path = Mock()
+    controller.set_temperature = Mock()
+    controller.set_timeout_seconds = Mock()
+    controller.clear_history = Mock()
+
+    return controller
+
+
+@pytest.fixture
+def mock_movement_manager():
+    """Create mock MovementManager."""
+    manager = Mock()
+    manager.queue_movement = Mock()
+    return manager
+
+
+@pytest.fixture
+def mock_state_service():
+    """Create mock StateService."""
+    service = Mock()
+    service.has_state = Mock(return_value=True)
+    return service
+
+
+@pytest.fixture
+def orchestrator(mock_controller, mock_movement_manager, mock_state_service):
+    """Create ChatOrchestrator with mocked dependencies."""
+    return ChatOrchestrator(
+        controller=mock_controller,
+        movement=mock_movement_manager,
+        state_service=mock_state_service,
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+# Initialization Tests
+# ═══════════════════════════════════════════════════════════
+
+
+class TestChatOrchestratorInitialization:
+    """Test ChatOrchestrator initialization."""
+
+    def test_initialization_succeeds(self, orchestrator):
+        """ChatOrchestrator can be initialized."""
+        assert orchestrator is not None
+
+    def test_connects_to_controller_signals(self, mock_controller, orchestrator):
+        """ChatOrchestrator connects to controller signals."""
+        mock_controller.request_started.connect.assert_called_once()
+        mock_controller.request_succeeded.connect.assert_called_once()
+        mock_controller.request_failed.connect.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════
+# Message Sending Tests
+# ═══════════════════════════════════════════════════════════
+
+
+class TestSendMessage:
+    """Test message sending functionality."""
+
+    def test_send_message_starts_request(self, orchestrator, mock_controller):
+        """send_message delegates to controller.start_request."""
+        result = orchestrator.send_message("Hello")
+
+        assert result is True
+        mock_controller.start_request.assert_called_once_with("Hello", is_auto=False)
+
+    def test_send_message_with_auto_flag(self, orchestrator, mock_controller):
+        """send_message passes is_auto flag to controller."""
+        result = orchestrator.send_message("Auto message", is_auto=True)
+
+        assert result is True
+        mock_controller.start_request.assert_called_once_with("Auto message", is_auto=True)
+
+    def test_send_message_rejects_when_inflight(self, orchestrator, mock_controller):
+        """send_message rejects when previous request is inflight."""
+        mock_controller.is_inflight = True
+
+        # Connect listener to notification signal
+        mock_listener = Mock()
+        orchestrator.notification_requested.connect(mock_listener)
+
+        result = orchestrator.send_message("Hello")
+
+        assert result is False
+        mock_controller.start_request.assert_not_called()
+        # Should emit notification (not silent)
+        mock_listener.assert_called_once()
+        call_args = mock_listener.call_args[0]
+        assert call_args[0] == "info"  # severity
+        assert "already replying" in call_args[2].lower()  # message
+
+    def test_send_message_silent_no_notification_when_inflight(self, orchestrator, mock_controller):
+        """send_message with silent=True doesn't emit notification when inflight."""
+        mock_controller.is_inflight = True
+
+        mock_listener = Mock()
+        orchestrator.notification_requested.connect(mock_listener)
+
+        result = orchestrator.send_message("Hello", silent=True)
+
+        assert result is False
+        mock_listener.assert_not_called()  # No notification when silent
+
+    def test_send_message_handles_start_failure(self, orchestrator, mock_controller):
+        """send_message handles controller start failure."""
+        mock_controller.start_request.return_value = (False, "Network error")
+
+        mock_listener = Mock()
+        orchestrator.notification_requested.connect(mock_listener)
+
+        result = orchestrator.send_message("Hello")
+
+        assert result is False
+        # Should emit notification with error
+        mock_listener.assert_called_once()
+        call_args = mock_listener.call_args[0]
+        assert call_args[0] == "warning"  # severity
+        assert "Network error" in call_args[2]  # message
+
+    def test_send_message_silent_no_notification_on_failure(self, orchestrator, mock_controller):
+        """send_message with silent=True doesn't emit notification on failure."""
+        mock_controller.start_request.return_value = (False, "Error")
+
+        mock_listener = Mock()
+        orchestrator.notification_requested.connect(mock_listener)
+
+        result = orchestrator.send_message("Hello", silent=True)
+
+        assert result is False
+        mock_listener.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════
+# Configuration API Tests
+# ═══════════════════════════════════════════════════════════
+
+
+class TestConfigurationAPI:
+    """Test configuration getters and setters."""
+
+    def test_get_system_prompt(self, orchestrator, mock_controller):
+        """get_system_prompt delegates to controller."""
+        result = orchestrator.get_system_prompt()
+        assert result == "You are Doro."
+
+    def test_set_system_prompt(self, orchestrator, mock_controller):
+        """set_system_prompt delegates to controller."""
+        orchestrator.set_system_prompt("New prompt")
+        mock_controller.update_system_prompt.assert_called_once_with("New prompt")
+
+    def test_get_server_url(self, orchestrator, mock_controller):
+        """get_server_url delegates to controller."""
+        result = orchestrator.get_server_url()
+        assert result == "http://localhost:1234"
+
+    def test_set_server_url(self, orchestrator, mock_controller):
+        """set_server_url delegates to controller."""
+        orchestrator.set_server_url("http://new-server:5000")
+        mock_controller.set_server_url.assert_called_once_with("http://new-server:5000")
+
+    def test_get_model_name(self, orchestrator, mock_controller):
+        """get_model_name delegates to controller."""
+        result = orchestrator.get_model_name()
+        assert result == "mistral"
+
+    def test_set_model_name(self, orchestrator, mock_controller):
+        """set_model_name delegates to controller."""
+        orchestrator.set_model_name("llama")
+        mock_controller.set_model.assert_called_once_with("llama")
+
+    def test_get_endpoint(self, orchestrator, mock_controller):
+        """get_endpoint delegates to controller."""
+        result = orchestrator.get_endpoint()
+        assert result == "/v1/chat/completions"
+
+    def test_set_endpoint(self, orchestrator, mock_controller):
+        """set_endpoint delegates to controller."""
+        orchestrator.set_endpoint("/api/chat")
+        mock_controller.set_endpoint_path.assert_called_once_with("/api/chat")
+
+    def test_get_temperature(self, orchestrator, mock_controller):
+        """get_temperature delegates to controller."""
+        result = orchestrator.get_temperature()
+        assert result == 0.7
+
+    def test_set_temperature(self, orchestrator, mock_controller):
+        """set_temperature delegates to controller."""
+        orchestrator.set_temperature(0.9)
+        mock_controller.set_temperature.assert_called_once_with(0.9)
+
+    def test_get_timeout(self, orchestrator, mock_controller):
+        """get_timeout delegates to controller."""
+        result = orchestrator.get_timeout()
+        assert result == 30
+
+    def test_set_timeout(self, orchestrator, mock_controller):
+        """set_timeout delegates to controller."""
+        orchestrator.set_timeout(60)
+        mock_controller.set_timeout_seconds.assert_called_once_with(60)
+
+    def test_clear_history(self, orchestrator, mock_controller):
+        """clear_history delegates to controller."""
+        orchestrator.clear_history()
+        mock_controller.clear_history.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════
+# Property Tests
+# ═══════════════════════════════════════════════════════════
+
+
+class TestProperties:
+    """Test orchestrator properties."""
+
+    def test_is_inflight_delegates_to_controller(self, orchestrator, mock_controller):
+        """is_inflight property delegates to controller."""
+        mock_controller.is_inflight = False
+        assert orchestrator.is_inflight is False
+
+        mock_controller.is_inflight = True
+        assert orchestrator.is_inflight is True
+
+
+# ═══════════════════════════════════════════════════════════
+# Event Handler Tests
+# ═══════════════════════════════════════════════════════════
+
+
+class TestEventHandlers:
+    """Test internal event handlers."""
+
+    def test_on_request_started_emits_busy_cursor(self, orchestrator):
+        """_on_request_started emits busy cursor signal."""
+        mock_listener = Mock()
+        orchestrator.busy_cursor_requested.connect(mock_listener)
+
+        # Trigger handler directly
+        orchestrator._on_request_started("Hello", False)
+
+        mock_listener.assert_called_once_with(True)
+
+    def test_on_request_succeeded_emits_bubble_text(self, orchestrator):
+        """_on_request_succeeded emits bubble text signal."""
+        mock_listener = Mock()
+        orchestrator.bubble_text_requested.connect(mock_listener)
+
+        # Trigger handler with simple response
+        orchestrator._on_request_succeeded("Hello there!", False)
+
+        # Should emit bubble text
+        mock_listener.assert_called()
+        call_args = mock_listener.call_args[0]
+        assert "Hello there!" in call_args[0]
+
+    def test_on_request_failed_emits_bubble_text(self, orchestrator):
+        """_on_request_failed emits bubble text with fallback message."""
+        mock_listener = Mock()
+        orchestrator.bubble_text_requested.connect(mock_listener)
+
+        # Trigger handler
+        orchestrator._on_request_failed("Connection timeout", False)
+
+        # Should emit bubble text (not notification)
+        mock_listener.assert_called_once()
+        call_args = mock_listener.call_args[0]
+        # First arg is the text (should be fallback message, not the error)
+        assert isinstance(call_args[0], str)
+        assert len(call_args[0]) > 0  # Has some text
+        # Second arg is kwargs dict
+        assert isinstance(call_args[1], dict)
+        assert call_args[1].get("auto_hide") is True
+
+    def test_on_request_failed_auto_no_bubble(self, orchestrator):
+        """_on_request_failed doesn't emit bubble text for auto requests."""
+        mock_listener = Mock()
+        orchestrator.bubble_text_requested.connect(mock_listener)
+
+        # Trigger handler with was_auto=True
+        orchestrator._on_request_failed("Error", was_auto=True)
+
+        # Should not emit bubble text for auto requests
+        mock_listener.assert_not_called()

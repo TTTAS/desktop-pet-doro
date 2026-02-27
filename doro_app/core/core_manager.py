@@ -286,3 +286,8 @@ class CoreManager(QtCore.QObject):
     def is_chat_inflight(self) -> bool:
         """Check if chat request is in progress."""
         return self._chat_orchestrator.is_inflight
+
+    @property
+    def has_chat_history(self) -> bool:
+        """Check if chat history exists."""
+        return self._chat_controller.has_history

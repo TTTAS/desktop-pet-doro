@@ -40,11 +40,14 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--strict-markers",
+    "--cov=doro_app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
 ]
-# Coverage temporarily disabled - re-enable after fixing pytest-cov plugin loading
-# "--cov=doro_app",
-# "--cov-report=term-missing",
-# "--cov-report=html",
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
 
 [tool.coverage.run]
 source = ["doro_app"]

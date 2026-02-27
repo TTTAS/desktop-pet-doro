@@ -62,13 +62,12 @@ class DoroApp:
 
         # Chat components
         self._chat_controller = ChatController(
-            self._config,
             self._prompt_file_path,
             state_service=self._state_service,
             state_text_provider=None,  # Will be set after state_controller is created
             movement_hint_provider=None,  # Will be set after movement is created
-            parent=None,  # No parent needed
             config_manager=self._config_manager,
+            parent=None,  # No parent needed
         )
 
         # NOTE: MovementManager still needs window reference via Protocol
@@ -196,6 +195,11 @@ class DoroApp:
         # Transition domain events
         self.core_manager.transition_completed.connect(
             self._on_domain_transition_completed
+        )
+
+        # TransitionPlayer → Window (UI-specific signal for playing GIF)
+        self._transition_player.transition_movie_loaded.connect(
+            self.window._on_transition_movie_loaded
         )
 
         # ═════════════════════════════════════════════════════════════

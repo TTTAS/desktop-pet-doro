@@ -6,7 +6,7 @@ import copy
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from PySide6 import QtConcurrent, QtCore
+from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
 from .validator import ResponseValidator
@@ -37,6 +37,50 @@ logger = get_logger(__name__)
 TextProvider = Callable[[], str]
 
 
+class ChatWorkerSignals(QtCore.QObject):
+    """
+    Signals for ChatWorker (QRunnable).
+
+    QRunnable cannot emit signals directly (not a QObject),
+    so we use this helper QObject to hold the signals.
+    """
+    finished = QtCore.Signal(str)  # request_id
+    result = QtCore.Signal(str, tuple)  # request_id, (assistant_text, error_message)
+    error = QtCore.Signal(str, str)  # request_id, error_message
+
+
+class ChatWorker(QtCore.QRunnable):
+    """
+    QRunnable worker for executing chat requests in QThreadPool.
+
+    This is the official PySide6 pattern for background tasks.
+    Uses signals (via ChatWorkerSignals) to return results.
+    """
+
+    def __init__(self, request_id: str, endpoint: str, payload: dict, timeout: int):
+        super().__init__()
+        self.request_id = request_id
+        self.endpoint = endpoint
+        self.payload = payload
+        self.timeout = timeout
+        self.signals = ChatWorkerSignals()
+        self.setAutoDelete(True)  # QThreadPool will delete this after run()
+
+    @QtCore.Slot()
+    def run(self):
+        """Execute the chat request and emit result signal."""
+        from .chat import perform_chat_request
+
+        try:
+            result = perform_chat_request(self.endpoint, self.payload, self.timeout)
+            self.signals.result.emit(self.request_id, result)
+        except Exception as e:
+            logger.error(f"Worker exception: {e}", exc_info=True)
+            self.signals.error.emit(self.request_id, str(e))
+        finally:
+            self.signals.finished.emit(self.request_id)
+
+
 class ChatController(QtCore.QObject):
     """Manage chat configuration, payload building, and worker lifecycle."""
 
@@ -47,20 +91,18 @@ class ChatController(QtCore.QObject):
 
     def __init__(
         self,
-        config: QtCore.QSettings,
         prompt_path: Path,
         *,
         state_service: StateService,
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
+        config_manager: ConfigManager,
         parent: QtCore.QObject | None = None,
-        config_manager: ConfigManager | None = None,
     ):
         super().__init__(parent)
         logger.debug("Initializing ChatController")
 
-        self._config = config  # Legacy QSettings
-        self._config_manager = config_manager  # New: Type-safe config
+        self._config_manager = config_manager
         self._prompt_path = prompt_path
         self._state_service = state_service
         self._state_text_provider = state_text_provider
@@ -69,49 +111,14 @@ class ChatController(QtCore.QObject):
         # Response validation
         self._validator = ResponseValidator(state_service)
 
-        # Load configuration (use ConfigManager if available)
-        if config_manager:
-            # Type-safe config access with automatic validation
-            self._max_retries = config_manager.chat.max_retries
-            self._history_turns = config_manager.chat.history_turns
-            self._server_url = config_manager.chat.server_url
-            self._model = config_manager.chat.model
-            self._endpoint_path = config_manager.chat.endpoint_path
-            self._timeout_seconds = config_manager.chat.timeout_seconds
-            self._temperature = config_manager.chat.temperature
-        else:
-            # Fallback to legacy QSettings
-            self._max_retries = _safe_int(
-                config.value("chat/max_retries", DEFAULT_CHAT_MAX_RETRIES),
-                DEFAULT_CHAT_MAX_RETRIES
-            )
-            self._history_turns = _safe_int(
-                config.value("chat/history_turns", CHAT_DEFAULT_HISTORY_TURNS),
-                CHAT_DEFAULT_HISTORY_TURNS,
-            )
-            self._server_url = config.value("chat/server_url", DEFAULT_CHAT_SERVER_URL, str)
-            self._model = config.value("chat/model", DEFAULT_CHAT_MODEL, str)
-            self._endpoint_path = config.value("chat/endpoint_path", DEFAULT_CHAT_ENDPOINT_PATH, str)
-
-            timeout_value = config.value("chat/timeout_seconds", CHAT_DEFAULT_TIMEOUT_SECONDS)
-            try:
-                self._timeout_seconds = int(timeout_value)
-            except (TypeError, ValueError):
-                logger.warning(
-                    f"Invalid timeout value: {timeout_value}, "
-                    f"using default {CHAT_DEFAULT_TIMEOUT_SECONDS}"
-                )
-                self._timeout_seconds = CHAT_DEFAULT_TIMEOUT_SECONDS
-
-            temp_value = config.value("chat/temperature", CHAT_DEFAULT_TEMPERATURE)
-            try:
-                self._temperature = float(temp_value)
-            except (TypeError, ValueError):
-                logger.warning(
-                    f"Invalid temperature value: {temp_value}, "
-                    f"using default {CHAT_DEFAULT_TEMPERATURE}"
-                )
-                self._temperature = CHAT_DEFAULT_TEMPERATURE
+        # Load configuration from ConfigManager
+        self._max_retries = config_manager.chat.max_retries
+        self._history_turns = config_manager.chat.history_turns
+        self._server_url = config_manager.chat.server_url
+        self._model = config_manager.chat.model
+        self._endpoint_path = config_manager.chat.endpoint_path
+        self._timeout_seconds = config_manager.chat.timeout_seconds
+        self._temperature = config_manager.chat.temperature
 
         self._retry_count = 0
         self._original_user_message = ""
@@ -119,8 +126,7 @@ class ChatController(QtCore.QObject):
         self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
         self._pool = QtCore.QThreadPool.globalInstance()
-        self._future: QtCore.QFuture | None = None
-        self._watcher: QtCore.QFutureWatcher | None = None
+        self._current_worker: ChatWorker | None = None
         self._current_request_id: str | None = None
         self._cancelled_requests: set[str] = set()
         self._inflight = False
@@ -221,20 +227,22 @@ class ChatController(QtCore.QObject):
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
-        future = QtConcurrent.run(
-            self._pool,
-            perform_chat_request,
-            endpoint,
-            payload,
-            int(self._timeout_seconds),
-        )
-        watcher = QtCore.QFutureWatcher()
-        watcher.setFuture(future)
-        watcher.finished.connect(lambda: self._handle_future_finished(self._current_request_id))
-        watcher.canceled.connect(lambda: self._handle_future_cancelled(self._current_request_id))
+        # Use QRunnable + QThreadPool (official PySide6 pattern)
+        worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds))
 
-        self._future = future
-        self._watcher = watcher
+        # Connect worker signals to handlers (QueuedConnection for thread safety)
+        worker.signals.result.connect(
+            self._handle_worker_result, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.error.connect(
+            self._handle_worker_exception, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.finished.connect(
+            self._handle_worker_finished, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+
+        self._current_worker = worker
+        self._pool.start(worker)
         self._inflight = True
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
@@ -248,41 +256,25 @@ class ChatController(QtCore.QObject):
         if not self._inflight or not self._current_request_id:
             return
         logger.info(f"Cancelling chat request id={self._current_request_id}")
-        self._cancelled_requests.add(self._current_request_id)
-        if self._future and self._future.isRunning():
-            self._future.cancel()
+        request_id = self._current_request_id  # 保存 ID，避免 reset 後變 None
+        self._cancelled_requests.add(request_id)
+        # Note: QRunnable cannot be cancelled once started in QThreadPool
+        # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
-        self.request_cancelled.emit(self._current_request_id)
-
-    @QtCore.Slot()
-    def _handle_future_cancelled(self, request_id: str | None):
-        if request_id and request_id in self._cancelled_requests:
-            logger.info(f"Future cancelled for request id={request_id}")
-            self._cancelled_requests.discard(request_id)
-        self._reset_worker_state()
+        self.request_cancelled.emit(request_id)  # emit 保存的 ID
 
     # ------------------------------------------------------------------ Worker callbacks
 
-    @QtCore.Slot()
-    def _handle_future_finished(self, request_id: str | None):
-        if not request_id or request_id != self._current_request_id:
-            logger.debug(f"Ignoring finished signal for stale request id={request_id}")
+    @QtCore.Slot(str, tuple)
+    def _handle_worker_result(self, request_id: str, result: tuple):
+        """Handle successful worker result."""
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring result for stale request id={request_id}")
             return
 
         if request_id in self._cancelled_requests:
             logger.info(f"Request id={request_id} was cancelled; ignoring result")
             self._cancelled_requests.discard(request_id)
-            self._reset_worker_state()
-            return
-
-        try:
-            result = self._future.result() if self._future else (None, "No future result")
-        except Exception as exc:
-            # Qt Future can raise any exception from the worker thread.
-            # We catch broadly here because we cannot predict what the worker will throw.
-            # All exceptions are logged with full traceback and handled gracefully.
-            logger.error(f"Future raised exception: {exc}", exc_info=True)
-            self._handle_worker_error(str(exc))
             return
 
         assistant_text, error_message = result
@@ -353,6 +345,39 @@ class ChatController(QtCore.QObject):
         logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
         self.request_succeeded.emit(assistant_text, was_auto)
 
+    @QtCore.Slot(str, str)
+    def _handle_worker_exception(self, request_id: str, error_message: str):
+        """Handle worker exception."""
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring exception for stale request id={request_id}")
+            return
+
+        if request_id in self._cancelled_requests:
+            logger.info(f"Request id={request_id} was cancelled; ignoring exception")
+            self._cancelled_requests.discard(request_id)
+            return
+
+        self._handle_worker_error(error_message)
+
+    @QtCore.Slot(str)
+    def _handle_worker_finished(self, request_id: str):
+        """
+        Handle worker finished signal (cleanup/fallback).
+
+        保底邏輯：如果 worker 完成了但還在 inflight（沒收到 result/error），
+        視為異常並強制重置。
+        """
+        if request_id != self._current_request_id:
+            logger.debug(f"Ignoring finished for stale request id={request_id}")
+            return
+
+        # 保底：如果還在 inflight，代表沒收到 result 或 error 信號
+        if self._inflight and request_id == self._current_request_id:
+            logger.warning(f"Worker finished but still inflight (no result/error received), forcing cleanup")
+            was_auto = self._request_is_auto
+            self._reset_worker_state()
+            self.request_failed.emit("Worker completed without result", was_auto)
+
     @QtCore.Slot(str)
     def _handle_worker_error(self, error_message: str):
         logger.error(f"Worker error: {error_message}")
@@ -371,12 +396,9 @@ class ChatController(QtCore.QObject):
         self._last_user_message = ""
         self._request_is_auto = False
         self._current_request_id = None
-        self._future = None
+        self._current_worker = None
         self._retry_count = 0
         self._original_user_message = ""
-        if self._watcher:
-            self._watcher.deleteLater()
-            self._watcher = None
 
     # ------------------------------------------------------------------ Payload helpers
 
@@ -460,25 +482,15 @@ class ChatController(QtCore.QObject):
             self._history = self._history[-max_entries:]
 
     def _persist_chat_settings(self):
-        if self._config_manager:
-            # Use ConfigManager for type-safe, validated config access
-            self._config_manager.update_chat(
-                server_url=self._server_url,
-                model=self._model,
-                endpoint_path=self._endpoint_path,
-                temperature=self._temperature,
-                timeout_seconds=self._timeout_seconds,
-            )
-            self._config_manager.save()
-        else:
-            # Fallback to legacy QSettings
-            self._config.setValue("chat/server_url", self._server_url)
-            self._config.setValue("chat/model", self._model)
-            self._config.setValue("chat/endpoint_path", self._endpoint_path)
-            self._config.setValue("chat/temperature", float(self._temperature))
-            self._config.setValue("chat/timeout_seconds", int(self._timeout_seconds))
-            self._config.remove("chat/system_prompt")
-            self._config.sync()
+        """Save chat configuration to ConfigManager."""
+        self._config_manager.update_chat(
+            server_url=self._server_url,
+            model=self._model,
+            endpoint_path=self._endpoint_path,
+            temperature=self._temperature,
+            timeout_seconds=self._timeout_seconds,
+        )
+        self._config_manager.save()
 
     def _schedule_persist(self):
         # Debounce config writes to avoid synchronous UI stalls

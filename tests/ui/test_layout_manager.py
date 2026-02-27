@@ -1,9 +1,37 @@
 """Tests for WindowLayoutManager - pure layout calculation logic."""
 
 import pytest
+from unittest.mock import Mock, patch
 from PySide6 import QtCore, QtGui
 
 from doro_app.ui.layout.layout_manager import WindowLayoutManager
+
+
+@pytest.fixture
+def mock_font_metrics():
+    """Mock QFontMetrics to avoid Qt GUI dependency in headless environments."""
+    mock_metrics = Mock(spec=QtGui.QFontMetrics)
+
+    # Mock lineSpacing() for empty text
+    mock_metrics.lineSpacing.return_value = 16
+
+    # Mock boundingRect() for text measurement
+    def mock_bounding_rect(*args, **kwargs):
+        mock_rect = Mock(spec=QtCore.QRect)
+        # Estimate height based on text content if provided
+        if len(args) >= 3:  # Has text argument
+            text = args[2]
+            # Rough estimate: ~16px per line
+            lines = max(1, len(text) // 30 + text.count('\n'))
+            mock_rect.height.return_value = lines * 16
+        else:
+            mock_rect.height.return_value = 16
+        return mock_rect
+
+    mock_metrics.boundingRect.side_effect = mock_bounding_rect
+
+    with patch('PySide6.QtGui.QFontMetrics', return_value=mock_metrics):
+        yield mock_metrics
 
 
 class TestGetAvailableScreenGeometry:
@@ -138,7 +166,7 @@ class TestClampPosition:
 class TestComputePanelSizeHint:
     """Test panel size calculation."""
 
-    def test_empty_text_returns_minimum_height(self):
+    def test_empty_text_returns_minimum_height(self, mock_font_metrics):
         """Test panel size with no text."""
         sprite_size = QtCore.QSize(200, 200)
         bubble_text = ""
@@ -153,7 +181,7 @@ class TestComputePanelSizeHint:
         assert height >= 80.0
         assert height < 150.0  # Not too tall for empty text
 
-    def test_short_text_increases_height(self):
+    def test_short_text_increases_height(self, mock_font_metrics):
         """Test panel size with short text."""
         sprite_size = QtCore.QSize(200, 200)
         short_text = "Hello"
@@ -163,7 +191,7 @@ class TestComputePanelSizeHint:
         assert width >= 160.0
         assert height >= 80.0
 
-    def test_long_text_increases_height_more(self):
+    def test_long_text_increases_height_more(self, mock_font_metrics):
         """Test that longer text creates taller panels."""
         sprite_size = QtCore.QSize(200, 200)
         short_text = "Hi"
@@ -175,7 +203,7 @@ class TestComputePanelSizeHint:
         # Long text should create taller panel
         assert long_height > short_height
 
-    def test_wider_sprite_creates_wider_panel(self):
+    def test_wider_sprite_creates_wider_panel(self, mock_font_metrics):
         """Test that sprite width affects panel width."""
         small_sprite = QtCore.QSize(100, 100)
         large_sprite = QtCore.QSize(400, 400)
@@ -187,7 +215,7 @@ class TestComputePanelSizeHint:
         # Larger sprite should create wider panel
         assert large_width > small_width
 
-    def test_whitespace_only_text_treated_as_empty(self):
+    def test_whitespace_only_text_treated_as_empty(self, mock_font_metrics):
         """Test that whitespace-only text is treated as empty."""
         sprite_size = QtCore.QSize(200, 200)
         whitespace = "   \n\t  "
@@ -201,7 +229,7 @@ class TestComputePanelSizeHint:
         assert width == empty_width
         assert height == empty_height
 
-    def test_minimum_constraints_enforced(self):
+    def test_minimum_constraints_enforced(self, mock_font_metrics):
         """Test that minimum width/height constraints are enforced."""
         tiny_sprite = QtCore.QSize(10, 10)
         text = ""
@@ -212,7 +240,7 @@ class TestComputePanelSizeHint:
         assert width >= 160.0
         assert height >= 80.0
 
-    def test_multiline_text_wrapped_correctly(self):
+    def test_multiline_text_wrapped_correctly(self, mock_font_metrics):
         """Test that multiline text is calculated correctly."""
         sprite_size = QtCore.QSize(200, 200)
         # Text with explicit newlines

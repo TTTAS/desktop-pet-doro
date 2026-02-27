@@ -457,7 +457,11 @@ class DoroWindow(QtWidgets.QWidget):
             parent=self, avatar_position="top-center", gif_movie=self._gif_movie
         )
         build_context_menu_content(self, menu)
-        menu.exec(e.globalPos())
+        # PySide6 compatibility: try exec() first, fall back to exec_()
+        if hasattr(menu, 'exec'):
+            menu.exec(e.globalPos())
+        else:
+            menu.exec_(e.globalPos())
 
     # --- Painting --------------------------------------------------------
     def paintEvent(self, _):
