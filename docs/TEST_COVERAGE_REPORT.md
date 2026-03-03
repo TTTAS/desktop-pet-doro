@@ -1,23 +1,23 @@
 # 測試覆蓋率報告
 
-> **生成日期：** 2024-12-11
-> **總體覆蓋率：** 30% (1,390 / 4,577 行)
-> **測試狀態：** 294 passed, 2 failed
+> **生成日期：** 2026-03-03
+> **總體覆蓋率：** 43% (2,078 / 4,880 行)
+> **測試狀態：** 397 passed, 0 failed
 
 ---
 
 ## 📊 總覽
 
 ```
-總代碼行數：4,577 行
-已覆蓋行數：1,390 行
-未覆蓋行數：3,187 行
-覆蓋率：30%
+總代碼行數：4,880 行
+已覆蓋行數：2,078 行
+未覆蓋行數：2,802 行
+覆蓋率：43%
 ```
 
-### 評級：🔴 需要改進
+### 評級：🟡 有改善，但仍需繼續提升
 
-對於即將進行重構的專案來說，**30% 的覆蓋率非常危險**。
+相比上次報告（30%），覆蓋率已從 30% 提升至 43%，所有測試均通過。
 
 ---
 
@@ -44,18 +44,23 @@
 
 ### 業務邏輯層：混合 🟡🔴
 
-#### 🔴 未覆蓋（關鍵問題）
+#### 🔴 仍需改進
 
 | 組件 | 行數 | 覆蓋 | 優先級 |
 |------|------|------|--------|
-| **CoreManager** | 101 | **0%** | 🔴 高 |
-| **ChatController** | 293 | **0%** | 🔴 高 |
-| **ChatOrchestrator** | 155 | **0%** | 🔴 高 |
 | **TransitionPlayer** | 98 | **0%** | 🔴 高 |
-| chat.py | 117 | 0% | 🟡 中 |
+| chat.py | 117 | 12% | 🟡 中 |
 | MovementManager | 248 | 19% | 🟡 中 |
 
-**問題：** 核心業務邏輯未測試，重構風險極高！
+#### 🟡 已有覆蓋但仍需提升（2026-03-03 更新）
+
+| 組件 | 行數 | 覆蓋 | 優先級 |
+|------|------|------|--------|
+| **ChatController** | 290 | **59%** | 🟡 中 |
+| **ChatOrchestrator** | 155 | **73%** | 🟡 中 |
+| **CoreManager** | 104 | **99%** | 🟢 良好 |
+
+**進展：** CoreManager、ChatController、ChatOrchestrator 已從 0% 大幅提升。
 
 #### 🟢 良好覆蓋
 
@@ -290,13 +295,16 @@ UI 層：20%+ (僅邏輯部分)
 
 ## 🚨 重構風險評估
 
-### 當前風險等級：🔴 高
+### 當前風險等級：🟡 中（2026-03-03 更新）
 
-**原因：**
-1. CoreManager (0%) — 重構會破壞整個架構
-2. ChatController/Orchestrator (0%) — 聊天功能無保護
-3. TransitionPlayer (0%) — 狀態轉換可能失效
-4. MovementManager (19%) — 移動邏輯不可靠
+**已改善：**
+1. ✅ CoreManager (99%) — 架構核心已有保護
+2. ✅ ChatController (59%) — 聊天功能有基本保護
+3. ✅ ChatOrchestrator (73%) — 聊天協調已覆蓋
+
+**仍有風險：**
+1. TransitionPlayer (0%) — 狀態轉換可能失效
+2. MovementManager (19%) — 移動邏輯不可靠
 
 ### 建議
 
@@ -317,18 +325,17 @@ UI 層：20%+ (僅邏輯部分)
 
 ## 📝 測試失敗分析
 
-### 失敗的測試（2 個）
+### ✅ 已解決（2026-03-03）
+
+先前失敗的 2 個 smoke tests 已全部通過：
 
 ```
-FAILED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_can_be_created
-FAILED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_has_basic_properties
+PASSED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_can_be_created
+PASSED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_has_basic_properties
 ```
 
-**錯誤：** `ModuleNotFoundError: No module named 'doro_app.core.chat.controller'`
-
-**原因：** 測試文件導入路徑錯誤或文件結構問題
-
-**修復：** 檢查 `doro_app/core/chat/controller.py` 是否存在
+**原因：** 先前的 `ModuleNotFoundError` 是環境問題（缺少依賴或安裝不完整），
+而非原始碼路徑錯誤。`doro_app/core/chat/controller.py` 路徑正確，模組可正常匯入。
 
 ---
 
@@ -363,23 +370,25 @@ FAILED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_has_ba
 
 ## 🔄 下一步行動
 
-### 立即（本週）
+### 已完成
 
-1. ✅ 啟用測試覆蓋率報告（已完成）
-2. ⏭️ **修復失敗的測試** （ChatController 導入）
-3. ⏭️ **為 CoreManager 編寫測試** （目標：60%）
-4. ⏭️ **為 ChatController 編寫測試** （目標：70%）
+1. ✅ 啟用測試覆蓋率報告
+2. ✅ 修復失敗的測試（ChatController 導入 — 環境問題已解決）
+3. ✅ 為 CoreManager 編寫測試（99% 覆蓋）
+4. ✅ 為 ChatController 編寫測試（59% 覆蓋）
+5. ✅ 為 ChatOrchestrator 編寫測試（73% 覆蓋）
 
-### 短期（2 週內）
+### 短期（下一步）
 
-5. 為 TransitionPlayer 編寫測試（目標：70%）
-6. 提升 MovementManager 覆蓋率（目標：60%）
-7. StateService 補充邊界測試（目標：90%）
+6. ⏭️ 為 TransitionPlayer 編寫測試（目標：70%，當前 0%）
+7. ⏭️ 提升 MovementManager 覆蓋率（目標：60%，當前 19%）
+8. ⏭️ 提升 ChatController 覆蓋率（目標：70%，當前 59%）
+9. ⏭️ StateService 補充邊界測試（目標：90%，當前 84%）
 
-### 中期（1 月內）
+### 中期
 
-8. 達到總體覆蓋率 60%+
-9. 開始安全重構（有測試保護）
+10. 達到總體覆蓋率 60%+（當前 43%）
+11. 開始安全重構（有測試保護）
 
 ---
 
@@ -390,4 +399,5 @@ FAILED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_has_ba
 ---
 
 **報告生成：** 2024-12-11
+**最後更新：** 2026-03-03（修正測試狀態、更新覆蓋率數據）
 **下次更新：** 每次測試運行後自動更新
