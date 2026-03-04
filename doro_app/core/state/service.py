@@ -85,7 +85,10 @@ class StateService:
 
     def get_gif_path(self, state_key: str) -> Optional[Path]:
         """
-        Get the file path for a state's GIF.
+        Get a GIF path for a state.
+
+        If the state has multiple GIFs (subfolder), picks one at random.
+        Falls back to the single-file gif_id if no subfolder exists.
 
         Args:
             state_key: State key
@@ -93,6 +96,12 @@ class StateService:
         Returns:
             Absolute path to GIF file or None if not found
         """
+        # Priority 1: multi-GIF subfolder (random pick)
+        random_path = self._gif_manager.pick_random_gif(state_key)
+        if random_path:
+            return random_path
+
+        # Priority 2: single-file via gif_id
         state = self._states.get(state_key)
         if not state or not state.gif_id:
             return None
@@ -566,10 +575,9 @@ class StateService:
 
         logger.info(f"Removed state '{key}'")
 
-        # Delete associated GIF
-        if state and state.gif_id:
-            self._gif_repo.delete(state.gif_id)
-            logger.debug(f"Deleted GIF for removed state '{key}': {state.gif_id}")
+        # Delete all associated GIFs (single file + subfolder)
+        self._gif_manager.delete_all_gifs(key)
+        logger.debug(f"Deleted GIFs for removed state '{key}'")
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self.write_state_list()
@@ -642,6 +650,58 @@ class StateService:
         """
         state = self._states.get(state_key)
         return state.gif_id if state else None
+
+    def add_gif(self, state_key: str, gif_path: Path) -> bool:
+        """
+        Add a GIF to a state's multi-GIF collection (subfolder).
+
+        Unlike set_gif(), this does not replace existing GIFs.
+
+        Returns:
+            True if successful
+        """
+        state = self._states.get(state_key)
+        if not state:
+            return False
+
+        resource_id = self._gif_manager.add_gif(gif_path, state_key)
+        if not resource_id:
+            return False
+
+        # If state has no gif_id yet, set this as the primary
+        if not state.gif_id:
+            updated = state.with_changes(gif_id=resource_id)
+            self._states.add(updated)
+            self._state_repo.save_all(self._states._items, self._states._protected_keys)
+
+        return True
+
+    def list_gif_paths(self, state_key: str) -> list[Path]:
+        """
+        List all GIF paths for a state (subfolder contents).
+
+        Returns:
+            List of absolute paths (empty if no subfolder)
+        """
+        return self._gif_manager.list_gifs(state_key)
+
+    def remove_gif(self, state_key: str, filename: str) -> bool:
+        """
+        Remove a specific GIF from a state's multi-GIF collection.
+
+        Returns:
+            True if removed
+        """
+        return self._gif_manager.remove_gif(state_key, filename)
+
+    def delete_all_gifs(self, state_key: str) -> bool:
+        """
+        Delete all GIFs for a state (single file + subfolder).
+
+        Returns:
+            True if any files were deleted
+        """
+        return self._gif_manager.delete_all_gifs(state_key)
 
     # ═══════════════════════════════════════════════════════════
     # Movement State Operations
