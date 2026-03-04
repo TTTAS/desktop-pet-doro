@@ -9,7 +9,6 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
     TIMER_INTERVAL_MS,
-    BUBBLE_AUTO_HIDE_MS,
     WINDOW_INITIAL_WIDTH,
     WINDOW_INITIAL_HEIGHT,
     WINDOW_MIN_WIDTH,
@@ -21,14 +20,12 @@ from ..constants import (
     PANEL_DEFAULT_HEIGHT_HINT,
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
-    BUBBLE_DEFAULT_SCALE,
     MOVEMENT_ONLY_STATE_KEYS,
     DEFAULT_MOVE_STATE_KEY,
-    CLICK_DRAG_THRESHOLD_PX,
     WINDOW_INITIAL_POSITION_OFFSET_X,
     WINDOW_INITIAL_POSITION_OFFSET_Y,
 )
-from .components.bubble_controller import BubbleConfig, BubbleController
+from .components.bubble_controller import BubbleController
 from .components.gif_player import GifPlayer
 from .rendering.design_tokens import tokens
 from .rendering.rendering_engine import RenderingEngine
@@ -44,7 +41,6 @@ from .theme.theme import ensure_application_theme
 from .theme.themed_menu import build_context_menu_content, create_doro_menu
 from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
-from ..utils.utils import safe_float as _safe_float
 
 logger = get_logger(__name__)
 
@@ -86,8 +82,8 @@ class DoroWindow(QtWidgets.QWidget):
             config_manager: ConfigManager for type-safe config access
 
         Note:
-            Managers and controllers are wired after construction via wire_dependencies().
-            This is due to circular dependencies that will be resolved in Phase 3.
+            Controllers and event handlers are wired after construction
+            by DoroApp._connect_ui_controllers().
         """
         super().__init__()
         logger.info("Initializing Doro window")
@@ -172,7 +168,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         self._bubble_text = ""
         self._bubble_text_show_override = False
-        self._bubble_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
         self._last_user_activity = time.monotonic()
         self._bubble_offset = QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
@@ -221,90 +216,6 @@ class DoroWindow(QtWidgets.QWidget):
     def state_list_text(self) -> str:
         """Get current state list text (used by ChatController)."""
         return self._state_list_text or ""
-
-    def wire_dependencies(
-        self,
-        state_controller,
-        gif_controller,
-        dialog_manager,
-        click_action_controller,
-        bubble_controller: BubbleController,
-    ):
-        """
-        Wire UI-layer dependencies after window construction.
-
-        NOTE: This method is being phased out. Component storage and most signal
-        connections are now handled in DoroApp. Only UI-specific wiring remains here.
-
-        Args:
-            state_controller: Coordinates state changes with ViewModel
-            gif_controller: Handles GIF loading and playback
-            dialog_manager: Manages dialog windows
-            click_action_controller: Handles click actions
-            bubble_controller: Manages bubble UI state
-        """
-        # NOTE: Component storage is now done in DoroApp._connect_ui_controllers()
-        # These are kept for backward compatibility during transition
-
-        # ─────────────────────────────────────────────────────────
-        # Create and wire event handlers (UI-specific)
-        # ─────────────────────────────────────────────────────────
-        self._mouse_handler = MouseEventHandler(
-            bubble_controller=bubble_controller, click_threshold=CLICK_DRAG_THRESHOLD_PX
-        )
-        self._mouse_handler.window_drag_requested.connect(self.move)
-        self._mouse_handler.click_detected.connect(
-            lambda: (
-                self._mark_user_activity(),
-                click_action_controller.trigger_random_action(),
-            )
-        )
-        self._mouse_handler.user_activity_detected.connect(self._mark_user_activity)
-
-        # ─────────────────────────────────────────────────────────
-        # Connect UI controller signals (not handled by DoroApp yet)
-        # ─────────────────────────────────────────────────────────
-        state_controller.repaint_requested.connect(self.update)
-        # NOTE: state_changed connection is also in DoroApp (duplicate, will be removed)
-        state_controller.state_list_updated.connect(self._on_state_list_updated)
-
-        gif_controller.repaint_requested.connect(self.update)
-        gif_controller.gif_loaded.connect(self._on_gif_loaded)
-        gif_controller.sprite_size_changed.connect(self._on_sprite_size_changed)
-
-        # NOTE: TransitionPlayer and ChatOrchestrator connections removed
-        # These are now handled through CoreManager in DoroApp
-
-        # ─────────────────────────────────────────────────────────
-        # Apply configuration
-        # ─────────────────────────────────────────────────────────
-        if self._config_manager:
-            # Use ConfigManager for type-safe config access
-            offset_x = self._config_manager.ui.bubble_offset_x
-            offset_y = self._config_manager.ui.bubble_offset_y
-            scale_pref = self._config_manager.ui.bubble_scale
-        else:
-            # Fallback to legacy QSettings
-            offset_x = _safe_float(
-                self._config.value("ui/bubble_offset_x", BUBBLE_DEFAULT_OFFSET_X),
-                BUBBLE_DEFAULT_OFFSET_X,
-            )
-            offset_y = _safe_float(
-                self._config.value("ui/bubble_offset_y", BUBBLE_DEFAULT_OFFSET_Y),
-                BUBBLE_DEFAULT_OFFSET_Y,
-            )
-            scale_pref = _safe_float(
-                self._config.value("ui/bubble_scale", BUBBLE_DEFAULT_SCALE), BUBBLE_DEFAULT_SCALE
-            )
-
-        self._bubble_controller.apply_persisted_config(
-            BubbleConfig(
-                offset_x=offset_x,
-                offset_y=offset_y,
-                scale=scale_pref,
-                auto_hide_ms=self._bubble_auto_hide_ms,
-            )
-        )
 
     # ─────────────────────────────────────────────────────────
     # Controller signal handlers
