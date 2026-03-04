@@ -86,6 +86,10 @@ def mock_gif_repo() -> Mock:
     repo.get_state_storage_path.return_value = Path("/fake/path")
     repo.get_move_storage_path.return_value = Path("/fake/path")
     repo.sanitize_filename.side_effect = lambda x: x.replace(" ", "_")
+    # Multi-GIF defaults: no subfolder present
+    repo.list_gifs.return_value = []
+    repo.pick_random_gif.return_value = None
+    repo.delete_all_gifs.return_value = False
     return repo
 
 

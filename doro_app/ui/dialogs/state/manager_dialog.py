@@ -106,9 +106,11 @@ class StateManagerDialog(QtWidgets.QDialog):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # State name
+            # State name with GIF count
             label = state.label or key
-            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key})")
+            gif_count = self._get_gif_count(state, key)
+            gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
+            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key}){gif_info}")
             name_item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
             name_item.setForeground(QtGui.QColor("#ffffff"))  # White text
             self.table.setItem(row, 0, name_item)
@@ -148,13 +150,19 @@ class StateManagerDialog(QtWidgets.QDialog):
 
     def _get_state_gif_path(self, state: State, key: str) -> Optional[Path]:
         """
-        Get GIF path for a state, trying multiple sources.
+        Get a GIF path for a state, trying multiple sources.
 
         Priority:
-        1. state.gif_id (from repository)
-        2. Fixed path: res/state/{key}.gif
+        1. Multi-GIF subfolder (first file for preview)
+        2. state.gif_id (from repository)
+        3. Fixed path: res/state/{key}.gif
         """
-        # Try GIF ID from repository first
+        # Try multi-GIF subfolder first (use first for preview)
+        multi_gifs = self.service.list_gif_paths(key)
+        if multi_gifs:
+            return multi_gifs[0]
+
+        # Try GIF ID from repository
         if state.gif_id:
             gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
@@ -166,6 +174,19 @@ class StateManagerDialog(QtWidgets.QDialog):
             return fixed_path
 
         return None
+
+    def _get_gif_count(self, state: State, key: str) -> int:
+        """Get the number of GIFs for a state."""
+        multi_gifs = self.service.list_gif_paths(key)
+        if multi_gifs:
+            return len(multi_gifs)
+        # Check single file
+        if state.gif_id and self.service.get_gif_path_by_id(state.gif_id):
+            return 1
+        fixed_path = paths.STATE_DIR / f"{key}.gif"
+        if fixed_path.exists():
+            return 1
+        return 0
 
     def _set_equal_column_widths(self):
         """Set column widths with appropriate ratios."""
@@ -185,23 +206,28 @@ class StateManagerDialog(QtWidgets.QDialog):
             self._populate()
 
     def _on_edit_gif(self, state_key: str):
-        """Edit GIF for a state."""
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+        """Add GIF(s) for a state (supports multiple files)."""
+        file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self,
-            "Select GIF file",
+            "Select GIF file(s)",
             "",
             "GIF Files (*.gif);;All Files (*.*)"
         )
 
-        if not file_path:
+        if not file_paths:
             return
 
-        # Update GIF using service
-        if self.service.set_gif(state_key, Path(file_path)):
-            QtWidgets.QMessageBox.information(self, "Success", "GIF updated successfully!")
-            self._populate()  # Refresh to show new GIF
+        success_count = 0
+        for fp in file_paths:
+            if self.service.add_gif(state_key, Path(fp)):
+                success_count += 1
+
+        if success_count > 0:
+            msg = f"Added {success_count} GIF(s)." if success_count > 1 else "GIF added!"
+            QtWidgets.QMessageBox.information(self, "Success", msg)
+            self._populate()
         else:
-            QtWidgets.QMessageBox.warning(self, "Error", "Failed to update GIF.")
+            QtWidgets.QMessageBox.warning(self, "Error", "Failed to add GIF(s).")
 
     def _on_edit(self):
         """Edit selected state."""

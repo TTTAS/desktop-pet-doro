@@ -655,6 +655,7 @@ class StateListWriter:
         move_states: dict[str, MoveState],
         gif_paths: dict[str, Optional[Path]],
         movement_only_keys: set[str],
+        gif_counts: Optional[dict[str, int]] = None,
     ) -> str:
         """
         Generate and write state list summary.
@@ -675,7 +676,7 @@ class StateListWriter:
         visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
         for key in visible_keys:
             state: State = states[key]
-            gif_info = self._gif_summary(key, gif_paths)
+            gif_info = self._gif_summary(key, gif_paths, gif_counts)
             action_type = self._action_type(key, move_states)
             lines.append(f"- ({key}) {state.label} | {action_type} | GIF: {gif_info}")
 
@@ -688,7 +689,7 @@ class StateListWriter:
                 move_state: Optional[State] = states.get(key)
                 if not move_state:
                     continue
-                gif_info = self._gif_summary(key, gif_paths)
+                gif_info = self._gif_summary(key, gif_paths, gif_counts)
                 direction = self._direction_for_state(key, move_states)
                 lines.append(
                     f"- ({key}) {move_state.label} | type: movement ({direction}) | GIF: {gif_info}"
@@ -703,8 +704,11 @@ class StateListWriter:
 
         return output.strip()
 
-    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]]) -> str:
+    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]], gif_counts: Optional[dict[str, int]] = None) -> str:
         """Generate GIF summary string."""
+        count = (gif_counts or {}).get(state_key, 0)
+        if count > 1:
+            return f"{count} GIFs"
         gif_path = gif_paths.get(state_key)
         return str(gif_path) if gif_path else "(no GIF)"
 

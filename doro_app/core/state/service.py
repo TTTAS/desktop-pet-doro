@@ -796,17 +796,26 @@ class StateService:
 
     def write_state_list(self) -> str:
         """Write state summary for LLM context."""
-        # Collect GIF path information (encapsulation: don't pass gif_repo)
+        # Collect GIF path and count information
         gif_paths: dict[str, Optional[Path]] = {}
+        gif_counts: dict[str, int] = {}
         for key, state in self._states._items.items():
-            if state.gif_id:
+            # Check multi-GIF subfolder first
+            multi_gifs = self._gif_manager.list_gifs(key)
+            if multi_gifs:
+                gif_paths[key] = multi_gifs[0]
+                gif_counts[key] = len(multi_gifs)
+            elif state.gif_id:
                 gif_paths[key] = self._gif_repo.get_path(state.gif_id)
+                gif_counts[key] = 1 if gif_paths[key] else 0
             else:
                 gif_paths[key] = None
+                gif_counts[key] = 0
 
         return self._state_list_writer.write(
             self._states._items,
             self._move_states._items,
             gif_paths,
             self._move_states._movement_only_keys,
+            gif_counts=gif_counts,
         )

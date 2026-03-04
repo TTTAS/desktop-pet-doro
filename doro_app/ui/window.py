@@ -223,16 +223,17 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _load_state_gif(self, state_key: str):
         """
-        Load the GIF for a given state.
+        Load a GIF for a given state.
+
+        Uses StateService.get_gif_path() which handles multi-GIF random
+        selection (subfolder) with single-file fallback automatically.
 
         Args:
             state_key: The state key to load GIF for
         """
-        gif_resource_id = self._state_service.get_gif_id(state_key)
-        if gif_resource_id:
-            gif_path = self._state_service.get_gif_path_by_id(gif_resource_id)
-            if gif_path:
-                self._gif_controller.load_gif(str(gif_path))
+        gif_path = self._state_service.get_gif_path(state_key)
+        if gif_path:
+            self._gif_controller.load_gif(str(gif_path))
 
     def _on_controller_state_changed(self, state_key: str):
         """

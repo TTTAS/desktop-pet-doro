@@ -17,7 +17,7 @@ class AddStateDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.service = service
         self.setWindowTitle("Add new state")
-        self.selected_gif_path: Optional[Path] = None
+        self.selected_gif_paths: list[Path] = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -35,11 +35,11 @@ class AddStateDialog(QtWidgets.QDialog):
         self.gif_label.setStyleSheet("color: #888888;")
         gif_layout.addWidget(self.gif_label)
 
-        select_gif_btn = QtWidgets.QPushButton("Select GIF")
+        select_gif_btn = QtWidgets.QPushButton("Select GIF(s)")
         select_gif_btn.clicked.connect(self._on_select_gif)
         gif_layout.addWidget(select_gif_btn)
 
-        layout.addRow("GIF file:", gif_layout)
+        layout.addRow("GIF file(s):", gif_layout)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -49,17 +49,21 @@ class AddStateDialog(QtWidgets.QDialog):
         layout.addRow(buttons)
 
     def _on_select_gif(self):
-        """Handle GIF file selection."""
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+        """Handle GIF file selection (supports multiple files)."""
+        file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self,
-            "Select GIF file",
+            "Select GIF file(s)",
             "",
             "GIF Files (*.gif);;All Files (*.*)"
         )
 
-        if file_path:
-            self.selected_gif_path = Path(file_path)
-            self.gif_label.setText(self.selected_gif_path.name)
+        if file_paths:
+            self.selected_gif_paths = [Path(p) for p in file_paths]
+            count = len(self.selected_gif_paths)
+            if count == 1:
+                self.gif_label.setText(self.selected_gif_paths[0].name)
+            else:
+                self.gif_label.setText(f"{count} GIFs selected")
             self.gif_label.setStyleSheet("color: #ffffff;")
 
     def _on_accept(self):
@@ -84,12 +88,16 @@ class AddStateDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Add state", "Failed to create state.")
             return
 
-        # Set GIF if selected
-        if self.selected_gif_path:
-            if not self.service.set_gif(key, self.selected_gif_path):
-                QtWidgets.QMessageBox.warning(self, "Add state", "State created but failed to set GIF.")
-                self.accept()
-                return
+        # Set GIF(s) if selected
+        if self.selected_gif_paths:
+            if len(self.selected_gif_paths) == 1:
+                if not self.service.set_gif(key, self.selected_gif_paths[0]):
+                    QtWidgets.QMessageBox.warning(self, "Add state", "State created but failed to set GIF.")
+                    self.accept()
+                    return
+            else:
+                for gif_path in self.selected_gif_paths:
+                    self.service.add_gif(key, gif_path)
 
         self.accept()
 

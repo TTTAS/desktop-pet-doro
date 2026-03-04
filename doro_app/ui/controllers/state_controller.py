@@ -159,25 +159,21 @@ class StateController(QtCore.QObject):
 
     def clear_state_gif(self, state_key: str | None = None) -> bool:
         """
-        Clear GIF for a state.
+        Clear all GIFs for a state (single file + subfolder).
 
         Args:
             state_key: State key (uses current if None)
 
         Returns:
-            True if GIF was cleared
+            True if any GIFs were cleared
         """
         key = state_key or self._current_state_key
         if not key:
             return False
 
-        state = self._state_service.get_state(key)
-        if not state or not state.gif_id:
-            return False
-
-        self._state_service.delete_gif(state.gif_id)
+        deleted = self._state_service.delete_all_gifs(key)
         self._state_service.update_state(key, gif_id=None)
-        return True
+        return deleted
 
     def is_movement_only_state(self, key: str) -> bool:
         """Check if state is movement-only."""
