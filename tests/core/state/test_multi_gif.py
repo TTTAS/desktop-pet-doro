@@ -153,6 +153,59 @@ class TestGifRepositoryAddGif:
         assert copied.exists()
         assert copied.read_bytes() == b"GIF89a_test_data"
 
+    def test_add_gif_migrates_single_file(self, tmp_path):
+        """When single-file exists, add_gif migrates it into subfolder first."""
+        # Setup: existing single-file GIF
+        single_file = tmp_path / "stand.gif"
+        single_file.write_bytes(b"GIF89a_original")
+
+        # Add a new GIF
+        new_source = tmp_path / "new.gif"
+        new_source.write_bytes(b"GIF89a_new")
+
+        repo = GifRepository(tmp_path)
+        resource_id = repo.add_gif(new_source, "stand")
+
+        # Single file should be gone (migrated)
+        assert not single_file.exists()
+
+        # Subfolder should have 2 files
+        state_dir = tmp_path / "stand"
+        assert state_dir.is_dir()
+        gifs = repo.list_gifs("stand")
+        assert len(gifs) == 2
+
+        # First file is the migrated original
+        assert gifs[0].name == "stand_1.gif"
+        assert gifs[0].read_bytes() == b"GIF89a_original"
+
+        # Second file is the newly added
+        assert gifs[1].name == "stand_2.gif"
+        assert gifs[1].read_bytes() == b"GIF89a_new"
+
+        # Resource ID points to the new file
+        assert "stand_2.gif" in resource_id
+
+    def test_add_gif_no_migration_when_subfolder_exists(self, tmp_path):
+        """If subfolder already has files, don't migrate single file again."""
+        # Setup: both single file and subfolder exist
+        (tmp_path / "stand.gif").write_bytes(b"single")
+        state_dir = tmp_path / "stand"
+        state_dir.mkdir()
+        (state_dir / "stand_1.gif").write_bytes(b"existing")
+
+        new_source = tmp_path / "new.gif"
+        new_source.write_bytes(b"new")
+
+        repo = GifRepository(tmp_path)
+        repo.add_gif(new_source, "stand")
+
+        # Single file should still be there (not migrated — subfolder wasn't empty)
+        assert (tmp_path / "stand.gif").exists()
+        # Subfolder should have 2 files (existing + new)
+        gifs = repo.list_gifs("stand")
+        assert len(gifs) == 2
+
     def test_add_gif_source_not_found(self, tmp_path):
         repo = GifRepository(tmp_path)
         with pytest.raises(GifNotFoundError):

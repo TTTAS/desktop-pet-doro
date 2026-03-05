@@ -204,8 +204,9 @@ class GifRepository:
         """
         Add a GIF to a state's subfolder.
 
-        Creates the subfolder if needed. Auto-generates a sequential filename
-        ({key}_1.gif, {key}_2.gif, ...).
+        Creates the subfolder if needed. If a single-file GIF ({key}.gif) exists,
+        it is automatically migrated into the subfolder first.
+        Auto-generates sequential filenames ({key}_1.gif, {key}_2.gif, ...).
 
         Args:
             source_path: Source GIF file
@@ -225,6 +226,16 @@ class GifRepository:
         state_dir.mkdir(parents=True, exist_ok=True)
 
         safe_key = self._sanitize_key(state_key)
+
+        # Auto-migrate: move single file into subfolder if transitioning to multi
+        primary = self._primary_path(state_key)
+        if primary.is_file() and not self.list_gifs(state_key):
+            migrated = state_dir / f"{safe_key}_1.gif"
+            try:
+                shutil.move(str(primary), str(migrated))
+            except OSError as e:
+                raise GifStorageError(f"Failed to migrate single-file GIF: {e}")
+
         # Find next available index
         existing = self.list_gifs(state_key)
         index = len(existing) + 1

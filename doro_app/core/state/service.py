@@ -668,11 +668,10 @@ class StateService:
         if not resource_id:
             return False
 
-        # If state has no gif_id yet, set this as the primary
-        if not state.gif_id:
-            updated = state.with_changes(gif_id=resource_id)
-            self._states.add(updated)
-            self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        # Always update gif_id — handles both initial set and stale ref after migration
+        updated = state.with_changes(gif_id=resource_id)
+        self._states.add(updated)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
 
         return True
 
