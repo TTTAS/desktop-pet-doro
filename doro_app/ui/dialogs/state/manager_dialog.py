@@ -178,10 +178,9 @@ class StateManagerDialog(QtWidgets.QDialog):
         layout.setSpacing(4)
 
         # Left arrow
-        left_btn = QtWidgets.QPushButton("<")
+        left_btn = QtWidgets.QToolButton()
+        left_btn.setArrowType(QtCore.Qt.ArrowType.LeftArrow)
         left_btn.setFixedSize(28, 28)
-        left_btn.setFlat(True)
-        left_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 20px; font-weight: bold; color: #ffffff; } QPushButton:hover { color: #00bfff; }")
         left_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, -1))
         layout.addWidget(left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
@@ -210,10 +209,9 @@ class StateManagerDialog(QtWidgets.QDialog):
         layout.addLayout(center, 1)
 
         # Right arrow
-        right_btn = QtWidgets.QPushButton(">")
+        right_btn = QtWidgets.QToolButton()
+        right_btn.setArrowType(QtCore.Qt.ArrowType.RightArrow)
         right_btn.setFixedSize(28, 28)
-        right_btn.setFlat(True)
-        right_btn.setStyleSheet("QPushButton { background: transparent; border: none; font-size: 20px; font-weight: bold; color: #ffffff; } QPushButton:hover { color: #00bfff; }")
         right_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, 1))
         layout.addWidget(right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
