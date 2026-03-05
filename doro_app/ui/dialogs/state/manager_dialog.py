@@ -178,9 +178,11 @@ class StateManagerDialog(QtWidgets.QDialog):
         layout.setSpacing(4)
 
         # Left arrow
-        left_btn = QtWidgets.QToolButton()
-        left_btn.setArrowType(QtCore.Qt.ArrowType.LeftArrow)
-        left_btn.setFixedSize(28, 28)
+        left_btn = QtWidgets.QPushButton()
+        left_btn.setIcon(self._make_arrow_icon("left"))
+        left_btn.setIconSize(QtCore.QSize(18, 18))
+        left_btn.setFixedSize(30, 30)
+        left_btn.setStyleSheet(self._arrow_btn_style())
         left_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, -1))
         layout.addWidget(left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
@@ -203,15 +205,17 @@ class StateManagerDialog(QtWidgets.QDialog):
         # Counter label
         counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        counter_label.setStyleSheet("font-size: 14px; color: #cccccc;")
+        counter_label.setStyleSheet("font-size: 14px; color: #4fc3f7;")
         center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(center, 1)
 
         # Right arrow
-        right_btn = QtWidgets.QToolButton()
-        right_btn.setArrowType(QtCore.Qt.ArrowType.RightArrow)
-        right_btn.setFixedSize(28, 28)
+        right_btn = QtWidgets.QPushButton()
+        right_btn.setIcon(self._make_arrow_icon("right"))
+        right_btn.setIconSize(QtCore.QSize(18, 18))
+        right_btn.setFixedSize(30, 30)
+        right_btn.setStyleSheet(self._arrow_btn_style())
         right_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, 1))
         layout.addWidget(right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
 
@@ -230,6 +234,31 @@ class StateManagerDialog(QtWidgets.QDialog):
         }
 
         return container
+
+    @staticmethod
+    def _arrow_btn_style() -> str:
+        return (
+            "QPushButton { background: #3a3a3a; border: 1px solid #666; "
+            "border-radius: 4px; padding: 2px; } "
+            "QPushButton:hover { background: #505050; border-color: #4fc3f7; }"
+        )
+
+    @staticmethod
+    def _make_arrow_icon(direction: str) -> QtGui.QIcon:
+        """Draw a clean arrow icon with QPainter."""
+        px = QtGui.QPixmap(18, 18)
+        px.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(px)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        if direction == "left":
+            points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
+        else:
+            points = [QtCore.QPointF(5, 3), QtCore.QPointF(13, 9), QtCore.QPointF(5, 15)]
+        painter.drawPolygon(points)
+        painter.end()
+        return QtGui.QIcon(px)
 
     def _navigate_preview(self, key: str, direction: int):
         """Navigate GIF preview for a state. direction: -1 (left) or +1 (right)."""
