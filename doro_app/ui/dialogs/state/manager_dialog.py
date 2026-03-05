@@ -203,7 +203,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         # Counter label
         counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        counter_label.setStyleSheet("font-size: 10px; color: #888;")
+        counter_label.setStyleSheet("font-size: 14px; color: #cccccc;")
         center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(center, 1)
