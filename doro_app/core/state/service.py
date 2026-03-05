@@ -103,9 +103,18 @@ class StateService:
 
         # Priority 2: single-file via gif_id
         state = self._states.get(state_key)
-        if not state or not state.gif_id:
-            return None
-        return self._gif_manager.get_path_by_id(state.gif_id)
+        if state and state.gif_id:
+            path = self._gif_manager.get_path_by_id(state.gif_id)
+            if path:
+                return path
+
+        # Priority 3: movement state fallback (ACTION/MOVE/{key}.gif)
+        if self._move_states.is_movement_only(state_key):
+            move_path = self._gif_repo.get_move_storage_path(state_key)
+            if move_path.is_file():
+                return move_path
+
+        return None
 
     def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
         """
@@ -384,17 +393,10 @@ class StateService:
 
         # Ensure corresponding display state exists
         if not self._states.get(walking_key):
-            # Try to find walking.gif using encapsulated method
-            walk_gif_path = self._gif_repo.get_move_storage_path(walking_key)
-            gif_id = None
-            if walk_gif_path.is_file():
-                gif_id = self._gif_repo.store_gif(walk_gif_path, walking_key)
-
             walk_state = State(
                 key=walking_key,
                 label="Walking",
                 name_tag="doro",
-                gif_id=gif_id,
             )
             self._states.add(walk_state)
             self._states.protect(walking_key)
@@ -808,6 +810,13 @@ class StateService:
                 gif_paths[key] = self._gif_repo.get_path(state.gif_id)
                 gif_counts[key] = 1 if gif_paths[key] else 0
             else:
+                # Fallback: check ACTION/MOVE/ for movement states
+                if self._move_states.is_movement_only(key):
+                    move_path = self._gif_repo.get_move_storage_path(key)
+                    if move_path.is_file():
+                        gif_paths[key] = move_path
+                        gif_counts[key] = 1
+                        continue
                 gif_paths[key] = None
                 gif_counts[key] = 0
 

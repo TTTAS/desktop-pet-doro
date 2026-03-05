@@ -162,6 +162,11 @@ class StateManagerDialog(QtWidgets.QDialog):
         if fixed_path.exists():
             return [fixed_path]
 
+        # Fallback: movement state GIF in ACTION/MOVE/
+        move_path = paths.STATE_DIR.parent / "ACTION" / "MOVE" / f"{key}.gif"
+        if move_path.exists():
+            return [move_path]
+
         return []
 
     def _create_preview_widget(self, state: State, key: str) -> QtWidgets.QWidget:
