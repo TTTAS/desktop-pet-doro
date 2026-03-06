@@ -25,10 +25,11 @@ class GifThumbnail(QtWidgets.QFrame):
         super().__init__(parent)
         self.gif_path = gif_path
         self._removable = removable
+        self.setObjectName("gifThumb")
         self.setFixedSize(130, 140)
         self.setStyleSheet(
-            "QFrame { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }"
-            "QFrame:hover { border-color: #4fc3f7; }"
+            "#gifThumb { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }"
+            "#gifThumb:hover { border-color: #4fc3f7; }"
         )
         self._setup_ui(gif_player)
 
@@ -139,9 +140,12 @@ class GifGalleryDialog(QtWidgets.QDialog):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll.setStyleSheet(
+            "QScrollArea { border: 1px solid #333; border-radius: 6px; background: #1e1e1e; }"
+        )
 
         self._grid_container = QtWidgets.QWidget()
+        self._grid_container.setStyleSheet("background: #1e1e1e;")
         self._grid_layout = QtWidgets.QGridLayout(self._grid_container)
         self._grid_layout.setSpacing(10)
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -203,8 +207,8 @@ class GifGalleryDialog(QtWidgets.QDialog):
             if is_new:
                 # Highlight new additions with a green border
                 thumb.setStyleSheet(
-                    "QFrame { background: #2a2a2a; border: 2px solid #4caf50; border-radius: 6px; }"
-                    "QFrame:hover { border-color: #81c784; }"
+                    "#gifThumb { background: #2a2a2a; border: 2px solid #4caf50; border-radius: 6px; }"
+                    "#gifThumb:hover { border-color: #81c784; }"
                 )
             thumb.remove_clicked.connect(self._on_remove_gif)
             self._grid_layout.addWidget(thumb, i // cols, i % cols)
