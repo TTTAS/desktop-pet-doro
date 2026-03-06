@@ -49,33 +49,35 @@ class GifThumbnail(QtWidgets.QFrame):
             preview.setStyleSheet("color: #888;")
         layout.addWidget(preview, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        # Bottom row: filename + delete button
-        bottom = QtWidgets.QHBoxLayout()
-        bottom.setContentsMargins(0, 0, 0, 0)
-        bottom.setSpacing(2)
-
-        name_label = QtWidgets.QLabel(self.gif_path.name)
-        name_label.setStyleSheet("font-size: 10px; color: #aaa; border: none;")
-        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        name_label.setToolTip(self.gif_path.name)
-        # Elide long filenames
-        metrics = name_label.fontMetrics()
-        elided = metrics.elidedText(self.gif_path.name, QtCore.Qt.TextElideMode.ElideMiddle, 85)
-        name_label.setText(elided)
-        bottom.addWidget(name_label, 1)
-
+        # Delete button overlay (top-right corner of the frame)
         if self._removable:
-            del_btn = QtWidgets.QPushButton("\u2715")  # ✕
-            del_btn.setFixedSize(20, 20)
+            del_btn = QtWidgets.QPushButton("\u2715", self)  # ✕
+            del_btn.setFixedSize(22, 22)
             del_btn.setToolTip("Remove this GIF")
             del_btn.setStyleSheet(
-                "QPushButton { background: transparent; color: #888; border: none; font-size: 13px; }"
-                "QPushButton:hover { color: #ff5252; }"
+                "QPushButton { background: rgba(200,40,40,0.85); color: white; border: none;"
+                " border-radius: 11px; font-size: 13px; font-weight: bold; }"
+                "QPushButton:hover { background: #ff5252; }"
             )
+            del_btn.move(self.width() - 26, 4)
+            del_btn.raise_()
             del_btn.clicked.connect(lambda: self.remove_clicked.emit(self.gif_path.name))
-            bottom.addWidget(del_btn, 0)
+            self._del_btn = del_btn
 
-        layout.addLayout(bottom)
+        # Filename label
+        name_label = QtWidgets.QLabel(self.gif_path.name)
+        name_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #ccc; border: none;")
+        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        name_label.setToolTip(self.gif_path.name)
+        metrics = name_label.fontMetrics()
+        elided = metrics.elidedText(self.gif_path.name, QtCore.Qt.TextElideMode.ElideMiddle, 118)
+        name_label.setText(elided)
+        layout.addWidget(name_label)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        super().resizeEvent(event)
+        if self._removable and hasattr(self, "_del_btn"):
+            self._del_btn.move(self.width() - 26, 4)
 
 
 class GifGalleryDialog(QtWidgets.QDialog):
@@ -179,6 +181,7 @@ class GifGalleryDialog(QtWidgets.QDialog):
         while self._grid_layout.count():
             item = self._grid_layout.takeAt(0)
             if item.widget():
+                item.widget().hide()
                 item.widget().deleteLater()
 
         # Build the effective list: original minus removed, plus added
