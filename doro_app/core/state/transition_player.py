@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui
 
 from ...ui.components.gif_player import GifPlayer
 from ...utils.logger import get_logger
-from ...utils.paths import ACTION_TRANSITION_DIR
+from ...utils.paths import ACTION_TRANSITION_DIR  # kept for fallback
 
 if TYPE_CHECKING:
     from .service import StateService
@@ -80,16 +80,19 @@ class TransitionPlayer(QtCore.QObject):
         transition = self._state_service.find_transition(from_state, to_state)
 
         # No transition defined - direct switch
-        if not transition or not transition.transition_gif_id:
+        if not transition:
             logger.debug(f"No transition for {from_state} -> {to_state}, switching directly")
             return False
 
-        # Get transition GIF path
-        gif_path = self._get_transition_gif_path(transition.transition_gif_id)
+        # Get transition GIF path (multi-GIF random selection via service)
+        gif_path = self._state_service.get_transition_gif_path(transition.key)
+
+        # Fallback to legacy single-file lookup via transition_gif_id
+        if (not gif_path or not gif_path.exists()) and transition.transition_gif_id:
+            gif_path = self._get_transition_gif_path(transition.transition_gif_id)
+
         if not gif_path or not gif_path.exists():
-            logger.warning(
-                f"Transition GIF not found: {transition.transition_gif_id}, switching directly"
-            )
+            logger.debug(f"No transition GIF for {from_state} -> {to_state}, switching directly")
             return False
 
         # Acquire transition lock

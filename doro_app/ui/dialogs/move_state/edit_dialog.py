@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
 
@@ -133,6 +131,12 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.select_gif_btn.clicked.connect(self._on_select_gif)
         gif_upload_layout.addWidget(self.select_gif_btn)
 
+        self.manage_gifs_btn = QtWidgets.QPushButton("Manage GIFs...")
+        self.manage_gifs_btn.setToolTip("Open gallery to add/remove multiple GIFs")
+        self.manage_gifs_btn.clicked.connect(self._on_manage_transition_gifs)
+        self.manage_gifs_btn.setVisible(False)  # shown only for transition edit mode
+        gif_upload_layout.addWidget(self.manage_gifs_btn)
+
         main_layout.addWidget(gif_upload_group)
 
         # GIF Preview
@@ -182,6 +186,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.to_state_label.setVisible(not is_movement)
         self.to_state_combo.setVisible(not is_movement)
 
+        # Show manage GIFs button only for transitions
+        self.manage_gifs_btn.setVisible(not is_movement)
+
         # Update info label
         if is_movement:
             self.info_label.setText(
@@ -189,7 +196,8 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             )
         else:
             self.info_label.setText(
-                "💡 Transition: Animation plays when changing from one state to another. Default GIF: transition.gif"
+                "💡 Transition: Animation plays when changing from one state to another. "
+                "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
 
     def _on_state_changed(self, state_key: str):
@@ -258,6 +266,29 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             return
 
         self.preview_label.setMovie(movie)
+
+    def _on_manage_transition_gifs(self):
+        """Open GIF gallery dialog for transition multi-GIF management."""
+        from ..state.gif_gallery_dialog import GifGalleryDialog
+
+        key = self.key_edit.text().strip()
+        if not key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Please enter a key first.")
+            return
+
+        gif_paths = self.service.list_transition_gif_paths(key)
+        dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            for filename in dialog.removed_filenames:
+                self.service.remove_transition_gif(key, filename)
+            for path in dialog.added_paths:
+                self.service.add_transition_gif(key, path)
+
+            # Update status label
+            new_count = len(self.service.list_transition_gif_paths(key))
+            if new_count > 0:
+                self.gif_status_label.setText(f"{new_count} GIF(s)")
+                self.gif_status_label.setStyleSheet("color: #4ade80;")
 
     def _load_data(self):
         """Load existing move state data."""
@@ -364,39 +395,34 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             )
             return
 
-        # Upload custom transition GIF if selected
+        # Upload custom transition GIF if selected (uses multi-GIF service)
         transition_gif_id = None
         if self.selected_gif_path:
-            # Store transition GIF in res/ACTION/TRANSITION/ directory
-            try:
-                # Ensure transition directory exists
-                paths.ACTION_TRANSITION_DIR.mkdir(parents=True, exist_ok=True)
-
-                # Sanitize key for filename
-                safe_key = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key)
-                dest_filename = f"{safe_key}.gif"
-                dest_path = paths.ACTION_TRANSITION_DIR / dest_filename
-
-                # Copy the GIF file
-                shutil.copy2(self.selected_gif_path, dest_path)
-
-                # Use relative path as resource ID: "../../ACTION/TRANSITION/filename.gif"
-                # or just "filename.gif" if we store it relative to ACTION/TRANSITION
-                transition_gif_id = dest_filename
-
-            except Exception as e:
+            if self.service.add_transition_gif(key, self.selected_gif_path):
+                # Sanitize key for a gif_id marker
+                safe_key = "".join(
+                    ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key
+                )
+                transition_gif_id = f"{safe_key}.gif"
+            else:
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Warning",
-                    f"Failed to upload GIF: {e}\nTransition will be saved without custom GIF.",
+                    "Failed to upload GIF. Transition will be saved without custom GIF.",
                 )
+
+        # For edits, preserve existing gif_id if we didn't upload a new one
+        if not transition_gif_id and self.is_edit:
+            existing = self.service.get_transition(key)
+            if existing:
+                transition_gif_id = existing.transition_gif_id
 
         # Create Transition
         transition = Transition(
             key=key,
             from_state=from_state,
             to_state=to_state,
-            transition_gif_id=transition_gif_id,  # None = use default transition.gif
+            transition_gif_id=transition_gif_id,
         )
 
         # Save

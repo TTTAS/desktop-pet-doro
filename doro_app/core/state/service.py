@@ -58,6 +58,7 @@ class StateService:
         gif_repo: GifRepository,
         state_list_path: Path,
         transition_repo: Optional[TransitionRepository] = None,
+        transition_gif_repo: Optional[GifRepository] = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
@@ -67,7 +68,7 @@ class StateService:
         self._state_list_writer = StateListWriter(state_list_path)
 
         # Private - managers for specialized operations
-        self._gif_manager = GifManager(gif_repo)
+        self._gif_manager = GifManager(gif_repo, transition_gif_repo=transition_gif_repo)
         self._transition_coordinator = TransitionCoordinator(transition_repo)
         self._state_parser = StateParser()
 
@@ -272,6 +273,27 @@ class StateService:
     def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
         """Find a transition between two states."""
         return self._transition_coordinator.find(from_state, to_state)
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Transition GIF Operations
+    # ═══════════════════════════════════════════════════════════
+
+    def get_transition_gif_path(self, transition_key: str) -> Optional[Path]:
+        """Pick a random transition GIF (subfolder first, single file fallback)."""
+        return self._gif_manager.pick_random_transition_gif(transition_key)
+
+    def list_transition_gif_paths(self, transition_key: str) -> list[Path]:
+        """List all GIF paths for a transition."""
+        return self._gif_manager.list_transition_gifs(transition_key)
+
+    def add_transition_gif(self, transition_key: str, gif_path: Path) -> bool:
+        """Add a GIF to a transition's multi-GIF collection."""
+        resource_id = self._gif_manager.add_transition_gif(gif_path, transition_key)
+        return resource_id is not None
+
+    def remove_transition_gif(self, transition_key: str, filename: str) -> bool:
+        """Remove a specific GIF from a transition's collection."""
+        return self._gif_manager.remove_transition_gif(transition_key, filename)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - State Modification
@@ -759,9 +781,12 @@ class StateService:
         return True
 
     def remove_transition(self, key: str) -> bool:
-        """Remove a transition state."""
+        """Remove a transition state and its GIF files."""
         if not self._transition_coordinator.remove(key):
             return False
+
+        # Clean up GIF files
+        self._gif_manager.delete_all_transition_gifs(key)
 
         if self._transition_repo:
             try:
