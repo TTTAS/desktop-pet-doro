@@ -52,15 +52,17 @@ class GifThumbnail(QtWidgets.QFrame):
 
         # Delete button overlay (top-right corner of the frame)
         if self._removable:
-            del_btn = QtWidgets.QPushButton("\u2715", self)  # ✕
-            del_btn.setFixedSize(22, 22)
+            del_btn = QtWidgets.QPushButton("X", self)
+            del_btn.setFixedSize(20, 20)
             del_btn.setToolTip("Remove this GIF")
+            del_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             del_btn.setStyleSheet(
-                "QPushButton { background: rgba(200,40,40,0.85); color: white; border: none;"
-                " border-radius: 11px; font-size: 13px; font-weight: bold; }"
+                "QPushButton { background: #c62828; color: white; border: none;"
+                " border-radius: 10px; font-size: 11px; font-weight: bold;"
+                " padding: 0px; margin: 0px; }"
                 "QPushButton:hover { background: #ff5252; }"
             )
-            del_btn.move(self.width() - 26, 4)
+            del_btn.move(self.width() - 24, 4)
             del_btn.raise_()
             del_btn.clicked.connect(lambda: self.remove_clicked.emit(self.gif_path.name))
             self._del_btn = del_btn
@@ -78,7 +80,7 @@ class GifThumbnail(QtWidgets.QFrame):
     def resizeEvent(self, event: QtGui.QResizeEvent):
         super().resizeEvent(event)
         if self._removable and hasattr(self, "_del_btn"):
-            self._del_btn.move(self.width() - 26, 4)
+            self._del_btn.move(self.width() - 24, 4)
 
 
 class GifGalleryDialog(QtWidgets.QDialog):
