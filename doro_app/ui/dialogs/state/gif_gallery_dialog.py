@@ -56,7 +56,7 @@ class GifThumbnail(QtWidgets.QFrame):
 
         name_label = QtWidgets.QLabel(self.gif_path.name)
         name_label.setStyleSheet("font-size: 10px; color: #aaa; border: none;")
-        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         name_label.setToolTip(self.gif_path.name)
         # Elide long filenames
         metrics = name_label.fontMetrics()
