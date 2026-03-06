@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -165,11 +166,179 @@ class GifRepository:
         return self._sanitize_key(key)
 
     # ═══════════════════════════════════════════════════════════
+    # Multi-GIF Operations
+    # ═══════════════════════════════════════════════════════════
+
+    def list_gifs(self, state_key: str) -> list[Path]:
+        """
+        List all GIF files in a state's subfolder.
+
+        Returns:
+            Sorted list of .gif paths (empty if no subfolder or no gifs)
+        """
+        state_dir = self._state_dir(state_key)
+        if not state_dir.is_dir():
+            return []
+        return sorted(p for p in state_dir.iterdir() if p.suffix.lower() == ".gif" and p.is_file())
+
+    def pick_random_gif(self, state_key: str) -> Optional[Path]:
+        """
+        Pick a random GIF for a state.
+
+        Priority:
+        1. Random pick from subfolder {storage_dir}/{key}/ if it has .gif files
+        2. Fall back to single file {storage_dir}/{key}.gif
+
+        Returns:
+            Path to a GIF file, or None if no GIF exists
+        """
+        gifs = self.list_gifs(state_key)
+        if gifs:
+            return random.choice(gifs)
+
+        # Fallback: single file
+        primary = self._primary_path(state_key)
+        return primary if primary.is_file() else None
+
+    def add_gif(self, source_path: Path, state_key: str) -> str:
+        """
+        Add a GIF to a state's subfolder.
+
+        Creates the subfolder if needed. If a single-file GIF ({key}.gif) exists,
+        it is automatically migrated into the subfolder first.
+        Auto-generates sequential filenames ({key}_1.gif, {key}_2.gif, ...).
+
+        Args:
+            source_path: Source GIF file
+            state_key: State this GIF belongs to
+
+        Returns:
+            Resource ID (e.g. 'stand/stand_2.gif')
+
+        Raises:
+            GifNotFoundError: Source file does not exist
+            GifStorageError: Failed to copy file
+        """
+        if not source_path.is_file():
+            raise GifNotFoundError(str(source_path))
+
+        state_dir = self._state_dir(state_key)
+        state_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_key = self._sanitize_key(state_key)
+
+        # Auto-migrate: move single file into subfolder if transitioning to multi
+        primary = self._primary_path(state_key)
+        if primary.is_file() and not self.list_gifs(state_key):
+            migrated = state_dir / f"{safe_key}_1.gif"
+            try:
+                shutil.move(str(primary), str(migrated))
+            except OSError as e:
+                raise GifStorageError(f"Failed to migrate single-file GIF: {e}")
+
+        # Find next available index
+        existing = self.list_gifs(state_key)
+        index = len(existing) + 1
+        dest = state_dir / f"{safe_key}_{index}.gif"
+        # Handle collision (shouldn't happen normally)
+        while dest.exists():
+            index += 1
+            dest = state_dir / f"{safe_key}_{index}.gif"
+
+        try:
+            shutil.copy2(source_path, dest)
+            return self._to_resource_id(dest)
+        except OSError as e:
+            raise GifStorageError(f"Failed to copy GIF: {e}")
+
+    def remove_gif(self, state_key: str, filename: str) -> bool:
+        """
+        Remove a specific GIF from a state's subfolder.
+
+        Cleans up the subfolder if it becomes empty.
+
+        Args:
+            state_key: State key
+            filename: Filename within the subfolder (e.g. 'stand_2.gif')
+
+        Returns:
+            True if deleted, False if not found
+        """
+        state_dir = self._state_dir(state_key)
+        target = state_dir / filename
+        if not target.is_file():
+            return False
+
+        # Security: ensure target is within state_dir
+        try:
+            target.resolve().relative_to(state_dir.resolve())
+        except ValueError:
+            logger.error(f"Path traversal attempt blocked: {filename}")
+            return False
+
+        try:
+            target.unlink()
+        except OSError as e:
+            raise GifStorageError(f"Failed to delete GIF: {e}")
+
+        # Clean up empty subfolder
+        remaining = self.list_gifs(state_key)
+        if not remaining and state_dir.is_dir():
+            try:
+                state_dir.rmdir()
+            except OSError:
+                pass  # Not empty (other non-gif files), leave it
+
+        return True
+
+    def delete_all_gifs(self, state_key: str) -> bool:
+        """
+        Delete all GIFs for a state (both single file and subfolder).
+
+        Used when removing a state entirely.
+
+        Returns:
+            True if any files were deleted
+        """
+        deleted = False
+
+        # Delete single file
+        primary = self._primary_path(state_key)
+        if primary.is_file():
+            try:
+                primary.unlink()
+                deleted = True
+            except OSError as e:
+                raise GifStorageError(f"Failed to delete primary GIF: {e}")
+
+        # Delete subfolder contents
+        state_dir = self._state_dir(state_key)
+        if state_dir.is_dir():
+            for gif_file in state_dir.iterdir():
+                if gif_file.is_file():
+                    try:
+                        gif_file.unlink()
+                        deleted = True
+                    except OSError as e:
+                        raise GifStorageError(f"Failed to delete GIF {gif_file.name}: {e}")
+            try:
+                state_dir.rmdir()
+            except OSError:
+                pass  # Not empty, leave it
+
+        return deleted
+
+    # ═══════════════════════════════════════════════════════════
     # Private Implementation
     # ═══════════════════════════════════════════════════════════
 
+    def _state_dir(self, state_key: str) -> Path:
+        """Get subfolder path for a state's GIFs."""
+        safe_key = self._sanitize_key(state_key)
+        return self.storage_dir / safe_key
+
     def _primary_path(self, state_key: str) -> Path:
-        """Get GIF path for a state."""
+        """Get single-file GIF path for a state."""
         safe_key = self._sanitize_key(state_key)
         return self.storage_dir / f"{safe_key}.gif"
 
@@ -497,6 +666,7 @@ class StateListWriter:
         move_states: dict[str, MoveState],
         gif_paths: dict[str, Optional[Path]],
         movement_only_keys: set[str],
+        gif_counts: Optional[dict[str, int]] = None,
     ) -> str:
         """
         Generate and write state list summary.
@@ -517,7 +687,7 @@ class StateListWriter:
         visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
         for key in visible_keys:
             state: State = states[key]
-            gif_info = self._gif_summary(key, gif_paths)
+            gif_info = self._gif_summary(key, gif_paths, gif_counts)
             action_type = self._action_type(key, move_states)
             lines.append(f"- ({key}) {state.label} | {action_type} | GIF: {gif_info}")
 
@@ -530,7 +700,7 @@ class StateListWriter:
                 move_state: Optional[State] = states.get(key)
                 if not move_state:
                     continue
-                gif_info = self._gif_summary(key, gif_paths)
+                gif_info = self._gif_summary(key, gif_paths, gif_counts)
                 direction = self._direction_for_state(key, move_states)
                 lines.append(
                     f"- ({key}) {move_state.label} | type: movement ({direction}) | GIF: {gif_info}"
@@ -545,8 +715,11 @@ class StateListWriter:
 
         return output.strip()
 
-    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]]) -> str:
+    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]], gif_counts: Optional[dict[str, int]] = None) -> str:
         """Generate GIF summary string."""
+        count = (gif_counts or {}).get(state_key, 0)
+        if count > 1:
+            return f"{count} GIFs"
         gif_path = gif_paths.get(state_key)
         return str(gif_path) if gif_path else "(no GIF)"
 

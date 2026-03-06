@@ -1,0 +1,273 @@
+"""GIF Gallery Dialog - view and manage all GIFs for a state."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from ...components.gif_player import GifPlayer
+
+
+class GifThumbnail(QtWidgets.QFrame):
+    """A single GIF thumbnail with delete button overlay."""
+
+    remove_clicked = QtCore.Signal(str)  # filename
+
+    def __init__(
+        self,
+        gif_path: Path,
+        gif_player: GifPlayer,
+        removable: bool = True,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.gif_path = gif_path
+        self._removable = removable
+        self.setObjectName("gifThumb")
+        self.setFixedSize(180, 210)
+        self.setStyleSheet(
+            "#gifThumb { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }"
+            "#gifThumb:hover { border-color: #4fc3f7; }"
+        )
+        self._setup_ui(gif_player)
+
+    def _setup_ui(self, gif_player: GifPlayer):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        # GIF preview
+        preview = QtWidgets.QLabel()
+        preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        preview.setFixedSize(170, 175)
+        movie = gif_player.load(self.gif_path, size=QtCore.QSize(160, 160))
+        if movie:
+            preview.setMovie(movie)
+        else:
+            preview.setText("?")
+            preview.setStyleSheet("color: #888;")
+        layout.addWidget(preview, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        # Delete button overlay (top-right corner of the frame)
+        if self._removable:
+            del_btn = QtWidgets.QPushButton("X", self)
+            del_btn.setFixedSize(20, 20)
+            del_btn.setToolTip("Remove this GIF")
+            del_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            del_btn.setStyleSheet(
+                "QPushButton { background: #c62828; color: white; border: none;"
+                " border-radius: 10px; font-size: 11px; font-weight: bold;"
+                " padding: 0px; margin: 0px; }"
+                "QPushButton:hover { background: #ff5252; }"
+            )
+            del_btn.move(self.width() - 24, 4)
+            del_btn.raise_()
+            del_btn.clicked.connect(lambda: self.remove_clicked.emit(self.gif_path.name))
+            self._del_btn = del_btn
+
+        # Filename label
+        name_label = QtWidgets.QLabel(self.gif_path.name)
+        name_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #ccc; border: none;")
+        name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        name_label.setToolTip(self.gif_path.name)
+        metrics = name_label.fontMetrics()
+        elided = metrics.elidedText(self.gif_path.name, QtCore.Qt.TextElideMode.ElideMiddle, 168)
+        name_label.setText(elided)
+        layout.addWidget(name_label)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        super().resizeEvent(event)
+        if self._removable and hasattr(self, "_del_btn"):
+            self._del_btn.move(self.width() - 24, 4)
+
+
+class GifGalleryDialog(QtWidgets.QDialog):
+    """
+    Dialog showing all GIFs for a state in a grid layout.
+
+    Allows adding new GIFs and removing existing ones.
+    """
+
+    def __init__(
+        self,
+        state_key: str,
+        state_label: str,
+        gif_paths: list[Path],
+        parent: Optional[QtWidgets.QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.state_key = state_key
+        self._gif_paths = list(gif_paths)
+        self._gif_player = GifPlayer()
+        self._added: list[Path] = []       # GIFs to add
+        self._removed: list[str] = []      # filenames to remove
+        self._thumbnails: list[GifThumbnail] = []
+
+        self.setWindowTitle(f"GIF Gallery - {state_label}")
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(320)
+        self._setup_ui()
+        self._refresh_grid()
+
+    @property
+    def added_paths(self) -> list[Path]:
+        return list(self._added)
+
+    @property
+    def removed_filenames(self) -> list[str]:
+        return list(self._removed)
+
+    def _setup_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(6)
+
+        # Header
+        header = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QLabel(f"GIFs for \"{self.state_key}\"")
+        title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        header.addWidget(title)
+
+        header.addStretch()
+
+        self._count_label = QtWidgets.QLabel()
+        self._count_label.setStyleSheet("font-size: 12px; color: #888;")
+        header.addWidget(self._count_label)
+
+        layout.addLayout(header)
+
+        # Scroll area for GIF grid
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            "QScrollArea { border: 1px solid #333; border-radius: 6px; background: #1e1e1e; }"
+        )
+
+        self._grid_container = QtWidgets.QWidget()
+        self._grid_container.setStyleSheet("background: #1e1e1e;")
+        self._grid_layout = QtWidgets.QGridLayout(self._grid_container)
+        self._grid_layout.setSpacing(10)
+        self._grid_layout.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(self._grid_container)
+        layout.addWidget(scroll, 1)
+
+        # Buttons
+        btn_row = QtWidgets.QHBoxLayout()
+
+        add_btn = QtWidgets.QPushButton("+ Add GIF(s)")
+        add_btn.setStyleSheet(
+            "QPushButton { background: #2e7d32; color: white; border: none; "
+            "border-radius: 4px; padding: 8px 16px; font-weight: bold; }"
+            "QPushButton:hover { background: #388e3c; }"
+        )
+        add_btn.clicked.connect(self._on_add)
+        btn_row.addWidget(add_btn)
+
+        btn_row.addStretch()
+
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        ok_btn = QtWidgets.QPushButton("OK")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(self.accept)
+        btn_row.addWidget(ok_btn)
+
+        layout.addLayout(btn_row)
+
+    def _refresh_grid(self):
+        """Rebuild the thumbnail grid from current state."""
+        # Clear existing
+        self._gif_player.clear()
+        self._thumbnails.clear()
+        while self._grid_layout.count():
+            item = self._grid_layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+
+        # Build the effective list: original minus removed, plus added
+        effective: list[tuple[Path, bool]] = []  # (path, is_new)
+
+        for p in self._gif_paths:
+            if p.name not in self._removed:
+                effective.append((p, False))
+
+        for p in self._added:
+            effective.append((p, True))
+
+        # Calculate columns based on dialog width
+        cols = max(1, (self.width() - 52) // 190)
+
+        for i, (path, is_new) in enumerate(effective):
+            # All existing GIFs are removable; new ones are also removable
+            thumb = GifThumbnail(path, self._gif_player, removable=True, parent=self._grid_container)
+            if is_new:
+                # Highlight new additions with a green border
+                thumb.setStyleSheet(
+                    "#gifThumb { background: #2a2a2a; border: 2px solid #4caf50; border-radius: 6px; }"
+                    "#gifThumb:hover { border-color: #81c784; }"
+                )
+            thumb.remove_clicked.connect(self._on_remove_gif)
+            self._grid_layout.addWidget(thumb, i // cols, i % cols)
+            self._thumbnails.append(thumb)
+
+        # Update count
+        total = len(effective)
+        self._count_label.setText(f"{total} GIF(s)")
+
+    def _on_add(self):
+        """Open file picker to add GIF(s)."""
+        file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self,
+            "Select GIF file(s)",
+            "",
+            "GIF Files (*.gif);;All Files (*.*)",
+        )
+        if not file_paths:
+            return
+
+        for fp in file_paths:
+            self._added.append(Path(fp))
+
+        self._refresh_grid()
+
+    def _on_remove_gif(self, filename: str):
+        """Handle remove click on a thumbnail."""
+        # Check if it's a newly added GIF
+        for i, p in enumerate(self._added):
+            if p.name == filename:
+                self._added.pop(i)
+                self._refresh_grid()
+                return
+
+        # It's an existing GIF - mark for removal
+        # Check how many will remain
+        remaining_original = sum(
+            1 for p in self._gif_paths if p.name not in self._removed and p.name != filename
+        )
+        remaining_new = len(self._added)
+        total_remaining = remaining_original + remaining_new
+
+        if total_remaining == 0:
+            QtWidgets.QMessageBox.warning(
+                self, "Cannot remove", "At least one GIF must remain."
+            )
+            return
+
+        self._removed.append(filename)
+        self._refresh_grid()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        """Reflow grid on resize."""
+        super().resizeEvent(event)
+        if self._thumbnails:
+            self._refresh_grid()
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self._gif_player.clear()
+        super().closeEvent(event)

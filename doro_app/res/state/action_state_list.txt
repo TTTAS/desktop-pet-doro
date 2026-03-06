@@ -1,2 +1,0 @@
-[2025-11-08 11:15:44] 可使用的動作狀態為:
-- (walking) Walking | direction: any | state: walking | GIF: C:\Users\KHUser\Desktop\doro\res\action\walking.gif

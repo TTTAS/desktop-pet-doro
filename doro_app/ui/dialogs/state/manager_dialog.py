@@ -26,6 +26,8 @@ class StateManagerDialog(QtWidgets.QDialog):
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
         self._gif_player = GifPlayer()  # Unified GIF resource management
+        self._preview_indices: dict[str, int] = {}  # Current preview index per state key
+        self._preview_widgets: dict[str, dict] = {}  # Preview widget refs per state key
         self._setup_ui()
         self._populate()
 
@@ -96,6 +98,8 @@ class StateManagerDialog(QtWidgets.QDialog):
     def _populate(self):
         self.table.setRowCount(0)
         self._gif_player.clear()  # Clear old GIF players
+        self._preview_indices.clear()
+        self._preview_widgets.clear()
 
         visible_keys = sorted(self.service.visible_state_keys())
         for key in visible_keys:
@@ -106,26 +110,18 @@ class StateManagerDialog(QtWidgets.QDialog):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # State name
+            # State name with GIF count
             label = state.label or key
-            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key})")
+            gif_count = self._get_gif_count(state, key)
+            gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
+            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key}){gif_info}")
             name_item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
             name_item.setForeground(QtGui.QColor("#ffffff"))  # White text
             self.table.setItem(row, 0, name_item)
 
-            # Preview (GIF)
-            preview_label = QtWidgets.QLabel()
-            preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            preview_label.setMinimumSize(114, 114)
-
-            # Try to get GIF path from multiple sources
-            gif_path = self._get_state_gif_path(state, key)
-            if gif_path:
-                movie = self._gif_player.load(gif_path, size=QtCore.QSize(96, 96))
-                if movie:
-                    preview_label.setMovie(movie)
-
-            self.table.setCellWidget(row, 1, preview_label)
+            # Preview (GIF with navigation arrows)
+            preview_widget = self._create_preview_widget(state, key)
+            self.table.setCellWidget(row, 1, preview_widget)
 
             # Actions column (Edit GIF button)
             actions_widget = QtWidgets.QWidget()
@@ -133,8 +129,8 @@ class StateManagerDialog(QtWidgets.QDialog):
             actions_layout.setContentsMargins(5, 5, 5, 5)
             actions_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-            edit_gif_btn = QtWidgets.QPushButton("Edit GIF")
-            edit_gif_btn.setMaximumWidth(100)
+            edit_gif_btn = QtWidgets.QPushButton("Manage GIFs")
+            edit_gif_btn.setMaximumWidth(110)
             edit_gif_btn.clicked.connect(lambda checked, k=key: self._on_edit_gif(k))
             actions_layout.addWidget(edit_gif_btn)
 
@@ -146,26 +142,154 @@ class StateManagerDialog(QtWidgets.QDialog):
         # Set equal width for all columns
         self._set_equal_column_widths()
 
-    def _get_state_gif_path(self, state: State, key: str) -> Optional[Path]:
-        """
-        Get GIF path for a state, trying multiple sources.
+    def _get_gif_count(self, state: State, key: str) -> int:
+        """Get the number of GIFs for a state."""
+        return len(self._get_all_gif_paths(state, key))
 
-        Priority:
-        1. state.gif_id (from repository)
-        2. Fixed path: res/state/{key}.gif
-        """
-        # Try GIF ID from repository first
+    def _get_all_gif_paths(self, state: State, key: str) -> list[Path]:
+        """Get all GIF paths for a state."""
+        multi_gifs = self.service.list_gif_paths(key)
+        if multi_gifs:
+            return multi_gifs
+
+        # Single file fallback
         if state.gif_id:
             gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
-                return gif_path
+                return [gif_path]
 
-        # Fallback to fixed path: res/state/{key}.gif
         fixed_path = paths.STATE_DIR / f"{key}.gif"
         if fixed_path.exists():
-            return fixed_path
+            return [fixed_path]
 
-        return None
+        # Fallback: movement state GIF in ACTION/MOVE/
+        move_path = paths.STATE_DIR.parent / "ACTION" / "MOVE" / f"{key}.gif"
+        if move_path.exists():
+            return [move_path]
+
+        return []
+
+    def _create_preview_widget(self, state: State, key: str) -> QtWidgets.QWidget:
+        """Create a preview widget with navigation arrows for multi-GIF states."""
+        gif_paths = self._get_all_gif_paths(state, key)
+        count = len(gif_paths)
+
+        # Initialize index
+        self._preview_indices[key] = 0
+
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # Left arrow
+        left_btn = QtWidgets.QPushButton()
+        left_btn.setIcon(self._make_arrow_icon("left"))
+        left_btn.setIconSize(QtCore.QSize(18, 18))
+        left_btn.setFixedSize(30, 30)
+        left_btn.setStyleSheet(self._arrow_btn_style())
+        left_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, -1))
+        layout.addWidget(left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        # Center: preview + counter
+        center = QtWidgets.QVBoxLayout()
+        center.setSpacing(2)
+
+        preview_label = QtWidgets.QLabel()
+        preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        preview_label.setMinimumSize(96, 96)
+
+        # Load first GIF
+        if gif_paths:
+            movie = self._gif_player.load(gif_paths[0], size=QtCore.QSize(96, 96))
+            if movie:
+                preview_label.setMovie(movie)
+
+        center.addWidget(preview_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        # Counter label
+        counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
+        counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4fc3f7;")
+        center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        layout.addLayout(center, 1)
+
+        # Right arrow
+        right_btn = QtWidgets.QPushButton()
+        right_btn.setIcon(self._make_arrow_icon("right"))
+        right_btn.setIconSize(QtCore.QSize(18, 18))
+        right_btn.setFixedSize(30, 30)
+        right_btn.setStyleSheet(self._arrow_btn_style())
+        right_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, 1))
+        layout.addWidget(right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        # Hide arrows for 0 or 1 GIF
+        if count <= 1:
+            left_btn.setVisible(False)
+            right_btn.setVisible(False)
+
+        # Store refs for navigation
+        self._preview_widgets[key] = {
+            "preview_label": preview_label,
+            "counter_label": counter_label,
+            "left_btn": left_btn,
+            "right_btn": right_btn,
+            "gif_paths": gif_paths,
+        }
+
+        return container
+
+    @staticmethod
+    def _arrow_btn_style() -> str:
+        return (
+            "QPushButton { background: #3a3a3a; border: 1px solid #666; "
+            "border-radius: 4px; padding: 2px; } "
+            "QPushButton:hover { background: #505050; border-color: #4fc3f7; }"
+        )
+
+    @staticmethod
+    def _make_arrow_icon(direction: str) -> QtGui.QIcon:
+        """Draw a clean arrow icon with QPainter."""
+        px = QtGui.QPixmap(18, 18)
+        px.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(px)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        if direction == "left":
+            points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
+        else:
+            points = [QtCore.QPointF(5, 3), QtCore.QPointF(13, 9), QtCore.QPointF(5, 15)]
+        painter.drawPolygon(points)
+        painter.end()
+        return QtGui.QIcon(px)
+
+    def _navigate_preview(self, key: str, direction: int):
+        """Navigate GIF preview for a state. direction: -1 (left) or +1 (right)."""
+        widgets = self._preview_widgets.get(key)
+        if not widgets:
+            return
+
+        gif_paths = widgets["gif_paths"]
+        if not gif_paths:
+            return
+
+        count = len(gif_paths)
+        idx = self._preview_indices.get(key, 0)
+        idx = (idx + direction) % count
+        self._preview_indices[key] = idx
+
+        # Load new GIF
+        preview_label = widgets["preview_label"]
+        movie = self._gif_player.load(gif_paths[idx], size=QtCore.QSize(96, 96))
+        if movie:
+            preview_label.setMovie(movie)
+        else:
+            preview_label.clear()
+
+        # Update counter
+        widgets["counter_label"].setText(f"{idx + 1}/{count}")
 
     def _set_equal_column_widths(self):
         """Set column widths with appropriate ratios."""
@@ -185,23 +309,34 @@ class StateManagerDialog(QtWidgets.QDialog):
             self._populate()
 
     def _on_edit_gif(self, state_key: str):
-        """Edit GIF for a state."""
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Select GIF file",
-            "",
-            "GIF Files (*.gif);;All Files (*.*)"
-        )
+        """Open GIF gallery to manage all GIFs for a state."""
+        from .gif_gallery_dialog import GifGalleryDialog
 
-        if not file_path:
+        state = self.service.get_state(state_key)
+        if not state:
             return
 
-        # Update GIF using service
-        if self.service.set_gif(state_key, Path(file_path)):
-            QtWidgets.QMessageBox.information(self, "Success", "GIF updated successfully!")
-            self._populate()  # Refresh to show new GIF
-        else:
-            QtWidgets.QMessageBox.warning(self, "Error", "Failed to update GIF.")
+        gif_paths = self._get_all_gif_paths(state, state_key)
+        label = state.label or state_key
+
+        dialog = GifGalleryDialog(state_key, label, gif_paths, parent=self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        changed = False
+
+        # Process removals first
+        for filename in dialog.removed_filenames:
+            if self.service.remove_gif(state_key, filename):
+                changed = True
+
+        # Process additions
+        for path in dialog.added_paths:
+            if self.service.add_gif(state_key, path):
+                changed = True
+
+        if changed:
+            self._populate()
 
     def _on_edit(self):
         """Edit selected state."""

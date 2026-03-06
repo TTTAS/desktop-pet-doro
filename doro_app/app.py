@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 from .bootstrap import BootstrappedDependencies, bootstrap_environment
-from .constants import MOVEMENT_STEP_PX
+from .constants import (
+    BUBBLE_AUTO_HIDE_MS,
+    BUBBLE_DEFAULT_OFFSET_X,
+    BUBBLE_DEFAULT_OFFSET_Y,
+    BUBBLE_DEFAULT_SCALE,
+    CLICK_DRAG_THRESHOLD_PX,
+    MOVEMENT_STEP_PX,
+)
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
 from .core.movement.manager import MovementManager
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
-from .ui.components.bubble_controller import BubbleController
+from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .ui.controllers import ClickActionController, DialogManager, GifController, StateController
+from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.window import DoroWindow
 
 
@@ -143,18 +151,6 @@ class DoroApp:
 
         self._connect_business_to_ui()
         self._connect_ui_controllers()
-
-        # ═════════════════════════════════════════════════════════════
-        # Phase 6: Wire remaining UI-specific dependencies
-        # ═════════════════════════════════════════════════════════════
-        # TODO: Move this logic to DoroApp and remove wire_dependencies entirely
-        self.window.wire_dependencies(
-            state_controller=self._state_controller,
-            gif_controller=self._gif_controller,
-            dialog_manager=self._dialog_manager,
-            click_action_controller=self._click_action_controller,
-            bubble_controller=self._bubble_controller,
-        )
 
         # ─────────────────────────────────────────────────────────
         # Initialize StateService and restore last state
@@ -292,28 +288,61 @@ class DoroApp:
         self.window._on_transition_completed(target_state_key)
 
     def _connect_ui_controllers(self):
-        """Connect UI controllers to Window (legacy connections that remain in Window)."""
+        """Connect UI controllers to Window and wire all UI-layer dependencies."""
 
-        # Note: StateController → CoreManager connection is in _connect_business_to_ui()
-        # The old StateController → Window direct connection has been removed
-        # to ensure proper layered architecture
-
-        # GifController signals (if any)
-        # DialogManager doesn't emit signals to Window
-
-        # ClickActionController → Window
-        # (Window's click event will call click_action_controller.handle_click)
-
-        # Store references in Window for backward compatibility
-        # Only UI controllers and CoreManager are stored
+        # ─────────────────────────────────────────────────────────
+        # Store references in Window (used by themed_menu, chat_ui_helper)
+        # ─────────────────────────────────────────────────────────
         self.window._state_controller = self._state_controller
         self.window._gif_controller = self._gif_controller
         self.window._dialog_manager = self._dialog_manager
         self.window._click_action_controller = self._click_action_controller
         self.window._bubble_controller = self._bubble_controller
         self.window._core_manager = self.core_manager
-        # NOTE: _chat_controller, _movement, _chat_orchestrator removed
-        # Access these through _core_manager instead
+
+        # ─────────────────────────────────────────────────────────
+        # Create and wire mouse event handler
+        # ─────────────────────────────────────────────────────────
+        self.window._mouse_handler = MouseEventHandler(
+            bubble_controller=self._bubble_controller,
+            click_threshold=CLICK_DRAG_THRESHOLD_PX,
+        )
+        self.window._mouse_handler.window_drag_requested.connect(self.window.move)
+        self.window._mouse_handler.click_detected.connect(
+            lambda: (
+                self.window._mark_user_activity(),
+                self._click_action_controller.trigger_random_action(),
+            )
+        )
+        self.window._mouse_handler.user_activity_detected.connect(
+            self.window._mark_user_activity
+        )
+
+        # ─────────────────────────────────────────────────────────
+        # Connect UI controller signals → Window
+        # ─────────────────────────────────────────────────────────
+        self._state_controller.repaint_requested.connect(self.window.update)
+        self._state_controller.state_list_updated.connect(
+            self.window._on_state_list_updated
+        )
+
+        self._gif_controller.repaint_requested.connect(self.window.update)
+        self._gif_controller.gif_loaded.connect(self.window._on_gif_loaded)
+        self._gif_controller.sprite_size_changed.connect(
+            self.window._on_sprite_size_changed
+        )
+
+        # ─────────────────────────────────────────────────────────
+        # Apply persisted bubble configuration
+        # ─────────────────────────────────────────────────────────
+        self._bubble_controller.apply_persisted_config(
+            BubbleConfig(
+                offset_x=self._config_manager.ui.bubble_offset_x,
+                offset_y=self._config_manager.ui.bubble_offset_y,
+                scale=self._config_manager.ui.bubble_scale,
+                auto_hide_ms=BUBBLE_AUTO_HIDE_MS,
+            )
+        )
 
     def run(self):
         """Start the application by showing the main window."""

@@ -85,7 +85,10 @@ class StateService:
 
     def get_gif_path(self, state_key: str) -> Optional[Path]:
         """
-        Get the file path for a state's GIF.
+        Get a GIF path for a state.
+
+        If the state has multiple GIFs (subfolder), picks one at random.
+        Falls back to the single-file gif_id if no subfolder exists.
 
         Args:
             state_key: State key
@@ -93,10 +96,25 @@ class StateService:
         Returns:
             Absolute path to GIF file or None if not found
         """
+        # Priority 1: multi-GIF subfolder (random pick)
+        random_path = self._gif_manager.pick_random_gif(state_key)
+        if random_path:
+            return random_path
+
+        # Priority 2: single-file via gif_id
         state = self._states.get(state_key)
-        if not state or not state.gif_id:
-            return None
-        return self._gif_manager.get_path_by_id(state.gif_id)
+        if state and state.gif_id:
+            path = self._gif_manager.get_path_by_id(state.gif_id)
+            if path:
+                return path
+
+        # Priority 3: movement state fallback (ACTION/MOVE/{key}.gif)
+        if self._move_states.is_movement_only(state_key):
+            move_path = self._gif_repo.get_move_storage_path(state_key)
+            if move_path.is_file():
+                return move_path
+
+        return None
 
     def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
         """
@@ -375,17 +393,10 @@ class StateService:
 
         # Ensure corresponding display state exists
         if not self._states.get(walking_key):
-            # Try to find walking.gif using encapsulated method
-            walk_gif_path = self._gif_repo.get_move_storage_path(walking_key)
-            gif_id = None
-            if walk_gif_path.is_file():
-                gif_id = self._gif_repo.store_gif(walk_gif_path, walking_key)
-
             walk_state = State(
                 key=walking_key,
                 label="Walking",
                 name_tag="doro",
-                gif_id=gif_id,
             )
             self._states.add(walk_state)
             self._states.protect(walking_key)
@@ -566,10 +577,9 @@ class StateService:
 
         logger.info(f"Removed state '{key}'")
 
-        # Delete associated GIF
-        if state and state.gif_id:
-            self._gif_repo.delete(state.gif_id)
-            logger.debug(f"Deleted GIF for removed state '{key}': {state.gif_id}")
+        # Delete all associated GIFs (single file + subfolder)
+        self._gif_manager.delete_all_gifs(key)
+        logger.debug(f"Deleted GIFs for removed state '{key}'")
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
         self.write_state_list()
@@ -642,6 +652,57 @@ class StateService:
         """
         state = self._states.get(state_key)
         return state.gif_id if state else None
+
+    def add_gif(self, state_key: str, gif_path: Path) -> bool:
+        """
+        Add a GIF to a state's multi-GIF collection (subfolder).
+
+        Unlike set_gif(), this does not replace existing GIFs.
+
+        Returns:
+            True if successful
+        """
+        state = self._states.get(state_key)
+        if not state:
+            return False
+
+        resource_id = self._gif_manager.add_gif(gif_path, state_key)
+        if not resource_id:
+            return False
+
+        # Always update gif_id — handles both initial set and stale ref after migration
+        updated = state.with_changes(gif_id=resource_id)
+        self._states.add(updated)
+        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+
+        return True
+
+    def list_gif_paths(self, state_key: str) -> list[Path]:
+        """
+        List all GIF paths for a state (subfolder contents).
+
+        Returns:
+            List of absolute paths (empty if no subfolder)
+        """
+        return self._gif_manager.list_gifs(state_key)
+
+    def remove_gif(self, state_key: str, filename: str) -> bool:
+        """
+        Remove a specific GIF from a state's multi-GIF collection.
+
+        Returns:
+            True if removed
+        """
+        return self._gif_manager.remove_gif(state_key, filename)
+
+    def delete_all_gifs(self, state_key: str) -> bool:
+        """
+        Delete all GIFs for a state (single file + subfolder).
+
+        Returns:
+            True if any files were deleted
+        """
+        return self._gif_manager.delete_all_gifs(state_key)
 
     # ═══════════════════════════════════════════════════════════
     # Movement State Operations
@@ -736,17 +797,33 @@ class StateService:
 
     def write_state_list(self) -> str:
         """Write state summary for LLM context."""
-        # Collect GIF path information (encapsulation: don't pass gif_repo)
+        # Collect GIF path and count information
         gif_paths: dict[str, Optional[Path]] = {}
+        gif_counts: dict[str, int] = {}
         for key, state in self._states._items.items():
-            if state.gif_id:
+            # Check multi-GIF subfolder first
+            multi_gifs = self._gif_manager.list_gifs(key)
+            if multi_gifs:
+                gif_paths[key] = multi_gifs[0]
+                gif_counts[key] = len(multi_gifs)
+            elif state.gif_id:
                 gif_paths[key] = self._gif_repo.get_path(state.gif_id)
+                gif_counts[key] = 1 if gif_paths[key] else 0
             else:
+                # Fallback: check ACTION/MOVE/ for movement states
+                if self._move_states.is_movement_only(key):
+                    move_path = self._gif_repo.get_move_storage_path(key)
+                    if move_path.is_file():
+                        gif_paths[key] = move_path
+                        gif_counts[key] = 1
+                        continue
                 gif_paths[key] = None
+                gif_counts[key] = 0
 
         return self._state_list_writer.write(
             self._states._items,
             self._move_states._items,
             gif_paths,
             self._move_states._movement_only_keys,
+            gif_counts=gif_counts,
         )

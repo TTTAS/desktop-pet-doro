@@ -88,6 +88,38 @@ class GifManager:
         """
         return self._gif_repo.delete(gif_id)
 
+    # ─────────────────────────────────────────────────────────
+    # Multi-GIF Operations
+    # ─────────────────────────────────────────────────────────
+
+    def list_gifs(self, state_key: str) -> list[Path]:
+        """List all GIF files in a state's subfolder."""
+        return self._gif_repo.list_gifs(state_key)
+
+    def pick_random_gif(self, state_key: str) -> Optional[Path]:
+        """Pick a random GIF for a state (subfolder first, then single file fallback)."""
+        return self._gif_repo.pick_random_gif(state_key)
+
+    def add_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+        """Add a GIF to a state's subfolder collection."""
+        try:
+            return self._gif_repo.add_gif(source_path, state_key)
+        except (GifNotFoundError, GifStorageError) as e:
+            logger.error(f"Failed to add GIF for '{state_key}': {e}")
+            return None
+
+    def remove_gif(self, state_key: str, filename: str) -> bool:
+        """Remove a specific GIF from a state's subfolder."""
+        return self._gif_repo.remove_gif(state_key, filename)
+
+    def delete_all_gifs(self, state_key: str) -> bool:
+        """Delete all GIFs for a state (single file + subfolder)."""
+        return self._gif_repo.delete_all_gifs(state_key)
+
+    # ─────────────────────────────────────────────────────────
+    # Path Utilities
+    # ─────────────────────────────────────────────────────────
+
     def get_state_storage_path(self, state_key: str) -> Path:
         """
         Get the expected storage path for a state's GIF.
