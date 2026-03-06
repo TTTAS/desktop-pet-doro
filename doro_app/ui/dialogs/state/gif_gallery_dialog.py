@@ -26,7 +26,7 @@ class GifThumbnail(QtWidgets.QFrame):
         self.gif_path = gif_path
         self._removable = removable
         self.setObjectName("gifThumb")
-        self.setFixedSize(130, 140)
+        self.setFixedSize(180, 210)
         self.setStyleSheet(
             "#gifThumb { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }"
             "#gifThumb:hover { border-color: #4fc3f7; }"
@@ -35,14 +35,14 @@ class GifThumbnail(QtWidgets.QFrame):
 
     def _setup_ui(self, gif_player: GifPlayer):
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 2)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
         # GIF preview
         preview = QtWidgets.QLabel()
         preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        preview.setFixedSize(120, 100)
-        movie = gif_player.load(self.gif_path, size=QtCore.QSize(110, 90))
+        preview.setFixedSize(170, 175)
+        movie = gif_player.load(self.gif_path, size=QtCore.QSize(160, 160))
         if movie:
             preview.setMovie(movie)
         else:
@@ -73,7 +73,7 @@ class GifThumbnail(QtWidgets.QFrame):
         name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         name_label.setToolTip(self.gif_path.name)
         metrics = name_label.fontMetrics()
-        elided = metrics.elidedText(self.gif_path.name, QtCore.Qt.TextElideMode.ElideMiddle, 118)
+        elided = metrics.elidedText(self.gif_path.name, QtCore.Qt.TextElideMode.ElideMiddle, 168)
         name_label.setText(elided)
         layout.addWidget(name_label)
 
@@ -107,7 +107,7 @@ class GifGalleryDialog(QtWidgets.QDialog):
 
         self.setWindowTitle(f"GIF Gallery - {state_label}")
         self.setMinimumWidth(500)
-        self.setMinimumHeight(350)
+        self.setMinimumHeight(320)
         self._setup_ui()
         self._refresh_grid()
 
@@ -121,8 +121,8 @@ class GifGalleryDialog(QtWidgets.QDialog):
 
     def _setup_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(6)
 
         # Header
         header = QtWidgets.QHBoxLayout()
@@ -201,7 +201,7 @@ class GifGalleryDialog(QtWidgets.QDialog):
             effective.append((p, True))
 
         # Calculate columns based on dialog width
-        cols = max(1, (self.width() - 52) // 140)
+        cols = max(1, (self.width() - 52) // 190)
 
         for i, (path, is_new) in enumerate(effective):
             # All existing GIFs are removable; new ones are also removable
