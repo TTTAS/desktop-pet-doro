@@ -129,8 +129,8 @@ class StateManagerDialog(QtWidgets.QDialog):
             actions_layout.setContentsMargins(5, 5, 5, 5)
             actions_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-            edit_gif_btn = QtWidgets.QPushButton("Edit GIF")
-            edit_gif_btn.setMaximumWidth(100)
+            edit_gif_btn = QtWidgets.QPushButton("Manage GIFs")
+            edit_gif_btn.setMaximumWidth(110)
             edit_gif_btn.clicked.connect(lambda checked, k=key: self._on_edit_gif(k))
             actions_layout.addWidget(edit_gif_btn)
 
@@ -309,28 +309,34 @@ class StateManagerDialog(QtWidgets.QDialog):
             self._populate()
 
     def _on_edit_gif(self, state_key: str):
-        """Add GIF(s) for a state (supports multiple files)."""
-        file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self,
-            "Select GIF file(s)",
-            "",
-            "GIF Files (*.gif);;All Files (*.*)"
-        )
+        """Open GIF gallery to manage all GIFs for a state."""
+        from .gif_gallery_dialog import GifGalleryDialog
 
-        if not file_paths:
+        state = self.service.get_state(state_key)
+        if not state:
             return
 
-        success_count = 0
-        for fp in file_paths:
-            if self.service.add_gif(state_key, Path(fp)):
-                success_count += 1
+        gif_paths = self._get_all_gif_paths(state, state_key)
+        label = state.label or state_key
 
-        if success_count > 0:
-            msg = f"Added {success_count} GIF(s)." if success_count > 1 else "GIF added!"
-            QtWidgets.QMessageBox.information(self, "Success", msg)
+        dialog = GifGalleryDialog(state_key, label, gif_paths, parent=self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        changed = False
+
+        # Process removals first
+        for filename in dialog.removed_filenames:
+            if self.service.remove_gif(state_key, filename):
+                changed = True
+
+        # Process additions
+        for path in dialog.added_paths:
+            if self.service.add_gif(state_key, path):
+                changed = True
+
+        if changed:
             self._populate()
-        else:
-            QtWidgets.QMessageBox.warning(self, "Error", "Failed to add GIF(s).")
 
     def _on_edit(self):
         """Edit selected state."""
