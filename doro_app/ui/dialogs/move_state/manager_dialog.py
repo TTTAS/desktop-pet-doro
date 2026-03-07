@@ -51,27 +51,18 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.table.setShowGrid(True)
         self.table.setStyleSheet("""
             QTableWidget {
-                gridline-color: #333333;
+                gridline-color: rgba(232, 96, 156, 0.20);
             }
             QTableWidget::item {
-                border-right: 1px solid #555555;
-            }
-            QTableWidget::item:selected {
-                background-color: #1a5276;
-                color: white;
+                border-right: 1px solid rgba(232, 96, 156, 0.15);
             }
         """)
 
         header = self.table.horizontalHeader()
-        # Set all columns to stretch proportionally with window size
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        # Style header: bold and white text
-        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: white; }")
-
-        # Style vertical header (row numbers): black text
         vertical_header = self.table.verticalHeader()
-        vertical_header.setStyleSheet("QHeaderView::section { color: black; }")
+        vertical_header.setStyleSheet("QHeaderView::section { color: #9c6b8a; }")
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
@@ -120,12 +111,12 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             # Key
             key_item = QtWidgets.QTableWidgetItem(move_state.key)
             key_item.setData(QtCore.Qt.ItemDataRole.UserRole, ("movement", move_state.key))
-            key_item.setForeground(QtGui.QColor("#ffffff"))
+            key_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 0, key_item)
 
             # Type
             type_item = QtWidgets.QTableWidgetItem("Movement")
-            type_item.setForeground(QtGui.QColor("#4ade80"))  # Green
+            type_item.setForeground(QtGui.QColor("#2e7d32"))  # Green
             self.table.setItem(row, 1, type_item)
 
             # Action (GIF preview)
@@ -148,12 +139,12 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             # Details (Direction for movement)
             details_item = QtWidgets.QTableWidgetItem(f"Dir: {move_state.direction}")
-            details_item.setForeground(QtGui.QColor("#ffffff"))
+            details_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 3, details_item)
 
             # Speed
             speed_item = QtWidgets.QTableWidgetItem(move_state.default_speed)
-            speed_item.setForeground(QtGui.QColor("#ffffff"))
+            speed_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 4, speed_item)
 
         # Add transition actions
@@ -172,12 +163,12 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
             key_item = QtWidgets.QTableWidgetItem(f"{transition.key}{gif_info}")
             key_item.setData(QtCore.Qt.ItemDataRole.UserRole, ("transition", transition.key))
-            key_item.setForeground(QtGui.QColor("#ffffff"))
+            key_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 0, key_item)
 
             # Type
             type_item = QtWidgets.QTableWidgetItem("Transition")
-            type_item.setForeground(QtGui.QColor("#fbbf24"))  # Yellow
+            type_item.setForeground(QtGui.QColor("#c0266e"))  # Dark pink
             self.table.setItem(row, 1, type_item)
 
             # Action (GIF preview with navigation arrows)
@@ -187,7 +178,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             # Details (From -> To for transition)
             details_item = QtWidgets.QTableWidgetItem(f"{transition.from_state} → {transition.to_state}")
-            details_item.setForeground(QtGui.QColor("#ffffff"))
+            details_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 3, details_item)
 
             # Speed column: Manage GIFs button
@@ -300,7 +291,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
         counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4fc3f7;")
+        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #e8609c;")
         center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(center, 1)
@@ -331,9 +322,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
     @staticmethod
     def _arrow_btn_style() -> str:
         return (
-            "QPushButton { background: #3a3a3a; border: 1px solid #666; "
+            "QPushButton { background: #fff0f6; border: 1px solid rgba(232,96,156,0.40); "
             "border-radius: 4px; padding: 2px; } "
-            "QPushButton:hover { background: #505050; border-color: #4fc3f7; }"
+            "QPushButton:hover { background: #ffe4f0; border-color: #e8609c; }"
         )
 
     @staticmethod
@@ -343,7 +334,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         painter = QtGui.QPainter(px)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        painter.setBrush(QtGui.QColor("#e8609c"))
         if direction == "left":
             points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
         else:

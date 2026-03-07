@@ -28,8 +28,8 @@ class GifThumbnail(QtWidgets.QFrame):
         self.setObjectName("gifThumb")
         self.setFixedSize(180, 210)
         self.setStyleSheet(
-            "#gifThumb { background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }"
-            "#gifThumb:hover { border-color: #4fc3f7; }"
+            "#gifThumb { background: #ffffff; border: 1px solid rgba(232,96,156,0.30); border-radius: 6px; }"
+            "#gifThumb:hover { border-color: #e8609c; }"
         )
         self._setup_ui(gif_player)
 
@@ -47,7 +47,7 @@ class GifThumbnail(QtWidgets.QFrame):
             preview.setMovie(movie)
         else:
             preview.setText("?")
-            preview.setStyleSheet("color: #888;")
+            preview.setStyleSheet("color: #9c6b8a;")
         layout.addWidget(preview, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         # Delete button overlay (top-right corner of the frame)
@@ -69,7 +69,7 @@ class GifThumbnail(QtWidgets.QFrame):
 
         # Filename label
         name_label = QtWidgets.QLabel(self.gif_path.name)
-        name_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #ccc; border: none;")
+        name_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #4a2040; border: none;")
         name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         name_label.setToolTip(self.gif_path.name)
         metrics = name_label.fontMetrics()
@@ -133,7 +133,7 @@ class GifGalleryDialog(QtWidgets.QDialog):
         header.addStretch()
 
         self._count_label = QtWidgets.QLabel()
-        self._count_label.setStyleSheet("font-size: 12px; color: #888;")
+        self._count_label.setStyleSheet("font-size: 12px; color: #9c6b8a;")
         header.addWidget(self._count_label)
 
         layout.addLayout(header)
@@ -143,11 +143,11 @@ class GifGalleryDialog(QtWidgets.QDialog):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
-            "QScrollArea { border: 1px solid #333; border-radius: 6px; background: #1e1e1e; }"
+            "QScrollArea { border: 1px solid rgba(232,96,156,0.25); border-radius: 6px; background: #fff5fa; }"
         )
 
         self._grid_container = QtWidgets.QWidget()
-        self._grid_container.setStyleSheet("background: #1e1e1e;")
+        self._grid_container.setStyleSheet("background: #fff5fa;")
         self._grid_layout = QtWidgets.QGridLayout(self._grid_container)
         self._grid_layout.setSpacing(10)
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -209,8 +209,8 @@ class GifGalleryDialog(QtWidgets.QDialog):
             if is_new:
                 # Highlight new additions with a green border
                 thumb.setStyleSheet(
-                    "#gifThumb { background: #2a2a2a; border: 2px solid #4caf50; border-radius: 6px; }"
-                    "#gifThumb:hover { border-color: #81c784; }"
+                    "#gifThumb { background: #ffffff; border: 2px solid #2e7d32; border-radius: 6px; }"
+                    "#gifThumb:hover { border-color: #4caf50; }"
                 )
             thumb.remove_clicked.connect(self._on_remove_gif)
             self._grid_layout.addWidget(thumb, i // cols, i % cols)

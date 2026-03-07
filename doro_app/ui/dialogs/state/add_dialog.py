@@ -32,7 +32,7 @@ class AddStateDialog(QtWidgets.QDialog):
         # GIF selection
         gif_layout = QtWidgets.QHBoxLayout()
         self.gif_label = QtWidgets.QLabel("No GIF selected")
-        self.gif_label.setStyleSheet("color: #888888;")
+        self.gif_label.setStyleSheet("color: #9c6b8a;")
         gif_layout.addWidget(self.gif_label)
 
         select_gif_btn = QtWidgets.QPushButton("Select GIF(s)")
@@ -64,7 +64,7 @@ class AddStateDialog(QtWidgets.QDialog):
                 self.gif_label.setText(self.selected_gif_paths[0].name)
             else:
                 self.gif_label.setText(f"{count} GIFs selected")
-            self.gif_label.setStyleSheet("color: #ffffff;")
+            self.gif_label.setStyleSheet("color: #4a2040;")
 
     def _on_accept(self):
         key = self.key_edit.text().strip()

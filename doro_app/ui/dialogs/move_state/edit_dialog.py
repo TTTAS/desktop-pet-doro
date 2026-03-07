@@ -54,7 +54,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if not self.is_edit:
             type_layout = QtWidgets.QHBoxLayout()
             type_label = QtWidgets.QLabel("Action Type:")
-            type_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+            type_label.setStyleSheet("color: #e8609c; font-weight: bold;")
             self.type_combo = QtWidgets.QComboBox()
             self.type_combo.addItems(["Movement", "Transition"])
             self.type_combo.currentTextChanged.connect(self._on_action_type_changed)
@@ -73,12 +73,12 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if self.is_edit:
             self.key_edit.setEnabled(False)
         self.key_label = QtWidgets.QLabel("Key (identifier):")
-        self.key_label.setStyleSheet("color: #ffffff;")
+        self.key_label.setStyleSheet("color: #4a2040;")
         self.form_layout.addRow(self.key_label, self.key_edit)
 
         # Movement-specific fields
         self.state_label = QtWidgets.QLabel("Associated state:")
-        self.state_label.setStyleSheet("color: #ffffff;")
+        self.state_label.setStyleSheet("color: #4a2040;")
         self.state_combo = QtWidgets.QComboBox()
         available_states = self.service.visible_state_keys()
         for state_key in sorted(available_states):
@@ -87,7 +87,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.state_row = self.form_layout.addRow(self.state_label, self.state_combo)
 
         self.direction_label = QtWidgets.QLabel("Direction:")
-        self.direction_label.setStyleSheet("color: #ffffff;")
+        self.direction_label.setStyleSheet("color: #4a2040;")
         self.direction_combo = QtWidgets.QComboBox()
         self.direction_combo.addItems(
             ["none", "any", "left", "right", "up", "down", "left|right", "up|down"]
@@ -96,21 +96,21 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.direction_row = self.form_layout.addRow(self.direction_label, self.direction_combo)
 
         self.speed_label = QtWidgets.QLabel("Default speed:")
-        self.speed_label.setStyleSheet("color: #ffffff;")
+        self.speed_label.setStyleSheet("color: #4a2040;")
         self.speed_combo = QtWidgets.QComboBox()
         self.speed_combo.addItems(["slow", "med", "fast"])
         self.speed_row = self.form_layout.addRow(self.speed_label, self.speed_combo)
 
         # Transition-specific fields
         self.from_state_label = QtWidgets.QLabel("From state:")
-        self.from_state_label.setStyleSheet("color: #ffffff;")
+        self.from_state_label.setStyleSheet("color: #4a2040;")
         self.from_state_combo = QtWidgets.QComboBox()
         for state_key in sorted(available_states):
             self.from_state_combo.addItem(state_key)
         self.from_state_row = self.form_layout.addRow(self.from_state_label, self.from_state_combo)
 
         self.to_state_label = QtWidgets.QLabel("To state:")
-        self.to_state_label.setStyleSheet("color: #ffffff;")
+        self.to_state_label.setStyleSheet("color: #4a2040;")
         self.to_state_combo = QtWidgets.QComboBox()
         for state_key in sorted(available_states):
             self.to_state_combo.addItem(state_key)
@@ -120,11 +120,11 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # GIF Upload Section
         gif_upload_group = QtWidgets.QGroupBox("GIF File")
-        gif_upload_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        gif_upload_group.setStyleSheet("QGroupBox { color: #e8609c; }")
         gif_upload_layout = QtWidgets.QHBoxLayout(gif_upload_group)
 
         self.gif_status_label = QtWidgets.QLabel("No GIF selected")
-        self.gif_status_label.setStyleSheet("color: #888888;")
+        self.gif_status_label.setStyleSheet("color: #9c6b8a;")
         gif_upload_layout.addWidget(self.gif_status_label)
 
         self.select_gif_btn = QtWidgets.QPushButton("Select GIF")
@@ -141,13 +141,13 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # GIF Preview
         preview_group = QtWidgets.QGroupBox("GIF Preview")
-        preview_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        preview_group.setStyleSheet("QGroupBox { color: #e8609c; }")
         preview_layout = QtWidgets.QVBoxLayout(preview_group)
 
         self.preview_label = QtWidgets.QLabel("Select a state to preview")
         self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(200)
-        self.preview_label.setStyleSheet("background-color: #1a1a1a; color: #888888;")
+        self.preview_label.setStyleSheet("background-color: #fff5fa; color: #9c6b8a;")
         preview_layout.addWidget(self.preview_label)
 
         main_layout.addWidget(preview_group)
@@ -155,7 +155,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         # Info label (dynamic based on action type)
         self.info_label = QtWidgets.QLabel()
         self.info_label.setWordWrap(True)
-        self.info_label.setStyleSheet("color: #a5b4fc; font-size: 11px; padding: 8px;")
+        self.info_label.setStyleSheet("color: #e8609c; font-size: 11px; padding: 8px;")
         main_layout.addWidget(self.info_label)
 
         # Buttons
@@ -213,7 +213,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if file_path:
             self.selected_gif_path = Path(file_path)
             self.gif_status_label.setText(self.selected_gif_path.name)
-            self.gif_status_label.setStyleSheet("color: #4ade80;")  # Green color
+            self.gif_status_label.setStyleSheet("color: #2e7d32;")  # Green color
 
             # Update preview with the selected GIF
             self._update_preview_from_file(self.selected_gif_path)
@@ -297,10 +297,10 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             new_count = len(self.service.list_transition_gif_paths(key))
             if new_count > 0:
                 self.gif_status_label.setText(f"{new_count} GIF(s)")
-                self.gif_status_label.setStyleSheet("color: #4ade80;")
+                self.gif_status_label.setStyleSheet("color: #2e7d32;")
             else:
                 self.gif_status_label.setText("No GIF selected")
-                self.gif_status_label.setStyleSheet("color: #888888;")
+                self.gif_status_label.setStyleSheet("color: #9c6b8a;")
 
     def _load_data(self):
         """Load existing move state data."""
