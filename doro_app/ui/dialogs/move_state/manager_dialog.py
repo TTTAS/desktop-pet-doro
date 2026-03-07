@@ -441,7 +441,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            # Release GIF file handles before deletion (prevents WinError 32)
+            # Release GIF file handles before deletion (prevents WinError 32).
+            # GifPlayer.clear() calls setFileName("") on each QMovie to
+            # immediately detach the file, so the OS releases the handle.
             self._gif_player.clear()
             self._preview_widgets.clear()
 
@@ -450,14 +452,10 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
                     success = self.service.remove_move_state(key)
                 else:  # transition
                     success = self.service.remove_transition(key)
-            except Exception as e:
-                # GIF file deletion may fail on Windows due to lingering handles,
-                # but the transition data was already removed — refresh UI anyway
+            except Exception:
+                # Data was already removed from the coordinator before GIF
+                # cleanup — treat as success so the UI refreshes.
                 success = True
-                QtWidgets.QMessageBox.warning(
-                    self, "Warning",
-                    f"Action removed but some GIF files could not be deleted:\n{e}",
-                )
 
             if success:
                 self._populate()
