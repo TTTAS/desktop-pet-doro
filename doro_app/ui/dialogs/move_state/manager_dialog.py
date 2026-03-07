@@ -143,6 +143,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
             self.table.setCellWidget(row, 2, action_label)
             self.table.setRowHeight(row, 114)
+            # Ensure clicking on GIF preview selects the row
+            action_label.mousePressEvent = lambda event, r=row: self.table.selectRow(r)
 
             # Details (Direction for movement)
             details_item = QtWidgets.QTableWidgetItem(f"Dir: {move_state.direction}")
@@ -195,12 +197,23 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             manage_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             manage_btn = QtWidgets.QPushButton("Manage GIFs")
             manage_btn.setMaximumWidth(110)
-            manage_btn.clicked.connect(lambda checked, k=transition.key: self._on_manage_transition_gifs(k))
+            manage_btn.clicked.connect(
+                lambda checked, r=row, k=transition.key: (
+                    self.table.selectRow(r),
+                    self._on_manage_transition_gifs(k),
+                )
+            )
             manage_layout.addWidget(manage_btn)
             self.table.setCellWidget(row, 4, manage_widget)
 
+            # Ensure clicking on cell widgets selects the row
+            preview_widget.mousePressEvent = lambda event, r=row: self.table.selectRow(r)
+            manage_widget.mousePressEvent = lambda event, r=row: self.table.selectRow(r)
+
         # Set equal width for all columns
         self._set_equal_column_widths()
+        # Force visual refresh
+        self.table.viewport().update()
 
     def _get_state_gif_path(self, state: State, key: str) -> Optional[Path]:
         """
