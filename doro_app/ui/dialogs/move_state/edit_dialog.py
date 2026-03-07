@@ -279,9 +279,18 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         gif_paths = self.service.list_transition_gif_paths(key)
         dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            for filename in dialog.removed_filenames:
-                self.service.remove_transition_gif(key, filename)
-            for path in dialog.added_paths:
+            removed = dialog.removed_filenames
+            added = dialog.added_paths
+            # Release file handles before deleting GIFs (prevents WinError 32)
+            dialog._gif_player.clear()
+            self._gif_player.clear()
+
+            for filename in removed:
+                try:
+                    self.service.remove_transition_gif(key, filename)
+                except Exception:
+                    pass  # File locked — will be cleaned up next launch
+            for path in added:
                 self.service.add_transition_gif(key, path)
 
             # Update status label
@@ -289,6 +298,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             if new_count > 0:
                 self.gif_status_label.setText(f"{new_count} GIF(s)")
                 self.gif_status_label.setStyleSheet("color: #4ade80;")
+            else:
+                self.gif_status_label.setText("No GIF selected")
+                self.gif_status_label.setStyleSheet("color: #888888;")
 
     def _load_data(self):
         """Load existing move state data."""
