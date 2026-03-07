@@ -55,6 +55,10 @@ class StateManagerDialog(QtWidgets.QDialog):
             QTableWidget::item {
                 border-right: 1px solid #555555;
             }
+            QTableWidget::item:selected {
+                background-color: #1a5276;
+                color: white;
+            }
         """)
 
         header = self.table.horizontalHeader()
@@ -71,6 +75,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.doubleClicked.connect(self._on_edit)
         layout.addWidget(self.table)
 
         # Buttons

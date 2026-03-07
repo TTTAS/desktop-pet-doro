@@ -26,6 +26,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
         self._gif_player = GifPlayer()  # Unified GIF resource management
+        self._preview_indices: dict[str, int] = {}
+        self._preview_widgets: dict[str, dict] = {}
         self._setup_ui()
         self._populate()
 
@@ -54,6 +56,10 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             QTableWidget::item {
                 border-right: 1px solid #555555;
             }
+            QTableWidget::item:selected {
+                background-color: #1a5276;
+                color: white;
+            }
         """)
 
         header = self.table.horizontalHeader()
@@ -70,6 +76,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.doubleClicked.connect(self._on_edit)
         layout.addWidget(self.table)
 
         # Buttons
@@ -96,7 +103,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
     def _populate(self):
         self.table.setRowCount(0)
-        self._gif_player.clear()  # Clear old GIF players
+        self._gif_player.clear()
+        self._preview_indices.clear()
+        self._preview_widgets.clear()
 
         # Add movement actions
         move_state_keys = self.service.all_move_state_keys()
@@ -155,8 +164,11 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # Key
-            key_item = QtWidgets.QTableWidgetItem(transition.key)
+            # Key (with GIF count)
+            gif_paths = self._get_transition_gif_paths(transition.key)
+            gif_count = len(gif_paths)
+            gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
+            key_item = QtWidgets.QTableWidgetItem(f"{transition.key}{gif_info}")
             key_item.setData(QtCore.Qt.ItemDataRole.UserRole, ("transition", transition.key))
             key_item.setForeground(QtGui.QColor("#ffffff"))
             self.table.setItem(row, 0, key_item)
@@ -166,19 +178,9 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             type_item.setForeground(QtGui.QColor("#fbbf24"))  # Yellow
             self.table.setItem(row, 1, type_item)
 
-            # Action (GIF preview for transition)
-            action_label = QtWidgets.QLabel()
-            action_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            action_label.setMinimumSize(114, 114)
-
-            if transition.transition_gif_id:
-                gif_path = paths.ACTION_TRANSITION_DIR / transition.transition_gif_id
-                if gif_path.exists():
-                    movie = self._gif_player.load(gif_path, size=QtCore.QSize(96, 96))
-                    if movie:
-                        action_label.setMovie(movie)
-
-            self.table.setCellWidget(row, 2, action_label)
+            # Action (GIF preview with navigation arrows)
+            preview_widget = self._create_transition_preview(transition.key, gif_paths)
+            self.table.setCellWidget(row, 2, preview_widget)
             self.table.setRowHeight(row, 114)
 
             # Details (From -> To for transition)
@@ -186,10 +188,16 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
             details_item.setForeground(QtGui.QColor("#ffffff"))
             self.table.setItem(row, 3, details_item)
 
-            # Speed (N/A for transitions)
-            speed_item = QtWidgets.QTableWidgetItem("N/A")
-            speed_item.setForeground(QtGui.QColor("#888888"))
-            self.table.setItem(row, 4, speed_item)
+            # Speed column: Manage GIFs button
+            manage_widget = QtWidgets.QWidget()
+            manage_layout = QtWidgets.QVBoxLayout(manage_widget)
+            manage_layout.setContentsMargins(5, 5, 5, 5)
+            manage_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            manage_btn = QtWidgets.QPushButton("Manage GIFs")
+            manage_btn.setMaximumWidth(110)
+            manage_btn.clicked.connect(lambda checked, k=transition.key: self._on_manage_transition_gifs(k))
+            manage_layout.addWidget(manage_btn)
+            self.table.setCellWidget(row, 4, manage_widget)
 
         # Set equal width for all columns
         self._set_equal_column_widths()
@@ -229,6 +237,137 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
 
         for col in range(column_count):
             self.table.setColumnWidth(col, column_width)
+
+    def _get_transition_gif_paths(self, transition_key: str) -> list[Path]:
+        """Get all GIF paths for a transition."""
+        gif_paths = self.service.list_transition_gif_paths(transition_key)
+        if gif_paths:
+            return gif_paths
+        # Fallback to single file via transition_gif_id
+        transition = self.service.get_transition(transition_key)
+        if transition and transition.transition_gif_id:
+            gif_path = paths.ACTION_TRANSITION_DIR / transition.transition_gif_id
+            if gif_path.exists():
+                return [gif_path]
+        return []
+
+    def _create_transition_preview(self, key: str, gif_paths: list[Path]) -> QtWidgets.QWidget:
+        """Create preview widget with navigation arrows for multi-GIF transitions."""
+        count = len(gif_paths)
+        self._preview_indices[key] = 0
+
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # Left arrow
+        left_btn = QtWidgets.QPushButton()
+        left_btn.setIcon(self._make_arrow_icon("left"))
+        left_btn.setIconSize(QtCore.QSize(18, 18))
+        left_btn.setFixedSize(30, 30)
+        left_btn.setStyleSheet(self._arrow_btn_style())
+        left_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, -1))
+        layout.addWidget(left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        # Center: preview + counter
+        center = QtWidgets.QVBoxLayout()
+        center.setSpacing(2)
+
+        preview_label = QtWidgets.QLabel()
+        preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        preview_label.setMinimumSize(96, 96)
+
+        if gif_paths:
+            movie = self._gif_player.load(gif_paths[0], size=QtCore.QSize(96, 96))
+            if movie:
+                preview_label.setMovie(movie)
+
+        center.addWidget(preview_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
+        counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4fc3f7;")
+        center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        layout.addLayout(center, 1)
+
+        # Right arrow
+        right_btn = QtWidgets.QPushButton()
+        right_btn.setIcon(self._make_arrow_icon("right"))
+        right_btn.setIconSize(QtCore.QSize(18, 18))
+        right_btn.setFixedSize(30, 30)
+        right_btn.setStyleSheet(self._arrow_btn_style())
+        right_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, 1))
+        layout.addWidget(right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        if count <= 1:
+            left_btn.setVisible(False)
+            right_btn.setVisible(False)
+
+        self._preview_widgets[key] = {
+            "preview_label": preview_label,
+            "counter_label": counter_label,
+            "left_btn": left_btn,
+            "right_btn": right_btn,
+            "gif_paths": gif_paths,
+        }
+
+        return container
+
+    @staticmethod
+    def _arrow_btn_style() -> str:
+        return (
+            "QPushButton { background: #3a3a3a; border: 1px solid #666; "
+            "border-radius: 4px; padding: 2px; } "
+            "QPushButton:hover { background: #505050; border-color: #4fc3f7; }"
+        )
+
+    @staticmethod
+    def _make_arrow_icon(direction: str) -> QtGui.QIcon:
+        px = QtGui.QPixmap(18, 18)
+        px.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(px)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        if direction == "left":
+            points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
+        else:
+            points = [QtCore.QPointF(5, 3), QtCore.QPointF(13, 9), QtCore.QPointF(5, 15)]
+        painter.drawPolygon(points)
+        painter.end()
+        return QtGui.QIcon(px)
+
+    def _navigate_preview(self, key: str, direction: int):
+        widgets = self._preview_widgets.get(key)
+        if not widgets:
+            return
+        gif_paths = widgets["gif_paths"]
+        if not gif_paths:
+            return
+        count = len(gif_paths)
+        idx = self._preview_indices.get(key, 0)
+        idx = (idx + direction) % count
+        self._preview_indices[key] = idx
+
+        movie = self._gif_player.load(gif_paths[idx], size=QtCore.QSize(96, 96))
+        if movie:
+            widgets["preview_label"].setMovie(movie)
+        widgets["counter_label"].setText(f"{idx + 1}/{count}")
+
+    def _on_manage_transition_gifs(self, key: str):
+        """Open GIF gallery for a transition."""
+        from ..state.gif_gallery_dialog import GifGalleryDialog
+
+        gif_paths = self._get_transition_gif_paths(key)
+        dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            for filename in dialog.removed_filenames:
+                self.service.remove_transition_gif(key, filename)
+            for path in dialog.added_paths:
+                self.service.add_transition_gif(key, path)
+            self._populate()
 
     def _on_add(self):
         """Add new movement state."""
