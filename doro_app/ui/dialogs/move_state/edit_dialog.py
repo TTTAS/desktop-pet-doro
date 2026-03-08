@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
+from ...components.frameless_dialog import FramelessDialog
 
 
-class EditMoveStateDialog(QtWidgets.QDialog):
+class EditMoveStateDialog(FramelessDialog):
     """Dialog for adding or editing a movement state or transition."""
 
     def __init__(
@@ -22,14 +21,13 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         move_state_key: Optional[str],
         parent: Optional[QtWidgets.QWidget] = None,
     ):
-        super().__init__(parent)
+        title = "Edit Action" if move_state_key is not None else "Add Action"
+        super().__init__(title, parent)
         self.service = service
         self.move_state_key = move_state_key
         self.is_edit = move_state_key is not None
         self.action_type = "movement"  # "movement" or "transition"
 
-        title = "Edit Action" if self.is_edit else "Add Action"
-        self.setWindowTitle(title)
         self.setMinimumWidth(600)
         self.setMinimumHeight(550)
 
@@ -48,15 +46,13 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             self._on_action_type_changed("Movement")
 
     def _setup_ui(self):
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(16)
+        main_layout = self.content_layout
 
         # Action Type Selection (only for new actions)
         if not self.is_edit:
             type_layout = QtWidgets.QHBoxLayout()
             type_label = QtWidgets.QLabel("Action Type:")
-            type_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+            type_label.setStyleSheet("color: #e8609c; font-weight: bold;")
             self.type_combo = QtWidgets.QComboBox()
             self.type_combo.addItems(["Movement", "Transition"])
             self.type_combo.currentTextChanged.connect(self._on_action_type_changed)
@@ -75,12 +71,12 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if self.is_edit:
             self.key_edit.setEnabled(False)
         self.key_label = QtWidgets.QLabel("Key (identifier):")
-        self.key_label.setStyleSheet("color: #ffffff;")
+        self.key_label.setStyleSheet("color: #4a2040;")
         self.form_layout.addRow(self.key_label, self.key_edit)
 
         # Movement-specific fields
         self.state_label = QtWidgets.QLabel("Associated state:")
-        self.state_label.setStyleSheet("color: #ffffff;")
+        self.state_label.setStyleSheet("color: #4a2040;")
         self.state_combo = QtWidgets.QComboBox()
         available_states = self.service.visible_state_keys()
         for state_key in sorted(available_states):
@@ -89,7 +85,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.state_row = self.form_layout.addRow(self.state_label, self.state_combo)
 
         self.direction_label = QtWidgets.QLabel("Direction:")
-        self.direction_label.setStyleSheet("color: #ffffff;")
+        self.direction_label.setStyleSheet("color: #4a2040;")
         self.direction_combo = QtWidgets.QComboBox()
         self.direction_combo.addItems(
             ["none", "any", "left", "right", "up", "down", "left|right", "up|down"]
@@ -98,21 +94,21 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.direction_row = self.form_layout.addRow(self.direction_label, self.direction_combo)
 
         self.speed_label = QtWidgets.QLabel("Default speed:")
-        self.speed_label.setStyleSheet("color: #ffffff;")
+        self.speed_label.setStyleSheet("color: #4a2040;")
         self.speed_combo = QtWidgets.QComboBox()
         self.speed_combo.addItems(["slow", "med", "fast"])
         self.speed_row = self.form_layout.addRow(self.speed_label, self.speed_combo)
 
         # Transition-specific fields
         self.from_state_label = QtWidgets.QLabel("From state:")
-        self.from_state_label.setStyleSheet("color: #ffffff;")
+        self.from_state_label.setStyleSheet("color: #4a2040;")
         self.from_state_combo = QtWidgets.QComboBox()
         for state_key in sorted(available_states):
             self.from_state_combo.addItem(state_key)
         self.from_state_row = self.form_layout.addRow(self.from_state_label, self.from_state_combo)
 
         self.to_state_label = QtWidgets.QLabel("To state:")
-        self.to_state_label.setStyleSheet("color: #ffffff;")
+        self.to_state_label.setStyleSheet("color: #4a2040;")
         self.to_state_combo = QtWidgets.QComboBox()
         for state_key in sorted(available_states):
             self.to_state_combo.addItem(state_key)
@@ -122,28 +118,34 @@ class EditMoveStateDialog(QtWidgets.QDialog):
 
         # GIF Upload Section
         gif_upload_group = QtWidgets.QGroupBox("GIF File")
-        gif_upload_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        gif_upload_group.setStyleSheet("QGroupBox { color: #e8609c; }")
         gif_upload_layout = QtWidgets.QHBoxLayout(gif_upload_group)
 
         self.gif_status_label = QtWidgets.QLabel("No GIF selected")
-        self.gif_status_label.setStyleSheet("color: #888888;")
+        self.gif_status_label.setStyleSheet("color: #9c6b8a;")
         gif_upload_layout.addWidget(self.gif_status_label)
 
         self.select_gif_btn = QtWidgets.QPushButton("Select GIF")
         self.select_gif_btn.clicked.connect(self._on_select_gif)
         gif_upload_layout.addWidget(self.select_gif_btn)
 
+        self.manage_gifs_btn = QtWidgets.QPushButton("Manage GIFs...")
+        self.manage_gifs_btn.setToolTip("Open gallery to add/remove multiple GIFs")
+        self.manage_gifs_btn.clicked.connect(self._on_manage_transition_gifs)
+        self.manage_gifs_btn.setVisible(False)  # shown only for transition edit mode
+        gif_upload_layout.addWidget(self.manage_gifs_btn)
+
         main_layout.addWidget(gif_upload_group)
 
         # GIF Preview
         preview_group = QtWidgets.QGroupBox("GIF Preview")
-        preview_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        preview_group.setStyleSheet("QGroupBox { color: #e8609c; }")
         preview_layout = QtWidgets.QVBoxLayout(preview_group)
 
         self.preview_label = QtWidgets.QLabel("Select a state to preview")
         self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(200)
-        self.preview_label.setStyleSheet("background-color: #1a1a1a; color: #888888;")
+        self.preview_label.setStyleSheet("background-color: #fff5fa; color: #9c6b8a;")
         preview_layout.addWidget(self.preview_label)
 
         main_layout.addWidget(preview_group)
@@ -151,7 +153,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         # Info label (dynamic based on action type)
         self.info_label = QtWidgets.QLabel()
         self.info_label.setWordWrap(True)
-        self.info_label.setStyleSheet("color: #a5b4fc; font-size: 11px; padding: 8px;")
+        self.info_label.setStyleSheet("color: #e8609c; font-size: 11px; padding: 8px;")
         main_layout.addWidget(self.info_label)
 
         # Buttons
@@ -182,6 +184,9 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         self.to_state_label.setVisible(not is_movement)
         self.to_state_combo.setVisible(not is_movement)
 
+        # Show manage GIFs button only for transitions
+        self.manage_gifs_btn.setVisible(not is_movement)
+
         # Update info label
         if is_movement:
             self.info_label.setText(
@@ -189,7 +194,8 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             )
         else:
             self.info_label.setText(
-                "💡 Transition: Animation plays when changing from one state to another. Default GIF: transition.gif"
+                "💡 Transition: Animation plays when changing from one state to another. "
+                "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
 
     def _on_state_changed(self, state_key: str):
@@ -205,7 +211,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         if file_path:
             self.selected_gif_path = Path(file_path)
             self.gif_status_label.setText(self.selected_gif_path.name)
-            self.gif_status_label.setStyleSheet("color: #4ade80;")  # Green color
+            self.gif_status_label.setStyleSheet("color: #2e7d32;")  # Green color
 
             # Update preview with the selected GIF
             self._update_preview_from_file(self.selected_gif_path)
@@ -258,6 +264,41 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             return
 
         self.preview_label.setMovie(movie)
+
+    def _on_manage_transition_gifs(self):
+        """Open GIF gallery dialog for transition multi-GIF management."""
+        from ..state.gif_gallery_dialog import GifGalleryDialog
+
+        key = self.key_edit.text().strip()
+        if not key:
+            QtWidgets.QMessageBox.warning(self, "Validation", "Please enter a key first.")
+            return
+
+        gif_paths = self.service.list_transition_gif_paths(key)
+        dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            removed = dialog.removed_filenames
+            added = dialog.added_paths
+            # Release file handles before deleting GIFs (prevents WinError 32)
+            dialog._gif_player.clear()
+            self._gif_player.clear()
+
+            for filename in removed:
+                try:
+                    self.service.remove_transition_gif(key, filename)
+                except Exception:
+                    pass  # File locked — will be cleaned up next launch
+            for path in added:
+                self.service.add_transition_gif(key, path)
+
+            # Update status label
+            new_count = len(self.service.list_transition_gif_paths(key))
+            if new_count > 0:
+                self.gif_status_label.setText(f"{new_count} GIF(s)")
+                self.gif_status_label.setStyleSheet("color: #2e7d32;")
+            else:
+                self.gif_status_label.setText("No GIF selected")
+                self.gif_status_label.setStyleSheet("color: #9c6b8a;")
 
     def _load_data(self):
         """Load existing move state data."""
@@ -364,39 +405,34 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             )
             return
 
-        # Upload custom transition GIF if selected
+        # Upload custom transition GIF if selected (uses multi-GIF service)
         transition_gif_id = None
         if self.selected_gif_path:
-            # Store transition GIF in res/ACTION/TRANSITION/ directory
-            try:
-                # Ensure transition directory exists
-                paths.ACTION_TRANSITION_DIR.mkdir(parents=True, exist_ok=True)
-
-                # Sanitize key for filename
-                safe_key = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key)
-                dest_filename = f"{safe_key}.gif"
-                dest_path = paths.ACTION_TRANSITION_DIR / dest_filename
-
-                # Copy the GIF file
-                shutil.copy2(self.selected_gif_path, dest_path)
-
-                # Use relative path as resource ID: "../../ACTION/TRANSITION/filename.gif"
-                # or just "filename.gif" if we store it relative to ACTION/TRANSITION
-                transition_gif_id = dest_filename
-
-            except Exception as e:
+            if self.service.add_transition_gif(key, self.selected_gif_path):
+                # Sanitize key for a gif_id marker
+                safe_key = "".join(
+                    ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key
+                )
+                transition_gif_id = f"{safe_key}.gif"
+            else:
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Warning",
-                    f"Failed to upload GIF: {e}\nTransition will be saved without custom GIF.",
+                    "Failed to upload GIF. Transition will be saved without custom GIF.",
                 )
+
+        # For edits, preserve existing gif_id if we didn't upload a new one
+        if not transition_gif_id and self.is_edit:
+            existing = self.service.get_transition(key)
+            if existing:
+                transition_gif_id = existing.transition_gif_id
 
         # Create Transition
         transition = Transition(
             key=key,
             from_state=from_state,
             to_state=to_state,
-            transition_gif_id=transition_gif_id,  # None = use default transition.gif
+            transition_gif_id=transition_gif_id,
         )
 
         # Save

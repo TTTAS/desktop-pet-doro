@@ -34,14 +34,20 @@ class GifManager:
     - Modify state objects directly
     """
 
-    def __init__(self, gif_repo: GifRepository):
+    def __init__(
+        self,
+        gif_repo: GifRepository,
+        transition_gif_repo: Optional[GifRepository] = None,
+    ):
         """
         Initialize GifManager.
 
         Args:
-            gif_repo: Repository for GIF file operations
+            gif_repo: Repository for state GIF file operations
+            transition_gif_repo: Repository for transition GIF file operations
         """
         self._gif_repo = gif_repo
+        self._transition_gif_repo = transition_gif_repo
 
     def get_path_by_id(self, gif_id: str) -> Optional[Path]:
         """
@@ -115,6 +121,44 @@ class GifManager:
     def delete_all_gifs(self, state_key: str) -> bool:
         """Delete all GIFs for a state (single file + subfolder)."""
         return self._gif_repo.delete_all_gifs(state_key)
+
+    # ─────────────────────────────────────────────────────────
+    # Transition Multi-GIF Operations
+    # ─────────────────────────────────────────────────────────
+
+    def list_transition_gifs(self, transition_key: str) -> list[Path]:
+        """List all GIF files for a transition."""
+        if not self._transition_gif_repo:
+            return []
+        return self._transition_gif_repo.list_gifs(transition_key)
+
+    def pick_random_transition_gif(self, transition_key: str) -> Optional[Path]:
+        """Pick a random GIF for a transition (subfolder first, single file fallback)."""
+        if not self._transition_gif_repo:
+            return None
+        return self._transition_gif_repo.pick_random_gif(transition_key)
+
+    def add_transition_gif(self, source_path: Path, transition_key: str) -> Optional[str]:
+        """Add a GIF to a transition's subfolder collection."""
+        if not self._transition_gif_repo:
+            return None
+        try:
+            return self._transition_gif_repo.add_gif(source_path, transition_key)
+        except (GifNotFoundError, GifStorageError) as e:
+            logger.error(f"Failed to add transition GIF for '{transition_key}': {e}")
+            return None
+
+    def remove_transition_gif(self, transition_key: str, filename: str) -> bool:
+        """Remove a specific GIF from a transition's subfolder."""
+        if not self._transition_gif_repo:
+            return False
+        return self._transition_gif_repo.remove_gif(transition_key, filename)
+
+    def delete_all_transition_gifs(self, transition_key: str) -> bool:
+        """Delete all GIFs for a transition (single file + subfolder)."""
+        if not self._transition_gif_repo:
+            return False
+        return self._transition_gif_repo.delete_all_gifs(transition_key)
 
     # ─────────────────────────────────────────────────────────
     # Path Utilities

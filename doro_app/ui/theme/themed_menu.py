@@ -302,16 +302,6 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     edit_states_action = states_menu.addAction("Edit states")
     edit_states_action.triggered.connect(window._dialog_manager.show_state_manager)
 
-    remove_action = states_menu.addAction("Remove current state")
-    remove_action.setEnabled(
-        bool(window._current_state_key)
-        and not window._state_service.is_state_protected(window._current_state_key)
-    )
-    remove_action.triggered.connect(
-        lambda: window._dialog_manager.show_remove_state_confirmation(window._current_state_key)
-        if window._current_state_key else None
-    )
-
     # Actions submenu
     actions_menu = menu.addMenu("Actions")
     edit_actions_action = actions_menu.addAction("Edit actions")

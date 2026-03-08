@@ -83,6 +83,10 @@ class GifPlayer:
         """
         if movie in self._movies:
             movie.stop()
+            # Detach from file immediately so the OS can release the handle.
+            # deleteLater() alone is async and would keep the file locked
+            # until the next event-loop iteration (causes WinError 32).
+            movie.setFileName("")
             movie.deleteLater()
             self._movies.remove(movie)
             return True
@@ -93,6 +97,10 @@ class GifPlayer:
         for movie in self._movies:
             try:
                 movie.stop()
+                # Detach from file immediately so the OS can release the handle.
+                # deleteLater() alone is async and would keep the file locked
+                # until the next event-loop iteration (causes WinError 32).
+                movie.setFileName("")
                 movie.deleteLater()
             except RuntimeError:
                 # Already deleted

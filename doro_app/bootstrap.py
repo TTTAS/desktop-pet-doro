@@ -64,6 +64,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
         config.setValue("state/idle/gif_path", str(default_idle_gif))
 
     gif_repo = GifRepository(STATE_DIR)
+    transition_gif_repo = GifRepository(ACTION_TRANSITION_DIR)
     state_repo = StateRepository(STATE_DIR / "states.json")
     move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
     transition_repo = TransitionRepository(transition_action_dir / "transitions.json")
@@ -74,6 +75,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
         gif_repo,
         STATE_DIR / "state_list.txt",
         transition_repo,
+        transition_gif_repo=transition_gif_repo,
     )
 
     return BootstrappedDependencies(

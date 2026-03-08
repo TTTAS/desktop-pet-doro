@@ -8,20 +8,21 @@ from typing import Optional
 from PySide6 import QtWidgets
 
 from ....core.state import StateService
+from ...components.frameless_dialog import FramelessDialog
 
 
-class AddStateDialog(QtWidgets.QDialog):
+class AddStateDialog(FramelessDialog):
     """Dialog for creating a new state."""
 
     def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
-        super().__init__(parent)
+        super().__init__("Add new state", parent)
         self.service = service
-        self.setWindowTitle("Add new state")
         self.selected_gif_paths: list[Path] = []
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QtWidgets.QFormLayout(self)
+        layout = QtWidgets.QFormLayout()
+        self.content_layout.addLayout(layout)
 
         self.key_edit = QtWidgets.QLineEdit()
         layout.addRow("Unique state key:", self.key_edit)
@@ -32,7 +33,7 @@ class AddStateDialog(QtWidgets.QDialog):
         # GIF selection
         gif_layout = QtWidgets.QHBoxLayout()
         self.gif_label = QtWidgets.QLabel("No GIF selected")
-        self.gif_label.setStyleSheet("color: #888888;")
+        self.gif_label.setStyleSheet("color: #9c6b8a;")
         gif_layout.addWidget(self.gif_label)
 
         select_gif_btn = QtWidgets.QPushButton("Select GIF(s)")
@@ -64,7 +65,7 @@ class AddStateDialog(QtWidgets.QDialog):
                 self.gif_label.setText(self.selected_gif_paths[0].name)
             else:
                 self.gif_label.setText(f"{count} GIFs selected")
-            self.gif_label.setStyleSheet("color: #ffffff;")
+            self.gif_label.setStyleSheet("color: #4a2040;")
 
     def _on_accept(self):
         key = self.key_edit.text().strip()

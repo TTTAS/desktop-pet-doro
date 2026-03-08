@@ -10,9 +10,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ....utils import paths
 from ....core.state import State, StateService
 from ...components.gif_player import GifPlayer
+from ...components.frameless_dialog import FramelessDialog
 
 
-class StateManagerDialog(QtWidgets.QDialog):
+class StateManagerDialog(FramelessDialog):
     """
     Dialog for managing states.
 
@@ -20,26 +21,18 @@ class StateManagerDialog(QtWidgets.QDialog):
     """
 
     def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
-        super().__init__(parent)
+        super().__init__("State Manager", parent)
         self.service = service
-        self.setWindowTitle("State Manager")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
-        self._gif_player = GifPlayer()  # Unified GIF resource management
-        self._preview_indices: dict[str, int] = {}  # Current preview index per state key
-        self._preview_widgets: dict[str, dict] = {}  # Preview widget refs per state key
+        self._gif_player = GifPlayer()
+        self._preview_indices: dict[str, int] = {}
+        self._preview_widgets: dict[str, dict] = {}
         self._setup_ui()
         self._populate()
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
-
-        # Title
-        title = QtWidgets.QLabel("Manage States")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(title)
+        layout = self.content_layout
 
         # Table
         self.table = QtWidgets.QTableWidget()
@@ -50,27 +43,23 @@ class StateManagerDialog(QtWidgets.QDialog):
         self.table.setShowGrid(True)
         self.table.setStyleSheet("""
             QTableWidget {
-                gridline-color: #333333;
+                gridline-color: rgba(232, 96, 156, 0.20);
             }
             QTableWidget::item {
-                border-right: 1px solid #555555;
+                border-right: 1px solid rgba(232, 96, 156, 0.15);
             }
         """)
 
         header = self.table.horizontalHeader()
-        # Set all columns to stretch proportionally with window size
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
 
-        # Style header: bold and white text
-        header.setStyleSheet("QHeaderView::section { font-weight: bold; color: white; }")
-
-        # Style vertical header (row numbers): black text
         vertical_header = self.table.verticalHeader()
-        vertical_header.setStyleSheet("QHeaderView::section { color: black; }")
+        vertical_header.setStyleSheet("QHeaderView::section { color: #9c6b8a; }")
 
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.doubleClicked.connect(self._on_edit)
         layout.addWidget(self.table)
 
         # Buttons
@@ -116,7 +105,7 @@ class StateManagerDialog(QtWidgets.QDialog):
             gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
             name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key}){gif_info}")
             name_item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-            name_item.setForeground(QtGui.QColor("#ffffff"))  # White text
+            name_item.setForeground(QtGui.QColor("#4a2040"))
             self.table.setItem(row, 0, name_item)
 
             # Preview (GIF with navigation arrows)
@@ -210,7 +199,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         # Counter label
         counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4fc3f7;")
+        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #e8609c;")
         center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(center, 1)
@@ -243,9 +232,9 @@ class StateManagerDialog(QtWidgets.QDialog):
     @staticmethod
     def _arrow_btn_style() -> str:
         return (
-            "QPushButton { background: #3a3a3a; border: 1px solid #666; "
+            "QPushButton { background: #fff0f6; border: 1px solid rgba(232,96,156,0.40); "
             "border-radius: 4px; padding: 2px; } "
-            "QPushButton:hover { background: #505050; border-color: #4fc3f7; }"
+            "QPushButton:hover { background: #ffe4f0; border-color: #e8609c; }"
         )
 
     @staticmethod
@@ -256,7 +245,7 @@ class StateManagerDialog(QtWidgets.QDialog):
         painter = QtGui.QPainter(px)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        painter.setBrush(QtGui.QColor("#e8609c"))
         if direction == "left":
             points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
         else:
