@@ -9,9 +9,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
+from ...components.frameless_dialog import FramelessDialog
 
 
-class EditMoveStateDialog(QtWidgets.QDialog):
+class EditMoveStateDialog(FramelessDialog):
     """Dialog for adding or editing a movement state or transition."""
 
     def __init__(
@@ -20,14 +21,13 @@ class EditMoveStateDialog(QtWidgets.QDialog):
         move_state_key: Optional[str],
         parent: Optional[QtWidgets.QWidget] = None,
     ):
-        super().__init__(parent)
+        title = "Edit Action" if move_state_key is not None else "Add Action"
+        super().__init__(title, parent)
         self.service = service
         self.move_state_key = move_state_key
         self.is_edit = move_state_key is not None
         self.action_type = "movement"  # "movement" or "transition"
 
-        title = "Edit Action" if self.is_edit else "Add Action"
-        self.setWindowTitle(title)
         self.setMinimumWidth(600)
         self.setMinimumHeight(550)
 
@@ -46,9 +46,7 @@ class EditMoveStateDialog(QtWidgets.QDialog):
             self._on_action_type_changed("Movement")
 
     def _setup_ui(self):
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(16)
+        main_layout = self.content_layout
 
         # Action Type Selection (only for new actions)
         if not self.is_edit:

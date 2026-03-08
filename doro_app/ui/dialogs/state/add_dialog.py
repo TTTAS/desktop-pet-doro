@@ -8,20 +8,21 @@ from typing import Optional
 from PySide6 import QtWidgets
 
 from ....core.state import StateService
+from ...components.frameless_dialog import FramelessDialog
 
 
-class AddStateDialog(QtWidgets.QDialog):
+class AddStateDialog(FramelessDialog):
     """Dialog for creating a new state."""
 
     def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
-        super().__init__(parent)
+        super().__init__("Add new state", parent)
         self.service = service
-        self.setWindowTitle("Add new state")
         self.selected_gif_paths: list[Path] = []
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QtWidgets.QFormLayout(self)
+        layout = QtWidgets.QFormLayout()
+        self.content_layout.addLayout(layout)
 
         self.key_edit = QtWidgets.QLineEdit()
         layout.addRow("Unique state key:", self.key_edit)

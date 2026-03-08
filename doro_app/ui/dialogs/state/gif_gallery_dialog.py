@@ -8,6 +8,7 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...components.gif_player import GifPlayer
+from ...components.frameless_dialog import FramelessDialog
 
 
 class GifThumbnail(QtWidgets.QFrame):
@@ -83,7 +84,7 @@ class GifThumbnail(QtWidgets.QFrame):
             self._del_btn.move(self.width() - 24, 4)
 
 
-class GifGalleryDialog(QtWidgets.QDialog):
+class GifGalleryDialog(FramelessDialog):
     """
     Dialog showing all GIFs for a state in a grid layout.
 
@@ -97,7 +98,7 @@ class GifGalleryDialog(QtWidgets.QDialog):
         gif_paths: list[Path],
         parent: Optional[QtWidgets.QWidget] = None,
     ):
-        super().__init__(parent)
+        super().__init__(f"GIF Gallery - {state_label}", parent)
         self.state_key = state_key
         self._gif_paths = list(gif_paths)
         self._gif_player = GifPlayer()
@@ -105,7 +106,6 @@ class GifGalleryDialog(QtWidgets.QDialog):
         self._removed: list[str] = []      # filenames to remove
         self._thumbnails: list[GifThumbnail] = []
 
-        self.setWindowTitle(f"GIF Gallery - {state_label}")
         self.setMinimumWidth(500)
         self.setMinimumHeight(320)
         self._setup_ui()
@@ -120,15 +120,10 @@ class GifGalleryDialog(QtWidgets.QDialog):
         return list(self._removed)
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(6)
+        layout = self.content_layout
 
         # Header
         header = QtWidgets.QHBoxLayout()
-        title = QtWidgets.QLabel(f"GIFs for \"{self.state_key}\"")
-        title.setStyleSheet("font-size: 14px; font-weight: bold;")
-        header.addWidget(title)
 
         header.addStretch()
 

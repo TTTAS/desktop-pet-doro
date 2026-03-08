@@ -40,20 +40,12 @@ class DialogManager:
     def show_state_manager(self) -> None:
         """Show the state manager dialog."""
         from ..dialogs.state import show_state_manager
-        self._parent.hide()
-        try:
-            show_state_manager(self._state_service, parent=None)
-        finally:
-            self._parent.show()
+        show_state_manager(self._state_service, parent=self._parent)
 
     def show_move_state_manager(self) -> None:
         """Show the move state manager dialog."""
         from ..dialogs.move_state import show_move_state_manager
-        self._parent.hide()
-        try:
-            show_move_state_manager(self._state_service, parent=None)
-        finally:
-            self._parent.show()
+        show_move_state_manager(self._state_service, parent=self._parent)
 
     def show_add_state_dialog(self) -> str | None:
         """
@@ -63,11 +55,7 @@ class DialogManager:
             New state key if created, None otherwise
         """
         from ..dialogs.state import show_add_state_dialog
-        self._parent.hide()
-        try:
-            return show_add_state_dialog(self._state_service, parent=None)
-        finally:
-            self._parent.show()
+        return show_add_state_dialog(self._state_service, parent=self._parent)
 
     def show_rename_dialog(self, current_state_key: str) -> bool:
         """
@@ -86,17 +74,13 @@ class DialogManager:
         if not current_state:
             return False
 
-        self._parent.hide()
-        try:
-            text, ok = QtWidgets.QInputDialog.getText(
-                None,
-                "Rename pet",
-                "Name tag:",
-                QtWidgets.QLineEdit.EchoMode.Normal,
-                current_state.name_tag,
-            )
-        finally:
-            self._parent.show()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self._parent,
+            "Rename pet",
+            "Name tag:",
+            QtWidgets.QLineEdit.EchoMode.Normal,
+            current_state.name_tag,
+        )
 
         if ok and text.strip():
             self._state_service.update_state(

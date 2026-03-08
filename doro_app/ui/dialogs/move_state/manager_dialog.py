@@ -10,9 +10,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ....utils import paths
 from ....core.state import State, StateService
 from ...components.gif_player import GifPlayer
+from ...components.frameless_dialog import FramelessDialog
 
 
-class MoveStateManagerDialog(QtWidgets.QDialog):
+class MoveStateManagerDialog(FramelessDialog):
     """
     Dialog for managing movement states (actions).
 
@@ -20,9 +21,8 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
     """
 
     def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
-        super().__init__(parent)
+        super().__init__("Action Manager", parent)
         self.service = service
-        self.setWindowTitle("Action Manager")
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
         self._gif_player = GifPlayer()  # Unified GIF resource management
@@ -32,15 +32,7 @@ class MoveStateManagerDialog(QtWidgets.QDialog):
         self._populate()
 
     def _setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
-
-        # Title
-        title = QtWidgets.QLabel("Manage Actions")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        layout = self.content_layout
 
         # Table - show both movement and transition actions
         self.table = QtWidgets.QTableWidget()
