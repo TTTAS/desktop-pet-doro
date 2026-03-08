@@ -40,12 +40,20 @@ class DialogManager:
     def show_state_manager(self) -> None:
         """Show the state manager dialog."""
         from ..dialogs.state import show_state_manager
-        show_state_manager(self._state_service, parent=self._parent)
+        self._parent.hide()
+        try:
+            show_state_manager(self._state_service, parent=self._parent)
+        finally:
+            self._parent.show()
 
     def show_move_state_manager(self) -> None:
         """Show the move state manager dialog."""
         from ..dialogs.move_state import show_move_state_manager
-        show_move_state_manager(self._state_service, parent=self._parent)
+        self._parent.hide()
+        try:
+            show_move_state_manager(self._state_service, parent=self._parent)
+        finally:
+            self._parent.show()
 
     def show_add_state_dialog(self) -> str | None:
         """
