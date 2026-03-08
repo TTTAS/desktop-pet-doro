@@ -785,15 +785,21 @@ class StateService:
         if not self._transition_coordinator.remove(key):
             return False
 
-        # Clean up GIF files
-        self._gif_manager.delete_all_transition_gifs(key)
-
+        # Persist removal first so the transition stays deleted even if
+        # GIF cleanup fails (e.g. file-locked on Windows).
         if self._transition_repo:
             try:
                 self._transition_repo.save_all(self._transition_coordinator.get_all_items())
             except ConfigSaveError as e:
                 logger.error(f"Failed to save transitions: {e}")
                 return False
+
+        # Clean up GIF files (best-effort)
+        try:
+            self._gif_manager.delete_all_transition_gifs(key)
+        except Exception as e:
+            logger.warning(f"Failed to clean up GIF files for transition '{key}': {e}")
+
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:
