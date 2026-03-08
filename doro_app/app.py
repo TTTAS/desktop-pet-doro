@@ -246,13 +246,13 @@ class DoroApp:
     # Domain Event Translation Methods (Application Layer)
     # ═════════════════════════════════════════════════════════════
 
-    def _on_chat_response_received(self, response_text: str):
+    def _on_chat_response_received(self, response_text: str, kwargs: dict):
         """Translate chat response domain event to UI bubble display."""
         self._bubble_controller.set_text(
             response_text,
-            override_visibility=True,
-            auto_hide=True,
-            hide_delay_ms=6000
+            override_visibility=kwargs.get("override_visibility", False),
+            auto_hide=kwargs.get("auto_hide", True),
+            hide_delay_ms=kwargs.get("hide_delay_ms", 6000),
         )
 
     def _on_chat_operation_started(self):
