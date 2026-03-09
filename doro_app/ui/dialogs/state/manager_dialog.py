@@ -1,4 +1,4 @@
-"""State Manager Dialog - manage all states with GIF previews."""
+"""State Manager Dialog - manage all states with GIF previews (card grid)."""
 
 from __future__ import annotations
 
@@ -13,70 +13,233 @@ from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
 
 
-class StateManagerDialog(FramelessDialog):
-    """
-    Dialog for managing states.
+# ───────────────────────────────────────────────────────────
+# State Card Widget
+# ───────────────────────────────────────────────────────────
 
-    Displays all states with GIF previews and allows editing/removing states.
-    """
+class _StateCard(QtWidgets.QFrame):
+    """A card displaying a single state with GIF preview and actions."""
+
+    edit_gif_clicked = QtCore.Signal(str)   # state_key
+    edit_clicked = QtCore.Signal(str)       # state_key
+    remove_clicked = QtCore.Signal(str)     # state_key
+
+    CARD_WIDTH = 200
+    PREVIEW_SIZE = 128
+
+    def __init__(
+        self,
+        state: State,
+        key: str,
+        gif_paths: list[Path],
+        gif_player: GifPlayer,
+        parent: Optional[QtWidgets.QWidget] = None,
+    ):
+        super().__init__(parent)
+        self._key = key
+        self._gif_paths = gif_paths
+        self._gif_player = gif_player
+        self._preview_index = 0
+
+        self.setObjectName("stateCard")
+        self.setFixedWidth(self.CARD_WIDTH)
+        self.setStyleSheet(
+            "#stateCard { background: #ffffff; border: 1px solid rgba(232,96,156,0.25);"
+            " border-radius: 12px; }"
+            "#stateCard:hover { border-color: #e8609c;"
+            " background: #fff8fb; }"
+        )
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._build(state)
+
+    def _build(self, state: State):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(6)
+
+        # ── GIF preview area ──
+        preview_row = QtWidgets.QHBoxLayout()
+        preview_row.setSpacing(2)
+
+        self._left_btn = self._arrow_button("left")
+        self._left_btn.clicked.connect(lambda: self._navigate(-1))
+        preview_row.addWidget(self._left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self._preview = QtWidgets.QLabel()
+        self._preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._preview.setFixedSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE)
+        self._preview.setStyleSheet(
+            "background: #fff5fa; border-radius: 8px;"
+        )
+        preview_row.addWidget(self._preview, 1, QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        self._right_btn = self._arrow_button("right")
+        self._right_btn.clicked.connect(lambda: self._navigate(1))
+        preview_row.addWidget(self._right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        layout.addLayout(preview_row)
+
+        # Counter
+        count = len(self._gif_paths)
+        self._counter = QtWidgets.QLabel(
+            f"1/{count}" if count > 0 else "No GIF"
+        )
+        self._counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._counter.setStyleSheet("font-size: 11px; color: #e8609c; font-weight: 600;")
+        layout.addWidget(self._counter)
+
+        # Hide arrows if <= 1 GIF
+        if count <= 1:
+            self._left_btn.setVisible(False)
+            self._right_btn.setVisible(False)
+
+        # Load first GIF
+        if self._gif_paths:
+            movie = self._gif_player.load(
+                self._gif_paths[0], size=QtCore.QSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE)
+            )
+            if movie:
+                self._preview.setMovie(movie)
+
+        # ── Label ──
+        label_text = state.label or self._key
+        name = QtWidgets.QLabel(label_text)
+        name.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        name.setStyleSheet("font-size: 13px; font-weight: bold; color: #4a2040;")
+        name.setWordWrap(True)
+        layout.addWidget(name)
+
+        key_label = QtWidgets.QLabel(self._key)
+        key_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        key_label.setStyleSheet("font-size: 11px; color: #9c6b8a;")
+        layout.addWidget(key_label)
+
+        # ── Action buttons ──
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.setSpacing(4)
+
+        manage_btn = QtWidgets.QPushButton("GIFs")
+        manage_btn.setToolTip("Manage GIFs")
+        manage_btn.setFixedHeight(26)
+        manage_btn.setStyleSheet(self._small_btn_style())
+        manage_btn.clicked.connect(lambda: self.edit_gif_clicked.emit(self._key))
+        btn_row.addWidget(manage_btn)
+
+        remove_btn = QtWidgets.QPushButton("Del")
+        remove_btn.setToolTip("Remove state")
+        remove_btn.setFixedHeight(26)
+        remove_btn.setStyleSheet(self._small_btn_danger_style())
+        remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self._key))
+        btn_row.addWidget(remove_btn)
+
+        layout.addLayout(btn_row)
+
+    # ── Navigation ──
+
+    def _navigate(self, direction: int):
+        if not self._gif_paths:
+            return
+        count = len(self._gif_paths)
+        self._preview_index = (self._preview_index + direction) % count
+        movie = self._gif_player.load(
+            self._gif_paths[self._preview_index],
+            size=QtCore.QSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE),
+        )
+        if movie:
+            self._preview.setMovie(movie)
+        self._counter.setText(f"{self._preview_index + 1}/{count}")
+
+    # ── Helpers ──
+
+    def _arrow_button(self, direction: str) -> QtWidgets.QPushButton:
+        btn = QtWidgets.QPushButton()
+        btn.setFixedSize(22, 22)
+        btn.setIcon(self._make_arrow_icon(direction))
+        btn.setIconSize(QtCore.QSize(14, 14))
+        btn.setStyleSheet(
+            "QPushButton { background: transparent; border: none; padding: 0; }"
+            "QPushButton:hover { background: rgba(232,96,156,0.12); border-radius: 11px; }"
+        )
+        return btn
+
+    @staticmethod
+    def _make_arrow_icon(direction: str) -> QtGui.QIcon:
+        px = QtGui.QPixmap(14, 14)
+        px.fill(QtCore.Qt.GlobalColor.transparent)
+        p = QtGui.QPainter(px)
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QColor("#e8609c"))
+        if direction == "left":
+            pts = [QtCore.QPointF(10, 2), QtCore.QPointF(4, 7), QtCore.QPointF(10, 12)]
+        else:
+            pts = [QtCore.QPointF(4, 2), QtCore.QPointF(10, 7), QtCore.QPointF(4, 12)]
+        p.drawPolygon(pts)
+        p.end()
+        return QtGui.QIcon(px)
+
+    @staticmethod
+    def _small_btn_style() -> str:
+        return (
+            "QPushButton { background: rgba(232,96,156,0.12); color: #c0266e;"
+            " border: none; border-radius: 6px; padding: 2px 8px;"
+            " font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(232,96,156,0.25); }"
+        )
+
+    @staticmethod
+    def _small_btn_danger_style() -> str:
+        return (
+            "QPushButton { background: rgba(200,40,40,0.10); color: #c62828;"
+            " border: none; border-radius: 6px; padding: 2px 8px;"
+            " font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(200,40,40,0.22); }"
+        )
+
+
+# ───────────────────────────────────────────────────────────
+# State Manager Dialog
+# ───────────────────────────────────────────────────────────
+
+class StateManagerDialog(FramelessDialog):
+    """Dialog for managing states — card grid layout."""
 
     def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
         super().__init__("State Manager", parent)
         self.service = service
-        self.setMinimumWidth(700)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(660)
+        self.setMinimumHeight(480)
         self._gif_player = GifPlayer()
-        self._preview_indices: dict[str, int] = {}
-        self._preview_widgets: dict[str, dict] = {}
+        self._cards: list[_StateCard] = []
         self._setup_ui()
         self._populate()
 
     def _setup_ui(self):
         layout = self.content_layout
 
-        # Table
-        self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["State", "Preview", "Actions"])
+        # Scroll area
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            "QScrollArea { border: none; background: transparent; }"
+        )
 
-        # Enable grid lines for better visibility
-        self.table.setShowGrid(True)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: rgba(232, 96, 156, 0.20);
-            }
-            QTableWidget::item {
-                border-right: 1px solid rgba(232, 96, 156, 0.15);
-            }
-        """)
+        self._grid_container = QtWidgets.QWidget()
+        self._grid_container.setStyleSheet("background: transparent;")
+        self._grid_layout = QtWidgets.QGridLayout(self._grid_container)
+        self._grid_layout.setSpacing(14)
+        self._grid_layout.setContentsMargins(4, 4, 4, 4)
+        scroll.setWidget(self._grid_container)
+        layout.addWidget(scroll, 1)
 
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
-
-        vertical_header = self.table.verticalHeader()
-        vertical_header.setStyleSheet("QHeaderView::section { color: #9c6b8a; }")
-
-        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.doubleClicked.connect(self._on_edit)
-        layout.addWidget(self.table)
-
-        # Buttons
+        # Bottom buttons
         button_row = QtWidgets.QHBoxLayout()
         button_row.addStretch()
 
         add_btn = QtWidgets.QPushButton("Add State")
         add_btn.clicked.connect(self._on_add)
         button_row.addWidget(add_btn)
-
-        edit_btn = QtWidgets.QPushButton("Edit Selected")
-        edit_btn.clicked.connect(self._on_edit)
-        button_row.addWidget(edit_btn)
-
-        remove_btn = QtWidgets.QPushButton("Remove Selected")
-        remove_btn.clicked.connect(self._on_remove)
-        button_row.addWidget(remove_btn)
 
         close_btn = QtWidgets.QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -85,63 +248,37 @@ class StateManagerDialog(FramelessDialog):
         layout.addLayout(button_row)
 
     def _populate(self):
-        self.table.setRowCount(0)
-        self._gif_player.clear()  # Clear old GIF players
-        self._preview_indices.clear()
-        self._preview_widgets.clear()
+        # Clear old cards
+        self._gif_player.clear()
+        self._cards.clear()
+        while self._grid_layout.count():
+            item = self._grid_layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
 
         visible_keys = sorted(self.service.visible_state_keys())
-        for key in visible_keys:
+        cols = max(1, (self.width() - 80) // (_StateCard.CARD_WIDTH + 14))
+
+        for i, key in enumerate(visible_keys):
             state = self.service.get_state(key)
             if not state:
                 continue
 
-            row = self.table.rowCount()
-            self.table.insertRow(row)
+            gif_paths = self._get_all_gif_paths(state, key)
+            card = _StateCard(state, key, gif_paths, self._gif_player, self._grid_container)
+            card.edit_gif_clicked.connect(self._on_edit_gif)
+            card.remove_clicked.connect(self._on_remove)
+            self._grid_layout.addWidget(card, i // cols, i % cols)
+            self._cards.append(card)
 
-            # State name with GIF count
-            label = state.label or key
-            gif_count = self._get_gif_count(state, key)
-            gif_info = f" [{gif_count} GIFs]" if gif_count > 1 else ""
-            name_item = QtWidgets.QTableWidgetItem(f"{label}\n({key}){gif_info}")
-            name_item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-            name_item.setForeground(QtGui.QColor("#4a2040"))
-            self.table.setItem(row, 0, name_item)
-
-            # Preview (GIF with navigation arrows)
-            preview_widget = self._create_preview_widget(state, key)
-            self.table.setCellWidget(row, 1, preview_widget)
-
-            # Actions column (Edit GIF button)
-            actions_widget = QtWidgets.QWidget()
-            actions_layout = QtWidgets.QVBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(5, 5, 5, 5)
-            actions_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-            edit_gif_btn = QtWidgets.QPushButton("Manage GIFs")
-            edit_gif_btn.setMaximumWidth(110)
-            edit_gif_btn.clicked.connect(lambda checked, k=key: self._on_edit_gif(k))
-            actions_layout.addWidget(edit_gif_btn)
-
-            self.table.setCellWidget(row, 2, actions_widget)
-
-            # Set row height to match GIF display
-            self.table.setRowHeight(row, 114)
-
-        # Set equal width for all columns
-        self._set_equal_column_widths()
-
-    def _get_gif_count(self, state: State, key: str) -> int:
-        """Get the number of GIFs for a state."""
-        return len(self._get_all_gif_paths(state, key))
+    # ── GIF path helpers ──
 
     def _get_all_gif_paths(self, state: State, key: str) -> list[Path]:
-        """Get all GIF paths for a state."""
         multi_gifs = self.service.list_gif_paths(key)
         if multi_gifs:
             return multi_gifs
 
-        # Single file fallback
         if state.gif_id:
             gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
@@ -151,154 +288,21 @@ class StateManagerDialog(FramelessDialog):
         if fixed_path.exists():
             return [fixed_path]
 
-        # Fallback: movement state GIF in ACTION/MOVE/
         move_path = paths.STATE_DIR.parent / "ACTION" / "MOVE" / f"{key}.gif"
         if move_path.exists():
             return [move_path]
 
         return []
 
-    def _create_preview_widget(self, state: State, key: str) -> QtWidgets.QWidget:
-        """Create a preview widget with navigation arrows for multi-GIF states."""
-        gif_paths = self._get_all_gif_paths(state, key)
-        count = len(gif_paths)
-
-        # Initialize index
-        self._preview_indices[key] = 0
-
-        container = QtWidgets.QWidget()
-        layout = QtWidgets.QHBoxLayout(container)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
-
-        # Left arrow
-        left_btn = QtWidgets.QPushButton()
-        left_btn.setIcon(self._make_arrow_icon("left"))
-        left_btn.setIconSize(QtCore.QSize(18, 18))
-        left_btn.setFixedSize(30, 30)
-        left_btn.setStyleSheet(self._arrow_btn_style())
-        left_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, -1))
-        layout.addWidget(left_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-        # Center: preview + counter
-        center = QtWidgets.QVBoxLayout()
-        center.setSpacing(2)
-
-        preview_label = QtWidgets.QLabel()
-        preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        preview_label.setMinimumSize(96, 96)
-
-        # Load first GIF
-        if gif_paths:
-            movie = self._gif_player.load(gif_paths[0], size=QtCore.QSize(96, 96))
-            if movie:
-                preview_label.setMovie(movie)
-
-        center.addWidget(preview_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        # Counter label
-        counter_label = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
-        counter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        counter_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #e8609c;")
-        center.addWidget(counter_label, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        layout.addLayout(center, 1)
-
-        # Right arrow
-        right_btn = QtWidgets.QPushButton()
-        right_btn.setIcon(self._make_arrow_icon("right"))
-        right_btn.setIconSize(QtCore.QSize(18, 18))
-        right_btn.setFixedSize(30, 30)
-        right_btn.setStyleSheet(self._arrow_btn_style())
-        right_btn.clicked.connect(lambda checked, k=key: self._navigate_preview(k, 1))
-        layout.addWidget(right_btn, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
-
-        # Hide arrows for 0 or 1 GIF
-        if count <= 1:
-            left_btn.setVisible(False)
-            right_btn.setVisible(False)
-
-        # Store refs for navigation
-        self._preview_widgets[key] = {
-            "preview_label": preview_label,
-            "counter_label": counter_label,
-            "left_btn": left_btn,
-            "right_btn": right_btn,
-            "gif_paths": gif_paths,
-        }
-
-        return container
-
-    @staticmethod
-    def _arrow_btn_style() -> str:
-        return (
-            "QPushButton { background: #fff0f6; border: 1px solid rgba(232,96,156,0.40); "
-            "border-radius: 4px; padding: 2px; } "
-            "QPushButton:hover { background: #ffe4f0; border-color: #e8609c; }"
-        )
-
-    @staticmethod
-    def _make_arrow_icon(direction: str) -> QtGui.QIcon:
-        """Draw a clean arrow icon with QPainter."""
-        px = QtGui.QPixmap(18, 18)
-        px.fill(QtCore.Qt.GlobalColor.transparent)
-        painter = QtGui.QPainter(px)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        painter.setPen(QtCore.Qt.PenStyle.NoPen)
-        painter.setBrush(QtGui.QColor("#e8609c"))
-        if direction == "left":
-            points = [QtCore.QPointF(13, 3), QtCore.QPointF(5, 9), QtCore.QPointF(13, 15)]
-        else:
-            points = [QtCore.QPointF(5, 3), QtCore.QPointF(13, 9), QtCore.QPointF(5, 15)]
-        painter.drawPolygon(points)
-        painter.end()
-        return QtGui.QIcon(px)
-
-    def _navigate_preview(self, key: str, direction: int):
-        """Navigate GIF preview for a state. direction: -1 (left) or +1 (right)."""
-        widgets = self._preview_widgets.get(key)
-        if not widgets:
-            return
-
-        gif_paths = widgets["gif_paths"]
-        if not gif_paths:
-            return
-
-        count = len(gif_paths)
-        idx = self._preview_indices.get(key, 0)
-        idx = (idx + direction) % count
-        self._preview_indices[key] = idx
-
-        # Load new GIF
-        preview_label = widgets["preview_label"]
-        movie = self._gif_player.load(gif_paths[idx], size=QtCore.QSize(96, 96))
-        if movie:
-            preview_label.setMovie(movie)
-        else:
-            preview_label.clear()
-
-        # Update counter
-        widgets["counter_label"].setText(f"{idx + 1}/{count}")
-
-    def _set_equal_column_widths(self):
-        """Set column widths with appropriate ratios."""
-        # Calculate available width (table width minus some padding for scrollbar/borders)
-        total_width = self.table.viewport().width()
-
-        # Set proportional widths: State(30%), Preview(50%), Actions(20%)
-        self.table.setColumnWidth(0, int(total_width * 0.30))  # State
-        self.table.setColumnWidth(1, int(total_width * 0.50))  # Preview
-        self.table.setColumnWidth(2, int(total_width * 0.20))  # Actions
+    # ── Actions ──
 
     def _on_add(self):
-        """Add new state."""
         from .add_dialog import AddStateDialog
         dialog = AddStateDialog(self.service, self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._populate()
 
     def _on_edit_gif(self, state_key: str):
-        """Open GIF gallery to manage all GIFs for a state."""
         from .gif_gallery_dialog import GifGalleryDialog
 
         state = self.service.get_state(state_key)
@@ -313,13 +317,9 @@ class StateManagerDialog(FramelessDialog):
             return
 
         changed = False
-
-        # Process removals first
         for filename in dialog.removed_filenames:
             if self.service.remove_gif(state_key, filename):
                 changed = True
-
-        # Process additions
         for path in dialog.added_paths:
             if self.service.add_gif(state_key, path):
                 changed = True
@@ -327,40 +327,10 @@ class StateManagerDialog(FramelessDialog):
         if changed:
             self._populate()
 
-    def _on_edit(self):
-        """Edit selected state."""
-        row = self.table.currentRow()
-        if row < 0:
-            QtWidgets.QMessageBox.information(self, "Edit state", "Please select a state to edit.")
-            return
-
-        key_item = self.table.item(row, 0)
-        if not key_item:
-            return
-
-        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        # Edit dialog not yet implemented - see docs/BACKLOG.md
-        QtWidgets.QMessageBox.information(self, "Edit state", f"Edit functionality for '{key}' will be implemented soon.")
-
-    def _on_remove(self):
-        """Remove selected state."""
-        row = self.table.currentRow()
-        if row < 0:
-            QtWidgets.QMessageBox.information(self, "Remove state", "Please select a state to remove.")
-            return
-
-        key_item = self.table.item(row, 0)
-        if not key_item:
-            return
-
-        key = key_item.data(QtCore.Qt.ItemDataRole.UserRole)
-
-        # Check if state is protected
+    def _on_remove(self, key: str):
         if self.service.is_state_protected(key):
             QtWidgets.QMessageBox.warning(
-                self,
-                "Remove state",
-                f"Cannot remove built-in state '{key}'.",
+                self, "Remove state", f"Cannot remove built-in state '{key}'."
             )
             return
 
@@ -377,8 +347,14 @@ class StateManagerDialog(FramelessDialog):
             else:
                 QtWidgets.QMessageBox.warning(self, "Remove state", "Failed to remove state.")
 
+    # ── Lifecycle ──
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        super().resizeEvent(event)
+        if self._cards:
+            self._populate()
+
     def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up GIF resources to prevent memory leaks."""
         self._gif_player.clear()
         super().closeEvent(event)
 
