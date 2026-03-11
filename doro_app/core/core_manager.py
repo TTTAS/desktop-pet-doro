@@ -49,7 +49,7 @@ class CoreManager(QtCore.QObject):
 
     # Chat domain events
     chat_message_sent = QtCore.Signal(str)  # message
-    chat_response_received = QtCore.Signal(str)  # response_text
+    chat_response_received = QtCore.Signal(str, dict)  # response_text, kwargs
     chat_operation_started = QtCore.Signal()
     chat_operation_completed = QtCore.Signal()
     chat_error_occurred = QtCore.Signal(str)  # error_message
@@ -112,7 +112,7 @@ class CoreManager(QtCore.QObject):
 
         # Chat orchestrator signals → Translate to domain events
         self._chat_orchestrator.bubble_text_requested.connect(
-            lambda text, kwargs: self.chat_response_received.emit(text)
+            lambda text, kwargs: self.chat_response_received.emit(text, kwargs)
         )
         self._chat_orchestrator.busy_cursor_requested.connect(
             lambda enabled: self.chat_operation_started.emit() if enabled else self.chat_operation_completed.emit()
