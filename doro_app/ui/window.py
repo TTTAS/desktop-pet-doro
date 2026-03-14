@@ -68,7 +68,6 @@ class DoroWindow(QtWidgets.QWidget):
     def __init__(
         self,
         state_service: StateService,
-        config: QtCore.QSettings,
         not_topmost: bool = False,
         config_manager: ConfigManager | None = None,
     ):
@@ -77,7 +76,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         Args:
             state_service: State management service (injected)
-            config: (Legacy) QSettings for configuration
             not_topmost: If True, window will not stay on top
             config_manager: ConfigManager for type-safe config access
 
@@ -108,8 +106,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Injected Dependencies
         # ─────────────────────────────────────────────────────────
         self._state_service = state_service
-        self._config = config  # Legacy QSettings
-        self._config_manager = config_manager  # New: Type-safe config
+        self._config_manager = config_manager
 
         # File paths (reconstructed from constants)
         from ..utils.paths import STATE_DIR
@@ -152,7 +149,7 @@ class DoroWindow(QtWidgets.QWidget):
         # ─────────────────────────────────────────────────────────
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(TIMER_INTERVAL_MS)
+        # NOTE: timer is started in inject_controllers() after all dependencies are wired
 
         # ─────────────────────────────────────────────────────────
         # UI State Variables
@@ -283,6 +280,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._bubble_controller = bubble_controller
         self._core_manager = core_manager
         self._mouse_handler = mouse_handler
+        # All dependencies wired — safe to start the animation timer
+        self._timer.start(TIMER_INTERVAL_MS)
 
     # ─────────────────────────────────────────────────────────
     # Controller signal handlers
@@ -332,18 +331,24 @@ class DoroWindow(QtWidgets.QWidget):
 
     # --- Interaction -----------------------------------------------------
     def mousePressEvent(self, e: QtGui.QMouseEvent):
+        if self._mouse_handler is None:
+            return super().mousePressEvent(e)
         if self._mouse_handler.handle_press(e, self.frameGeometry()):
             e.accept()
         else:
             super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e: QtGui.QMouseEvent):
+        if self._mouse_handler is None:
+            return super().mouseMoveEvent(e)
         if self._mouse_handler.handle_move(e):
             e.accept()
         else:
             super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
+        if self._mouse_handler is None:
+            return super().mouseReleaseEvent(e)
         handled, _was_click = self._mouse_handler.handle_release(e)
         if handled:
             e.accept()
@@ -351,6 +356,8 @@ class DoroWindow(QtWidgets.QWidget):
             super().mouseReleaseEvent(e)
 
     def leaveEvent(self, e: QtCore.QEvent):
+        if self._mouse_handler is None:
+            return super().leaveEvent(e)
         self._mouse_handler.handle_leave()
         super().leaveEvent(e)
 
@@ -663,8 +670,6 @@ class DoroWindow(QtWidgets.QWidget):
             # Save configuration on close
             if self._config_manager:
                 self._config_manager.save()
-            elif self._config:
-                self._config.sync()
         except Exception:
             pass
 

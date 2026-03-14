@@ -37,7 +37,6 @@ class StateController(QtCore.QObject):
         self,
         state_service: StateService,
         view_model: DoroViewModel,
-        config: QtCore.QSettings | None = None,
         config_manager: ConfigManager | None = None,
     ):
         """
@@ -46,13 +45,11 @@ class StateController(QtCore.QObject):
         Args:
             state_service: State management service
             view_model: Presentation state ViewModel
-            config: (Legacy) QSettings for persistence
             config_manager: ConfigManager for type-safe config access
         """
         super().__init__()
         self._state_service = state_service
         self._view_model = view_model
-        self._config = config  # Legacy - kept for backward compatibility
         self._config_manager = config_manager
         self._current_state_key = ""
 
@@ -96,12 +93,8 @@ class StateController(QtCore.QObject):
 
         # Persist to config
         if self._config_manager:
-            # Use ConfigManager for type-safe config access
             self._config_manager.update_app(current_state=event.new_key)
             self._config_manager.save()
-        elif self._config:
-            # Fallback to legacy QSettings
-            self._config.setValue("current_state", event.new_key)
 
         # Notify
         self.state_changed.emit(event.new_key)

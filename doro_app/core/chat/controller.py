@@ -14,7 +14,6 @@ from ...constants import (
     CHAT_DEFAULT_HISTORY_TURNS,
     CHAT_DEFAULT_TIMEOUT_SECONDS,
     CHAT_DEFAULT_TEMPERATURE,
-    CHAT_DEFAULT_MAX_TOKENS,
     CHAT_CONFIG_PERSIST_DELAY_MS,
     CHAT_THREAD_CLEANUP_DELAY_MS,
 )
@@ -27,7 +26,7 @@ from ...utils.config_defaults import (
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 from ...utils.prompts import load_prompt_text, write_prompt_text
-from ...utils.utils import safe_int as _safe_int
+
 
 if TYPE_CHECKING:
     from ..state import StateService
@@ -416,13 +415,7 @@ class ChatController(QtCore.QObject):
         messages.extend(history)
         messages.extend(first_entry)
 
-        if self._config_manager:
-            max_tokens = self._config_manager.chat.max_tokens
-        else:
-            max_tokens = _safe_int(
-                self._config.value("chat/max_tokens", CHAT_DEFAULT_MAX_TOKENS),
-                CHAT_DEFAULT_MAX_TOKENS,
-            )
+        max_tokens = self._config_manager.chat.max_tokens
 
         return {
             "model": self._model,

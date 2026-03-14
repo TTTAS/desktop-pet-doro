@@ -48,38 +48,20 @@ class DoroApp:
         """
         deps = deps or bootstrap_environment()
 
-        self._config = deps.config  # Legacy QSettings
-        self._config_manager = deps.config_manager  # New ConfigManager
+        self._config_manager = deps.config_manager
         self._state_service: StateService = deps.state_service
         self._default_idle_gif = deps.default_idle_gif
         self._prompt_file_path = deps.prompt_file_path
         self._click_actions_path = deps.click_actions_path
 
         # ═════════════════════════════════════════════════════════════
-        # Phase 1: Create Business Logic Layer Components
-        # (No UI dependencies - can be tested independently)
+        # Phase 1: Create independent components (no UI dependency)
         # ═════════════════════════════════════════════════════════════
 
-        # Transition player (no window dependency)
         self._transition_player = TransitionPlayer(state_service=self._state_service)
-
-        # Bubble controller (no window dependency)
         self._bubble_controller = BubbleController(
             config_manager=self._config_manager,
         )
-
-        # Chat components
-        self._chat_controller = ChatController(
-            self._prompt_file_path,
-            state_service=self._state_service,
-            state_text_provider=None,  # Will be set after state_controller is created
-            movement_hint_provider=None,  # Will be set after movement is created
-            config_manager=self._config_manager,
-            parent=None,  # No parent needed
-        )
-
-        # NOTE: MovementManager still needs window reference via Protocol
-        # This will be created after Window is instantiated
 
         # ═════════════════════════════════════════════════════════════
         # Phase 2: Create Window (UI layer composition root)
@@ -87,53 +69,53 @@ class DoroApp:
 
         self.window = DoroWindow(
             state_service=self._state_service,
-            config=self._config,  # Legacy
             not_topmost=not_topmost,
-            config_manager=self._config_manager,  # New: Type-safe config
+            config_manager=self._config_manager,
         )
 
         # ═════════════════════════════════════════════════════════════
-        # Phase 3: Create UI Controllers
+        # Phase 3: Create UI Controllers (need window)
         # ═════════════════════════════════════════════════════════════
 
         self._state_controller = StateController(
             state_service=self._state_service,
             view_model=self.window.view_model,
-            config=self._config,  # Legacy
-            config_manager=self._config_manager,  # New: Type-safe config
+            config_manager=self._config_manager,
         )
         self._gif_controller = GifController(view_model=self.window.view_model)
         self._dialog_manager = DialogManager(
             parent_window=self.window,
             state_service=self._state_service,
         )
-
-        # Now create movement manager with window (Protocol dependency)
         self._movement = MovementManager(
             window=self.window,
             state_service=self._state_service,
-            movement_step_px=MOVEMENT_STEP_PX
+            movement_step_px=MOVEMENT_STEP_PX,
         )
 
-        # Update chat controller providers now that dependencies are available
-        self._chat_controller._state_text_provider = lambda: self._state_controller.get_state_list_text()
-        self._chat_controller._movement_hint_provider = lambda: self._movement.instruction_text()
+        # ═════════════════════════════════════════════════════════════
+        # Phase 4: Create ChatController (needs StateController + MovementManager)
+        # ═════════════════════════════════════════════════════════════
 
-        # Create chat orchestrator
+        self._chat_controller = ChatController(
+            self._prompt_file_path,
+            state_service=self._state_service,
+            state_text_provider=lambda: self._state_controller.get_state_list_text(),
+            movement_hint_provider=lambda: self._movement.instruction_text(),
+            config_manager=self._config_manager,
+        )
         self._chat_orchestrator = ChatOrchestrator(
             self._chat_controller,
             self._movement,
             self._state_service,
         )
-
-        # Create click action controller
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
             chat_orchestrator=self._chat_orchestrator,
         )
 
         # ═════════════════════════════════════════════════════════════
-        # Phase 4: Create CoreManager (Business Logic Coordinator)
+        # Phase 5: Create CoreManager (Business Logic Coordinator)
         # ═════════════════════════════════════════════════════════════
 
         self.core_manager = CoreManager(

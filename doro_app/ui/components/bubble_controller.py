@@ -116,14 +116,12 @@ class BubbleController(QtCore.QObject):
 
     def persist_preferences(self):
         """Persist bubble preferences to configuration."""
-        if self._config_manager:
-            # Use ConfigManager for type-safe, validated config access
-            self._config_manager.update_ui(
-                bubble_offset_x=float(self._offset.x()),
-                bubble_offset_y=float(self._offset.y()),
-                bubble_scale=float(self._scale),
-            )
-            self._config_manager.save()
+        self._config_manager.update_ui(
+            bubble_offset_x=float(self._offset.x()),
+            bubble_offset_y=float(self._offset.y()),
+            bubble_scale=float(self._scale),
+        )
+        self._config_manager.save()
 
     # ------------------------------------------------------------------ Drag/resize handling
     def begin_transform(self, pos: QtCore.QPointF) -> bool:

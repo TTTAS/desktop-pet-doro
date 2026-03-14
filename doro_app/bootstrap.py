@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6 import QtCore
-
 from .core.state import GifRepository, MoveStateRepository, StateRepository, StateService
 from .core.state import TransitionRepository
 from .utils.config_manager import ConfigManager
@@ -21,8 +19,7 @@ class BootstrapError(RuntimeError):
 class BootstrappedDependencies:
     """Container for dependencies that must be prepared before UI assembly."""
 
-    config: QtCore.QSettings  # Legacy - use config_manager instead
-    config_manager: ConfigManager  # New: Type-safe configuration access
+    config_manager: ConfigManager
     state_service: StateService
     default_idle_gif: Path
     prompt_file_path: Path
@@ -56,12 +53,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
     prompt_path = PROMPT_PATH
     click_actions_path = CLICK_ACTIONS_PATH
 
-    # Create configuration (both legacy and new)
-    config = QtCore.QSettings("doro-pet", "doro")
-    config_manager = ConfigManager()  # Uses same QSettings location
-
-    if not config.contains("state/idle/gif_path") and default_idle_gif.is_file():
-        config.setValue("state/idle/gif_path", str(default_idle_gif))
+    config_manager = ConfigManager()
 
     gif_repo = GifRepository(STATE_DIR)
     transition_gif_repo = GifRepository(ACTION_TRANSITION_DIR)
@@ -79,8 +71,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
     )
 
     return BootstrappedDependencies(
-        config=config,  # Legacy - kept for backward compatibility
-        config_manager=config_manager,  # New: Type-safe config access
+        config_manager=config_manager,
         state_service=state_service,
         default_idle_gif=default_idle_gif,
         prompt_file_path=prompt_path,
