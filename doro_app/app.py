@@ -195,7 +195,7 @@ class DoroApp:
 
         # TransitionPlayer → Window (UI-specific signal for playing GIF)
         self._transition_player.transition_movie_loaded.connect(
-            self.window._on_transition_movie_loaded
+            self.window.on_transition_movie_loaded
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -203,16 +203,16 @@ class DoroApp:
         # ═════════════════════════════════════════════════════════════
 
         self._bubble_controller.text_changed.connect(
-            lambda text, show_override: self.window._on_bubble_text_changed(text, show_override)
+            lambda text, show_override: self.window.on_bubble_text_changed(text, show_override)
         )
         self._bubble_controller.visibility_changed.connect(
-            lambda visible: self.window._on_bubble_visibility_changed(visible)
+            lambda visible: self.window.on_bubble_visibility_changed(visible)
         )
         self._bubble_controller.offset_changed.connect(
-            lambda offset: self.window._on_bubble_offset_changed(offset)
+            lambda offset: self.window.on_bubble_offset_changed(offset)
         )
         self._bubble_controller.scale_changed.connect(
-            lambda scale: self.window._on_bubble_scale_changed(scale)
+            lambda scale: self.window.on_bubble_scale_changed(scale)
         )
         self._bubble_controller.repaint_requested.connect(
             self.window.update
@@ -221,7 +221,7 @@ class DoroApp:
             self.window.unsetCursor
         )
         self._bubble_controller.update_bubble_side_requested.connect(
-            lambda: self.window._update_bubble_side_from_offset() if hasattr(self.window, '_update_bubble_side_from_offset') else None
+            self.window.update_bubble_side_from_offset
         )
         self._bubble_controller.state_settings_apply_requested.connect(
             lambda state_key: self._state_controller.apply_state_settings(state_key)
@@ -257,13 +257,11 @@ class DoroApp:
 
     def _on_chat_operation_started(self):
         """Translate chat operation started domain event to UI busy cursor."""
-        if hasattr(self.window, 'set_busy_cursor'):
-            self.window.set_busy_cursor(True)
+        self.window.set_busy_cursor(True)
 
     def _on_chat_operation_completed(self):
         """Translate chat operation completed domain event to UI cursor reset."""
-        if hasattr(self.window, 'set_busy_cursor'):
-            self.window.set_busy_cursor(False)
+        self.window.set_busy_cursor(False)
 
     def _on_chat_error_occurred(self, error_message: str):
         """Translate chat error domain event to UI notification."""
@@ -275,47 +273,50 @@ class DoroApp:
 
     def _on_domain_state_changed(self, state_key: str):
         """Translate state changed domain event to UI GIF loading."""
-        # Update Window's current state tracking
-        self.window._current_state_key = state_key
-        # Load the new state's GIF in the UI
-        self.window._load_state_gif(state_key)
+        self.window.current_state_key = state_key
+        self.window.load_state_gif(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):
         """Translate transition completed domain event to UI transition completion."""
-        # Update Window's current state tracking
-        self.window._current_state_key = target_state_key
-        # Notify window that transition is complete
-        self.window._on_transition_completed(target_state_key)
+        self.window.current_state_key = target_state_key
+        self.window.on_transition_completed(target_state_key)
 
     def _connect_ui_controllers(self):
         """Connect UI controllers to Window and wire all UI-layer dependencies."""
 
         # ─────────────────────────────────────────────────────────
-        # Store references in Window (used by themed_menu, chat_ui_helper)
+        # Create mouse event handler
         # ─────────────────────────────────────────────────────────
-        self.window._state_controller = self._state_controller
-        self.window._gif_controller = self._gif_controller
-        self.window._dialog_manager = self._dialog_manager
-        self.window._click_action_controller = self._click_action_controller
-        self.window._bubble_controller = self._bubble_controller
-        self.window._core_manager = self.core_manager
-
-        # ─────────────────────────────────────────────────────────
-        # Create and wire mouse event handler
-        # ─────────────────────────────────────────────────────────
-        self.window._mouse_handler = MouseEventHandler(
+        mouse_handler = MouseEventHandler(
             bubble_controller=self._bubble_controller,
             click_threshold=CLICK_DRAG_THRESHOLD_PX,
         )
-        self.window._mouse_handler.window_drag_requested.connect(self.window.move)
-        self.window._mouse_handler.click_detected.connect(
+
+        # ─────────────────────────────────────────────────────────
+        # Inject all controllers into Window via public API
+        # ─────────────────────────────────────────────────────────
+        self.window.inject_controllers(
+            state_controller=self._state_controller,
+            gif_controller=self._gif_controller,
+            dialog_manager=self._dialog_manager,
+            click_action_controller=self._click_action_controller,
+            bubble_controller=self._bubble_controller,
+            core_manager=self.core_manager,
+            mouse_handler=mouse_handler,
+        )
+
+        # ─────────────────────────────────────────────────────────
+        # Wire mouse event handler signals
+        # ─────────────────────────────────────────────────────────
+        mouse_handler.window_drag_requested.connect(self.window.move)
+        mouse_handler.click_detected.connect(
             lambda: (
-                self.window._mark_user_activity(),
+                self.window.mark_user_activity(),
                 self._click_action_controller.trigger_random_action(),
             )
         )
-        self.window._mouse_handler.user_activity_detected.connect(
-            self.window._mark_user_activity
+        mouse_handler.user_activity_detected.connect(
+            self.window.mark_user_activity
         )
 
         # ─────────────────────────────────────────────────────────
@@ -323,13 +324,13 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         self._state_controller.repaint_requested.connect(self.window.update)
         self._state_controller.state_list_updated.connect(
-            self.window._on_state_list_updated
+            self.window.on_state_list_updated
         )
 
         self._gif_controller.repaint_requested.connect(self.window.update)
-        self._gif_controller.gif_loaded.connect(self.window._on_gif_loaded)
+        self._gif_controller.gif_loaded.connect(self.window.on_gif_loaded)
         self._gif_controller.sprite_size_changed.connect(
-            self.window._on_sprite_size_changed
+            self.window.on_sprite_size_changed
         )
 
         # ─────────────────────────────────────────────────────────
