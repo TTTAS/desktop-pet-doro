@@ -365,9 +365,12 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     from ..helpers.chat_ui_helper import _PROVIDER_PRESETS
 
+    current_url = window.core_manager.chat.server_url
     provider_menu = configure_menu.addMenu("Provider")
-    for name in _PROVIDER_PRESETS:
+    for name, preset in _PROVIDER_PRESETS.items():
         action = provider_menu.addAction(name)
+        action.setCheckable(True)
+        action.setChecked(preset["server_url"] == current_url)
         action.triggered.connect(partial(window.chat_ui.apply_provider_preset, name))
 
     api_key_action = configure_menu.addAction("Set API key")
