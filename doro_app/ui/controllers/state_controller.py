@@ -176,6 +176,18 @@ class StateController(QtCore.QObject):
         """Get list of visible state keys."""
         return self._state_service.visible_state_keys()
 
+    def toggle_bubble_visibility(self, state_key: str, visible: bool) -> bool:
+        """Toggle bubble visibility for a state (delegates to StateService).
+
+        Returns:
+            True if the visual config was updated successfully.
+        """
+        if not state_key:
+            return False
+        return self._state_service.update_visual_config(
+            state_key, bubble_visible=visible
+        )
+
     def get_state_list_text(self) -> str:
         """Get formatted state list text."""
         return self._state_service.write_state_list()

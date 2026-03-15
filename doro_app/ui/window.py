@@ -155,7 +155,6 @@ class DoroWindow(QtWidgets.QWidget):
         # UI State Variables
         # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
-        self._previous_state_key: Optional[str] = None  # DEPRECATED: No longer used (CoreManager tracks state transitions)
         self._state_list_text: str = ""
         self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
         self._move_state_list_text: str = ""
@@ -620,14 +619,11 @@ class DoroWindow(QtWidgets.QWidget):
             self._chat_cursor_overridden = False
 
     def toggle_bubble(self, checked: bool):
-        # Update through StateService
         if not self._current_state_key:
             return
-        # Update state via StateService
-        if self._state_service.update_visual_config(
-            self._current_state_key, bubble_visible=checked
+        if self._state_controller.toggle_bubble_visibility(
+            self._current_state_key, checked
         ):
-            # ViewModel will be updated by state change event
             self._bubble_controller.set_visible(checked)
 
     # NOTE: _on_bubble_text_requested() and _on_chat_notification() removed

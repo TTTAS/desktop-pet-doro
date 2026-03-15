@@ -47,7 +47,7 @@ class BubbleController(QtCore.QObject):
     update_bubble_side_requested = QtCore.Signal()  # request bubble side update
     state_settings_apply_requested = QtCore.Signal(str)  # request state settings apply with state_key
 
-    def __init__(self, config_manager: ConfigManager | None = None):
+    def __init__(self, config_manager: ConfigManager):
         super().__init__()
         self._config_manager = config_manager
         self._offset = QtCore.QPointF(0.0, 0.0)
