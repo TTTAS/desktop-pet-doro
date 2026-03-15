@@ -369,25 +369,28 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     for name in _PROVIDER_PRESETS:
         action = provider_menu.addAction(name)
         action.triggered.connect(partial(window.chat_ui.apply_provider_preset, name))
-    configure_menu.addSeparator()
-
-    server_action = configure_menu.addAction("Set server URL")
-    server_action.triggered.connect(window.chat_ui.configure_chat_server)
-
-    model_action = configure_menu.addAction("Set model name")
-    model_action.triggered.connect(window.chat_ui.configure_chat_model)
-
-    endpoint_action = configure_menu.addAction("Set endpoint path")
-    endpoint_action.triggered.connect(window.chat_ui.configure_chat_endpoint)
-
-    temperature_action = configure_menu.addAction("Set temperature")
-    temperature_action.triggered.connect(window.chat_ui.configure_chat_temperature)
-
-    timeout_action = configure_menu.addAction("Set timeout (seconds)")
-    timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
 
     api_key_action = configure_menu.addAction("Set API key")
     api_key_action.triggered.connect(window.chat_ui.configure_api_key)
+
+    configure_menu.addSeparator()
+
+    advanced_menu = configure_menu.addMenu("Advanced")
+
+    server_action = advanced_menu.addAction("Set server URL")
+    server_action.triggered.connect(window.chat_ui.configure_chat_server)
+
+    model_action = advanced_menu.addAction("Set model name")
+    model_action.triggered.connect(window.chat_ui.configure_chat_model)
+
+    endpoint_action = advanced_menu.addAction("Set endpoint path")
+    endpoint_action.triggered.connect(window.chat_ui.configure_chat_endpoint)
+
+    temperature_action = advanced_menu.addAction("Set temperature")
+    temperature_action.triggered.connect(window.chat_ui.configure_chat_temperature)
+
+    timeout_action = advanced_menu.addAction("Set timeout (seconds)")
+    timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
 
     menu.addSeparator()
 
