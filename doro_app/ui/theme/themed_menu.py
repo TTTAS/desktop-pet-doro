@@ -365,7 +365,7 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     from ..helpers.chat_ui_helper import _PROVIDER_PRESETS
 
-    current_url = window.core_manager.chat.server_url
+    current_url = window.core_manager.get_server_url()
     provider_menu = configure_menu.addMenu("Provider")
     for name, preset in _PROVIDER_PRESETS.items():
         action = provider_menu.addAction(name)
