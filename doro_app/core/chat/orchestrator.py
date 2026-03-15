@@ -107,6 +107,12 @@ class ChatOrchestrator(QtCore.QObject):
     def set_stop_tokens(self, tokens: list[str]) -> None:
         self._controller.set_stop_tokens(tokens)
 
+    def get_max_stop_tokens(self) -> int:
+        return self._controller.max_stop_tokens
+
+    def set_max_stop_tokens(self, n: int) -> None:
+        self._controller.set_max_stop_tokens(n)
+
     def get_api_key(self) -> str:
         """Get the API key."""
         return self._controller.api_key

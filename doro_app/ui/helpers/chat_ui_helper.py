@@ -16,13 +16,13 @@ _PROVIDER_PRESETS = {
         "server_url": "http://127.0.0.1:1234",
         "model": "lmstudio",
         "endpoint_path": "/v1/chat/completions",
-        "stop_tokens": ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"],
+        "max_stop_tokens": 0,
     },
     "Gemini": {
         "server_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "model": "gemini-2.5-flash",
         "endpoint_path": "/chat/completions",
-        "stop_tokens": ["\n人：", "\n人:", "\nUser:", "\nHuman:"],
+        "max_stop_tokens": 5,
     },
 }
 
@@ -182,6 +182,20 @@ class ChatUIHelper:
             ]
             self.window.core_manager.set_stop_tokens(tokens)
 
+    def configure_max_stop_tokens(self) -> None:
+        """Configure maximum number of stop tokens sent to the API."""
+        current = self.window.core_manager.get_max_stop_tokens()
+        value, ok = QtWidgets.QInputDialog.getInt(
+            self.window,
+            "設定 Stop Tokens 上限",
+            "最多送出幾個 stop tokens（0 = 無限制）:",
+            current,
+            0,
+            100,
+        )
+        if ok:
+            self.window.core_manager.set_max_stop_tokens(value)
+
     def configure_api_key(self) -> None:
         """Configure chat API key."""
         current = self.window.core_manager.get_api_key()
@@ -202,4 +216,4 @@ class ChatUIHelper:
         cm.set_server_url(preset["server_url"])
         cm.set_model_name(preset["model"])
         cm.set_endpoint(preset["endpoint_path"])
-        cm.set_stop_tokens(preset["stop_tokens"])
+        cm.set_max_stop_tokens(preset["max_stop_tokens"])

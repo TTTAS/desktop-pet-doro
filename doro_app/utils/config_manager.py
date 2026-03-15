@@ -35,6 +35,7 @@ from .config_defaults import (
     DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_MAX_STOP_TOKENS,
 )
 from ..utils.logger import get_logger
 
@@ -191,6 +192,7 @@ class ConfigManager:
             "max_retries": kwargs.get("max_retries", current.max_retries),
             "history_turns": kwargs.get("history_turns", current.history_turns),
             "stop_tokens": kwargs.get("stop_tokens", current.stop_tokens),
+            "max_stop_tokens": kwargs.get("max_stop_tokens", current.max_stop_tokens),
         }
 
         # Validation happens in ChatConfig.__post_init__
@@ -303,6 +305,10 @@ class ConfigManager:
                     self._settings.value("chat/stop_tokens"),
                     DEFAULT_CHAT_STOP_TOKENS
                 ),
+                max_stop_tokens=_safe_int(
+                    self._settings.value("chat/max_stop_tokens"),
+                    DEFAULT_CHAT_MAX_STOP_TOKENS
+                ),
             )
             self._config.chat = chat_config
         except ValueError as e:
@@ -365,6 +371,7 @@ class ConfigManager:
         self._settings.setValue("chat/max_retries", chat.max_retries)
         self._settings.setValue("chat/history_turns", chat.history_turns)
         self._settings.setValue("chat/stop_tokens", chat.stop_tokens)
+        self._settings.setValue("chat/max_stop_tokens", chat.max_stop_tokens)
 
         # Save UI config
         ui = self._config.ui

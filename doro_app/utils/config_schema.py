@@ -30,6 +30,7 @@ from .config_defaults import (
     DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_MAX_STOP_TOKENS,
 )
 
 
@@ -60,6 +61,7 @@ class ChatConfig:
 
     # Stop tokens
     stop_tokens: list[str] = field(default_factory=lambda: list(DEFAULT_CHAT_STOP_TOKENS))
+    max_stop_tokens: int = DEFAULT_CHAT_MAX_STOP_TOKENS
 
     # History configuration
     history_turns: int = CHAT_DEFAULT_HISTORY_TURNS

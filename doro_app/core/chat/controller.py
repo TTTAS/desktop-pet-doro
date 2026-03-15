@@ -121,6 +121,7 @@ class ChatController(QtCore.QObject):
         self._timeout_seconds = config_manager.chat.timeout_seconds
         self._temperature = config_manager.chat.temperature
         self._stop_tokens = list(config_manager.chat.stop_tokens)
+        self._max_stop_tokens = config_manager.chat.max_stop_tokens
 
         self._retry_count = 0
         self._original_user_message = ""
@@ -182,6 +183,14 @@ class ChatController(QtCore.QObject):
 
     def set_stop_tokens(self, tokens: list[str]) -> None:
         self._stop_tokens = list(tokens)
+        self._schedule_persist()
+
+    @property
+    def max_stop_tokens(self) -> int:
+        return self._max_stop_tokens
+
+    def set_max_stop_tokens(self, n: int) -> None:
+        self._max_stop_tokens = max(n, 0)
         self._schedule_persist()
 
     @property
@@ -424,6 +433,8 @@ class ChatController(QtCore.QObject):
         messages: list[dict[str, str]] = []
         system_prompt = self._compose_system_prompt()
         stop_tokens = self._stop_tokens
+        if self._max_stop_tokens > 0:
+            stop_tokens = stop_tokens[:self._max_stop_tokens]
 
         if system_prompt:
             first_entry = build_messages_for_mistral_instruct(system_prompt, user_message)
@@ -503,6 +514,7 @@ class ChatController(QtCore.QObject):
             temperature=self._temperature,
             timeout_seconds=self._timeout_seconds,
             stop_tokens=self._stop_tokens,
+            max_stop_tokens=self._max_stop_tokens,
         )
         self._config_manager.save()
 

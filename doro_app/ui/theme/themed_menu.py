@@ -398,6 +398,9 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     stop_tokens_action = advanced_menu.addAction("Set stop tokens")
     stop_tokens_action.triggered.connect(window.chat_ui.configure_stop_tokens)
 
+    max_stop_action = advanced_menu.addAction("Set max stop tokens")
+    max_stop_action.triggered.connect(window.chat_ui.configure_max_stop_tokens)
+
     menu.addSeparator()
 
     # Exit action

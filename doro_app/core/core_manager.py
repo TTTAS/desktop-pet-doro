@@ -236,6 +236,12 @@ class CoreManager(QtCore.QObject):
     def set_stop_tokens(self, tokens: list[str]) -> None:
         self._chat_orchestrator.set_stop_tokens(tokens)
 
+    def get_max_stop_tokens(self) -> int:
+        return self._chat_orchestrator.get_max_stop_tokens()
+
+    def set_max_stop_tokens(self, n: int) -> None:
+        self._chat_orchestrator.set_max_stop_tokens(n)
+
     def get_api_key(self) -> str:
         """Get chat API key."""
         return self._chat_orchestrator.get_api_key()
