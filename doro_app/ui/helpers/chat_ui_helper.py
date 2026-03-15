@@ -81,7 +81,7 @@ class ChatUIHelper:
             self.window,
             "設定聊天伺服器",
             "伺服器 URL:",
-            QtWidgets.QInputDialog.InputMode.Normal,
+            QtWidgets.QLineEdit.EchoMode.Normal,
             current,
         )
         if ok and text.strip():
@@ -96,7 +96,7 @@ class ChatUIHelper:
             self.window,
             "設定模型",
             "模型名稱:",
-            QtWidgets.QInputDialog.InputMode.Normal,
+            QtWidgets.QLineEdit.EchoMode.Normal,
             current,
         )
         if ok and text.strip():
@@ -111,7 +111,7 @@ class ChatUIHelper:
             self.window,
             "設定 API 端點",
             "API 端點路徑:",
-            QtWidgets.QInputDialog.InputMode.Normal,
+            QtWidgets.QLineEdit.EchoMode.Normal,
             current,
         )
         if ok and text.strip():
