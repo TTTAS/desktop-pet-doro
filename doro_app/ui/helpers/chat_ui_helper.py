@@ -11,6 +11,20 @@ from ..dialogs.chat_dialog import show_chat_dialog
 if TYPE_CHECKING:
     from ..window import DoroWindow
 
+_PROVIDER_PRESETS = {
+    "Local (LMStudio)": {
+        "server_url": "http://127.0.0.1:1234",
+        "model": "lmstudio",
+        "endpoint_path": "/v1/chat/completions",
+        "api_key": "",
+    },
+    "Gemini": {
+        "server_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.5-flash",
+        "endpoint_path": "/v1/chat/completions",
+    },
+}
+
 
 class ChatUIHelper:
     """
@@ -161,3 +175,16 @@ class ChatUIHelper:
         )
         if ok:
             self.window.core_manager.set_api_key(text.strip())
+
+    def apply_provider_preset(self, preset_name: str) -> None:
+        """Apply a provider preset configuration."""
+        preset = _PROVIDER_PRESETS[preset_name]
+        cm = self.window.core_manager
+        cm.set_server_url(preset["server_url"])
+        cm.set_model_name(preset["model"])
+        cm.set_endpoint(preset["endpoint_path"])
+        if "api_key" in preset:
+            cm.set_api_key(preset["api_key"])
+        # If the preset needs an API key and none is set, prompt the user
+        if "api_key" not in preset and not cm.get_api_key():
+            self.configure_api_key()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -361,6 +362,14 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     clear_history_action.triggered.connect(window.chat_ui.clear_chat_history)
 
     configure_menu = chat_menu.addMenu("Configure")
+
+    from ..helpers.chat_ui_helper import _PROVIDER_PRESETS
+
+    provider_menu = configure_menu.addMenu("Provider")
+    for name in _PROVIDER_PRESETS:
+        action = provider_menu.addAction(name)
+        action.triggered.connect(partial(window.chat_ui.apply_provider_preset, name))
+    configure_menu.addSeparator()
 
     server_action = configure_menu.addAction("Set server URL")
     server_action.triggered.connect(window.chat_ui.configure_chat_server)
