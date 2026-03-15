@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -362,20 +363,43 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     configure_menu = chat_menu.addMenu("Configure")
 
-    server_action = configure_menu.addAction("Set server URL")
+    from ..helpers.chat_ui_helper import _PROVIDER_PRESETS
+
+    current_url = window.core_manager.get_server_url()
+    provider_menu = configure_menu.addMenu("Provider")
+    for name, preset in _PROVIDER_PRESETS.items():
+        action = provider_menu.addAction(name)
+        action.setCheckable(True)
+        action.setChecked(preset["server_url"] == current_url)
+        action.triggered.connect(partial(window.chat_ui.apply_provider_preset, name))
+
+    api_key_action = configure_menu.addAction("Set API key")
+    api_key_action.triggered.connect(window.chat_ui.configure_api_key)
+
+    configure_menu.addSeparator()
+
+    advanced_menu = configure_menu.addMenu("Advanced")
+
+    server_action = advanced_menu.addAction("Set server URL")
     server_action.triggered.connect(window.chat_ui.configure_chat_server)
 
-    model_action = configure_menu.addAction("Set model name")
+    model_action = advanced_menu.addAction("Set model name")
     model_action.triggered.connect(window.chat_ui.configure_chat_model)
 
-    endpoint_action = configure_menu.addAction("Set endpoint path")
+    endpoint_action = advanced_menu.addAction("Set endpoint path")
     endpoint_action.triggered.connect(window.chat_ui.configure_chat_endpoint)
 
-    temperature_action = configure_menu.addAction("Set temperature")
+    temperature_action = advanced_menu.addAction("Set temperature")
     temperature_action.triggered.connect(window.chat_ui.configure_chat_temperature)
 
-    timeout_action = configure_menu.addAction("Set timeout (seconds)")
+    timeout_action = advanced_menu.addAction("Set timeout (seconds)")
     timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
+
+    stop_tokens_action = advanced_menu.addAction("Set stop tokens")
+    stop_tokens_action.triggered.connect(window.chat_ui.configure_stop_tokens)
+
+    max_stop_action = advanced_menu.addAction("Set max stop tokens")
+    max_stop_action.triggered.connect(window.chat_ui.configure_max_stop_tokens)
 
     menu.addSeparator()
 

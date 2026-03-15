@@ -32,7 +32,10 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
+    DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_MAX_STOP_TOKENS,
 )
 from ..utils.logger import get_logger
 
@@ -66,6 +69,15 @@ def _safe_str(value: Any, default: str) -> str:
         return default
     s = str(value).strip()
     return s if s else default
+
+
+def _safe_str_list(value: Any, default: list[str]) -> list[str]:
+    """Convert value to list[str], return default if invalid."""
+    if value is None:
+        return list(default)
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    return list(default)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -173,11 +185,14 @@ class ConfigManager:
             "server_url": kwargs.get("server_url", current.server_url),
             "model": kwargs.get("model", current.model),
             "endpoint_path": kwargs.get("endpoint_path", current.endpoint_path),
+            "api_key": kwargs.get("api_key", current.api_key),
             "timeout_seconds": kwargs.get("timeout_seconds", current.timeout_seconds),
             "temperature": kwargs.get("temperature", current.temperature),
             "max_tokens": kwargs.get("max_tokens", current.max_tokens),
             "max_retries": kwargs.get("max_retries", current.max_retries),
             "history_turns": kwargs.get("history_turns", current.history_turns),
+            "stop_tokens": kwargs.get("stop_tokens", current.stop_tokens),
+            "max_stop_tokens": kwargs.get("max_stop_tokens", current.max_stop_tokens),
         }
 
         # Validation happens in ChatConfig.__post_init__
@@ -262,6 +277,10 @@ class ConfigManager:
                     self._settings.value("chat/endpoint_path"),
                     DEFAULT_CHAT_ENDPOINT_PATH
                 ),
+                api_key=_safe_str(
+                    self._settings.value("chat/api_key"),
+                    DEFAULT_CHAT_API_KEY
+                ),
                 timeout_seconds=_safe_int(
                     self._settings.value("chat/timeout_seconds"),
                     CHAT_DEFAULT_TIMEOUT_SECONDS
@@ -281,6 +300,14 @@ class ConfigManager:
                 history_turns=_safe_int(
                     self._settings.value("chat/history_turns"),
                     CHAT_DEFAULT_HISTORY_TURNS
+                ),
+                stop_tokens=_safe_str_list(
+                    self._settings.value("chat/stop_tokens"),
+                    DEFAULT_CHAT_STOP_TOKENS
+                ),
+                max_stop_tokens=_safe_int(
+                    self._settings.value("chat/max_stop_tokens"),
+                    DEFAULT_CHAT_MAX_STOP_TOKENS
                 ),
             )
             self._config.chat = chat_config
@@ -337,11 +364,14 @@ class ConfigManager:
         self._settings.setValue("chat/server_url", chat.server_url)
         self._settings.setValue("chat/model", chat.model)
         self._settings.setValue("chat/endpoint_path", chat.endpoint_path)
+        self._settings.setValue("chat/api_key", chat.api_key)
         self._settings.setValue("chat/timeout_seconds", chat.timeout_seconds)
         self._settings.setValue("chat/temperature", float(chat.temperature))
         self._settings.setValue("chat/max_tokens", chat.max_tokens)
         self._settings.setValue("chat/max_retries", chat.max_retries)
         self._settings.setValue("chat/history_turns", chat.history_turns)
+        self._settings.setValue("chat/stop_tokens", chat.stop_tokens)
+        self._settings.setValue("chat/max_stop_tokens", chat.max_stop_tokens)
 
         # Save UI config
         ui = self._config.ui

@@ -34,6 +34,7 @@ def perform_chat_request(
     url: str,
     payload: dict,
     timeout_seconds: int,
+    api_key: str = "",
 ) -> tuple[str | None, str | None]:
     """
     Perform a chat completion request to the LLM server.
@@ -54,10 +55,13 @@ def perform_chat_request(
 
     try:
         request_bytes = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         request = urllib.request.Request(
             url,
             data=request_bytes,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:

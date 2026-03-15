@@ -11,6 +11,21 @@ from ..dialogs.chat_dialog import show_chat_dialog
 if TYPE_CHECKING:
     from ..window import DoroWindow
 
+_PROVIDER_PRESETS = {
+    "Local (LMStudio)": {
+        "server_url": "http://127.0.0.1:1234",
+        "model": "lmstudio",
+        "endpoint_path": "/v1/chat/completions",
+        "max_stop_tokens": 0,
+    },
+    "Gemini": {
+        "server_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.5-flash",
+        "endpoint_path": "/chat/completions",
+        "max_stop_tokens": 5,
+    },
+}
+
 
 class ChatUIHelper:
     """
@@ -137,7 +152,6 @@ class ChatUIHelper:
 
     def configure_chat_timeout(self) -> None:
         """Configure chat request timeout."""
-        # Use public API instead of accessing internal components
         current = self.window.core_manager.get_timeout()
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
@@ -148,5 +162,58 @@ class ChatUIHelper:
             300,
         )
         if ok:
-            # Use public API instead of accessing internal components
             self.window.core_manager.set_timeout(value)
+
+    def configure_stop_tokens(self) -> None:
+        """Configure stop tokens (one per line)."""
+        current = self.window.core_manager.get_stop_tokens()
+        display = "\n".join(t.replace("\n", "\\n") for t in current)
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self.window,
+            "設定 Stop Tokens",
+            "每行一個 stop token（可用 \\n 表示換行）:",
+            display,
+        )
+        if ok:
+            tokens = [
+                line.replace("\\n", "\n")
+                for line in text.splitlines()
+                if line.strip()
+            ]
+            self.window.core_manager.set_stop_tokens(tokens)
+
+    def configure_max_stop_tokens(self) -> None:
+        """Configure maximum number of stop tokens sent to the API."""
+        current = self.window.core_manager.get_max_stop_tokens()
+        value, ok = QtWidgets.QInputDialog.getInt(
+            self.window,
+            "設定 Stop Tokens 上限",
+            "最多送出幾個 stop tokens（0 = 無限制）:",
+            current,
+            0,
+            100,
+        )
+        if ok:
+            self.window.core_manager.set_max_stop_tokens(value)
+
+    def configure_api_key(self) -> None:
+        """Configure chat API key."""
+        current = self.window.core_manager.get_api_key()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "設定 API Key",
+            "API Key（留空則不送認證 header）:",
+            QtWidgets.QLineEdit.EchoMode.Password,
+            current,
+        )
+        if ok:
+            self.window.core_manager.set_api_key(text.strip())
+
+    def apply_provider_preset(self, preset_name: str) -> None:
+        """Apply a provider preset configuration (URL, model, endpoint only)."""
+        preset = _PROVIDER_PRESETS[preset_name]
+        cm = self.window.core_manager
+        cm.set_server_url(preset["server_url"])
+        cm.set_model_name(preset["model"])
+        cm.set_endpoint(preset["endpoint_path"])
+        cm.set_max_stop_tokens(preset["max_stop_tokens"])

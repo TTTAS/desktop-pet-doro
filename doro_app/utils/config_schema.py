@@ -27,7 +27,10 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
+    DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_MAX_STOP_TOKENS,
 )
 
 
@@ -48,12 +51,17 @@ class ChatConfig:
     server_url: str = DEFAULT_CHAT_SERVER_URL
     model: str = DEFAULT_CHAT_MODEL
     endpoint_path: str = DEFAULT_CHAT_ENDPOINT_PATH
+    api_key: str = DEFAULT_CHAT_API_KEY
 
     # Request configuration
     timeout_seconds: int = CHAT_DEFAULT_TIMEOUT_SECONDS
     temperature: float = CHAT_DEFAULT_TEMPERATURE
     max_tokens: int = CHAT_DEFAULT_MAX_TOKENS
     max_retries: int = DEFAULT_CHAT_MAX_RETRIES
+
+    # Stop tokens
+    stop_tokens: list[str] = field(default_factory=lambda: list(DEFAULT_CHAT_STOP_TOKENS))
+    max_stop_tokens: int = DEFAULT_CHAT_MAX_STOP_TOKENS
 
     # History configuration
     history_turns: int = CHAT_DEFAULT_HISTORY_TURNS
