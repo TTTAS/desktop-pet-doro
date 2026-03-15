@@ -414,7 +414,7 @@ class ChatController(QtCore.QObject):
     def _build_chat_payload(self, user_message: str) -> dict:
         messages: list[dict[str, str]] = []
         system_prompt = self._compose_system_prompt()
-        stop_tokens = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
+        stop_tokens = ["\n人：", "\n人:", "\nUser:", "\nHuman:"]
 
         if system_prompt:
             first_entry = build_messages_for_mistral_instruct(system_prompt, user_message)

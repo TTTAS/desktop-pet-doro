@@ -20,7 +20,7 @@ _PROVIDER_PRESETS = {
     "Gemini": {
         "server_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "model": "gemini-2.5-flash",
-        "endpoint_path": "/v1/chat/completions",
+        "endpoint_path": "/chat/completions",
     },
 }
 
