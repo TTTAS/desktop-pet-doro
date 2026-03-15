@@ -16,11 +16,13 @@ _PROVIDER_PRESETS = {
         "server_url": "http://127.0.0.1:1234",
         "model": "lmstudio",
         "endpoint_path": "/v1/chat/completions",
+        "stop_tokens": ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"],
     },
     "Gemini": {
         "server_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "model": "gemini-2.5-flash",
         "endpoint_path": "/chat/completions",
+        "stop_tokens": ["\n人：", "\n人:", "\nUser:", "\nHuman:"],
     },
 }
 
@@ -182,3 +184,4 @@ class ChatUIHelper:
         cm.set_server_url(preset["server_url"])
         cm.set_model_name(preset["model"])
         cm.set_endpoint(preset["endpoint_path"])
+        cm.set_stop_tokens(preset["stop_tokens"])

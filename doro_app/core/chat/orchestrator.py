@@ -101,6 +101,9 @@ class ChatOrchestrator(QtCore.QObject):
         """Set the API endpoint path."""
         self._controller.set_endpoint_path(path)
 
+    def set_stop_tokens(self, tokens: list[str]) -> None:
+        self._controller.set_stop_tokens(tokens)
+
     def get_api_key(self) -> str:
         """Get the API key."""
         return self._controller.api_key

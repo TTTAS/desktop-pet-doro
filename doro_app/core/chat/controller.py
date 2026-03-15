@@ -120,6 +120,7 @@ class ChatController(QtCore.QObject):
         self._api_key = config_manager.chat.api_key
         self._timeout_seconds = config_manager.chat.timeout_seconds
         self._temperature = config_manager.chat.temperature
+        self._stop_tokens = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
 
         self._retry_count = 0
         self._original_user_message = ""
@@ -174,6 +175,9 @@ class ChatController(QtCore.QObject):
     def set_endpoint_path(self, path: str):
         self._endpoint_path = path.strip()
         self._schedule_persist()
+
+    def set_stop_tokens(self, tokens: list[str]) -> None:
+        self._stop_tokens = list(tokens)
 
     @property
     def api_key(self) -> str:
@@ -414,7 +418,7 @@ class ChatController(QtCore.QObject):
     def _build_chat_payload(self, user_message: str) -> dict:
         messages: list[dict[str, str]] = []
         system_prompt = self._compose_system_prompt()
-        stop_tokens = ["\n人：", "\n人:", "\nUser:", "\nHuman:"]
+        stop_tokens = self._stop_tokens
 
         if system_prompt:
             first_entry = build_messages_for_mistral_instruct(system_prompt, user_message)

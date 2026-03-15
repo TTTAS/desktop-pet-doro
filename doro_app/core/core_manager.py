@@ -230,6 +230,9 @@ class CoreManager(QtCore.QObject):
         """Set chat API endpoint."""
         self._chat_orchestrator.set_endpoint(endpoint)
 
+    def set_stop_tokens(self, tokens: list[str]) -> None:
+        self._chat_orchestrator.set_stop_tokens(tokens)
+
     def get_api_key(self) -> str:
         """Get chat API key."""
         return self._chat_orchestrator.get_api_key()
