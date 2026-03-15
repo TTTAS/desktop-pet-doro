@@ -395,6 +395,9 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     timeout_action = advanced_menu.addAction("Set timeout (seconds)")
     timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
 
+    stop_tokens_action = advanced_menu.addAction("Set stop tokens")
+    stop_tokens_action.triggered.connect(window.chat_ui.configure_stop_tokens)
+
     menu.addSeparator()
 
     # Exit action

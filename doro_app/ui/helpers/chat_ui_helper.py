@@ -164,6 +164,24 @@ class ChatUIHelper:
         if ok:
             self.window.core_manager.set_timeout(value)
 
+    def configure_stop_tokens(self) -> None:
+        """Configure stop tokens (one per line)."""
+        current = self.window.core_manager.get_stop_tokens()
+        display = "\n".join(t.replace("\n", "\\n") for t in current)
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self.window,
+            "設定 Stop Tokens",
+            "每行一個 stop token（可用 \\n 表示換行）:",
+            display,
+        )
+        if ok:
+            tokens = [
+                line.replace("\\n", "\n")
+                for line in text.splitlines()
+                if line.strip()
+            ]
+            self.window.core_manager.set_stop_tokens(tokens)
+
     def configure_api_key(self) -> None:
         """Configure chat API key."""
         current = self.window.core_manager.get_api_key()

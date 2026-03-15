@@ -120,7 +120,7 @@ class ChatController(QtCore.QObject):
         self._api_key = config_manager.chat.api_key
         self._timeout_seconds = config_manager.chat.timeout_seconds
         self._temperature = config_manager.chat.temperature
-        self._stop_tokens = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
+        self._stop_tokens = list(config_manager.chat.stop_tokens)
 
         self._retry_count = 0
         self._original_user_message = ""
@@ -176,8 +176,13 @@ class ChatController(QtCore.QObject):
         self._endpoint_path = path.strip()
         self._schedule_persist()
 
+    @property
+    def stop_tokens(self) -> list[str]:
+        return list(self._stop_tokens)
+
     def set_stop_tokens(self, tokens: list[str]) -> None:
         self._stop_tokens = list(tokens)
+        self._schedule_persist()
 
     @property
     def api_key(self) -> str:
@@ -497,6 +502,7 @@ class ChatController(QtCore.QObject):
             api_key=self._api_key,
             temperature=self._temperature,
             timeout_seconds=self._timeout_seconds,
+            stop_tokens=self._stop_tokens,
         )
         self._config_manager.save()
 
