@@ -20,7 +20,6 @@ from ..constants import (
     PANEL_DEFAULT_HEIGHT_HINT,
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
-    MOVEMENT_ONLY_STATE_KEYS,
     DEFAULT_MOVE_STATE_KEY,
     WINDOW_INITIAL_POSITION_OFFSET_X,
     WINDOW_INITIAL_POSITION_OFFSET_Y,
@@ -32,8 +31,6 @@ from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
-# NOTE: Removed imports for TransitionPlayer, MovementManager, ChatController, ChatOrchestrator
-# These are now accessed through CoreManager
 from ..utils.logger import get_logger
 from ..utils.models import MoveStateSettings
 from ..core.state import StateService
@@ -113,9 +110,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         self._default_idle_gif = STATE_DIR / "idle.gif"
 
-        # NOTE: StateController now handles state change callbacks
-        # (previously set here, now done in StateController.__init__)
-
         # ─────────────────────────────────────────────────────────
         # Dependencies wired later (due to circular dependency)
         # ─────────────────────────────────────────────────────────
@@ -129,8 +123,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._core_manager = None  # Will be set by DoroApp
         # Event handlers
         self._mouse_handler: MouseEventHandler | None = None
-        # NOTE: _transition_player, _movement, _chat_controller, _chat_orchestrator removed
-        # These are now accessed through _core_manager
 
         # ─────────────────────────────────────────────────────────
         # ViewModel (Presentation State)
@@ -156,8 +148,6 @@ class DoroWindow(QtWidgets.QWidget):
         # ─────────────────────────────────────────────────────────
         self._current_state_key: str = ""
         self._state_list_text: str = ""
-        self._movement_only_state_keys: set[str] = MOVEMENT_ONLY_STATE_KEYS
-        self._move_state_list_text: str = ""
 
         self._gif_player = GifPlayer()
         self._gif_movie: QtGui.QMovie | None = None
@@ -559,7 +549,6 @@ class DoroWindow(QtWidgets.QWidget):
         Args:
             visible: Whether bubble should be visible
         """
-        self._bubble_visible = visible
         self.update()
 
     def on_bubble_offset_changed(self, offset: QtCore.QPointF):
@@ -580,7 +569,6 @@ class DoroWindow(QtWidgets.QWidget):
         Args:
             scale: The new bubble scale
         """
-        self._bubble_scale = scale
         self.update()
 
     # ═══════════════════════════════════════════════════════════
@@ -625,9 +613,6 @@ class DoroWindow(QtWidgets.QWidget):
             self._current_state_key, checked
         ):
             self._bubble_controller.set_visible(checked)
-
-    # NOTE: _on_bubble_text_requested() and _on_chat_notification() removed
-    # These signals are now handled through CoreManager in DoroApp
 
     def _set_bubble_text(
         self,
