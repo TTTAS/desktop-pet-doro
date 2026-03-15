@@ -56,12 +56,13 @@ class ChatWorker(QtCore.QRunnable):
     Uses signals (via ChatWorkerSignals) to return results.
     """
 
-    def __init__(self, request_id: str, endpoint: str, payload: dict, timeout: int):
+    def __init__(self, request_id: str, endpoint: str, payload: dict, timeout: int, api_key: str = ""):
         super().__init__()
         self.request_id = request_id
         self.endpoint = endpoint
         self.payload = payload
         self.timeout = timeout
+        self.api_key = api_key
         self.signals = ChatWorkerSignals()
         self.setAutoDelete(True)  # QThreadPool will delete this after run()
 
@@ -71,7 +72,7 @@ class ChatWorker(QtCore.QRunnable):
         from .chat import perform_chat_request
 
         try:
-            result = perform_chat_request(self.endpoint, self.payload, self.timeout)
+            result = perform_chat_request(self.endpoint, self.payload, self.timeout, self.api_key)
             self.signals.result.emit(self.request_id, result)
         except Exception as e:
             logger.error(f"Worker exception: {e}", exc_info=True)
@@ -116,6 +117,7 @@ class ChatController(QtCore.QObject):
         self._server_url = config_manager.chat.server_url
         self._model = config_manager.chat.model
         self._endpoint_path = config_manager.chat.endpoint_path
+        self._api_key = config_manager.chat.api_key
         self._timeout_seconds = config_manager.chat.timeout_seconds
         self._temperature = config_manager.chat.temperature
 
@@ -174,6 +176,14 @@ class ChatController(QtCore.QObject):
         self._schedule_persist()
 
     @property
+    def api_key(self) -> str:
+        return self._api_key
+
+    def set_api_key(self, key: str):
+        self._api_key = key.strip()
+        self._schedule_persist()
+
+    @property
     def temperature(self) -> float:
         return float(self._temperature)
 
@@ -227,7 +237,7 @@ class ChatController(QtCore.QObject):
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
         # Use QRunnable + QThreadPool (official PySide6 pattern)
-        worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds))
+        worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds), self._api_key)
 
         # Connect worker signals to handlers (QueuedConnection for thread safety)
         worker.signals.result.connect(
@@ -480,6 +490,7 @@ class ChatController(QtCore.QObject):
             server_url=self._server_url,
             model=self._model,
             endpoint_path=self._endpoint_path,
+            api_key=self._api_key,
             temperature=self._temperature,
             timeout_seconds=self._timeout_seconds,
         )

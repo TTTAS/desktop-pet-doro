@@ -377,6 +377,9 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     timeout_action = configure_menu.addAction("Set timeout (seconds)")
     timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
 
+    api_key_action = configure_menu.addAction("Set API key")
+    api_key_action.triggered.connect(window.chat_ui.configure_api_key)
+
     menu.addSeparator()
 
     # Exit action

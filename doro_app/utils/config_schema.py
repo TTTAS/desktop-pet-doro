@@ -27,6 +27,7 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
 )
 
@@ -48,6 +49,7 @@ class ChatConfig:
     server_url: str = DEFAULT_CHAT_SERVER_URL
     model: str = DEFAULT_CHAT_MODEL
     endpoint_path: str = DEFAULT_CHAT_ENDPOINT_PATH
+    api_key: str = DEFAULT_CHAT_API_KEY
 
     # Request configuration
     timeout_seconds: int = CHAT_DEFAULT_TIMEOUT_SECONDS

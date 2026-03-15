@@ -230,6 +230,14 @@ class CoreManager(QtCore.QObject):
         """Set chat API endpoint."""
         self._chat_orchestrator.set_endpoint(endpoint)
 
+    def get_api_key(self) -> str:
+        """Get chat API key."""
+        return self._chat_orchestrator.get_api_key()
+
+    def set_api_key(self, key: str):
+        """Set chat API key."""
+        self._chat_orchestrator.set_api_key(key)
+
     def get_temperature(self) -> float:
         """Get chat temperature parameter."""
         return self._chat_orchestrator.get_temperature()

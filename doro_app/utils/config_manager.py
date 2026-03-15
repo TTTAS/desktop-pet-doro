@@ -32,6 +32,7 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_ENDPOINT_PATH,
+    DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_MAX_RETRIES,
 )
 from ..utils.logger import get_logger
@@ -173,6 +174,7 @@ class ConfigManager:
             "server_url": kwargs.get("server_url", current.server_url),
             "model": kwargs.get("model", current.model),
             "endpoint_path": kwargs.get("endpoint_path", current.endpoint_path),
+            "api_key": kwargs.get("api_key", current.api_key),
             "timeout_seconds": kwargs.get("timeout_seconds", current.timeout_seconds),
             "temperature": kwargs.get("temperature", current.temperature),
             "max_tokens": kwargs.get("max_tokens", current.max_tokens),
@@ -262,6 +264,10 @@ class ConfigManager:
                     self._settings.value("chat/endpoint_path"),
                     DEFAULT_CHAT_ENDPOINT_PATH
                 ),
+                api_key=_safe_str(
+                    self._settings.value("chat/api_key"),
+                    DEFAULT_CHAT_API_KEY
+                ),
                 timeout_seconds=_safe_int(
                     self._settings.value("chat/timeout_seconds"),
                     CHAT_DEFAULT_TIMEOUT_SECONDS
@@ -337,6 +343,7 @@ class ConfigManager:
         self._settings.setValue("chat/server_url", chat.server_url)
         self._settings.setValue("chat/model", chat.model)
         self._settings.setValue("chat/endpoint_path", chat.endpoint_path)
+        self._settings.setValue("chat/api_key", chat.api_key)
         self._settings.setValue("chat/timeout_seconds", chat.timeout_seconds)
         self._settings.setValue("chat/temperature", float(chat.temperature))
         self._settings.setValue("chat/max_tokens", chat.max_tokens)

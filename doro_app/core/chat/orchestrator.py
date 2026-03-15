@@ -101,6 +101,14 @@ class ChatOrchestrator(QtCore.QObject):
         """Set the API endpoint path."""
         self._controller.set_endpoint_path(path)
 
+    def get_api_key(self) -> str:
+        """Get the API key."""
+        return self._controller.api_key
+
+    def set_api_key(self, key: str):
+        """Set the API key."""
+        self._controller.set_api_key(key)
+
     def get_temperature(self) -> float:
         """Get the temperature parameter."""
         return self._controller.temperature

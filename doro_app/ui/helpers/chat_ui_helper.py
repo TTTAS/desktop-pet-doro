@@ -137,7 +137,6 @@ class ChatUIHelper:
 
     def configure_chat_timeout(self) -> None:
         """Configure chat request timeout."""
-        # Use public API instead of accessing internal components
         current = self.window.core_manager.get_timeout()
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
@@ -148,5 +147,17 @@ class ChatUIHelper:
             300,
         )
         if ok:
-            # Use public API instead of accessing internal components
             self.window.core_manager.set_timeout(value)
+
+    def configure_api_key(self) -> None:
+        """Configure chat API key."""
+        current = self.window.core_manager.get_api_key()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            "設定 API Key",
+            "API Key（留空則不送認證 header）:",
+            QtWidgets.QLineEdit.EchoMode.Password,
+            current,
+        )
+        if ok:
+            self.window.core_manager.set_api_key(text.strip())
