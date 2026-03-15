@@ -289,23 +289,23 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     """
     # States submenu
     states_menu = menu.addMenu("States")
-    for key in window._state_controller.visible_state_keys():
-        state = window._state_service.get_state(key)
+    for key in window.state_controller.visible_state_keys():
+        state = window.state_service.get_state(key)
         if not state:
             continue
         label = state.label or key
         action = states_menu.addAction(label)
         action.setCheckable(True)
-        action.setChecked(key == window._current_state_key)
-        action.triggered.connect(lambda checked, s=key: window._state_controller.set_state(s))
+        action.setChecked(key == window.current_state_key)
+        action.triggered.connect(lambda checked, s=key: window.state_controller.set_state(s))
 
     edit_states_action = states_menu.addAction("Edit states")
-    edit_states_action.triggered.connect(window._dialog_manager.show_state_manager)
+    edit_states_action.triggered.connect(window.dialog_manager.show_state_manager)
 
     # Actions submenu
     actions_menu = menu.addMenu("Actions")
     edit_actions_action = actions_menu.addAction("Edit actions")
-    edit_actions_action.triggered.connect(window._dialog_manager.show_move_state_manager)
+    edit_actions_action.triggered.connect(window.dialog_manager.show_move_state_manager)
 
     menu.addSeparator()
 
@@ -331,51 +331,51 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     visuals_menu = menu.addMenu("State visuals")
     bubble_action = visuals_menu.addAction("Show message panel")
     bubble_action.setCheckable(True)
-    current_state = window._state_service.get_current_state()
+    current_state = window.state_service.get_current_state()
     bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
-    bubble_action.triggered.connect(window._toggle_bubble)
+    bubble_action.triggered.connect(window.toggle_bubble)
 
     clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-    clear_gif_action.setEnabled(window._default_idle_gif.is_file())
+    clear_gif_action.setEnabled(window.default_idle_gif.is_file())
     clear_gif_action.triggered.connect(
-        lambda: window._state_controller.clear_state_gif(window._current_state_key)
+        lambda: window.state_controller.clear_state_gif(window.current_state_key)
     )
 
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(
-        lambda: window._dialog_manager.show_rename_dialog(window._current_state_key) and window.update()
-        if window._current_state_key else None
+        lambda: window.dialog_manager.show_rename_dialog(window.current_state_key) and window.update()
+        if window.current_state_key else None
     )
 
     # Chat submenu
     chat_menu = menu.addMenu("Chat")
     ask_action = chat_menu.addAction("Ask Doro")
-    ask_action.setEnabled(not window._core_manager.is_chat_inflight)
-    ask_action.triggered.connect(window._chat_ui.prompt_chat)
+    ask_action.setEnabled(not window.core_manager.is_chat_inflight)
+    ask_action.triggered.connect(window.chat_ui.prompt_chat)
 
     edit_prompt_action = chat_menu.addAction("Edit prompt")
-    edit_prompt_action.triggered.connect(window._chat_ui.edit_chat_prompt)
+    edit_prompt_action.triggered.connect(window.chat_ui.edit_chat_prompt)
 
     clear_history_action = chat_menu.addAction("Clear conversation history")
-    clear_history_action.setEnabled(window._core_manager.has_chat_history)
-    clear_history_action.triggered.connect(window._chat_ui.clear_chat_history)
+    clear_history_action.setEnabled(window.core_manager.has_chat_history)
+    clear_history_action.triggered.connect(window.chat_ui.clear_chat_history)
 
     configure_menu = chat_menu.addMenu("Configure")
 
     server_action = configure_menu.addAction("Set server URL")
-    server_action.triggered.connect(window._chat_ui.configure_chat_server)
+    server_action.triggered.connect(window.chat_ui.configure_chat_server)
 
     model_action = configure_menu.addAction("Set model name")
-    model_action.triggered.connect(window._chat_ui.configure_chat_model)
+    model_action.triggered.connect(window.chat_ui.configure_chat_model)
 
     endpoint_action = configure_menu.addAction("Set endpoint path")
-    endpoint_action.triggered.connect(window._chat_ui.configure_chat_endpoint)
+    endpoint_action.triggered.connect(window.chat_ui.configure_chat_endpoint)
 
     temperature_action = configure_menu.addAction("Set temperature")
-    temperature_action.triggered.connect(window._chat_ui.configure_chat_temperature)
+    temperature_action.triggered.connect(window.chat_ui.configure_chat_temperature)
 
     timeout_action = configure_menu.addAction("Set timeout (seconds)")
-    timeout_action.triggered.connect(window._chat_ui.configure_chat_timeout)
+    timeout_action.triggered.connect(window.chat_ui.configure_chat_timeout)
 
     menu.addSeparator()
 

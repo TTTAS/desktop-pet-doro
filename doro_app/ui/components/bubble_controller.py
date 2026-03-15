@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -47,7 +46,7 @@ class BubbleController(QtCore.QObject):
     update_bubble_side_requested = QtCore.Signal()  # request bubble side update
     state_settings_apply_requested = QtCore.Signal(str)  # request state settings apply with state_key
 
-    def __init__(self, config_manager: ConfigManager | None = None):
+    def __init__(self, config_manager: ConfigManager):
         super().__init__()
         self._config_manager = config_manager
         self._offset = QtCore.QPointF(0.0, 0.0)
@@ -116,14 +115,12 @@ class BubbleController(QtCore.QObject):
 
     def persist_preferences(self):
         """Persist bubble preferences to configuration."""
-        if self._config_manager:
-            # Use ConfigManager for type-safe, validated config access
-            self._config_manager.update_ui(
-                bubble_offset_x=float(self._offset.x()),
-                bubble_offset_y=float(self._offset.y()),
-                bubble_scale=float(self._scale),
-            )
-            self._config_manager.save()
+        self._config_manager.update_ui(
+            bubble_offset_x=float(self._offset.x()),
+            bubble_offset_y=float(self._offset.y()),
+            bubble_scale=float(self._scale),
+        )
+        self._config_manager.save()
 
     # ------------------------------------------------------------------ Drag/resize handling
     def begin_transform(self, pos: QtCore.QPointF) -> bool:
