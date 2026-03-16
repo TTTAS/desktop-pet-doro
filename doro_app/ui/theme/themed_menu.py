@@ -363,6 +363,10 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
 
     configure_menu = chat_menu.addMenu("Configure")
 
+    settings_action = configure_menu.addAction("All settings...")
+    settings_action.triggered.connect(window.chat_ui.open_settings_dialog)
+    configure_menu.addSeparator()
+
     from ..helpers.chat_ui_helper import _PROVIDER_PRESETS
 
     current_url = window.core_manager.get_server_url()

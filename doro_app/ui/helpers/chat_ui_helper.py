@@ -217,3 +217,10 @@ class ChatUIHelper:
         cm.set_model_name(preset["model"])
         cm.set_endpoint(preset["endpoint_path"])
         cm.set_max_stop_tokens(preset["max_stop_tokens"])
+
+    def open_settings_dialog(self) -> None:
+        """Open the unified API settings dialog."""
+        from ..dialogs.chat_settings_dialog import ChatSettingsDialog
+
+        dialog = ChatSettingsDialog(self.window.core_manager, parent=self.window)
+        dialog.exec()
