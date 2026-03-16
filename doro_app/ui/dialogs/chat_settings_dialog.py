@@ -44,10 +44,6 @@ QPushButton#eyeButton {
 QPushButton#eyeButton:hover { background: #FFC4F0; border-radius: 4px; }
 """
 
-# Preset-controlled field keys (used to detect manual edits)
-_PRESET_KEYS = ("server_url", "model", "endpoint_path", "max_stop_tokens")
-
-
 class ChatSettingsDialog(FramelessDialog):
     """All chat/LLM settings in a single panel."""
 
@@ -130,10 +126,6 @@ class ChatSettingsDialog(FramelessDialog):
 
         # Connections
         self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
-        self._server_url_edit.textEdited.connect(self._on_field_manually_edited)
-        self._model_edit.textEdited.connect(self._on_field_manually_edited)
-        self._endpoint_edit.textEdited.connect(self._on_field_manually_edited)
-        self._max_stop_spin.valueChanged.connect(self._on_field_manually_edited)
         self._eye_btn.clicked.connect(self._toggle_api_key_visibility)
         save_btn.clicked.connect(self._on_save)
 
@@ -187,14 +179,6 @@ class ChatSettingsDialog(FramelessDialog):
         self._endpoint_edit.setText(preset["endpoint_path"])
         self._max_stop_spin.setValue(preset["max_stop_tokens"])
         self._applying_preset = False
-
-    def _on_field_manually_edited(self):
-        if self._applying_preset:
-            return
-        custom_idx = self._provider_combo.count() - 1
-        self._provider_combo.blockSignals(True)
-        self._provider_combo.setCurrentIndex(custom_idx)
-        self._provider_combo.blockSignals(False)
 
     def _toggle_api_key_visibility(self):
         mode = self._api_key_edit.echoMode()
