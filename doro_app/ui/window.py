@@ -139,10 +139,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._gif_player = GifPlayer()
         self._gif_movie: QtGui.QMovie | None = None
 
-        self._bubble_text = ""
-        self._bubble_text_show_override = False
         self._last_user_activity = time.monotonic()
-        self._bubble_offset = QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
@@ -325,9 +322,10 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
         """Compute panel size hint. Delegates to WindowLayoutManager."""
+        bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         return WindowLayoutManager.compute_panel_size_hint(
             self._view_model.sprite_size,
-            self._bubble_text or "",
+            bubble_text,
         )
 
     def _apply_window_preferred_size(self):
@@ -429,17 +427,18 @@ class DoroWindow(QtWidgets.QWidget):
         self._rendering_engine.render_sprite(p, self._gif_movie, sprite_center, bob, scale)
 
         # Render text panel using RenderingEngine
+        bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
-            (self._view_model.bubble_visible or self._bubble_text_show_override)
+            (self._view_model.bubble_visible or (self._bubble_controller and self._bubble_controller.text_show_override))
             and self._view_model.bubble_alpha > 0
-            and bool((self._bubble_text or "").strip())
+            and bool(bubble_text.strip())
         )
         if panel_should_draw:
             from ..constants import COLOR_ALPHA_MAX
 
             alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
-                p, self._bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint
+                p, bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint
             )
         else:
             self._panel_rect_cache = None
@@ -467,7 +466,9 @@ class DoroWindow(QtWidgets.QWidget):
 
     def get_bubble_offset(self) -> QtCore.QPointF:
         """Get the current bubble offset (public API for movement)."""
-        return QtCore.QPointF(self._bubble_offset)
+        if self._bubble_controller:
+            return self._bubble_controller.offset
+        return QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
     def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
         """Apply bubble offset via BubbleController (public API)."""
@@ -497,51 +498,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._apply_window_preferred_size()
         self.update()
 
-    # ═══════════════════════════════════════════════════════════
-    # Event Callbacks from BubbleController
-    # ═══════════════════════════════════════════════════════════
-
-    def on_bubble_text_changed(self, text: str, show_override: bool):
-        """
-        Handle bubble text change signal from BubbleController.
-
-        Args:
-            text: The new bubble text
-            show_override: Whether to show bubble even if visibility is disabled
-        """
-        self._bubble_text = text
-        self._bubble_text_show_override = show_override
-        self.update()
-
-    def on_bubble_visibility_changed(self, visible: bool):
-        """
-        Handle bubble visibility change signal from BubbleController.
-
-        Args:
-            visible: Whether bubble should be visible
-        """
-        self.update()
-
-    def on_bubble_offset_changed(self, offset: QtCore.QPointF):
-        """
-        Handle bubble offset change signal from BubbleController.
-
-        Args:
-            offset: The new bubble offset
-        """
-        self._bubble_offset = QtCore.QPointF(offset)
-        self.update_bubble_side_from_offset()
-        self.update()
-
-    def on_bubble_scale_changed(self, scale: float):
-        """
-        Handle bubble scale change signal from BubbleController.
-
-        Args:
-            scale: The new bubble scale
-        """
-        self.update()
-
     def set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
@@ -569,7 +525,6 @@ class DoroWindow(QtWidgets.QWidget):
             auto_hide=auto_hide,
             hide_delay_ms=hide_delay_ms,
         )
-        self._apply_window_preferred_size()
 
     def clear_bubble_text(self):
         self._bubble_controller.clear_text()

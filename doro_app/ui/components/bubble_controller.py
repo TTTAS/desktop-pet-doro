@@ -61,12 +61,24 @@ class BubbleController(QtCore.QObject):
 
     # ------------------------------------------------------------------ State access
     @property
+    def text(self) -> str:
+        return self._text
+
+    @property
+    def text_show_override(self) -> bool:
+        return self._text_show_override
+
+    @property
     def offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._offset)
 
     @property
     def scale(self) -> float:
         return float(self._scale)
+
+    @property
+    def visible(self) -> bool:
+        return self._visible
 
     def apply_persisted_config(self, config: BubbleConfig):
         self.apply_offset(QtCore.QPointF(config.offset_x, config.offset_y), persist=False)

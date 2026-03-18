@@ -182,19 +182,15 @@ class DoroApp:
 
         # ═════════════════════════════════════════════════════════════
         # BubbleController → Window connections (UI Layer internal)
+        # Window reads bubble state directly from BubbleController
+        # during paintEvent, so signals just trigger repaint/resize.
         # ═════════════════════════════════════════════════════════════
 
         self._bubble_controller.text_changed.connect(
-            lambda text, show_override: self.window.on_bubble_text_changed(text, show_override)
+            lambda *_: (self.window._apply_window_preferred_size(), self.window.update())
         )
         self._bubble_controller.visibility_changed.connect(
-            lambda visible: self.window.on_bubble_visibility_changed(visible)
-        )
-        self._bubble_controller.offset_changed.connect(
-            lambda offset: self.window.on_bubble_offset_changed(offset)
-        )
-        self._bubble_controller.scale_changed.connect(
-            lambda scale: self.window.on_bubble_scale_changed(scale)
+            lambda *_: self.window.update()
         )
         self._bubble_controller.repaint_requested.connect(
             self.window.update
