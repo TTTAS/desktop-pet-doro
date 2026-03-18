@@ -218,11 +218,13 @@ class DoroApp:
             self.core_manager.on_state_changed
         )
 
-        # User click → CoreManager
-        # (Window will need a user_clicked signal that we connect here)
-
-        # Movement tick → CoreManager
-        # (Window's tick timer will call core_manager.process_movement_tick)
+        # Window output signals → Business Logic
+        self.window.tick_requested.connect(
+            self.core_manager.process_movement_tick
+        )
+        self.window.bubble_toggle_requested.connect(
+            self._on_bubble_toggle_requested
+        )
 
     # ═════════════════════════════════════════════════════════════
     # Domain Event Translation Methods (Application Layer)
@@ -256,12 +258,23 @@ class DoroApp:
     def _on_domain_state_changed(self, state_key: str):
         """Translate state changed domain event to UI GIF loading."""
         self.window.current_state_key = state_key
-        self.window.load_state_gif(state_key)
+        self._load_gif_for_state(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):
         """Translate transition completed domain event to UI transition completion."""
         self.window.current_state_key = target_state_key
-        self.window.on_transition_completed(target_state_key)
+        self._load_gif_for_state(target_state_key)
+
+    def _load_gif_for_state(self, state_key: str):
+        """Resolve GIF path for a state and load it via GifController."""
+        gif_path = self._state_service.get_gif_path(state_key)
+        if gif_path:
+            self._gif_controller.load_gif(str(gif_path))
+
+    def _on_bubble_toggle_requested(self, state_key: str, checked: bool):
+        """Handle bubble toggle from UI — delegates to StateController + BubbleController."""
+        if self._state_controller.toggle_bubble_visibility(state_key, checked):
+            self._bubble_controller.set_visible(checked)
 
     def _connect_ui_controllers(self):
         """Connect UI controllers to Window and wire all UI-layer dependencies."""

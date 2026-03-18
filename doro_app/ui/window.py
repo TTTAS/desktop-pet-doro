@@ -62,6 +62,10 @@ class MovementWindowPort(Protocol):
 
 
 class DoroWindow(QtWidgets.QWidget):
+    # Output signals (decoupling UI from business logic)
+    tick_requested = QtCore.Signal(float)  # dt
+    bubble_toggle_requested = QtCore.Signal(str, bool)  # state_key, checked
+
     def __init__(
         self,
         state_service: StateService,
@@ -276,20 +280,6 @@ class DoroWindow(QtWidgets.QWidget):
     # Controller signal handlers
     # ─────────────────────────────────────────────────────────
 
-    def load_state_gif(self, state_key: str):
-        """
-        Load a GIF for a given state.
-
-        Uses StateService.get_gif_path() which handles multi-GIF random
-        selection (subfolder) with single-file fallback automatically.
-
-        Args:
-            state_key: The state key to load GIF for
-        """
-        gif_path = self._state_service.get_gif_path(state_key)
-        if gif_path:
-            self._gif_controller.load_gif(str(gif_path))
-
     def on_state_list_updated(self, state_list_text: str):
         """Handle state list update from StateController."""
         self._state_list_text = state_list_text
@@ -311,10 +301,10 @@ class DoroWindow(QtWidgets.QWidget):
             dt = 0.0
         dt = min(dt, tokens.animation.max_delta_time)
 
-        # Process movement through CoreManager
-        self._core_manager.process_movement_tick(dt)
+        # Signal business layer to process movement
+        self.tick_requested.emit(dt)
 
-        # NEW: Use ViewModel for animation time
+        # Use ViewModel for animation time
         self._view_model.tick(dt)
         self.update()
 
@@ -515,17 +505,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._apply_window_preferred_size()
         self.update()
 
-    def on_transition_completed(self, target_state_key: str):
-        """
-        Handle transition completion signal from TransitionPlayer.
-
-        Args:
-            target_state_key: The target state key to load after transition
-        """
-        logger.debug(f"Transition completed, loading target state: {target_state_key}")
-        # Load target state GIF using helper
-        self.load_state_gif(target_state_key)
-
     # ═══════════════════════════════════════════════════════════
     # Event Callbacks from BubbleController
     # ═══════════════════════════════════════════════════════════
@@ -609,10 +588,7 @@ class DoroWindow(QtWidgets.QWidget):
     def toggle_bubble(self, checked: bool):
         if not self._current_state_key:
             return
-        if self._state_controller.toggle_bubble_visibility(
-            self._current_state_key, checked
-        ):
-            self._bubble_controller.set_visible(checked)
+        self.bubble_toggle_requested.emit(self._current_state_key, checked)
 
     def _set_bubble_text(
         self,
