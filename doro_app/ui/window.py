@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, Protocol
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
@@ -32,7 +30,6 @@ from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
 from ..utils.logger import get_logger
-from ..utils.models import MoveStateSettings
 from ..core.state import StateService
 from .theme.theme import ensure_application_theme
 from .theme.themed_menu import (
@@ -45,25 +42,6 @@ from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
 
 logger = get_logger(__name__)
-
-
-class MovementWindowPort(Protocol):
-    """Interface for movement-related window operations."""
-
-    def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
-        ...
-
-    def current_position(self) -> QtCore.QPoint: ...
-
-    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint: ...
-
-    def move_window_to(self, pos: QtCore.QPoint): ...
-
-    def get_bubble_offset(self) -> QtCore.QPointF: ...
-
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False): ...
-
-    def reset_tick_timer(self, value: float): ...
 
 
 class DoroWindow(QtWidgets.QWidget):
@@ -487,12 +465,6 @@ class DoroWindow(QtWidgets.QWidget):
         """Move window to position (public API)."""
         self._move_window_to(pos)
 
-    def resolve_move_state(
-        self, key: str | None
-    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration (public API)."""
-        return self._resolve_move_state(key)
-
     def get_bubble_offset(self) -> QtCore.QPointF:
         """Get the current bubble offset (public API for movement)."""
         return QtCore.QPointF(self._bubble_offset)
@@ -569,33 +541,6 @@ class DoroWindow(QtWidgets.QWidget):
             scale: The new bubble scale
         """
         self.update()
-
-    # ═══════════════════════════════════════════════════════════
-    # Movement State Resolution
-    # ═══════════════════════════════════════════════════════════
-
-    def _resolve_move_state(
-        self, key: str | None
-    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration."""
-        if not key:
-            return None, None
-
-        normalized = key.strip().lower()
-        move_state = self._state_service.get_move_state(normalized)
-
-        if not move_state:
-            return None, None
-
-        # Convert MoveState to MoveStateSettings for compatibility
-        settings = MoveStateSettings(
-            state_key=move_state.state_key,
-            direction=move_state.direction,
-            default_distance=move_state.default_distance,
-            default_speed=move_state.default_speed,
-        )
-
-        return normalized, settings
 
     def set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:

@@ -29,7 +29,7 @@ from .parser import (
 )
 
 if TYPE_CHECKING:
-    from ...ui.window import MovementWindowPort
+    from .port import MovementWindowPort
     from ..state import StateService
 
 
