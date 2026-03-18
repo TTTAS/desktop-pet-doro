@@ -36,13 +36,12 @@ class ChatUIHelper:
     """
 
     def __init__(self, window: DoroWindow) -> None:
-        """
-        Initialize ChatUIHelper.
-
-        Args:
-            window: The parent DoroWindow instance
-        """
         self.window = window
+
+    @property
+    def _chat(self):
+        """Shortcut to the chat orchestrator."""
+        return self.window.core_manager.chat_orchestrator
 
     def prompt_chat(self) -> None:
         """Show chat input dialog and send message."""
@@ -62,14 +61,12 @@ class ChatUIHelper:
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
         )
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            # Use public API instead of accessing internal components
-            self.window.core_manager.clear_chat_history()
+            self._chat.clear_history()
             self.window.clear_bubble_text()
 
     def edit_chat_prompt(self) -> None:
         """Edit the chat system prompt."""
-        # Use public API instead of accessing internal components
-        current_prompt = self.window.core_manager.get_system_prompt()
+        current_prompt = self._chat.get_system_prompt()
 
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self.window,
@@ -80,8 +77,7 @@ class ChatUIHelper:
         if not ok:
             return
 
-        # Use public API instead of accessing internal components
-        self.window.core_manager.set_system_prompt(text)
+        self._chat.set_system_prompt(text)
         QtWidgets.QMessageBox.information(
             self.window,
             "提示詞已更新",
@@ -90,8 +86,7 @@ class ChatUIHelper:
 
     def configure_chat_server(self) -> None:
         """Configure chat server URL."""
-        # Use public API instead of accessing internal components
-        current = self.window.core_manager.get_server_url()
+        current = self._chat.get_server_url()
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定聊天伺服器",
@@ -100,13 +95,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            # Use public API instead of accessing internal components
-            self.window.core_manager.set_server_url(text.strip())
+            self._chat.set_server_url(text.strip())
 
     def configure_chat_model(self) -> None:
         """Configure chat model name."""
-        # Use public API instead of accessing internal components
-        current = self.window.core_manager.get_model_name()
+        current = self._chat.get_model_name()
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定模型",
@@ -115,13 +108,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            # Use public API instead of accessing internal components
-            self.window.core_manager.set_model_name(text.strip())
+            self._chat.set_model_name(text.strip())
 
     def configure_chat_endpoint(self) -> None:
         """Configure chat API endpoint."""
-        # Use public API instead of accessing internal components
-        current = self.window.core_manager.get_endpoint()
+        current = self._chat.get_endpoint()
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定 API 端點",
@@ -130,13 +121,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            # Use public API instead of accessing internal components
-            self.window.core_manager.set_endpoint(text.strip())
+            self._chat.set_endpoint(text.strip())
 
     def configure_chat_temperature(self) -> None:
         """Configure chat temperature parameter."""
-        # Use public API instead of accessing internal components
-        current = self.window.core_manager.get_temperature()
+        current = self._chat.get_temperature()
         value, ok = QtWidgets.QInputDialog.getDouble(
             self.window,
             "設定 Temperature",
@@ -147,12 +136,11 @@ class ChatUIHelper:
             2,
         )
         if ok:
-            # Use public API instead of accessing internal components
-            self.window.core_manager.set_temperature(value)
+            self._chat.set_temperature(value)
 
     def configure_chat_timeout(self) -> None:
         """Configure chat request timeout."""
-        current = self.window.core_manager.get_timeout()
+        current = self._chat.get_timeout()
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
             "設定請求逾時",
@@ -162,11 +150,11 @@ class ChatUIHelper:
             300,
         )
         if ok:
-            self.window.core_manager.set_timeout(value)
+            self._chat.set_timeout(value)
 
     def configure_stop_tokens(self) -> None:
         """Configure stop tokens (one per line)."""
-        current = self.window.core_manager.get_stop_tokens()
+        current = self._chat.get_stop_tokens()
         display = "\n".join(t.replace("\n", "\\n") for t in current)
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self.window,
@@ -180,11 +168,11 @@ class ChatUIHelper:
                 for line in text.splitlines()
                 if line.strip()
             ]
-            self.window.core_manager.set_stop_tokens(tokens)
+            self._chat.set_stop_tokens(tokens)
 
     def configure_max_stop_tokens(self) -> None:
         """Configure maximum number of stop tokens sent to the API."""
-        current = self.window.core_manager.get_max_stop_tokens()
+        current = self._chat.get_max_stop_tokens()
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
             "設定 Stop Tokens 上限",
@@ -194,11 +182,11 @@ class ChatUIHelper:
             100,
         )
         if ok:
-            self.window.core_manager.set_max_stop_tokens(value)
+            self._chat.set_max_stop_tokens(value)
 
     def configure_api_key(self) -> None:
         """Configure chat API key."""
-        current = self.window.core_manager.get_api_key()
+        current = self._chat.get_api_key()
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定 API Key",
@@ -207,16 +195,16 @@ class ChatUIHelper:
             current,
         )
         if ok:
-            self.window.core_manager.set_api_key(text.strip())
+            self._chat.set_api_key(text.strip())
 
     def apply_provider_preset(self, preset_name: str) -> None:
         """Apply a provider preset configuration (URL, model, endpoint only)."""
         preset = _PROVIDER_PRESETS[preset_name]
-        cm = self.window.core_manager
-        cm.set_server_url(preset["server_url"])
-        cm.set_model_name(preset["model"])
-        cm.set_endpoint(preset["endpoint_path"])
-        cm.set_max_stop_tokens(preset["max_stop_tokens"])
+        chat = self._chat
+        chat.set_server_url(preset["server_url"])
+        chat.set_model_name(preset["model"])
+        chat.set_endpoint(preset["endpoint_path"])
+        chat.set_max_stop_tokens(preset["max_stop_tokens"])
 
     def open_settings_dialog(self) -> None:
         """Open the unified API settings dialog."""

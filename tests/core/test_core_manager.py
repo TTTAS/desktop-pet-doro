@@ -45,19 +45,6 @@ def mock_chat_orchestrator():
 
     # Mock methods
     orchestrator.send_message = Mock()
-    orchestrator.clear_history = Mock()
-    orchestrator.get_system_prompt = Mock(return_value="You are Doro.")
-    orchestrator.set_system_prompt = Mock()
-    orchestrator.get_server_url = Mock(return_value="http://localhost:1234")
-    orchestrator.set_server_url = Mock()
-    orchestrator.get_model_name = Mock(return_value="mistral")
-    orchestrator.set_model_name = Mock()
-    orchestrator.get_endpoint = Mock(return_value="/v1/chat/completions")
-    orchestrator.set_endpoint = Mock()
-    orchestrator.get_temperature = Mock(return_value=0.7)
-    orchestrator.set_temperature = Mock()
-    orchestrator.get_timeout = Mock(return_value=30)
-    orchestrator.set_timeout = Mock()
 
     return orchestrator
 
@@ -261,12 +248,6 @@ class TestChatOperations:
             "Auto message", silent=False, is_auto=True
         )
 
-    def test_clear_chat_history(self, core_manager, mock_chat_orchestrator):
-        """clear_chat_history delegates to orchestrator."""
-        core_manager.clear_chat_history()
-
-        mock_chat_orchestrator.clear_history.assert_called_once()
-
     def test_is_chat_inflight_property(self, core_manager, mock_chat_orchestrator):
         """is_chat_inflight returns orchestrator's inflight status."""
         mock_chat_orchestrator.is_inflight = True
@@ -274,76 +255,6 @@ class TestChatOperations:
 
         mock_chat_orchestrator.is_inflight = False
         assert core_manager.is_chat_inflight is False
-
-
-# ═══════════════════════════════════════════════════════════
-# Chat Configuration Tests
-# ═══════════════════════════════════════════════════════════
-
-
-class TestChatConfiguration:
-    """Test chat configuration getters and setters."""
-
-    def test_get_set_system_prompt(self, core_manager, mock_chat_orchestrator):
-        """System prompt can be read and updated."""
-        # Get
-        prompt = core_manager.get_system_prompt()
-        assert prompt == "You are Doro."
-        mock_chat_orchestrator.get_system_prompt.assert_called_once()
-
-        # Set
-        core_manager.set_system_prompt("New prompt")
-        mock_chat_orchestrator.set_system_prompt.assert_called_with("New prompt")
-
-    def test_get_set_server_url(self, core_manager, mock_chat_orchestrator):
-        """Server URL can be read and updated."""
-        # Get
-        url = core_manager.get_server_url()
-        assert url == "http://localhost:1234"
-
-        # Set
-        core_manager.set_server_url("http://192.168.1.100:1234")
-        mock_chat_orchestrator.set_server_url.assert_called_with("http://192.168.1.100:1234")
-
-    def test_get_set_model_name(self, core_manager, mock_chat_orchestrator):
-        """Model name can be read and updated."""
-        # Get
-        model = core_manager.get_model_name()
-        assert model == "mistral"
-
-        # Set
-        core_manager.set_model_name("llama")
-        mock_chat_orchestrator.set_model_name.assert_called_with("llama")
-
-    def test_get_set_endpoint(self, core_manager, mock_chat_orchestrator):
-        """API endpoint can be read and updated."""
-        # Get
-        endpoint = core_manager.get_endpoint()
-        assert endpoint == "/v1/chat/completions"
-
-        # Set
-        core_manager.set_endpoint("/api/chat")
-        mock_chat_orchestrator.set_endpoint.assert_called_with("/api/chat")
-
-    def test_get_set_temperature(self, core_manager, mock_chat_orchestrator):
-        """Temperature can be read and updated."""
-        # Get
-        temp = core_manager.get_temperature()
-        assert temp == 0.7
-
-        # Set
-        core_manager.set_temperature(0.9)
-        mock_chat_orchestrator.set_temperature.assert_called_with(0.9)
-
-    def test_get_set_timeout(self, core_manager, mock_chat_orchestrator):
-        """Timeout can be read and updated."""
-        # Get
-        timeout = core_manager.get_timeout()
-        assert timeout == 30
-
-        # Set
-        core_manager.set_timeout(60)
-        mock_chat_orchestrator.set_timeout.assert_called_with(60)
 
 
 # ═══════════════════════════════════════════════════════════

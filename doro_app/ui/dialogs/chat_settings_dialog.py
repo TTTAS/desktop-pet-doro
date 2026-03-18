@@ -49,7 +49,7 @@ class ChatSettingsDialog(FramelessDialog):
 
     def __init__(self, core_manager, parent=None):
         super().__init__("API Settings", parent)
-        self._cm = core_manager
+        self._cm = core_manager.chat_orchestrator
         self._applying_preset = False
         self.setFixedWidth(480)
         self._content_widget.setStyleSheet(_SETTINGS_STYLE)
