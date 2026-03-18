@@ -1,4 +1,4 @@
-"""Chat UI helper for window - handles all chat-related menu actions and dialogs."""
+"""Chat UI helper - handles all chat-related menu actions and dialogs."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from PySide6 import QtWidgets
 from ..dialogs.chat_dialog import show_chat_dialog
 
 if TYPE_CHECKING:
+    from ..components.bubble_controller import BubbleController
+    from ...core.core_manager import CoreManager
     from ..window import DoroWindow
 
 _PROVIDER_PRESETS = {
@@ -35,13 +37,20 @@ class ChatUIHelper:
     to reduce the complexity of the main window class.
     """
 
-    def __init__(self, window: DoroWindow) -> None:
+    def __init__(
+        self,
+        window: DoroWindow,
+        core_manager: CoreManager,
+        bubble_controller: BubbleController,
+    ) -> None:
         self.window = window
+        self._core_manager = core_manager
+        self._bubble_controller = bubble_controller
 
     @property
     def _chat(self):
         """Shortcut to the chat orchestrator."""
-        return self.window.core_manager.chat_orchestrator
+        return self._core_manager.chat_orchestrator
 
     def prompt_chat(self) -> None:
         """Show chat input dialog and send message."""
@@ -50,7 +59,7 @@ class ChatUIHelper:
             return
 
         self.window.mark_user_activity()
-        self.window.core_manager.send_chat_message(text.strip(), silent=False, is_auto=False)
+        self._core_manager.send_chat_message(text.strip(), silent=False, is_auto=False)
 
     def clear_chat_history(self) -> None:
         """Clear chat history after confirmation."""
@@ -62,7 +71,7 @@ class ChatUIHelper:
         )
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             self._chat.clear_history()
-            self.window.clear_bubble_text()
+            self._bubble_controller.clear_text()
 
     def edit_chat_prompt(self) -> None:
         """Edit the chat system prompt."""
@@ -210,5 +219,5 @@ class ChatUIHelper:
         """Open the unified API settings dialog."""
         from ..dialogs.chat_settings_dialog import ChatSettingsDialog
 
-        dialog = ChatSettingsDialog(self.window.core_manager, parent=self.window)
+        dialog = ChatSettingsDialog(self._core_manager, parent=self.window)
         dialog.exec()

@@ -32,13 +32,6 @@ from .viewmodels.doro_viewmodel import DoroViewModel
 from ..utils.logger import get_logger
 from ..core.state import StateService
 from .theme.theme import ensure_application_theme
-from .theme.themed_menu import (
-    MenuCallbacks,
-    MenuSnapshot,
-    build_context_menu_content,
-    create_doro_menu,
-)
-from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
 
 logger = get_logger(__name__)
@@ -48,6 +41,7 @@ class DoroWindow(QtWidgets.QWidget):
     # Output signals (decoupling UI from business logic)
     tick_requested = QtCore.Signal(float)  # dt
     bubble_toggle_requested = QtCore.Signal(str, bool)  # state_key, checked
+    context_menu_requested = QtCore.Signal(QtCore.QPoint)  # global_pos
 
     def __init__(
         self,
@@ -92,11 +86,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service = state_service
         self._config_manager = config_manager
 
-        # File paths (reconstructed from constants)
-        from ..utils.paths import STATE_DIR
-
-        self._default_idle_gif = STATE_DIR / "idle.gif"
-
         # ─────────────────────────────────────────────────────────
         # Dependencies wired later (due to circular dependency)
         # ─────────────────────────────────────────────────────────
@@ -107,7 +96,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._click_action_controller = None
         # Managers
         self._bubble_controller: BubbleController | None = None
-        self._core_manager = None  # Will be set by DoroApp
         # Event handlers
         self._mouse_handler: MouseEventHandler | None = None
 
@@ -150,10 +138,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
-        # ─────────────────────────────────────────────────────────
-        # Chat UI Helper
-        # ─────────────────────────────────────────────────────────
-        self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
 
         # ─────────────────────────────────────────────────────────
@@ -201,9 +185,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = value
 
     @property
-    def core_manager(self):
-        """Get CoreManager (used by chat_ui_helper)."""
-        return self._core_manager
+    def gif_movie(self) -> QtGui.QMovie | None:
+        """Current GIF movie (used by ContextMenuController for avatar)."""
+        return self._gif_movie
 
     # ═══════════════════════════════════════════════════════════
     # Controller Injection
@@ -217,7 +201,6 @@ class DoroWindow(QtWidgets.QWidget):
         dialog_manager,
         click_action_controller,
         bubble_controller,
-        core_manager,
         mouse_handler,
     ):
         """Wire controllers into the window (called once by DoroApp after construction)."""
@@ -226,7 +209,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._dialog_manager = dialog_manager
         self._click_action_controller = click_action_controller
         self._bubble_controller = bubble_controller
-        self._core_manager = core_manager
         self._mouse_handler = mouse_handler
         # All dependencies wired — safe to start the animation timer
         self._timer.start(TIMER_INTERVAL_MS)
@@ -356,55 +338,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self.mark_user_activity()
-        menu = create_doro_menu(
-            parent=self, avatar_position="top-center", gif_movie=self._gif_movie
-        )
-        snapshot = self._build_menu_snapshot()
-        cbs = self._build_menu_callbacks()
-        build_context_menu_content(menu, self, snapshot, cbs)
-        # PySide6 compatibility: try exec() first, fall back to exec_()
-        if hasattr(menu, 'exec'):
-            menu.exec(e.globalPos())
-        else:
-            menu.exec_(e.globalPos())
-
-    # ─────────────────────────────────────────────────────────
-    # Menu data builders (keep business objects out of themed_menu)
-    # ─────────────────────────────────────────────────────────
-
-    def _build_menu_snapshot(self) -> MenuSnapshot:
-        current_state = self._state_service.get_current_state()
-        states: list[tuple[str, str]] = []
-        for key in self._state_controller.visible_state_keys():
-            state = self._state_service.get_state(key)
-            if state:
-                states.append((key, state.label or key))
-        return MenuSnapshot(
-            visible_states=states,
-            current_state_key=self._current_state_key,
-            is_topmost=bool(self.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint),
-            bubble_visible=bool(current_state and current_state.visual.bubble_visible),
-            has_default_idle_gif=self._default_idle_gif.is_file(),
-            is_chat_inflight=self._core_manager.is_chat_inflight,
-            has_chat_history=self._core_manager.has_chat_history,
-        )
-
-    def _build_menu_callbacks(self) -> MenuCallbacks:
-        return MenuCallbacks(
-            set_state=self._state_controller.set_state,
-            show_state_manager=self._dialog_manager.show_state_manager,
-            show_move_state_manager=self._dialog_manager.show_move_state_manager,
-            toggle_bubble=self.toggle_bubble,
-            clear_state_gif=lambda: self._state_controller.clear_state_gif(self._current_state_key),
-            show_rename_dialog=lambda: (
-                self._dialog_manager.show_rename_dialog(self._current_state_key) and self.update()
-            ) if self._current_state_key else None,
-            prompt_chat=self._chat_ui.prompt_chat,
-            edit_chat_prompt=self._chat_ui.edit_chat_prompt,
-            clear_chat_history=self._chat_ui.clear_chat_history,
-            open_settings_dialog=self._chat_ui.open_settings_dialog,
-            quit_app=QtWidgets.QApplication.instance().quit,
-        )
+        self.context_menu_requested.emit(e.globalPos())
 
     # --- Painting --------------------------------------------------------
     def paintEvent(self, _):
@@ -525,9 +459,6 @@ class DoroWindow(QtWidgets.QWidget):
             auto_hide=auto_hide,
             hide_delay_ms=hide_delay_ms,
         )
-
-    def clear_bubble_text(self):
-        self._bubble_controller.clear_text()
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self.set_busy_cursor(False)

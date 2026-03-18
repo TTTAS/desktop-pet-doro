@@ -18,9 +18,12 @@ from .core.movement.manager import MovementManager
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
+from .ui.components.context_menu_controller import ContextMenuController
 from .ui.controllers import ClickActionController, DialogManager, GifController, StateController
 from .ui.events.mouse_event_handler import MouseEventHandler
+from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
+from .utils.paths import STATE_DIR
 
 
 class DoroApp:
@@ -288,9 +291,34 @@ class DoroApp:
             dialog_manager=self._dialog_manager,
             click_action_controller=self._click_action_controller,
             bubble_controller=self._bubble_controller,
-            core_manager=self.core_manager,
             mouse_handler=mouse_handler,
         )
+
+        # ─────────────────────────────────────────────────────────
+        # Chat UI helper (owns core_manager + bubble_controller refs)
+        # ─────────────────────────────────────────────────────────
+        chat_ui = ChatUIHelper(
+            window=self.window,
+            core_manager=self.core_manager,
+            bubble_controller=self._bubble_controller,
+        )
+
+        # ─────────────────────────────────────────────────────────
+        # Context-menu controller (assembles snapshot/callbacks)
+        # ─────────────────────────────────────────────────────────
+        context_menu_ctrl = ContextMenuController(
+            window=self.window,
+            state_service=self._state_service,
+            state_controller=self._state_controller,
+            dialog_manager=self._dialog_manager,
+            bubble_controller=self._bubble_controller,
+            core_manager=self.core_manager,
+            chat_ui=chat_ui,
+            default_idle_gif=STATE_DIR / "idle.gif",
+        )
+        self.window.context_menu_requested.connect(context_menu_ctrl.show)
+        # prevent GC of controller while window is alive
+        self._context_menu_ctrl = context_menu_ctrl
 
         # ─────────────────────────────────────────────────────────
         # Wire mouse event handler signals
