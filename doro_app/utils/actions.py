@@ -27,6 +27,14 @@ MOVE_TOKEN_PATTERN = re.compile(
     r"^(?:move|mv|walk|go|travel|shift|step|run|向|往|移動|走|行)[\s:_-]*([a-z]+|[上下左右]{1,2})$",
     re.IGNORECASE,
 )
+
+# Inline variant: finds bare move commands embedded in dialogue text.
+# Uses word boundary (\b) on the left and lookahead on the right to avoid
+# matching partial words (e.g. "remove" should NOT match).
+INLINE_MOVE_PATTERN = re.compile(
+    r"(?:^|(?<=\s)|(?<=\n))(?:move|mv|walk|go|travel|shift|step|run|向|往|移動|走|行)[\s:_-]*([a-z]+|[上下左右]{1,2})(?=\s|$|[，。！？,\.!\?])",
+    re.IGNORECASE | re.MULTILINE,
+)
 MOVE_DIRECTIONS: dict[str, tuple[int, int]] = {
     "left": (-1, 0),
     "l": (-1, 0),
@@ -98,3 +106,23 @@ def parse_actions_from_text(text: str) -> tuple[str, list[tuple[str, str]]]:
     cleaned = cleaned.replace(" \n", "\n").replace("\n ", "\n")
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip(), actions
+
+
+def extract_inline_move_commands(text: str) -> tuple[str, list[str]]:
+    """Find bare move commands in text that were not wrapped in brackets/parens.
+
+    Returns the cleaned text (commands removed) and a list of direction strings
+    extracted from the matches (e.g. ["left", "右"]).
+    """
+    directions: list[str] = []
+
+    def _collect(match: re.Match[str]) -> str:
+        directions.append(match.group(1).strip())
+        return ""
+
+    cleaned = INLINE_MOVE_PATTERN.sub(_collect, text)
+    # Clean up extra whitespace left behind
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = cleaned.replace(" \n", "\n").replace("\n ", "\n")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip(), directions
