@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui
 
-from ..components.bubble_controller import BubbleController
-
 
 class MouseEventHandler(QtCore.QObject):
     """
@@ -25,20 +23,14 @@ class MouseEventHandler(QtCore.QObject):
     click_detected = QtCore.Signal()
     user_activity_detected = QtCore.Signal()
 
-    def __init__(
-        self,
-        bubble_controller: BubbleController,
-        click_threshold: int = 5,
-    ):
+    def __init__(self, click_threshold: int = 5):
         """
         Initialize mouse event handler.
 
         Args:
-            bubble_controller: Controller for bubble interactions
             click_threshold: Minimum movement distance to count as drag (pixels)
         """
         super().__init__()
-        self._bubble_controller = bubble_controller
         self._click_threshold = click_threshold
 
         # Internal state
@@ -60,11 +52,6 @@ class MouseEventHandler(QtCore.QObject):
         self.user_activity_detected.emit()
 
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            # Check if bubble transformation started
-            if self._bubble_controller.begin_transform(event.position()):
-                self._bubble_controller.update_cursor(event.position())
-                return True
-
             # Start window drag
             self._drag_pos = event.globalPosition().toPoint() - frame_geometry.topLeft()
             self._click_press_pos = event.position()
@@ -86,14 +73,6 @@ class MouseEventHandler(QtCore.QObject):
         # Track user activity if dragging
         if event.buttons() & QtCore.Qt.MouseButton.LeftButton:
             self.user_activity_detected.emit()
-
-        # Check if bubble transformation in progress
-        if self._bubble_controller.update_transform(event.position()):
-            self._bubble_controller.update_cursor(event.position())
-            return True
-
-        # Update cursor for bubble hover
-        self._bubble_controller.update_cursor(event.position())
 
         # Handle window drag
         if self._drag_pos is not None and event.buttons() & QtCore.Qt.MouseButton.LeftButton:
@@ -126,11 +105,6 @@ class MouseEventHandler(QtCore.QObject):
         self.user_activity_detected.emit()
 
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            # Check if bubble transformation ended
-            if self._bubble_controller.end_transform():
-                self._bubble_controller.update_cursor(event.position())
-                return (True, False)
-
             # Check if this was a click (not drag)
             was_click = (
                 not self._click_was_dragging
@@ -158,7 +132,6 @@ class MouseEventHandler(QtCore.QObject):
 
     def handle_leave(self):
         """Handle mouse leave event."""
-        self._bubble_controller.update_cursor(None)
 
     def reset(self):
         """Reset internal state (e.g., when window loses focus)."""

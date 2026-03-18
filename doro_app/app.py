@@ -199,9 +199,6 @@ class DoroApp:
         self._bubble_controller.repaint_requested.connect(
             self.window.update
         )
-        self._bubble_controller.cursor_unset_requested.connect(
-            self.window.unsetCursor
-        )
         self._bubble_controller.update_bubble_side_requested.connect(
             self.window.update_bubble_side_from_offset
         )
@@ -283,7 +280,6 @@ class DoroApp:
         # Create mouse event handler
         # ─────────────────────────────────────────────────────────
         mouse_handler = MouseEventHandler(
-            bubble_controller=self._bubble_controller,
             click_threshold=CLICK_DRAG_THRESHOLD_PX,
         )
 

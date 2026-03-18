@@ -336,10 +336,8 @@ class TestMouseEventHandlingSmoke:
     def test_mouse_event_handler_can_be_created(self):
         """MouseEventHandler can be initialized."""
         from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        handler = MouseEventHandler(bubble_controller=mock_bubble, click_threshold=5)
+        handler = MouseEventHandler(click_threshold=5)
         assert handler is not None
 
     def test_mouse_press_event_handles_left_button(self):
@@ -348,10 +346,7 @@ class TestMouseEventHandlingSmoke:
         from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        mock_bubble.begin_transform.return_value = False
-
-        handler = MouseEventHandler(bubble_controller=mock_bubble)
+        handler = MouseEventHandler()
 
         # Create mock mouse event
         mock_event = Mock(spec=QtGui.QMouseEvent)
@@ -371,8 +366,7 @@ class TestMouseEventHandlingSmoke:
         from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        handler = MouseEventHandler(bubble_controller=mock_bubble)
+        handler = MouseEventHandler()
 
         # Create mock right-click event
         mock_event = Mock(spec=QtGui.QMouseEvent)
