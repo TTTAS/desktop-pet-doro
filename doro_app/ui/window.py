@@ -35,7 +35,12 @@ from ..utils.logger import get_logger
 from ..utils.models import MoveStateSettings
 from ..core.state import StateService
 from .theme.theme import ensure_application_theme
-from .theme.themed_menu import build_context_menu_content, create_doro_menu
+from .theme.themed_menu import (
+    MenuCallbacks,
+    MenuSnapshot,
+    build_context_menu_content,
+    create_doro_menu,
+)
 from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
 
@@ -221,34 +226,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = value
 
     @property
-    def state_controller(self):
-        """Get StateController (used by themed_menu)."""
-        return self._state_controller
-
-    @property
-    def state_service(self) -> StateService:
-        """Get StateService (used by themed_menu)."""
-        return self._state_service
-
-    @property
-    def dialog_manager(self):
-        """Get DialogManager (used by themed_menu)."""
-        return self._dialog_manager
-
-    @property
     def core_manager(self):
-        """Get CoreManager (used by themed_menu, chat_ui_helper)."""
+        """Get CoreManager (used by chat_ui_helper)."""
         return self._core_manager
-
-    @property
-    def default_idle_gif(self):
-        """Get default idle GIF path (used by themed_menu)."""
-        return self._default_idle_gif
-
-    @property
-    def chat_ui(self) -> ChatUIHelper:
-        """Get ChatUIHelper (used by themed_menu)."""
-        return self._chat_ui
 
     # ═══════════════════════════════════════════════════════════
     # Controller Injection
@@ -403,12 +383,52 @@ class DoroWindow(QtWidgets.QWidget):
         menu = create_doro_menu(
             parent=self, avatar_position="top-center", gif_movie=self._gif_movie
         )
-        build_context_menu_content(self, menu)
+        snapshot = self._build_menu_snapshot()
+        cbs = self._build_menu_callbacks()
+        build_context_menu_content(menu, self, snapshot, cbs)
         # PySide6 compatibility: try exec() first, fall back to exec_()
         if hasattr(menu, 'exec'):
             menu.exec(e.globalPos())
         else:
             menu.exec_(e.globalPos())
+
+    # ─────────────────────────────────────────────────────────
+    # Menu data builders (keep business objects out of themed_menu)
+    # ─────────────────────────────────────────────────────────
+
+    def _build_menu_snapshot(self) -> MenuSnapshot:
+        current_state = self._state_service.get_current_state()
+        states: list[tuple[str, str]] = []
+        for key in self._state_controller.visible_state_keys():
+            state = self._state_service.get_state(key)
+            if state:
+                states.append((key, state.label or key))
+        return MenuSnapshot(
+            visible_states=states,
+            current_state_key=self._current_state_key,
+            is_topmost=bool(self.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint),
+            bubble_visible=bool(current_state and current_state.visual.bubble_visible),
+            has_default_idle_gif=self._default_idle_gif.is_file(),
+            is_chat_inflight=self._core_manager.is_chat_inflight,
+            has_chat_history=self._core_manager.has_chat_history,
+        )
+
+    def _build_menu_callbacks(self) -> MenuCallbacks:
+        return MenuCallbacks(
+            set_state=self._state_controller.set_state,
+            show_state_manager=self._dialog_manager.show_state_manager,
+            show_move_state_manager=self._dialog_manager.show_move_state_manager,
+            toggle_bubble=self.toggle_bubble,
+            clear_state_gif=lambda: self._state_controller.clear_state_gif(self._current_state_key),
+            show_rename_dialog=lambda: (
+                self._dialog_manager.show_rename_dialog(self._current_state_key) and self.update()
+            ) if self._current_state_key else None,
+            prompt_chat=self._chat_ui.prompt_chat,
+            edit_chat_prompt=self._chat_ui.edit_chat_prompt,
+            clear_chat_history=self._chat_ui.clear_chat_history,
+            open_settings_dialog=self._chat_ui.open_settings_dialog,
+            quit_app=QtWidgets.QApplication.instance().quit,
+        )
 
     # --- Painting --------------------------------------------------------
     def paintEvent(self, _):

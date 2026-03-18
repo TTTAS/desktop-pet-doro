@@ -2,13 +2,44 @@
 
 from __future__ import annotations
 
-
-from typing import TYPE_CHECKING
+import dataclasses
+from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-if TYPE_CHECKING:
-    from ...window import DoroWindow
+
+# ─────────────────────────────────────────────────────────
+# Data objects passed into build_context_menu_content()
+# ─────────────────────────────────────────────────────────
+
+@dataclasses.dataclass(frozen=True)
+class MenuSnapshot:
+    """Read-only data captured at menu-build time."""
+
+    visible_states: list[tuple[str, str]]  # (key, label) pairs
+    current_state_key: str
+    is_topmost: bool
+    bubble_visible: bool
+    has_default_idle_gif: bool
+    is_chat_inflight: bool
+    has_chat_history: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class MenuCallbacks:
+    """Action callbacks triggered when the user clicks a menu item."""
+
+    set_state: Callable[[str], None]
+    show_state_manager: Callable[[], None]
+    show_move_state_manager: Callable[[], None]
+    toggle_bubble: Callable[[bool], None]
+    clear_state_gif: Callable[[], None]
+    show_rename_dialog: Callable[[], None]
+    prompt_chat: Callable[[], None]
+    edit_chat_prompt: Callable[[], None]
+    clear_chat_history: Callable[[], None]
+    open_settings_dialog: Callable[[], None]
+    quit_app: Callable[[], None]
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -280,41 +311,43 @@ def create_doro_menu(
     return menu
 
 
-def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
+def build_context_menu_content(
+    menu: DoroMenu,
+    window: QtWidgets.QWidget,
+    snapshot: MenuSnapshot,
+    callbacks: MenuCallbacks,
+) -> None:
     """
     Build the content (items, submenus, actions) for the context menu.
 
     Args:
-        window: The main DoroWindow instance
         menu: The themed menu to populate
+        window: Parent widget (used only for Qt parent/flag operations)
+        snapshot: Read-only data captured at menu-build time
+        callbacks: Action callbacks for menu items
     """
     # States submenu
     states_menu = menu.addMenu("States")
-    for key in window.state_controller.visible_state_keys():
-        state = window.state_service.get_state(key)
-        if not state:
-            continue
-        label = state.label or key
+    for key, label in snapshot.visible_states:
         action = states_menu.addAction(label)
         action.setCheckable(True)
-        action.setChecked(key == window.current_state_key)
-        action.triggered.connect(lambda checked, s=key: window.state_controller.set_state(s))
+        action.setChecked(key == snapshot.current_state_key)
+        action.triggered.connect(lambda checked, s=key: callbacks.set_state(s))
 
     edit_states_action = states_menu.addAction("Edit states")
-    edit_states_action.triggered.connect(window.dialog_manager.show_state_manager)
+    edit_states_action.triggered.connect(callbacks.show_state_manager)
 
     # Actions submenu
     actions_menu = menu.addMenu("Actions")
     edit_actions_action = actions_menu.addAction("Edit actions")
-    edit_actions_action.triggered.connect(window.dialog_manager.show_move_state_manager)
+    edit_actions_action.triggered.connect(callbacks.show_move_state_manager)
 
     menu.addSeparator()
 
     # Stay on top toggle
     top_action = QtGui.QAction("Stay on top", window)
     top_action.setCheckable(True)
-    is_top = bool(window.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint)
-    top_action.setChecked(is_top)
+    top_action.setChecked(snapshot.is_topmost)
 
     def toggle_top():
         f = window.windowFlags()
@@ -332,41 +365,35 @@ def build_context_menu_content(window: DoroWindow, menu: DoroMenu) -> None:
     visuals_menu = menu.addMenu("State visuals")
     bubble_action = visuals_menu.addAction("Show message panel")
     bubble_action.setCheckable(True)
-    current_state = window.state_service.get_current_state()
-    bubble_action.setChecked(bool(current_state and current_state.visual.bubble_visible))
-    bubble_action.triggered.connect(window.toggle_bubble)
+    bubble_action.setChecked(snapshot.bubble_visible)
+    bubble_action.triggered.connect(callbacks.toggle_bubble)
 
     clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-    clear_gif_action.setEnabled(window.default_idle_gif.is_file())
-    clear_gif_action.triggered.connect(
-        lambda: window.state_controller.clear_state_gif(window.current_state_key)
-    )
+    clear_gif_action.setEnabled(snapshot.has_default_idle_gif)
+    clear_gif_action.triggered.connect(callbacks.clear_state_gif)
 
     name_tag_action = visuals_menu.addAction("Rename pet")
-    name_tag_action.triggered.connect(
-        lambda: window.dialog_manager.show_rename_dialog(window.current_state_key) and window.update()
-        if window.current_state_key else None
-    )
+    name_tag_action.triggered.connect(callbacks.show_rename_dialog)
 
     # Chat submenu
     chat_menu = menu.addMenu("Chat")
     ask_action = chat_menu.addAction("Ask Doro")
-    ask_action.setEnabled(not window.core_manager.is_chat_inflight)
-    ask_action.triggered.connect(window.chat_ui.prompt_chat)
+    ask_action.setEnabled(not snapshot.is_chat_inflight)
+    ask_action.triggered.connect(callbacks.prompt_chat)
 
     edit_prompt_action = chat_menu.addAction("Edit prompt")
-    edit_prompt_action.triggered.connect(window.chat_ui.edit_chat_prompt)
+    edit_prompt_action.triggered.connect(callbacks.edit_chat_prompt)
 
     clear_history_action = chat_menu.addAction("Clear conversation history")
-    clear_history_action.setEnabled(window.core_manager.has_chat_history)
-    clear_history_action.triggered.connect(window.chat_ui.clear_chat_history)
+    clear_history_action.setEnabled(snapshot.has_chat_history)
+    clear_history_action.triggered.connect(callbacks.clear_chat_history)
 
     configure_action = chat_menu.addAction("Configure")
-    configure_action.triggered.connect(window.chat_ui.open_settings_dialog)
+    configure_action.triggered.connect(callbacks.open_settings_dialog)
 
     menu.addSeparator()
 
     # Exit action
     quit_action = QtGui.QAction("Exit doro", window)
-    quit_action.triggered.connect(QtWidgets.QApplication.instance().quit)
+    quit_action.triggered.connect(callbacks.quit_app)
     menu.addAction(quit_action)
