@@ -25,6 +25,7 @@ from ..constants import (
 from .components.bubble_controller import BubbleController
 from .rendering.design_tokens import tokens
 from .rendering.gif_sprite_renderer import GifSpriteRenderer
+from .rendering.sprite_renderer import SpriteRenderer
 from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
@@ -124,7 +125,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key: str = ""
         self._state_list_text: str = ""
 
-        self._sprite_renderer: GifSpriteRenderer = GifSpriteRenderer(self._view_model)
+        self._sprite_renderer: SpriteRenderer = GifSpriteRenderer(self._view_model)
 
         self._last_user_activity = time.monotonic()
 
@@ -184,7 +185,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = value
 
     @property
-    def sprite_renderer(self) -> GifSpriteRenderer:
+    def sprite_renderer(self) -> SpriteRenderer:
         """Active sprite renderer (used by ContextMenuController for avatar)."""
         return self._sprite_renderer
 

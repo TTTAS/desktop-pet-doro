@@ -16,6 +16,11 @@ class SpriteRenderer(Protocol):
     - (future) SpineSpriteRenderer: spine-c CFFI + QPainter blit
     """
 
+    @property
+    def renderer_type(self) -> str:
+        """Return the renderer type identifier (e.g. ``"gif"``, ``"spine"``)."""
+        ...
+
     def render(
         self,
         painter: QtGui.QPainter,

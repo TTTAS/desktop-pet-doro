@@ -27,6 +27,11 @@ class GifSpriteRenderer:
         self._view_model = view_model
         self._movie: QtGui.QMovie | None = None
 
+    @property
+    def renderer_type(self) -> str:  # noqa: D401
+        """Renderer type identifier."""
+        return "gif"
+
     # ── Movie management (called by SpriteController) ──────────
 
     def set_movie(self, movie: QtGui.QMovie | None) -> None:

@@ -10,6 +10,7 @@ from PySide6 import QtCore, QtGui
 from ...utils.logger import get_logger
 from ..components.gif_player import GifPlayer
 from ..rendering.gif_sprite_renderer import GifSpriteRenderer
+from ..rendering.sprite_renderer import SpriteRenderer
 
 if TYPE_CHECKING:
     from ..viewmodels.doro_viewmodel import DoroViewModel
@@ -35,13 +36,44 @@ class SpriteController(QtCore.QObject):
         super().__init__()
         self._view_model = view_model
         self._gif_player = GifPlayer()
-        self._renderer = GifSpriteRenderer(view_model)
+        self._gif_renderer = GifSpriteRenderer(view_model)
+        self._renderers: dict[str, SpriteRenderer] = {
+            "gif": self._gif_renderer,
+        }
+        self._renderer: SpriteRenderer = self._gif_renderer
         self._current_movie: QtGui.QMovie | None = None
 
     @property
-    def renderer(self) -> GifSpriteRenderer:
+    def renderer(self) -> SpriteRenderer:
         """The active sprite renderer."""
         return self._renderer
+
+    @property
+    def renderer_type(self) -> str:
+        """Shortcut — returns the active renderer's type identifier."""
+        return self._renderer.renderer_type
+
+    def register_renderer(self, renderer: SpriteRenderer) -> None:
+        """Register an additional renderer (e.g. a future SpineSpriteRenderer)."""
+        self._renderers[renderer.renderer_type] = renderer
+
+    def switch_renderer(self, renderer_type: str) -> None:
+        """Switch the active renderer by type identifier.
+
+        Raises ``ValueError`` if *renderer_type* has not been registered.
+        """
+        if renderer_type not in self._renderers:
+            available = ", ".join(sorted(self._renderers))
+            raise ValueError(
+                f"Unknown renderer type {renderer_type!r}. "
+                f"Available: {available}"
+            )
+        if self._renderer.renderer_type == renderer_type:
+            return
+        self._renderer = self._renderers[renderer_type]
+        logger.info(f"Switched renderer to {renderer_type!r}")
+        self.sprite_renderer_changed.emit()
+        self.repaint_requested.emit()
 
     @property
     def gif_player(self) -> GifPlayer:
@@ -74,7 +106,7 @@ class SpriteController(QtCore.QObject):
 
         This bypasses the normal load path — the caller owns the movie lifetime.
         """
-        self._renderer.set_movie(movie)
+        self._gif_renderer.set_movie(movie)
         self._view_model.set_sprite_size(sprite_size)
         self.sprite_renderer_changed.emit()
         self.repaint_requested.emit()
@@ -100,7 +132,7 @@ class SpriteController(QtCore.QObject):
             movie.frameChanged.connect(self._on_frame_changed)
 
             # Update renderer + size
-            self._renderer.set_movie(movie)
+            self._gif_renderer.set_movie(movie)
 
             frame_rect = movie.frameRect()
             if frame_rect.isValid():
@@ -127,7 +159,7 @@ class SpriteController(QtCore.QObject):
                 pass
             self._current_movie = None
 
-        self._renderer.set_movie(None)
+        self._gif_renderer.set_movie(None)
         self.sprite_renderer_changed.emit()
         self.repaint_requested.emit()
 
