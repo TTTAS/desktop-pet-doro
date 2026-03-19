@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6 import QtCore, QtGui
 
 from ..viewmodels.doro_viewmodel import DoroViewModel
 from .design_tokens import tokens
-from .fallback_sprite import draw_fallback_sprite
 from ...constants import (
     SPRITE_MIN_SIZE,
     SPRITE_MARGIN_X,
@@ -19,16 +20,15 @@ from ...constants import (
     PANEL_MAX_WIDTH,
 )
 
+if TYPE_CHECKING:
+    from .sprite_renderer import SpriteRenderer
+
 
 class RenderingEngine:
     """
-    Handles all rendering logic for the Doro window.
+    Handles layout calculation and text-panel rendering.
 
-    Responsibilities:
-    - Calculate sprite positioning
-    - Render sprite (GIF or fallback)
-    - Render text panel (bubble)
-
+    Sprite rendering is delegated to a SpriteRenderer implementation.
     This class does not depend on DoroWindow, only on ViewModel.
     """
 
@@ -97,40 +97,18 @@ class RenderingEngine:
     def render_sprite(
         self,
         painter: QtGui.QPainter,
-        gif_movie: QtGui.QMovie | None,
+        sprite_renderer: SpriteRenderer,
         sprite_center: QtCore.QPointF,
         bob: float = 0.0,
         scale: float = 1.0,
-    ):
+    ) -> None:
         """
-        Render the sprite (GIF or fallback).
+        Render the sprite via the supplied *sprite_renderer*.
 
-        Args:
-            painter: Qt painter to render with
-            gif_movie: Current GIF movie (or None for fallback)
-            sprite_center: Center position of sprite
-            bob: Vertical bob offset (animation)
-            scale: Scale factor (animation)
+        The renderer is responsible for drawing the character
+        (GIF, Spine, or fallback) — this method only delegates.
         """
-        painter.save()
-        painter.translate(sprite_center.x(), sprite_center.y() + bob)
-        painter.scale(scale, scale)
-
-        if gif_movie and not gif_movie.currentPixmap().isNull():
-            pixmap = gif_movie.currentPixmap()
-            painter.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
-            painter.drawPixmap(0, 0, pixmap)
-        else:
-            # Draw fallback sprite when no GIF is available
-            draw_fallback_sprite(
-                painter,
-                self._view_model.fill_colors,
-                self._view_model.cheek_alpha,
-                self._view_model.blush_color,
-                self._view_model.eye_color
-            )
-
-        painter.restore()
+        sprite_renderer.render(painter, sprite_center, bob, scale)
 
     def render_text_panel(
         self,

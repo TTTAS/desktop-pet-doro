@@ -23,8 +23,8 @@ from ..constants import (
     WINDOW_INITIAL_POSITION_OFFSET_Y,
 )
 from .components.bubble_controller import BubbleController
-from .components.gif_player import GifPlayer
 from .rendering.design_tokens import tokens
+from .rendering.gif_sprite_renderer import GifSpriteRenderer
 from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
@@ -91,7 +91,7 @@ class DoroWindow(QtWidgets.QWidget):
         # ─────────────────────────────────────────────────────────
         # Controllers
         self._state_controller = None
-        self._gif_controller = None
+        self._sprite_controller = None
         self._dialog_manager = None
         self._click_action_controller = None
         # Managers
@@ -124,8 +124,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key: str = ""
         self._state_list_text: str = ""
 
-        self._gif_player = GifPlayer()
-        self._gif_movie: QtGui.QMovie | None = None
+        self._sprite_renderer: GifSpriteRenderer = GifSpriteRenderer(self._view_model)
 
         self._last_user_activity = time.monotonic()
 
@@ -185,9 +184,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = value
 
     @property
-    def gif_movie(self) -> QtGui.QMovie | None:
-        """Current GIF movie (used by ContextMenuController for avatar)."""
-        return self._gif_movie
+    def sprite_renderer(self) -> GifSpriteRenderer:
+        """Active sprite renderer (used by ContextMenuController for avatar)."""
+        return self._sprite_renderer
 
     # ═══════════════════════════════════════════════════════════
     # Controller Injection
@@ -197,7 +196,7 @@ class DoroWindow(QtWidgets.QWidget):
         self,
         *,
         state_controller,
-        gif_controller,
+        sprite_controller,
         dialog_manager,
         click_action_controller,
         bubble_controller,
@@ -205,11 +204,13 @@ class DoroWindow(QtWidgets.QWidget):
     ):
         """Wire controllers into the window (called once by DoroApp after construction)."""
         self._state_controller = state_controller
-        self._gif_controller = gif_controller
+        self._sprite_controller = sprite_controller
         self._dialog_manager = dialog_manager
         self._click_action_controller = click_action_controller
         self._bubble_controller = bubble_controller
         self._mouse_handler = mouse_handler
+        # Share the renderer owned by the sprite controller
+        self._sprite_renderer = sprite_controller.renderer
         # All dependencies wired — safe to start the animation timer
         self._timer.start(TIMER_INTERVAL_MS)
 
@@ -221,13 +222,10 @@ class DoroWindow(QtWidgets.QWidget):
         """Handle state list update from StateController."""
         self._state_list_text = state_list_text
 
-    def on_gif_loaded(self, movie):
-        """Handle GIF loaded from GifController."""
-        self._gif_movie = movie
-
-    def on_sprite_size_changed(self, size):
-        """Handle sprite size change from GifController."""
+    def on_sprite_renderer_changed(self):
+        """Handle sprite renderer content update from SpriteController."""
         self._apply_window_preferred_size()
+        self.update()
 
     # --- Animation -------------------------------------------------------
     def _tick(self):
@@ -327,15 +325,6 @@ class DoroWindow(QtWidgets.QWidget):
         finally:
             self._sizing_in_progress = False
 
-    def _update_sprite_size_hint(self, movie: QtGui.QMovie | None):
-        """Update sprite size from movie. Uses WindowLayoutManager to extract size."""
-        sprite_size = WindowLayoutManager.extract_sprite_size_from_movie(movie)
-        if sprite_size:
-            self._view_model.set_sprite_size(sprite_size)
-        else:
-            self._view_model.set_sprite_size(QtCore.QSize(200, 200))
-        self._apply_window_preferred_size()
-
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self.mark_user_activity()
         self.context_menu_requested.emit(e.globalPos())
@@ -357,8 +346,8 @@ class DoroWindow(QtWidgets.QWidget):
         if new_anchor is not None:
             self._sprite_anchor_top = new_anchor
 
-        # Render sprite using RenderingEngine
-        self._rendering_engine.render_sprite(p, self._gif_movie, sprite_center, bob, scale)
+        # Render sprite using RenderingEngine + SpriteRenderer
+        self._rendering_engine.render_sprite(p, self._sprite_renderer, sprite_center, bob, scale)
 
         # Render text panel using RenderingEngine
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
@@ -418,19 +407,9 @@ class DoroWindow(QtWidgets.QWidget):
     # ═══════════════════════════════════════════════════════════
 
     def on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
-        """
-        Handle transition movie loaded signal from TransitionPlayer.
-
-        Args:
-            movie: The transition QMovie
-            sprite_size: The sprite size from the transition GIF
-        """
-        # Set movie to window's GIF movie (temporarily for transition)
-        self._gif_movie = movie
-        # Update sprite size from transition GIF
-        self._view_model.set_sprite_size(sprite_size)
-        self._apply_window_preferred_size()
-        self.update()
+        """Handle transition movie loaded signal from TransitionPlayer."""
+        if self._sprite_controller:
+            self._sprite_controller.set_movie_directly(movie, sprite_size)
 
     def set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
@@ -465,9 +444,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Clean up resources
         try:
-            # Clear all GIF resources using GifPlayer
-            self._gif_player.clear()
-            self._gif_movie = None
+            # Clear all GIF resources via SpriteController
+            if self._sprite_controller:
+                self._sprite_controller.gif_player.clear()
 
             if self._timer:
                 try:

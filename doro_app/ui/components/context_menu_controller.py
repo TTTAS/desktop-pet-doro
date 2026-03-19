@@ -56,7 +56,7 @@ class ContextMenuController:
         menu = create_doro_menu(
             parent=self._window,
             avatar_position="top-center",
-            gif_movie=self._window.gif_movie,
+            avatar_pixmap=self._window.sprite_renderer.current_pixmap(),
         )
         snapshot = self._build_snapshot()
         cbs = self._build_callbacks()
