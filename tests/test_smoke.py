@@ -285,31 +285,27 @@ class TestContextMenuSmoke:
         assert hasattr(themed_menu, 'build_context_menu_content')
         assert hasattr(themed_menu, 'DoroMenu')
 
-    def test_build_context_menu_accesses_correct_attributes(self):
+    def test_build_context_menu_uses_snapshot_callbacks(self):
         """
-        Test that build_context_menu_content accesses the correct CoreManager properties.
-
-        This test ensures that after the refactoring (removing _chat_orchestrator and
-        _chat_controller from Window), the menu building code uses the correct API.
+        Test that build_context_menu_content uses MenuSnapshot/MenuCallbacks
+        instead of directly accessing business objects through the window.
         """
-        from unittest.mock import Mock
         import inspect
         from doro_app.ui.theme.themed_menu import build_context_menu_content
 
-        # Get the source code of build_context_menu_content
         source = inspect.getsource(build_context_menu_content)
 
-        # Verify it uses CoreManager's public API (not removed attributes)
-        assert "_core_manager.is_chat_inflight" in source, \
-            "Menu should use window._core_manager.is_chat_inflight"
-        assert "_core_manager.has_chat_history" in source, \
-            "Menu should use window._core_manager.has_chat_history"
+        # After Phase 2 refactoring, the function should use snapshot/callbacks
+        assert "snapshot." in source, \
+            "Menu should read data from MenuSnapshot"
+        assert "callbacks." in source, \
+            "Menu should trigger actions via MenuCallbacks"
 
-        # Verify it does NOT use the removed attributes
-        assert "_chat_orchestrator.is_inflight" not in source, \
-            "Menu should NOT use window._chat_orchestrator (removed in refactoring)"
-        assert "_chat_controller.has_history" not in source, \
-            "Menu should NOT use window._chat_controller (removed in refactoring)"
+        # Should NOT directly access business objects
+        for attr in ("state_controller", "state_service", "dialog_manager",
+                      "core_manager", "chat_ui", "default_idle_gif"):
+            assert f"window.{attr}" not in source, \
+                f"Menu should NOT access window.{attr} directly"
 
     def test_context_menu_exec_compatibility(self):
         """
@@ -340,10 +336,8 @@ class TestMouseEventHandlingSmoke:
     def test_mouse_event_handler_can_be_created(self):
         """MouseEventHandler can be initialized."""
         from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        handler = MouseEventHandler(bubble_controller=mock_bubble, click_threshold=5)
+        handler = MouseEventHandler(click_threshold=5)
         assert handler is not None
 
     def test_mouse_press_event_handles_left_button(self):
@@ -352,10 +346,7 @@ class TestMouseEventHandlingSmoke:
         from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        mock_bubble.begin_transform.return_value = False
-
-        handler = MouseEventHandler(bubble_controller=mock_bubble)
+        handler = MouseEventHandler()
 
         # Create mock mouse event
         mock_event = Mock(spec=QtGui.QMouseEvent)
@@ -375,8 +366,7 @@ class TestMouseEventHandlingSmoke:
         from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
 
-        mock_bubble = Mock()
-        handler = MouseEventHandler(bubble_controller=mock_bubble)
+        handler = MouseEventHandler()
 
         # Create mock right-click event
         mock_event = Mock(spec=QtGui.QMouseEvent)

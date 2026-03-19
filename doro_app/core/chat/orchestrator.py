@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text
+from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text, extract_inline_move_commands
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from .controller import ChatController
 from ...utils.logger import get_logger
@@ -232,6 +232,18 @@ class ChatOrchestrator(QtCore.QObject):
         if not cleaned_text:
             cleaned_text = assistant_text.strip()
             cleaned_text = self._strip_control_tokens(cleaned_text)
+
+        # Scan remaining text for bare move commands not wrapped in brackets/parens
+        cleaned_text, inline_dirs = extract_inline_move_commands(cleaned_text)
+        for dir_str in inline_dirs:
+            direction = self._movement.parse_movement_token(dir_str)
+            if not direction:
+                # Try with a "move" prefix so MOVE_TOKEN_PATTERN can match
+                direction = self._movement.parse_movement_token(f"move {dir_str}")
+            if direction:
+                report = self._movement.apply_directional_move(direction)
+                if report:
+                    move_reports.append(report)
 
         if move_reports:
             for report in move_reports:

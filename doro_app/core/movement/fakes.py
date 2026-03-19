@@ -13,7 +13,7 @@ from typing import Optional
 
 from PySide6 import QtCore
 
-from ...ui.window import MovementWindowPort
+from .port import MovementWindowPort
 
 
 class MovementWindowFake(MovementWindowPort):

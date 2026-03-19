@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, Protocol
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
@@ -32,36 +30,19 @@ from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .viewmodels.doro_viewmodel import DoroViewModel
 from ..utils.logger import get_logger
-from ..utils.models import MoveStateSettings
 from ..core.state import StateService
 from .theme.theme import ensure_application_theme
-from .theme.themed_menu import build_context_menu_content, create_doro_menu
-from .helpers import ChatUIHelper
 from ..utils.config_manager import ConfigManager
 
 logger = get_logger(__name__)
 
 
-class MovementWindowPort(Protocol):
-    """Interface for movement-related window operations."""
-
-    def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
-        ...
-
-    def current_position(self) -> QtCore.QPoint: ...
-
-    def clamp_window_position(self, pos: QtCore.QPoint) -> QtCore.QPoint: ...
-
-    def move_window_to(self, pos: QtCore.QPoint): ...
-
-    def get_bubble_offset(self) -> QtCore.QPointF: ...
-
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False): ...
-
-    def reset_tick_timer(self, value: float): ...
-
-
 class DoroWindow(QtWidgets.QWidget):
+    # Output signals (decoupling UI from business logic)
+    tick_requested = QtCore.Signal(float)  # dt
+    bubble_toggle_requested = QtCore.Signal(str, bool)  # state_key, checked
+    context_menu_requested = QtCore.Signal(QtCore.QPoint)  # global_pos
+
     def __init__(
         self,
         state_service: StateService,
@@ -105,11 +86,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._state_service = state_service
         self._config_manager = config_manager
 
-        # File paths (reconstructed from constants)
-        from ..utils.paths import STATE_DIR
-
-        self._default_idle_gif = STATE_DIR / "idle.gif"
-
         # ─────────────────────────────────────────────────────────
         # Dependencies wired later (due to circular dependency)
         # ─────────────────────────────────────────────────────────
@@ -120,7 +96,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._click_action_controller = None
         # Managers
         self._bubble_controller: BubbleController | None = None
-        self._core_manager = None  # Will be set by DoroApp
         # Event handlers
         self._mouse_handler: MouseEventHandler | None = None
 
@@ -152,10 +127,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._gif_player = GifPlayer()
         self._gif_movie: QtGui.QMovie | None = None
 
-        self._bubble_text = ""
-        self._bubble_text_show_override = False
         self._last_user_activity = time.monotonic()
-        self._bubble_offset = QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
         self._panel_width_hint = PANEL_DEFAULT_WIDTH_HINT
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
@@ -166,10 +138,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._sizing_in_progress = False
         self._last_tick_time = time.monotonic()
 
-        # ─────────────────────────────────────────────────────────
-        # Chat UI Helper
-        # ─────────────────────────────────────────────────────────
-        self._chat_ui = ChatUIHelper(self)
         self._chat_cursor_overridden = False
 
         # ─────────────────────────────────────────────────────────
@@ -217,34 +185,9 @@ class DoroWindow(QtWidgets.QWidget):
         self._current_state_key = value
 
     @property
-    def state_controller(self):
-        """Get StateController (used by themed_menu)."""
-        return self._state_controller
-
-    @property
-    def state_service(self) -> StateService:
-        """Get StateService (used by themed_menu)."""
-        return self._state_service
-
-    @property
-    def dialog_manager(self):
-        """Get DialogManager (used by themed_menu)."""
-        return self._dialog_manager
-
-    @property
-    def core_manager(self):
-        """Get CoreManager (used by themed_menu, chat_ui_helper)."""
-        return self._core_manager
-
-    @property
-    def default_idle_gif(self):
-        """Get default idle GIF path (used by themed_menu)."""
-        return self._default_idle_gif
-
-    @property
-    def chat_ui(self) -> ChatUIHelper:
-        """Get ChatUIHelper (used by themed_menu)."""
-        return self._chat_ui
+    def gif_movie(self) -> QtGui.QMovie | None:
+        """Current GIF movie (used by ContextMenuController for avatar)."""
+        return self._gif_movie
 
     # ═══════════════════════════════════════════════════════════
     # Controller Injection
@@ -258,7 +201,6 @@ class DoroWindow(QtWidgets.QWidget):
         dialog_manager,
         click_action_controller,
         bubble_controller,
-        core_manager,
         mouse_handler,
     ):
         """Wire controllers into the window (called once by DoroApp after construction)."""
@@ -267,7 +209,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._dialog_manager = dialog_manager
         self._click_action_controller = click_action_controller
         self._bubble_controller = bubble_controller
-        self._core_manager = core_manager
         self._mouse_handler = mouse_handler
         # All dependencies wired — safe to start the animation timer
         self._timer.start(TIMER_INTERVAL_MS)
@@ -275,20 +216,6 @@ class DoroWindow(QtWidgets.QWidget):
     # ─────────────────────────────────────────────────────────
     # Controller signal handlers
     # ─────────────────────────────────────────────────────────
-
-    def load_state_gif(self, state_key: str):
-        """
-        Load a GIF for a given state.
-
-        Uses StateService.get_gif_path() which handles multi-GIF random
-        selection (subfolder) with single-file fallback automatically.
-
-        Args:
-            state_key: The state key to load GIF for
-        """
-        gif_path = self._state_service.get_gif_path(state_key)
-        if gif_path:
-            self._gif_controller.load_gif(str(gif_path))
 
     def on_state_list_updated(self, state_list_text: str):
         """Handle state list update from StateController."""
@@ -311,10 +238,10 @@ class DoroWindow(QtWidgets.QWidget):
             dt = 0.0
         dt = min(dt, tokens.animation.max_delta_time)
 
-        # Process movement through CoreManager
-        self._core_manager.process_movement_tick(dt)
+        # Signal business layer to process movement
+        self.tick_requested.emit(dt)
 
-        # NEW: Use ViewModel for animation time
+        # Use ViewModel for animation time
         self._view_model.tick(dt)
         self.update()
 
@@ -377,9 +304,10 @@ class DoroWindow(QtWidgets.QWidget):
 
     def _compute_panel_size_hint(self) -> tuple[float, float]:
         """Compute panel size hint. Delegates to WindowLayoutManager."""
+        bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         return WindowLayoutManager.compute_panel_size_hint(
             self._view_model.sprite_size,
-            self._bubble_text or "",
+            bubble_text,
         )
 
     def _apply_window_preferred_size(self):
@@ -410,15 +338,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self.mark_user_activity()
-        menu = create_doro_menu(
-            parent=self, avatar_position="top-center", gif_movie=self._gif_movie
-        )
-        build_context_menu_content(self, menu)
-        # PySide6 compatibility: try exec() first, fall back to exec_()
-        if hasattr(menu, 'exec'):
-            menu.exec(e.globalPos())
-        else:
-            menu.exec_(e.globalPos())
+        self.context_menu_requested.emit(e.globalPos())
 
     # --- Painting --------------------------------------------------------
     def paintEvent(self, _):
@@ -441,17 +361,18 @@ class DoroWindow(QtWidgets.QWidget):
         self._rendering_engine.render_sprite(p, self._gif_movie, sprite_center, bob, scale)
 
         # Render text panel using RenderingEngine
+        bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
-            (self._view_model.bubble_visible or self._bubble_text_show_override)
+            (self._view_model.bubble_visible or (self._bubble_controller and self._bubble_controller.text_show_override))
             and self._view_model.bubble_alpha > 0
-            and bool((self._bubble_text or "").strip())
+            and bool(bubble_text.strip())
         )
         if panel_should_draw:
             from ..constants import COLOR_ALPHA_MAX
 
             alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
-                p, self._bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint
+                p, bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint
             )
         else:
             self._panel_rect_cache = None
@@ -477,15 +398,11 @@ class DoroWindow(QtWidgets.QWidget):
         """Move window to position (public API)."""
         self._move_window_to(pos)
 
-    def resolve_move_state(
-        self, key: str | None
-    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration (public API)."""
-        return self._resolve_move_state(key)
-
     def get_bubble_offset(self) -> QtCore.QPointF:
         """Get the current bubble offset (public API for movement)."""
-        return QtCore.QPointF(self._bubble_offset)
+        if self._bubble_controller:
+            return self._bubble_controller.offset
+        return QtCore.QPointF(BUBBLE_DEFAULT_OFFSET_X, BUBBLE_DEFAULT_OFFSET_Y)
 
     def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):
         """Apply bubble offset via BubbleController (public API)."""
@@ -515,89 +432,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._apply_window_preferred_size()
         self.update()
 
-    def on_transition_completed(self, target_state_key: str):
-        """
-        Handle transition completion signal from TransitionPlayer.
-
-        Args:
-            target_state_key: The target state key to load after transition
-        """
-        logger.debug(f"Transition completed, loading target state: {target_state_key}")
-        # Load target state GIF using helper
-        self.load_state_gif(target_state_key)
-
-    # ═══════════════════════════════════════════════════════════
-    # Event Callbacks from BubbleController
-    # ═══════════════════════════════════════════════════════════
-
-    def on_bubble_text_changed(self, text: str, show_override: bool):
-        """
-        Handle bubble text change signal from BubbleController.
-
-        Args:
-            text: The new bubble text
-            show_override: Whether to show bubble even if visibility is disabled
-        """
-        self._bubble_text = text
-        self._bubble_text_show_override = show_override
-        self.update()
-
-    def on_bubble_visibility_changed(self, visible: bool):
-        """
-        Handle bubble visibility change signal from BubbleController.
-
-        Args:
-            visible: Whether bubble should be visible
-        """
-        self.update()
-
-    def on_bubble_offset_changed(self, offset: QtCore.QPointF):
-        """
-        Handle bubble offset change signal from BubbleController.
-
-        Args:
-            offset: The new bubble offset
-        """
-        self._bubble_offset = QtCore.QPointF(offset)
-        self.update_bubble_side_from_offset()
-        self.update()
-
-    def on_bubble_scale_changed(self, scale: float):
-        """
-        Handle bubble scale change signal from BubbleController.
-
-        Args:
-            scale: The new bubble scale
-        """
-        self.update()
-
-    # ═══════════════════════════════════════════════════════════
-    # Movement State Resolution
-    # ═══════════════════════════════════════════════════════════
-
-    def _resolve_move_state(
-        self, key: str | None
-    ) -> tuple[Optional[str], Optional[MoveStateSettings]]:
-        """Resolve movement state configuration."""
-        if not key:
-            return None, None
-
-        normalized = key.strip().lower()
-        move_state = self._state_service.get_move_state(normalized)
-
-        if not move_state:
-            return None, None
-
-        # Convert MoveState to MoveStateSettings for compatibility
-        settings = MoveStateSettings(
-            state_key=move_state.state_key,
-            direction=move_state.direction,
-            default_distance=move_state.default_distance,
-            default_speed=move_state.default_speed,
-        )
-
-        return normalized, settings
-
     def set_busy_cursor(self, enabled: bool):
         if enabled and not self._chat_cursor_overridden:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.BusyCursor)
@@ -609,10 +443,7 @@ class DoroWindow(QtWidgets.QWidget):
     def toggle_bubble(self, checked: bool):
         if not self._current_state_key:
             return
-        if self._state_controller.toggle_bubble_visibility(
-            self._current_state_key, checked
-        ):
-            self._bubble_controller.set_visible(checked)
+        self.bubble_toggle_requested.emit(self._current_state_key, checked)
 
     def _set_bubble_text(
         self,
@@ -628,10 +459,6 @@ class DoroWindow(QtWidgets.QWidget):
             auto_hide=auto_hide,
             hide_delay_ms=hide_delay_ms,
         )
-        self._apply_window_preferred_size()
-
-    def clear_bubble_text(self):
-        self._bubble_controller.clear_text()
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self.set_busy_cursor(False)

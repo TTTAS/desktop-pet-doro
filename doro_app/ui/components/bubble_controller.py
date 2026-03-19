@@ -29,9 +29,7 @@ class BubbleController(QtCore.QObject):
         visibility_changed: Emitted when bubble visibility changes (bool: visible)
         offset_changed: Emitted when bubble offset changes (QPointF: offset)
         scale_changed: Emitted when bubble scale changes (float: scale)
-        preferences_changed: Emitted when user preferences need saving (dict: config)
         repaint_requested: Emitted when window needs repaint
-        cursor_unset_requested: Emitted when cursor should be unset
         update_bubble_side_requested: Emitted when bubble side needs update based on offset
     """
 
@@ -40,9 +38,7 @@ class BubbleController(QtCore.QObject):
     visibility_changed = QtCore.Signal(bool)  # visible
     offset_changed = QtCore.Signal(QtCore.QPointF)  # offset
     scale_changed = QtCore.Signal(float)  # scale
-    preferences_changed = QtCore.Signal(dict)  # config dict for persistence
     repaint_requested = QtCore.Signal()  # request window update
-    cursor_unset_requested = QtCore.Signal()  # request cursor unset
     update_bubble_side_requested = QtCore.Signal()  # request bubble side update
     state_settings_apply_requested = QtCore.Signal(str)  # request state settings apply with state_key
 
@@ -54,14 +50,6 @@ class BubbleController(QtCore.QObject):
         self._text = ""
         self._text_show_override = False
         self._visible = True
-        self._dragging = False
-        self._resizing = False
-        self._drag_start: QtCore.QPointF | None = None
-        self._initial_offset = QtCore.QPointF(0.0, 0.0)
-        self._resize_start: QtCore.QPointF | None = None
-        self._resize_anchor: QtCore.QPointF | None = None
-        self._initial_scale = 1.0
-        self._resize_cursor_active = False
 
         # Auto-hide timer (owned by BubbleController, not Window)
         self._hide_timer = QtCore.QTimer(self)
@@ -73,6 +61,14 @@ class BubbleController(QtCore.QObject):
 
     # ------------------------------------------------------------------ State access
     @property
+    def text(self) -> str:
+        return self._text
+
+    @property
+    def text_show_override(self) -> bool:
+        return self._text_show_override
+
+    @property
     def offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._offset)
 
@@ -80,16 +76,17 @@ class BubbleController(QtCore.QObject):
     def scale(self) -> float:
         return float(self._scale)
 
+    @property
+    def visible(self) -> bool:
+        return self._visible
+
     def apply_persisted_config(self, config: BubbleConfig):
         self.apply_offset(QtCore.QPointF(config.offset_x, config.offset_y), persist=False)
         self.set_scale(config.scale, persist=False)
 
-    def clamp_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
-        return self._clamp_offset(candidate)
-
     # ------------------------------------------------------------------ Offset/scale manipulation
     def apply_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
-        self._offset = self.clamp_offset(candidate)
+        self._offset = QtCore.QPointF(candidate)
         self.offset_changed.emit(QtCore.QPointF(self._offset))
         self.update_bubble_side_requested.emit()
         if persist:
@@ -121,33 +118,6 @@ class BubbleController(QtCore.QObject):
             bubble_scale=float(self._scale),
         )
         self._config_manager.save()
-
-    # ------------------------------------------------------------------ Drag/resize handling
-    def begin_transform(self, pos: QtCore.QPointF) -> bool:
-        del pos
-        return False
-
-    def update_transform(self, pos: QtCore.QPointF) -> bool:
-        del pos
-        return False
-
-    def end_transform(self) -> bool:
-        self._dragging = False
-        self._resizing = False
-        self._drag_start = None
-        self._resize_start = None
-        self._resize_anchor = None
-        return False
-
-    def update_cursor(self, pos: QtCore.QPointF | None):
-        del pos
-        if self._resize_cursor_active:
-            self._resize_cursor_active = False
-            self.cursor_unset_requested.emit()
-
-    # ------------------------------------------------------------------ Helpers
-    def _clamp_offset(self, candidate: QtCore.QPointF) -> QtCore.QPointF:
-        return QtCore.QPointF(0.0, 0.0)
 
     # ------------------------------------------------------------------ Bubble text helpers
     def set_text(
