@@ -163,9 +163,10 @@ ChatOrchestrator (聊天協調器)
     │   ├── start_request(user_message)
     │   ├── 管理歷史記錄
     │   ├── 配置管理 (server_url, model, temperature)
-    │   └── ChatRequestWorker (異步執行)
+    │   ├── ResponseValidator (回覆驗證 + 自動重試)
+    │   └── ChatWorker (異步執行)
     │       └── perform_chat_request()
-    │           └── HTTP POST to LMStudio
+    │           └── HTTP POST (OpenAI 相容 API)
     │
     ├── 動作解析器
     │   ├── parse_actions_from_text()
@@ -185,9 +186,9 @@ ChatOrchestrator (聊天協調器)
     ↓
 ChatController.start_request()
     ↓
-ChatRequestWorker (異步)
+ChatWorker (異步)
     ↓
-LMStudio API (HTTP)
+LLM API (OpenAI 相容格式)
     ↓
 LLM 回覆文本
     ↓
@@ -205,7 +206,7 @@ StateService    MovementManager   BubbleController
 ```
 
 **職責：**
-- ✅ 管理與 LMStudio 的通信
+- ✅ 管理與 LLM 伺服器的通信
 - ✅ 解析 LLM 回覆中的控制指令
 - ✅ 驅動狀態機轉換
 - ✅ 驅動移動系統
@@ -312,7 +313,7 @@ Transition (狀態轉換)：
 
 ---
 
-## 🔗 FSM 和 LMStudio 的連接點
+## 🔗 FSM 和 LLM 的連接點
 
 ### **當前連接機制 (已實現)**
 
@@ -350,7 +351,7 @@ DoroWindow._on_state_changed()
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      LMStudio (LLM)                         │
+│                      LLM Server (OpenAI 相容)                         │
 │  輸入: "講個笑話給我聽"                                        │
 │  輸出: "(STATE: happy) 好的！[MOVE: left] 為什麼企鵝不會飛..."  │
 └────────────────────┬────────────────────────────────────────┘
@@ -392,10 +393,10 @@ DoroWindow._on_state_changed()
    ├─ DoroWindow.contextMenu → "Ask Doro"
    └─ ChatOrchestrator.send_message("講個笑話")
 
-2. 發送到 LMStudio
+2. 發送到 LLM 伺服器
    ├─ ChatController.start_request()
-   ├─ ChatRequestWorker (異步線程)
-   └─ HTTP POST http://localhost:1234/v1/chat/completions
+   ├─ ChatWorker (異步線程)
+   └─ HTTP POST {server_url}/v1/chat/completions
 
 3. LLM 思考並回覆
    └─ "(STATE: happy) 好的！[MOVE: bounce] 為什麼企鵝不會飛？因為太短了！"
@@ -463,96 +464,99 @@ StateService.on_state_changed = lambda event: update_ui(event.new_state)
 
 ## 🚀 改進建議
 
-### **問題 1：LLM 不知道當前狀態**
-
-**現狀：**
-```python
-# LLM 收到的 prompt 沒有包含當前狀態
-system_prompt = "你是 Doro，一個可愛的桌面寵物..."
-```
-
-**建議改進：**
-```python
-# 在 prompt 中包含當前狀態
-state = self._state_service.get_current_state()
-context = f"""
-你是 Doro，一個可愛的桌面寵物。
-
-當前狀態：{state.label}
-可用狀態：{', '.join(self._state_service.visible_state_keys())}
-可用動作：{', '.join(self._state_service.all_move_state_keys())}
-
-請在回覆中使用 (STATE: xxx) 切換狀態，使用 [MOVE: direction] 移動。
-"""
-```
-
-### **問題 2：狀態轉換缺乏驗證**
-
-**現狀：**
-```python
-# 任何狀態都可以轉換到任何狀態
-self._window._set_state(state_key)
-```
-
-**建議改進：**
-```python
-# StateService 中添加狀態機規則
-class StateService:
-    def can_transition(self, from_state: str, to_state: str) -> bool:
-        """檢查是否允許狀態轉換"""
-        # 例：睡覺狀態不能直接跳到興奮狀態
-        if from_state == "sleeping" and to_state == "excited":
-            return False
-        return True
-```
-
-### **問題 3：缺少狀態持續時間**
-
-**建議添加：**
-```python
-@dataclass
-class State:
-    key: str
-    label: str
-    min_duration_ms: int = 0  # 最小持續時間
-    auto_transition_to: str | None = None  # 自動轉換到哪個狀態
-```
-
 ---
 
 ## 📂 文件結構映射
 
 ```
 doro_app/
-├── 【FSM 核心】⭐ UPDATED
-│   ├── state_models.py (327行)          # State, MoveState, TransitionState, Collections
-│   ├── state_service.py (560行)         # StateService (FSM 大腦)
-│   └── state_repository.py (500行)      # 數據持久化 (含 TransitionStateRepository)
+├── 【FSM 核心】 core/state/
+│   ├── models.py (392行)                # State, MoveState, TransitionState, Collections
+│   ├── service.py (860行)               # StateService (FSM 大腦)
+│   ├── repository.py (741行)            # 數據持久化 (含 TransitionStateRepository)
+│   ├── transition_player.py (257行)     # 轉換動畫播放器
+│   ├── transition_coordinator.py (180行) # 轉換協調器
+│   ├── gif_manager.py (189行)           # GIF 資源管理
+│   └── state_parser.py (131行)          # 狀態解析
 │
-├── 【UI 層】⭐ UPDATED
-│   ├── window.py (1778行)               # 主視窗
-│   ├── bubble_controller.py (159行)     # 氣泡控制
-│   ├── movement_manager.py (462行)      # 移動管理
-│   ├── themed_menu.py (258行)           # 粉紅主題選單
-│   └── state_dialogs.py (770行)         # 狀態管理對話框 (新增動作類型選擇)
-│       ├── GifVariantDialog             # GIF 變體管理
-│       ├── AddStateDialog               # 新增狀態
-│       ├── MoveStateManagerDialog ⭐    # 動作管理主介面 (含 GIF 預覽表格)
-│       └── EditMoveStateDialog ⭐       # 動作編輯 (支援 Movement/Transition)
+├── 【核心管理】 core/
+│   ├── core_manager.py (237行)          # 業務邏輯層協調器
+│   └── exceptions.py (206行)            # 統一例外階層
 │
-├── 【LLM 層】
-│   ├── chat_orchestrator.py (156行)     # 協調器 (連接 LLM 和 FSM)
-│   ├── chat_controller.py (253行)       # 聊天控制器
-│   ├── chat.py (132行)                  # HTTP 工具
-│   └── workers.py (33行)                # 異步執行
+├── 【移動系統】 core/movement/
+│   ├── manager.py (413行)               # MovementManager (移動邏輯)
+│   ├── parser.py (114行)                # 移動指令解析
+│   └── port.py (25行)                   # Window Protocol
 │
-├── 【工具/配置】
-│   ├── actions.py (100行)               # 動作解析器
-│   ├── models.py (40行)                 # 舊模型 (待清理)
-│   └── theme.py (130行)                 # 主題管理
+├── 【LLM 層】 core/chat/
+│   ├── orchestrator.py (283行)          # 協調器 (連接 LLM 和 FSM)
+│   ├── controller.py (523行)            # 聊天控制器 (含驗證和重試)
+│   ├── chat.py (176行)                  # HTTP 工具 (urllib)
+│   └── validator.py (156行)             # 回覆驗證器
 │
-└── 【入口】
-    └── cli.py (110行)                   # 應用程式啟動
+├── 【UI 層】 ui/
+│   ├── window.py (464行)                # 主視窗
+│   ├── components/
+│   │   ├── bubble_controller.py (194行) # 氣泡控制
+│   │   ├── gif_player.py (124行)        # GIF 播放器
+│   │   ├── context_menu_controller.py   # 右鍵選單
+│   │   └── frameless_dialog.py          # 無框對話框
+│   ├── controllers/
+│   │   ├── state_controller.py (193行)  # 狀態 → ViewModel
+│   │   ├── gif_controller.py (142行)    # GIF → ViewModel
+│   │   ├── sprite_controller.py (179行) # 精靈控制
+│   │   ├── click_action_controller.py   # 點擊動作
+│   │   └── dialog_manager.py            # 對話框管理
+│   ├── dialogs/
+│   │   ├── chat_dialog.py (310行)       # 聊天對話框
+│   │   ├── chat_settings_dialog.py      # 聊天設定
+│   │   ├── state/
+│   │   │   ├── manager_dialog.py (365行) # 狀態管理
+│   │   │   ├── add_dialog.py (116行)     # 新增狀態
+│   │   │   └── gif_gallery_dialog.py     # GIF 畫廊
+│   │   └── move_state/
+│   │       ├── manager_dialog.py (444行) # 動作管理
+│   │       └── edit_dialog.py (453行)    # 動作編輯
+│   ├── viewmodels/
+│   │   └── doro_viewmodel.py (271行)    # UI 狀態 ViewModel
+│   ├── rendering/
+│   │   ├── rendering_engine.py (302行)  # 繪製邏輯
+│   │   ├── design_tokens.py (147行)     # 設計 tokens
+│   │   ├── sprite_renderer.py           # 精靈渲染
+│   │   ├── gif_sprite_renderer.py       # GIF 渲染
+│   │   └── fallback_sprite.py           # 後備精靈
+│   ├── theme/
+│   │   ├── theme.py (170行)             # 主題管理
+│   │   └── themed_menu.py (388行)       # 粉紅主題選單
+│   ├── layout/
+│   │   └── layout_manager.py (263行)    # 視窗佈局
+│   ├── events/
+│   │   └── mouse_event_handler.py       # 滑鼠事件
+│   └── helpers/
+│       └── chat_ui_helper.py (223行)    # 聊天 UI 輔助
+│
+├── 【工具/配置】 utils/
+│   ├── actions.py (128行)               # 動作解析器
+│   ├── config_manager.py (418行)        # 配置管理
+│   ├── config_schema.py (190行)         # 配置結構
+│   ├── config_defaults.py               # 配置預設值
+│   ├── workers.py (52行)                # 異步工作器
+│   ├── logger.py (83行)                 # 日誌系統
+│   ├── paths.py (21行)                  # 路徑定義
+│   ├── prompts.py (33行)                # Prompt 管理
+│   ├── models.py (22行)                 # 通用模型
+│   └── utils.py (19行)                  # 通用工具
+│
+├── 【入口】
+│   ├── app.py (367行)                   # 應用程式入口和組裝
+│   ├── bootstrap.py (79行)              # 依賴注入
+│   ├── cli.py (108行)                   # CLI 入口
+│   └── constants.py (165行)             # 常數定義
+│
+└── 【資源】 res/
+    ├── click.txt                        # 點擊互動 prompt
+    ├── ACTION/                          # 動作定義
+    └── state/                           # 狀態資源
 ```
 
 ---
@@ -780,7 +784,7 @@ UI 更新反映變更
 
 ---
 
-## 🎯 總結：FSM 與 LMStudio 連接的清晰定義
+## 🎯 總結：FSM 與 LLM 連接的清晰定義
 
 ### **連接接口：ChatOrchestrator**
 
@@ -790,7 +794,7 @@ class ChatOrchestrator:
     LLM 和 FSM 之間的橋樑
 
     職責：
-    1. 接收用戶輸入 → 發送到 LMStudio
+    1. 接收用戶輸入 → 發送到 LLM 伺服器
     2. 接收 LLM 回覆 → 解析控制指令
     3. 執行指令 → 驅動 StateService (FSM)
     4. 更新 UI → 顯示結果
@@ -829,10 +833,4 @@ def _handle_actions_in_text(self, assistant_text: str) -> str:
 
 ---
 
-**你的 FSM 已經非常清晰了！LMStudio 連接也很明確，就是通過 ChatOrchestrator 解析文本指令來驅動狀態機。**
-
-需要我幫你優化某個特定部分嗎？比如：
-1. 讓 LLM 知道當前狀態？
-2. 添加狀態轉換規則？
-3. 改進指令解析系統？
-4. 其他想法？
+FSM 架構清晰，LLM 連接通過 ChatOrchestrator 解析文本指令來驅動狀態機。

@@ -21,9 +21,9 @@ python -m pytest tests/core/ --cov=doro_app --cov-report=term-missing
 ### Test Environment Setup
 
 **Dependencies:**
-- pytest
-- pytest-cov
-- ~~pytest-qt~~ (removed due to headless environment issues)
+- pytest>=7.4.0
+- pytest-cov>=4.1.0
+- pytest-qt>=4.2.0 (optional, for UI tests)
 
 **Install:**
 ```bash
@@ -32,14 +32,18 @@ pip install -e ".[test]"
 
 **Note:** UI tests (`tests/ui/`) are currently disabled due to Qt dependency issues in headless environments.
 
-## Test Status (2025-11-28)
+## Test Status (2026-03-22)
 
 ### Working
-- ✅ Core state management tests: 109 tests passing
-- ✅ State service tests
-- ✅ GIF operations tests
-- ✅ Persistence tests
+- ✅ 328+ 測試案例已收集，397 passing（含覆蓋率報告）
+- ✅ Core state management tests
+- ✅ State service, GIF operations, persistence tests
 - ✅ Exception handling tests
+- ✅ CoreManager tests (99% 覆蓋率)
+- ✅ ChatController tests (59% 覆蓋率)
+- ✅ ChatOrchestrator tests (73% 覆蓋率)
+- ✅ Integration tests (state lifecycle)
+- ✅ 覆蓋率報告已啟用 (pytest-cov)
 
 ### Temporarily Disabled
 - ⏸️ UI tests (require Qt GUI environment)
@@ -48,8 +52,8 @@ pip install -e ".[test]"
   - `tests/ui/components/test_gif_player.py`
 
 ### Known Issues
-1. **pytest-qt removed**: Qt GUI tests require X server or offscreen platform
-2. **Coverage disabled**: Temporarily disabled in pyproject.toml (line 44-47)
+1. **UI 測試需 Qt 環境**: Qt GUI tests require X server or offscreen platform
+2. **總覆蓋率 43%**: 詳見 [TEST_COVERAGE_REPORT.md](TEST_COVERAGE_REPORT.md)
 
 ## CI/CD Recommendations
 
@@ -150,5 +154,6 @@ python tests/manual/test_validator.py
 
 ---
 
-**Last Updated:** 2025-11-28
-**Test Status:** 109/109 core tests passing ✅
+**Last Updated:** 2026-03-22
+**Test Status:** 328+ tests collected, 397 passing (with coverage) ✅
+**Coverage:** 43% (2,078 / 4,880 lines)

@@ -2,7 +2,7 @@
 
 ## 概述
 
-當 doro 連不上 LM Studio 伺服器時，會從 `network_fail_doro.txt` 檔案中隨機挑選一句可愛的訊息顯示給用戶。
+當 doro 連不上 LLM 伺服器 伺服器時，會從 `network_fail_doro.txt` 檔案中隨機挑選一句可愛的訊息顯示給用戶。
 
 ---
 
@@ -109,7 +109,7 @@ def _on_request_failed(self, error_message: str, was_auto: bool):
 ## 🎯 觸發時機
 
 ### 連線失敗情況
-1. **LM Studio 未啟動**
+1. **LLM 伺服器 未啟動**
    ```
    ConnectionRefusedError: [Errno 111] Connection refused
    ```
@@ -217,8 +217,8 @@ nano doro_app/core/chat/network_fail_doro.txt
 
 ## 🧪 測試方法
 
-### 方法 1：關閉 LM Studio
-1. 關閉 LM Studio
+### 方法 1：關閉 LLM 伺服器
+1. 關閉 LLM 伺服器
 2. 在 doro 中點擊 Ask Doro
 3. 輸入訊息並發送
 4. 觀察顯示的錯誤訊息

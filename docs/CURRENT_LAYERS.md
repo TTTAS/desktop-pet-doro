@@ -8,7 +8,7 @@
 
 ## 1️⃣ 資料層 (Data/Persistence Layer)
 
-**位置：** `doro_app/core/state/repository.py`, `doro_app/utils/config_*.py`
+**位置：** `doro_app/core/state/repository.py`, `doro_app/utils/config_manager.py`, `doro_app/utils/config_schema.py`
 
 **職責：**
 - 資料的持久化（讀寫 JSON）
@@ -52,36 +52,40 @@ doro_app/
 ### 2a. 領域模型 (Domain Models)
 ```
 doro_app/core/state/
-└── models.py
+└── models.py (392行)
     ├── State                        # 狀態實體
     ├── MoveState                    # 移動狀態實體
-    ├── Transition                   # 轉換實體
+    ├── TransitionState              # 轉換實體
     ├── VisualConfig                 # 視覺配置值對象
     ├── StateCollection              # 狀態集合
     ├── MoveStateCollection          # 移動狀態集合
-    └── TransitionCollection         # 轉換集合
+    └── TransitionStateCollection    # 轉換集合
 ```
 
 ### 2b. 領域服務 (Domain Services)
 ```
 doro_app/core/
+├── core_manager.py                  # CoreManager (業務邏輯協調器)
+├── exceptions.py                    # 統一例外階層
+│
 ├── state/
-│   ├── service.py                   # StateService (FSM 核心)
-│   ├── transition_player.py        # 轉換播放器
-│   ├── transition_coordinator.py   # 轉換協調器
+│   ├── service.py                   # StateService (FSM 核心, 860行)
+│   ├── transition_player.py         # 轉換播放器
+│   ├── transition_coordinator.py    # 轉換協調器
 │   ├── gif_manager.py               # GIF 管理
 │   └── state_parser.py              # 狀態解析
 │
 ├── movement/
 │   ├── manager.py                   # MovementManager (移動邏輯)
 │   ├── parser.py                    # 移動指令解析
+│   ├── port.py                      # Window Protocol
 │   └── fakes.py                     # 測試用假對象
 │
 └── chat/
-    ├── chat.py                      # HTTP 聊天工具
-    ├── controller.py                # ChatController
+    ├── chat.py                      # HTTP 聊天工具 (urllib)
+    ├── controller.py                # ChatController (含驗證和重試)
     ├── orchestrator.py              # ChatOrchestrator
-    └── validator.py                 # 驗證器
+    └── validator.py                 # 回覆驗證器
 ```
 
 ---
@@ -129,7 +133,7 @@ doro_app/ui/controllers/
 ### 4a. UI 主視窗
 ```
 doro_app/ui/
-└── window.py
+└── window.py (464行)
     └── DoroWindow                   # 主視窗 (Qt Widget)
 ```
 
@@ -159,9 +163,11 @@ doro_app/ui/components/
 ```
 doro_app/ui/dialogs/
 ├── chat_dialog.py                   # 聊天對話框
+├── chat_settings_dialog.py          # 聊天設定對話框
 ├── state/
 │   ├── manager_dialog.py            # 狀態管理對話框
-│   └── add_dialog.py                # 新增狀態對話框
+│   ├── add_dialog.py                # 新增狀態對話框
+│   └── gif_gallery_dialog.py        # GIF 畫廊對話框
 └── move_state/
     ├── manager_dialog.py            # 動作管理對話框
     └── edit_dialog.py               # 編輯動作對話框
@@ -207,10 +213,13 @@ doro_app/
 │   ├── workers.py                   # 異步工作器
 │   ├── actions.py                   # 動作解析
 │   ├── prompts.py                   # Prompt 管理
-│   └── models.py                    # 通用模型
+│   ├── models.py                    # 通用模型
+│   ├── config_manager.py            # 配置管理
+│   ├── config_schema.py             # 配置結構定義
+│   └── config_defaults.py           # 配置預設值
 │
 ├── constants.py                     # 常數定義
-└── exceptions.py                    # 異常定義
+└── core/exceptions.py               # 統一例外階層
 ```
 
 ---

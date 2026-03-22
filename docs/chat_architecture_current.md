@@ -11,11 +11,11 @@ ChatOrchestrator (協調層)
     ↓
 ChatController (控制層)
     ↓
-ResponseValidator (驗證層) ← 新增
+ResponseValidator (驗證層)
     ↓
-ChatRequestWorker (網絡層)
+ChatWorker (網絡層)
     ↓
-LM Studio API
+LLM API (OpenAI 相容格式)
 ```
 
 ---
@@ -28,7 +28,7 @@ LM Studio API
 用戶 → 右鍵菜單「Ask Doro」→ ChatUIHelper.prompt_chat()
 ```
 
-**ChatUIHelper** (doro_app/ui/helpers/chat_ui.py):
+**ChatUIHelper** (doro_app/ui/helpers/chat_ui_helper.py):
 ```python
 def prompt_chat(self):
     dialog = QtWidgets.QInputDialog(self.window)
@@ -43,7 +43,7 @@ def prompt_chat(self):
 
 ### 2. 協調層處理
 
-**ChatOrchestrator** (doro_app/core/chat/orchestrator.py:41):
+**ChatOrchestrator** (doro_app/core/chat/orchestrator.py):
 ```python
 def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
     # 檢查是否有請求進行中
@@ -67,7 +67,7 @@ def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool
 
 ### 3. 控制層構建請求
 
-**ChatController** (doro_app/core/chat/controller.py:149):
+**ChatController** (doro_app/core/chat/controller.py):
 ```python
 def start_request(self, user_message: str, *, is_auto: bool = False) -> tuple[bool, str | None]:
     # 驗證消息非空
@@ -113,26 +113,10 @@ def start_request(self, user_message: str, *, is_auto: bool = False) -> tuple[bo
 
 ### 4. 網絡層發送請求
 
-**ChatRequestWorker** (doro_app/utils/workers.py):
-```python
-def run(self):
-    try:
-        response = requests.post(
-            self.endpoint,
-            json=self.payload,
-            timeout=self.timeout_seconds
-        )
+**ChatWorker** (doro_app/utils/workers.py):
 
-        # 解析響應
-        assistant_text = ChatResponseParser.extract_assistant_text(response.json())
-
-        if assistant_text:
-            self.finished.emit(assistant_text)
-        else:
-            self.error.emit("No response content")
-    except Exception as e:
-        self.error.emit(str(e))
-```
+使用 `urllib.request` 發送 HTTP POST 請求到 LLM 伺服器（OpenAI 相容格式），
+並在獨立 QThread 中執行以避免阻塞 UI。
 
 ### 5. **驗證層檢查響應（新增）**
 
@@ -170,47 +154,14 @@ def _handle_worker_finished(self, assistant_text: str):
     self.request_succeeded.emit(assistant_text, was_auto)
 ```
 
-**ResponseValidator.validate()** (validator.py:59):
-```python
-def validate(self, response: str) -> ValidationResult:
-    # 解析 actions
-    cleaned_text, actions = parse_actions_from_text(response)
+**ResponseValidator.validate()** (validator.py):
 
-    # 驗證狀態令牌
-    for kind, token in actions:
-        if kind == "paren":  # (HAPPY)
-            if not self._state_service.has_state(token):
-                # 嘗試按標籤查找
-                found_key = self._state_service.find_state_by_label(token)
-                if not found_key:
-                    invalid_states.append(token)
-
-    # 驗證移動令牌
-    for kind, token in actions:
-        if kind == "bracket":  # [MOVE:dir=left;distance=80]
-            match = self._MOVE_BRACKET_PATTERN.search(token)
-            if match:
-                direction = match.group(1).lower()
-                if direction not in MOVE_DIRECTIONS:
-                    invalid_directions.append(direction)
-
-    # 構建錯誤消息
-    if invalid_states:
-        available = ", ".join(self._state_service.visible_state_keys())
-        return ValidationResult.failure(
-            f"Invalid state(s): {', '.join(invalid_states)}. "
-            f"Available states: {available}"
-        )
-
-    if invalid_directions:
-        return ValidationResult.failure(
-            f"Invalid movement direction(s): {', '.join(invalid_directions)}. "
-            f"Valid directions: left, right, up, down, ..."
-        )
-
-    # 驗證通過
-    return ValidationResult.success(has_state=..., has_movement=..., has_dialogue=...)
-```
+驗證邏輯（當前版本）：
+1. 檢查回覆是否為空
+2. 解析 actions（狀態令牌和移動令牌）
+3. **狀態令牌：不再驗證**（標記存在即可，無效狀態由 orchestrator fallback 處理）
+4. **移動令牌：驗證方向是否合法**（left/right/up/down/upleft/upright/downleft/downright）
+5. 只有**無效移動方向**會觸發重試
 
 ### 6. 協調層處理響應
 
@@ -253,7 +204,7 @@ def _handle_actions_in_text(self, assistant_text: str) -> str:
 ## 🧩 各組件職責
 
 ### ChatUIHelper (UI層)
-**文件**: `doro_app/ui/helpers/chat_ui.py`
+**文件**: `doro_app/ui/helpers/chat_ui_helper.py`
 
 **職責**:
 - 顯示輸入對話框
@@ -298,48 +249,51 @@ def _handle_actions_in_text(self, assistant_text: str) -> str:
 - `_handle_worker_finished()` - 處理響應（含驗證）
 - `_build_chat_payload()` - 構建請求 payload
 
-### ResponseValidator (驗證層) ✨ 新增
+### ResponseValidator (驗證層)
 **文件**: `doro_app/core/chat/validator.py`
 
 **職責**:
-- 驗證狀態令牌是否存在於 StateService
-- 驗證移動方向是否有效
+- 檢查回覆是否為空
+- 驗證移動方向是否有效（唯一的重試觸發條件）
 - 構建重試提示（包含錯誤詳情）
+- **注意**：狀態令牌不再驗證（由 orchestrator fallback 處理）
 
 **關鍵方法**:
 - `validate(response)` - 驗證響應格式
 - `should_retry(result)` - 判斷是否應重試
 - `build_retry_prompt(result, original_message)` - 構建重試提示
 
-### ChatRequestWorker (網絡層)
+### ChatWorker (網絡層)
 **文件**: `doro_app/utils/workers.py`
 
 **職責**:
-- 在獨立線程發送 HTTP 請求
-- 解析 OpenAI 格式響應
+- 在獨立 QThread 發送 HTTP 請求（urllib）
+- 解析 OpenAI 相容格式響應
 - 發送 finished/error 信號
 
 ---
 
 ## 🔁 重試邏輯流程
 
+**注意：** 當前版本中，只有**無效移動方向**會觸發重試。無效狀態不會重試（由 orchestrator fallback 處理）。
+
 ```
-用戶: "跟我打招呼"
+用戶: "往左走"
     ↓
-LLM 返回: "(HAPPY) 嗨～人你好呀～"
+LLM 返回: "(idle) 好的～ [MOVE:dir=forward;distance=50]"
     ↓
-Validator: 檢查 "HAPPY" 狀態
+Validator: 檢查 "forward" 方向
     ↓
-❌ StateService 只有 "idle" 和 "stand"
+❌ "forward" 不在合法方向列表中
     ↓
-ValidationResult.failure("Invalid state(s): HAPPY. Available states: idle, stand")
+ValidationResult.failure("Invalid movement direction(s): forward. Valid directions: left, right, ...")
     ↓
 should_retry? ✅ (retry_count=0 < max_retries=2)
     ↓
 構建重試提示:
-"跟我打招呼
+"往左走
 
-[系統提示] 你上次的回應格式有誤: Invalid state(s): HAPPY. Available states: idle, stand
+[系統提示] 你上次的回應格式有誤: Invalid movement direction(s): forward.
 請重新回答，確保使用正確的狀態和格式。"
     ↓
 ⏱️ QTimer.singleShot(150ms) - 延遲重試
@@ -348,63 +302,23 @@ retry_count = 1
     ↓
 再次發送請求
     ↓
-LLM 返回: "(idle) 嗨～人你好呀～"
+LLM 返回: "(idle) 好的～ [MOVE:dir=left;distance=50]"
     ↓
-Validator: 檢查 "idle" 狀態
+Validator: 檢查 "left" 方向
     ↓
 ✅ 驗證通過
     ↓
-添加到對話歷史
-    ↓
-emit request_succeeded
-    ↓
-顯示對話泡泡: "嗨～人你好呀～"
-    ↓
-切換狀態到 "idle"
+添加到對話歷史 → emit request_succeeded → 執行移動
 ```
 
 ---
 
 ## ⚠️ 當前已知問題
 
-### 問題 1：Prompt 和 StateService 不同步
+### 已修復的問題
 
-**Prompt 定義的狀態** (`doro_app/core/chat/dia_prompt.txt`):
-```
-HAPPY, SAD, SHY, SLEEPY, EXCITED, THINK, IDLE
-```
-
-**StateService 實際狀態**:
-```
-idle, stand
-```
-
-**影響**:
-- LLM 根據 prompt 輸出 `(HAPPY)`
-- Validator 檢測到 `HAPPY` 不在 StateService 中
-- 觸發重試
-- 如果重試後仍使用無效狀態，達到最大重試次數
-- 顯示錯誤: "Response validation failed: Invalid state(s): HAPPY. Available states: idle, stand"
-
-**解決方案**:
-
-**選項 A**: 添加缺失的狀態到 StateService
-- 創建 HAPPY, SAD, SHY, SLEEPY, EXCITED, THINK 狀態
-- 為每個狀態配置 GIF
-
-**選項 B**: 修改 prompt 只使用現有狀態
-- 把所有範例改為使用 `idle` 和 `stand`
-- 缺點：失去情緒表達能力
-
-### 問題 2：QThread 清理競爭條件 ✅ 已修復
-
-**問題**:
-重試時立即創建新線程，舊線程還未完成清理 → `QThread: Destroyed while thread is still running`
-
-**修復**:
-使用 `QTimer.singleShot(150ms)` 延遲重試，給舊線程時間清理
-
-**修復位置**: `doro_app/core/chat/controller.py:234`
+1. ✅ **QThread 清理競爭條件** — 使用 `QTimer.singleShot(150ms)` 延遲重試
+2. ✅ **狀態驗證過於嚴格** — 無效狀態不再觸發重試，改由 orchestrator fallback 處理
 
 ---
 
@@ -439,7 +353,7 @@ idle, stand
                   │
                   ↓
 ┌─────────────────────────────────────────────────┐
-│           ChatRequestWorker (QThread)            │
+│           ChatWorker (QThread)            │
 │  ┌──────────────────────────────────────────┐  │
 │  │ run()                                     │  │
 │  │  - requests.post(endpoint, payload)       │  │
@@ -497,13 +411,12 @@ idle, stand
 
 ## 🔧 配置項
 
-### ChatController 配置 (QSettings)
+### ChatController 配置 (ConfigManager)
 ```python
-chat/server_url = "http://localhost:1234"
-chat/model = "lmstudio"
-chat/endpoint_path = "/v1/chat/completions"
-chat/timeout_seconds = 30
-chat/temperature = 0.7
+chat/server_url = "http://localhost:1234"   # LLM 伺服器地址
+chat/endpoint_path = "/v1/chat/completions" # API 端點路徑
+chat/timeout_seconds = 30                   # 請求超時
+chat/temperature = 0.7                      # LLM 溫度
 ```
 
 ### Validator 配置 (Hard-coded)
@@ -523,7 +436,7 @@ self._max_retries = 2  # controller.py:55
 
 ### 正常流程日誌
 ```
-ChatController initialized: server=http://localhost:1234, model=lmstudio, timeout=30s
+ChatController initialized: server=http://localhost:1234, timeout=30s
 Sending chat message (auto=False, silent=False): 跟我打招呼...
 Starting chat request (auto=False): 跟我打招呼...
 Chat request started, setting busy state
@@ -532,25 +445,20 @@ Response validation passed (state=True, movement=False, dialogue=True)
 Chat request succeeded, response length: 45
 ```
 
-### 驗證失敗流程日誌
+### 驗證失敗流程日誌（移動方向錯誤）
 ```
 Worker finished successfully, response length: 50
-Response validation failed: Invalid state(s): HAPPY. Available states: idle, stand
+Response validation failed: Invalid movement direction(s): forward. Valid directions: left, right, up, down, ...
 Retrying request (attempt 1/2)
-Resetting worker state
-Worker thread finished
-Starting chat request (retry 1/2) (auto=False): 跟我打招呼...
+...
 ```
 
 ### 重試用盡流程日誌
 ```
-Response validation failed: Invalid state(s): HAPPY. Available states: idle, stand
+Response validation failed: Invalid movement direction(s): forward
 Retrying request (attempt 1/2)
 ...
-Response validation failed: Invalid state(s): HAPPY. Available states: idle, stand
-Retrying request (attempt 2/2)
-...
-Response validation failed after 2 retries: Invalid state(s): HAPPY. Available states: idle, stand
+Response validation failed after 2 retries
 Chat request failed (auto=False): Response validation failed: ...
 ```
 
@@ -566,11 +474,6 @@ Chat request failed (auto=False): Response validation failed: ...
 5. **詳細日誌**: 所有操作都有記錄
 
 ### ⚠️ 需要注意
-1. **狀態同步**: Prompt 中的狀態必須在 StateService 中存在
+1. **重試範圍窄**: 目前只有無效移動方向會觸發重試
 2. **重試延遲**: 每次重試增加 ~2-5 秒（LLM 響應時間）
 3. **最大重試**: 達到 2 次後會顯示錯誤給用戶
-
-### 🚀 未來改進
-1. **JSON Schema**: 如果 LM Studio 支持，可升級到 100% 可靠性
-2. **Function Calling**: 更自然的 LLM 交互方式
-3. **動態狀態載入**: 從配置文件自動同步到 prompt

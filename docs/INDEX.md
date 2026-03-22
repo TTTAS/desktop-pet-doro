@@ -1,7 +1,7 @@
 # Doro 專案文檔索引
 
-> **最後更新：** 2024-12-11
-> **文檔總數：** 14
+> **最後更新：** 2026-03-22
+> **文檔總數：** 15
 
 ---
 
@@ -24,9 +24,8 @@
    - **適合：** 理解整體架構
 
 3. **[當前分層架構](CURRENT_LAYERS.md)**
-   - 5 層架構詳解（資料層、領域層、應用層、UI 層、基礎設施層）
+   - 5 層架構分析（資料層、領域層、應用層、UI 層、基礎設施層）
    - 層與層之間的依賴方向
-   - 目前的架構問題
    - **適合：** 深入了解分層設計
 
 ---
@@ -88,16 +87,21 @@
     - 日誌檔案位置
     - **適合：** 日常開發
 
+12. **[測試覆蓋率報告](TEST_COVERAGE_REPORT.md)**
+    - 分層覆蓋率分析
+    - 風險評估與改進建議
+    - **適合：** 了解測試品質
+
 ---
 
 ## 📋 待辦與計劃
 
-12. **[Backlog](BACKLOG.md)**
+13. **[Backlog](BACKLOG.md)**
     - 待完成的功能
     - 已知問題
     - **適合：** 查看待辦事項
 
-13. **[審查筆記](review.md)**
+14. **[審查筆記](review.md)**
     - 代碼審查記錄
     - **適合：** Code Review
 
@@ -126,10 +130,10 @@
 | **核心文檔** | 3 | BEST_PRACTICES, ARCHITECTURE, CURRENT_LAYERS |
 | **歷史記錄** | 3 | REFACTORING_SUMMARY, IMPROVEMENTS_SUMMARY, CHANGELOG |
 | **功能設計** | 3 | chat_architecture, chat_dialog_design, network_fail_messages |
-| **開發指南** | 2 | TESTING, LOGGING_GUIDE |
+| **開發指南** | 3 | TESTING, LOGGING_GUIDE, TEST_COVERAGE_REPORT |
 | **待辦計劃** | 2 | BACKLOG, review |
 | **本索引** | 1 | INDEX.md |
-| **總計** | **14** | |
+| **總計** | **15** | |
 
 ---
 
@@ -199,3 +203,4 @@
 
 **維護者：** Doro 開發團隊
 **更新頻率：** 每次新增/刪除文檔時更新
+**最後更新：** 2026-03-22

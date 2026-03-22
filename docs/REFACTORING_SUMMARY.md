@@ -14,7 +14,7 @@
 
 ### 1. 創建 CoreManager（業務邏輯層協調器）
 
-**文件：** `doro_app/core/core_manager.py` (243 行)
+**文件：** `doro_app/core/core_manager.py` (237 行)
 
 **職責：**
 - 管理所有核心業務邏輯組件
@@ -161,7 +161,7 @@ def _on_bubble_scale_changed(scale: float)
 ```
 ┌─────────────────────┐
 │    DoroWindow       │
-│   (715 lines)       │
+│   (原 715 lines)       │
 │                     │
 │ ❌ 直接持有：        │
 │  - TransitionPlayer │◄─┐ 循環依賴
@@ -342,7 +342,7 @@ StateController 的 `state_changed` 信號同時連接到：
    - 決定是否需要拆分
 
 7. **StateService 重構**
-   - 752 行的 God Object
+   - 860 行的 God Object
    - 考慮拆分為多個服務
 
 ---
@@ -358,7 +358,7 @@ StateController 的 `state_changed` 信號同時連接到：
   - `window.py` - 新增信號處理方法
 
 ### 新增代碼
-- `CoreManager`: 243 行
+- `CoreManager`: 237 行
 - `DoroApp` 連接方法: ~120 行
 - `Window` 信號處理: ~50 行
 
