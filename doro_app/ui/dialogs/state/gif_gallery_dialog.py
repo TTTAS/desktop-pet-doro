@@ -263,6 +263,10 @@ class GifGalleryDialog(FramelessDialog):
         if self._thumbnails:
             self._refresh_grid()
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def cleanup(self) -> None:
+        """Release GIF file handles (call before deleting GIF files)."""
         self._gif_player.clear()
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.cleanup()
         super().closeEvent(event)

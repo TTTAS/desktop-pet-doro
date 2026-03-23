@@ -1,4 +1,4 @@
-[2026-03-07 12:40:01] 可使用的狀態為:
+[2026-03-18 22:02:24] 可使用的狀態為:
 - (idle) Idle | type: transition | GIF: C:\Users\KHUser\Desktop\doro\doro_app\res\state\idle.gif
 - (stand) stand | type: transition | GIF: 2 GIFs
 

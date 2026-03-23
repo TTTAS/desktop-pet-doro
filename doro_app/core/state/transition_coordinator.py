@@ -177,4 +177,4 @@ class TransitionCoordinator:
         Returns:
             Dictionary mapping transition keys to Transition objects
         """
-        return self._transitions._items
+        return self._transitions.all_items()

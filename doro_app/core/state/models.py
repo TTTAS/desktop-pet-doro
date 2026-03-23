@@ -124,6 +124,10 @@ class BaseCollection(Generic[T]):
         """Get all item keys."""
         return list(self._items.keys())
 
+    def all_items(self) -> dict[str, T]:
+        """Get all items as a dictionary."""
+        return dict(self._items)
+
     def __len__(self) -> int:
         """Get number of items in collection."""
         return len(self._items)

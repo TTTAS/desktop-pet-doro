@@ -40,6 +40,14 @@ class RenderingEngine:
             view_model: ViewModel containing presentation state
         """
         self._view_model = view_model
+        self._panel_font = self._make_panel_font()
+
+    @staticmethod
+    def _make_panel_font() -> QtGui.QFont:
+        font = QtGui.QFont()
+        font.setPointSizeF(12.0)
+        font.setWeight(QtGui.QFont.Weight.DemiBold)
+        return font
 
     def calculate_sprite_center(
         self,
@@ -147,9 +155,7 @@ class RenderingEngine:
         inner_padding_x = tokens.spacing.bubble_inner_x
         inner_padding_y = tokens.spacing.bubble_inner_y
 
-        font = QtGui.QFont()
-        font.setPointSizeF(12.0)
-        font.setWeight(QtGui.QFont.Weight.DemiBold)
+        font = self._panel_font
         metrics = QtGui.QFontMetrics(font)
 
         text_flags = int(

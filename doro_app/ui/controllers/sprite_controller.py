@@ -167,13 +167,5 @@ class SpriteController(QtCore.QObject):
         if not self._current_movie:
             return
 
-        frame_rect = self._current_movie.frameRect()
-        if frame_rect.isValid():
-            frame_size = frame_rect.size()
-            current_size = self._view_model.sprite_size
-            if frame_size != current_size:
-                self._view_model.set_sprite_size(QtCore.QSize(frame_size))
-                self.sprite_size_changed.emit(QtCore.QSize(frame_size))
-
         self.frame_changed.emit(frame_number)
         self.repaint_requested.emit()
