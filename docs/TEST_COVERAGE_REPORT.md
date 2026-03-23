@@ -106,35 +106,34 @@
 
 ## ⚠️ 關鍵風險
 
-### 風險 1：核心業務邏輯未測試
+### 風險 1：TransitionPlayer 和 MovementManager 未充分測試
 
 ```
-CoreManager (0%) → 協調所有業務邏輯
-ChatController (0%) → 聊天核心功能
-ChatOrchestrator (0%) → 聊天協調
-TransitionPlayer (0%) → 狀態轉換動畫
+TransitionPlayer: 0% → 狀態轉換動畫完全無保護
+MovementManager: 19% (48/248 行) → 移動邏輯大部分未覆蓋
 ```
 
 **影響：** 如果重構這些組件，無法保證功能不被破壞。
 
 ---
 
-### 風險 2：MovementManager 覆蓋率低
+### 風險 2：UI 層完全未測試
 
 ```
-MovementManager: 19% (48/248 行)
+UI 層總計：1,096 行，0% 覆蓋
 ```
-
-**已覆蓋：** 基本初始化
-**未覆蓋：** 移動解析、執行、方向計算（200+ 行）
-
----
-
-### 風險 3：UI 層完全未測試
 
 雖然 UI 層測試困難，但至少應該測試：
 - Controller 的邏輯（不需要真實 Qt Widget）
 - ViewModel 的狀態管理（已測試 ✅）
+
+---
+
+### 已解決的風險
+
+- ✅ **CoreManager (99%)** — 架構核心已有完整保護
+- ✅ **ChatController (59%)** — 聊天功能有基本保護
+- ✅ **ChatOrchestrator (73%)** — 聊天協調已覆蓋
 
 ---
 
@@ -273,12 +272,12 @@ def test_state_controller_updates_viewmodel():
 
 ### 階段性目標
 
-| 階段 | 目標 | 時間 | 關鍵組件 |
+| 階段 | 目標 | 狀態 | 關鍵組件 |
 |------|------|------|----------|
-| **當前** | 30% | - | StateService, Models, Utils |
-| **階段 1** | 50% | 1 週 | + CoreManager, ChatController |
-| **階段 2** | 60% | 2 週 | + TransitionPlayer, MovementManager |
-| **階段 3** | 70% | 1 月 | + Controller 邏輯 |
+| **階段 0** | 30% | ✅ 已達成 | StateService, Models, Utils |
+| **當前** | 43% | ✅ 已達成 | + CoreManager(99%), ChatController(59%), ChatOrchestrator(73%) |
+| **階段 2** | 60% | ⏭️ 進行中 | + TransitionPlayer, MovementManager |
+| **階段 3** | 70% | 待開始 | + Controller 邏輯 |
 
 ### 最終目標
 
@@ -351,9 +350,9 @@ PASSED tests/test_smoke.py::TestChatControllerSmoke::test_chat_controller_has_ba
 
 ### 2. 核心邏輯必須優先測試
 
-**問題：** StateService (84%) 測試良好，但 CoreManager (0%) 完全未測試
+**問題：** StateService (84%) 測試良好，CoreManager 已從 0% 提升至 99%
 
-**正確做法：** 越核心的組件，越應該優先測試
+**正確做法：** 越核心的組件，越應該優先測試（已實踐）
 
 ---
 

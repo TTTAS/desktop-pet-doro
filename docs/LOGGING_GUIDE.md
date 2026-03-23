@@ -13,7 +13,7 @@
 - ✅ 加入詳細日誌記錄安全事件
 
 ### 3. 日誌系統建立
-- ✅ 新增 `doro_app/logger.py` - 集中式日誌配置
+- ✅ 新增 `doro_app/utils/logger.py` - 集中式日誌配置
 - ✅ 日誌存放位置：`~/.doro/doro.log`
 - ✅ 自動建立日誌目錄
 - ✅ 同時輸出到檔案和控制台
@@ -26,7 +26,7 @@
 
 ```python
 # 1. 匯入 logger
-from .logger import get_logger
+from doro_app.utils.logger import get_logger
 
 # 2. 建立 logger 實例（使用模組名稱）
 logger = get_logger(__name__)
@@ -62,17 +62,24 @@ def load_state(self, key: str):
 
 ## 📊 已加入日誌的模組
 
-### ✅ `state_repository.py`
+### ✅ `core/state/repository.py`
 - GIF 路徑解析（包含安全檢查）
 - 狀態載入/儲存操作
 - 錯誤處理
 
-### ✅ `state_service.py`
+### ✅ `core/state/service.py`
 - 狀態變更事件
 - 新增/移除狀態
 - GIF 管理
 
-### ✅ `window.py`
+### ✅ `core/chat/controller.py`
+- HTTP 請求/回應
+- 驗證和重試
+
+### ✅ `core/chat/orchestrator.py`
+- 聊天協調流程
+
+### ✅ `ui/window.py`
 - 視窗初始化
 
 ---
@@ -121,7 +128,7 @@ grep "WARNING" ~/.doro/doro.log
 
 ## 🛠️ 調整日誌等級
 
-### 修改 `logger.py` 中的預設等級
+### 修改 `utils/logger.py` 中的預設等級
 
 ```python
 def setup_logger(
@@ -148,9 +155,8 @@ logging.CRITICAL # 50 - 嚴重錯誤
 ## 📝 下一步建議
 
 ### 短期（繼續開發時加入）
-1. ✅ 在 `chat_controller.py` 加入日誌（HTTP 請求/回應）
-2. ✅ 在 `movement_manager.py` 加入日誌（移動計算）
-3. ✅ 在 `state_dialogs.py` 加入日誌（UI 操作）
+1. ✅ 在 `core/chat/controller.py` 加入日誌（HTTP 請求/回應）
+2. ✅ 在 `core/movement/manager.py` 加入日誌（移動計算）
 
 ### 中期（準備釋出前）
 1. 加入日誌輪替（避免日誌檔案無限增長）

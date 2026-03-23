@@ -279,7 +279,7 @@ class DoroMenu(QtWidgets.QMenu):
 def create_doro_menu(
     parent: QtWidgets.QWidget | None = None,
     avatar_position: str = "top-right",
-    gif_movie: QtGui.QMovie | None = None
+    avatar_pixmap: QtGui.QPixmap | None = None,
 ) -> DoroMenu:
     """
     Create a Doro-themed menu with optional avatar.
@@ -287,26 +287,15 @@ def create_doro_menu(
     Args:
         parent: Parent widget
         avatar_position: "top-left", "top-right", or "none"
-        gif_movie: QMovie to extract first frame as avatar
+        avatar_pixmap: Pre-rendered pixmap for the avatar (from SpriteRenderer)
 
     Returns:
         Configured DoroMenu instance
     """
     menu = DoroMenu(parent, avatar_position=avatar_position)
 
-    # Extract first frame from GIF if available
-    if gif_movie and gif_movie.isValid():
-        # Temporarily jump to first frame to get avatar
-        current_frame = gif_movie.currentFrameNumber()
-        gif_movie.jumpToFrame(0)
-        first_frame_pixmap = gif_movie.currentPixmap()
-
-        # Restore to current frame (to avoid disrupting animation)
-        if current_frame >= 0:
-            gif_movie.jumpToFrame(current_frame)
-
-        if not first_frame_pixmap.isNull():
-            menu.set_avatar(first_frame_pixmap)
+    if avatar_pixmap and not avatar_pixmap.isNull():
+        menu.set_avatar(avatar_pixmap)
 
     return menu
 

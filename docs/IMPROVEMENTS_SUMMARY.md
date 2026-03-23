@@ -85,8 +85,8 @@ self._gif_player.clear()  # 自動處理一切
 - ✅ 類型安全：完整 type hints
 
 **檔案**：
-- `ui/components/gif_player.py` (120 行)
-- `tests/ui/components/test_gif_player.py` (150 行)
+- `doro_app/ui/components/gif_player.py` (124 行)
+- `tests/ui/components/test_gif_player.py`
 
 **Commit**: `27da893`
 
@@ -134,8 +134,8 @@ outline_alpha = tokens.calculate_outline_alpha(base_alpha)
 - ✅ 易於調整：改一處影響全局
 
 **檔案**：
-- `ui/design_tokens.py` (150 行)
-- `tests/ui/test_design_tokens.py` (100 行)
+- `doro_app/ui/rendering/design_tokens.py` (147 行)
+- `tests/ui/test_design_tokens.py`
 
 **Commit**: `6f7384c`
 
@@ -182,8 +182,8 @@ except GifNotFoundError as e:
 - ✅ 20+ 測試案例
 
 **檔案**：
-- `core/exceptions.py` (200 行)
-- `tests/core/test_exceptions.py` (150 行)
+- `doro_app/core/exceptions.py` (206 行)
+- `tests/core/test_exceptions.py`
 
 **Commit**: `f9d85d9` (第一部分)
 
@@ -290,8 +290,9 @@ def test_full_state_customization_workflow(state_service):
 doro_app/
 ├── ui/
 │   ├── components/
-│   │   └── gif_player.py              (120 行) ✨ NEW
-│   ├── design_tokens.py               (150 行) ✨ NEW
+│   │   └── gif_player.py              (124 行) ✨ NEW
+│   ├── rendering/
+│   │   └── design_tokens.py           (147 行) ✨ NEW
 │   └── dialogs/
 │       ├── state/
 │       │   ├── manager_dialog.py      (270 行) ✨ NEW
@@ -300,7 +301,7 @@ doro_app/
 │           ├── manager_dialog.py      (305 行) ✨ NEW
 │           └── edit_dialog.py         (414 行) ✨ NEW
 └── core/
-    └── exceptions.py                  (200 行) ✨ NEW
+    └── exceptions.py                  (206 行) ✨ NEW
 ```
 
 ### 測試程式碼
@@ -347,12 +348,10 @@ tests/
 - ✅ 整合測試
 
 ### 未來可選（非必要）
-- ⬜ 提取 `BubblePainter` 類別 (window.py:792-942)
-- ⬜ 提取 `SpriteRenderer` 類別 (window.py:452-473)
-- ⬜ 重構 `DoroWindow.__init__` (151 行)
-- ⬜ 在程式碼中使用 DesignTokens（替換魔法數字）
-- ⬜ 在程式碼中使用自訂例外（替換 return None）
+- ⬜ 在程式碼中更廣泛使用 DesignTokens（替換魔法數字）
+- ⬜ 在程式碼中更廣泛使用自訂例外（替換 return None）
 - ⬜ 補充 UI 對話框測試的實作（目前是 placeholders）
+- ⬜ TransitionPlayer 測試（目前 0% 覆蓋率）
 
 ---
 

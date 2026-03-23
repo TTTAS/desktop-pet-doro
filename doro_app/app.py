@@ -19,7 +19,7 @@ from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .ui.components.context_menu_controller import ContextMenuController
-from .ui.controllers import ClickActionController, DialogManager, GifController, StateController
+from .ui.controllers import ClickActionController, DialogManager, SpriteController, StateController
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
@@ -85,7 +85,7 @@ class DoroApp:
             view_model=self.window.view_model,
             config_manager=self._config_manager,
         )
-        self._gif_controller = GifController(view_model=self.window.view_model)
+        self._sprite_controller = SpriteController(view_model=self.window.view_model)
         self._dialog_manager = DialogManager(
             parent_window=self.window,
             state_service=self._state_service,
@@ -262,10 +262,10 @@ class DoroApp:
         self._load_gif_for_state(target_state_key)
 
     def _load_gif_for_state(self, state_key: str):
-        """Resolve GIF path for a state and load it via GifController."""
+        """Resolve GIF path for a state and load it via SpriteController."""
         gif_path = self._state_service.get_gif_path(state_key)
         if gif_path:
-            self._gif_controller.load_gif(str(gif_path))
+            self._sprite_controller.load_sprite(str(gif_path))
 
     def _on_bubble_toggle_requested(self, state_key: str, checked: bool):
         """Handle bubble toggle from UI — delegates to StateController + BubbleController."""
@@ -287,7 +287,7 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         self.window.inject_controllers(
             state_controller=self._state_controller,
-            gif_controller=self._gif_controller,
+            sprite_controller=self._sprite_controller,
             dialog_manager=self._dialog_manager,
             click_action_controller=self._click_action_controller,
             bubble_controller=self._bubble_controller,
@@ -342,10 +342,12 @@ class DoroApp:
             self.window.on_state_list_updated
         )
 
-        self._gif_controller.repaint_requested.connect(self.window.update)
-        self._gif_controller.gif_loaded.connect(self.window.on_gif_loaded)
-        self._gif_controller.sprite_size_changed.connect(
-            self.window.on_sprite_size_changed
+        self._sprite_controller.repaint_requested.connect(self.window.update)
+        self._sprite_controller.sprite_renderer_changed.connect(
+            self.window.on_sprite_renderer_changed
+        )
+        self._sprite_controller.sprite_size_changed.connect(
+            lambda _: self.window.on_sprite_renderer_changed()
         )
 
         # ─────────────────────────────────────────────────────────
