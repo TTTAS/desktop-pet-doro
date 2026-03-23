@@ -1,7 +1,7 @@
 # Doro 專案文檔索引
 
-> **最後更新：** 2026-03-22
-> **文檔總數：** 15
+> **最後更新：** 2026-03-23
+> **文檔總數：** 13
 
 ---
 
@@ -18,15 +18,11 @@
    - **適合：** 所有開發者，尤其是新加入專案的人
 
 2. **[架構說明](ARCHITECTURE.md)**
-   - 系統架構概覽
+   - 系統架構概覽（三層設計：FSM、UI、LLM）
    - 模組職責說明
-   - 依賴關係圖
+   - 回覆驗證與重試機制
+   - 數據持久化完整規格
    - **適合：** 理解整體架構
-
-3. **[當前分層架構](CURRENT_LAYERS.md)**
-   - 5 層架構分析（資料層、領域層、應用層、UI 層、基礎設施層）
-   - 層與層之間的依賴方向
-   - **適合：** 深入了解分層設計
 
 ---
 
@@ -56,18 +52,12 @@
 
 ### Chat 功能
 
-7. **[Chat 架構](chat_architecture_current.md)**
-   - ChatController 設計
-   - ChatOrchestrator 職責
-   - 聊天流程說明
-   - **適合：** 開發聊天功能
-
-8. **[Chat 對話框設計](chat_dialog_design.md)**
+7. **[Chat 對話框設計](chat_dialog_design.md)**
    - UI 設計
    - 互動流程
    - **適合：** UI 開發
 
-9. **[網絡失敗訊息](network_fail_messages.md)**
+8. **[網絡失敗訊息](network_fail_messages.md)**
    - 錯誤訊息設計
    - 用戶體驗考慮
    - **適合：** 錯誤處理
@@ -76,18 +66,18 @@
 
 ## 📚 開發指南
 
-10. **[測試指南](TESTING.md)**
+9. **[測試指南](TESTING.md)**
     - 測試策略
     - 測試工具使用
     - **適合：** 編寫測試
 
-11. **[日誌使用指南](LOGGING_GUIDE.md)**
+10. **[日誌使用指南](LOGGING_GUIDE.md)**
     - 日誌等級使用
     - 如何在新模組添加日誌
     - 日誌檔案位置
     - **適合：** 日常開發
 
-12. **[測試覆蓋率報告](TEST_COVERAGE_REPORT.md)**
+11. **[測試覆蓋率報告](TEST_COVERAGE_REPORT.md)**
     - 分層覆蓋率分析
     - 風險評估與改進建議
     - **適合：** 了解測試品質
@@ -96,12 +86,12 @@
 
 ## 📋 待辦與計劃
 
-13. **[Backlog](BACKLOG.md)**
+12. **[Backlog](BACKLOG.md)**
     - 待完成的功能
     - 已知問題
     - **適合：** 查看待辦事項
 
-14. **[審查筆記](review.md)**
+13. **[審查筆記](review.md)**
     - 代碼審查記錄
     - **適合：** Code Review
 
@@ -114,9 +104,9 @@
 | 需求 | 推薦文檔 |
 |------|---------|
 | **了解專案教訓和最佳實踐** | [最佳實踐](BEST_PRACTICES.md) |
-| **理解系統架構** | [架構說明](ARCHITECTURE.md) → [分層架構](CURRENT_LAYERS.md) |
+| **理解系統架構** | [架構說明](ARCHITECTURE.md) |
 | **查看重構歷史** | [重構總結](REFACTORING_SUMMARY.md) |
-| **開發聊天功能** | [Chat 架構](chat_architecture_current.md) |
+| **開發聊天功能** | [架構說明](ARCHITECTURE.md)（LLM 層章節） |
 | **編寫測試** | [測試指南](TESTING.md) |
 | **添加日誌** | [日誌指南](LOGGING_GUIDE.md) |
 | **查看待辦事項** | [Backlog](BACKLOG.md) |
@@ -127,19 +117,27 @@
 
 | 類別 | 文件數 | 文檔 |
 |------|--------|------|
-| **核心文檔** | 3 | BEST_PRACTICES, ARCHITECTURE, CURRENT_LAYERS |
+| **核心文檔** | 2 | BEST_PRACTICES, ARCHITECTURE |
 | **歷史記錄** | 3 | REFACTORING_SUMMARY, IMPROVEMENTS_SUMMARY, CHANGELOG |
-| **功能設計** | 3 | chat_architecture, chat_dialog_design, network_fail_messages |
+| **功能設計** | 2 | chat_dialog_design, network_fail_messages |
 | **開發指南** | 3 | TESTING, LOGGING_GUIDE, TEST_COVERAGE_REPORT |
 | **待辦計劃** | 2 | BACKLOG, review |
 | **本索引** | 1 | INDEX.md |
-| **總計** | **15** | |
+| **總計** | **13** | |
 
 ---
 
-## 🗑️ 已清理的文檔（2024-12-11）
+## 🗑️ 已清理的文檔
 
-為了減少認知負擔和避免過時信息誤導，已刪除以下 24 個文檔：
+為了減少認知負擔和避免重複信息，已刪除以下文檔：
+
+**合併至 ARCHITECTURE.md（2026-03-23）：**
+- CURRENT_LAYERS.md — 內容與 ARCHITECTURE.md 重複
+- chat_architecture_current.md — 獨特內容已合併至 ARCHITECTURE.md
+
+**過時文檔清理（2024-12-11）：**
+
+已刪除以下 24 個文檔：
 
 **審計報告（已過時）：**
 - ARCHITECTURE_AUDIT.md
@@ -191,11 +189,11 @@
 
 1. [最佳實踐](BEST_PRACTICES.md) — 重構原則和檢查清單
 2. [重構總結](REFACTORING_SUMMARY.md) — 歷史重構經驗
-3. [分層架構](CURRENT_LAYERS.md) — 當前架構問題
+3. [架構說明](ARCHITECTURE.md) — 當前架構與已知問題
 
 ### 功能開發者
 
-1. [相關功能設計文檔](chat_architecture_current.md)
+1. [架構說明](ARCHITECTURE.md) — 系統架構與聊天流程
 2. [測試指南](TESTING.md) — 如何編寫測試
 3. [日誌指南](LOGGING_GUIDE.md) — 如何添加日誌
 
@@ -203,4 +201,4 @@
 
 **維護者：** Doro 開發團隊
 **更新頻率：** 每次新增/刪除文檔時更新
-**最後更新：** 2026-03-22
+**最後更新：** 2026-03-23

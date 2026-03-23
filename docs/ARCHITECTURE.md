@@ -467,6 +467,70 @@ StateService.on_state_changed = lambda event: update_ui(event.new_state)
 
 ## 🚀 改進建議
 
+### ⚠️ 目前的架構問題
+```
+❌ UI 層 (Window) 直接依賴領域層 (MovementManager, TransitionPlayer)
+   → 應該通過應用層 (Controllers/App) 連接
+
+❌ 領域層 (TransitionPlayer) 依賴 UI 層 (DoroWindow)
+   → 循環依賴！應該反轉依賴方向
+```
+
+---
+
+## 🔁 回覆驗證與重試機制
+
+### ResponseValidator 驗證邏輯
+1. 檢查回覆是否為空
+2. 解析 actions（狀態令牌和移動令牌）
+3. **狀態令牌：不驗證**（無效狀態由 orchestrator fallback 處理）
+4. **移動令牌：驗證方向是否合法**（left/right/up/down/upleft/upright/downleft/downright）
+5. 只有**無效移動方向**會觸發重試（最多 2 次）
+
+### 重試流程範例
+```
+用戶: "往左走"
+    ↓
+LLM 返回: "(idle) 好的～ [MOVE:dir=forward;distance=50]"
+    ↓
+Validator: "forward" 不在合法方向列表中
+    ↓
+構建重試提示 (附帶錯誤說明) → QTimer.singleShot(150ms) 延遲重試
+    ↓
+retry_count = 1, 再次發送請求
+    ↓
+LLM 返回: "(idle) 好的～ [MOVE:dir=left;distance=50]"
+    ↓
+✅ 驗證通過 → 添加到對話歷史 → 執行移動
+```
+
+### 日誌追蹤範例
+
+**正常流程：**
+```
+ChatController initialized: server=http://localhost:1234, timeout=30s
+Sending chat message (auto=False): 跟我打招呼...
+Worker finished successfully, response length: 45
+Response validation passed
+```
+
+**驗證失敗 + 重試：**
+```
+Response validation failed: Invalid movement direction(s): forward
+Retrying request (attempt 1/2)
+...
+Response validation passed  ← 重試成功
+```
+
+### 聊天配置項 (ConfigManager)
+```python
+chat/server_url = "http://localhost:1234"   # LLM 伺服器地址
+chat/endpoint_path = "/v1/chat/completions" # API 端點路徑
+chat/timeout_seconds = 30                   # 請求超時
+chat/temperature = 0.7                      # LLM 溫度
+# max_retries = 2  (hard-coded in controller.py)
+```
+
 ---
 
 ## 📂 文件結構映射
