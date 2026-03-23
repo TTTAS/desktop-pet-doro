@@ -18,6 +18,24 @@ from ...constants import (
 )
 
 
+def _make_panel_font() -> QtGui.QFont:
+    font = QtGui.QFont()
+    font.setPointSizeF(12.0)
+    font.setWeight(QtGui.QFont.Weight.Bold)
+    return font
+
+
+# Module-level cached font (created once, reused)
+_PANEL_FONT: QtGui.QFont | None = None
+
+
+def _get_panel_font() -> QtGui.QFont:
+    global _PANEL_FONT
+    if _PANEL_FONT is None:
+        _PANEL_FONT = _make_panel_font()
+    return _PANEL_FONT
+
+
 class WindowLayoutManager:
     """
     Static utility class for window layout calculations.
@@ -104,9 +122,7 @@ class WindowLayoutManager:
         available_text_width = max(PANEL_MIN_HEIGHT, panel_width - PANEL_PADDING)
 
         # Calculate text height
-        font = QtGui.QFont()
-        font.setPointSizeF(12.0)
-        font.setWeight(QtGui.QFont.Weight.Bold)
+        font = _get_panel_font()
         metrics = QtGui.QFontMetrics(font)
 
         if text:

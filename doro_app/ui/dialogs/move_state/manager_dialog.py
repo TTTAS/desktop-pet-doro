@@ -413,7 +413,7 @@ class MoveStateManagerDialog(FramelessDialog):
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             removed = dialog.removed_filenames
             added = dialog.added_paths
-            dialog._gif_player.clear()
+            dialog.cleanup()
             self._gif_player.clear()
             self._cards.clear()
 

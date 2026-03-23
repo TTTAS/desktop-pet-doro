@@ -190,7 +190,7 @@ class DoroApp:
         # ═════════════════════════════════════════════════════════════
 
         self._bubble_controller.text_changed.connect(
-            lambda *_: (self.window._apply_window_preferred_size(), self.window.update())
+            lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
         )
         self._bubble_controller.visibility_changed.connect(
             lambda *_: self.window.update()
@@ -257,9 +257,8 @@ class DoroApp:
         self._load_gif_for_state(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):
-        """Translate transition completed domain event to UI transition completion."""
-        self.window.current_state_key = target_state_key
-        self._load_gif_for_state(target_state_key)
+        """Translate transition completed domain event to UI GIF loading."""
+        self._on_domain_state_changed(target_state_key)
 
     def _load_gif_for_state(self, state_key: str):
         """Resolve GIF path for a state and load it via SpriteController."""

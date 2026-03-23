@@ -280,7 +280,7 @@ class EditMoveStateDialog(FramelessDialog):
             removed = dialog.removed_filenames
             added = dialog.added_paths
             # Release file handles before deleting GIFs (prevents WinError 32)
-            dialog._gif_player.clear()
+            dialog.cleanup()
             self._gif_player.clear()
 
             for filename in removed:

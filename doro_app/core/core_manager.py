@@ -202,10 +202,7 @@ class CoreManager(QtCore.QObject):
             target_state_key: Target state to load after transition
         """
         logger.debug(f"Transition completed for state: {target_state_key}")
-        # Emit domain event
         self.transition_completed.emit(target_state_key)
-        # Also emit state_changed since the state is now active
-        self.state_changed.emit(target_state_key)
 
     # ═══════════════════════════════════════════════════════════
     # Properties for external access (read-only)

@@ -71,10 +71,6 @@ class StateController(QtCore.QObject):
         state = event.new_state
         self._current_state_key = event.new_key
 
-        # Update state list text
-        state_list_text = self._state_service.write_state_list()
-        self.state_list_updated.emit(state_list_text)
-
         # Apply visual config to ViewModel
         visual = state.visual
         self._view_model.set_bob_amplitude(visual.bob_amplitude)

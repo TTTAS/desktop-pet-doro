@@ -143,7 +143,7 @@ class DoroWindow(QtWidgets.QWidget):
         # ─────────────────────────────────────────────────────────
         # Apply UI Preferences from Config
         # ─────────────────────────────────────────────────────────
-        self._apply_window_preferred_size()
+        self.apply_window_preferred_size()
 
         # ─────────────────────────────────────────────────────────
         # Context Menu and Window Positioning
@@ -225,7 +225,7 @@ class DoroWindow(QtWidgets.QWidget):
 
     def on_sprite_renderer_changed(self):
         """Handle sprite renderer content update from SpriteController."""
-        self._apply_window_preferred_size()
+        self.apply_window_preferred_size()
         self.update()
 
     # --- Animation -------------------------------------------------------
@@ -309,7 +309,7 @@ class DoroWindow(QtWidgets.QWidget):
             bubble_text,
         )
 
-    def _apply_window_preferred_size(self):
+    def apply_window_preferred_size(self):
         """Apply preferred window size. Delegates to WindowLayoutManager."""
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
