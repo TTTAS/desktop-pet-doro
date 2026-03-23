@@ -36,7 +36,7 @@ StateService (狀態服務)
     │   │   ├── key: str (唯一識別)
     │   │   ├── label: str (顯示名稱)
     │   │   ├── visual: VisualConfig (視覺配置)
-    │   │   ├── primary_gif_id: str (主要 GIF)
+    │   │   ├── gif_id: str (主要 GIF)
     │   │   └── variant_gif_ids: list (變體 GIF)
     │   └── 狀態轉換邏輯
     │
@@ -48,8 +48,8 @@ StateService (狀態服務)
     │       ├── default_distance: float
     │       └── default_speed: str (slow/med/fast)
     │
-    ├── TransitionStateCollection (狀態轉換集合) ⭐ NEW
-    │   └── TransitionState (轉換狀態)
+    ├── TransitionCollection (狀態轉換集合) ⭐ NEW
+    │   └── Transition (轉換狀態)
     │       ├── key: str (唯一識別)
     │       ├── from_state: str (起始狀態)
     │       ├── to_state: str (目標狀態)
@@ -75,7 +75,7 @@ StateRepository
 MoveStateRepository
     └── move_states.json (移動狀態定義)
 
-TransitionStateRepository ⭐ NEW
+TransitionRepository ⭐ NEW
     └── transitions.json (狀態轉換定義)
 
 GifRepository
@@ -135,15 +135,19 @@ DoroWindow (主視窗)
 
 **事件訂閱：**
 ```python
-# Window 訂閱 StateService 事件
-_state_service.on_state_changed = self._on_state_changed
-_state_service.on_states_modified = self._on_states_modified
+# StateController 訂閱 StateService callback 事件
+# StateService 使用 callback (非 Qt Signal) 通知狀態變更
+state_service.on_state_changed = state_controller._on_state_changed
 
-# 當狀態改變時
-def _on_state_changed(self, event: StateChangeEvent):
-    # 1. 更新視覺 (顏色、GIF)
-    # 2. 更新氣泡
-    # 3. 保存配置
+# StateController 透過 Qt Signal 通知 CoreManager 和 Window
+class StateController:
+    state_changed = Signal(str)  # 發送 state_key
+
+# CoreManager 接收並協調業務邏輯
+core_manager.on_state_changed(state_key)
+    # 1. 處理轉換動畫
+    # 2. 更新 GIF
+    # 3. 通過信號通知 UI 層更新
 ```
 
 **職責：**
@@ -175,8 +179,8 @@ ChatOrchestrator (聊天協調器)
     │   └── _handle_actions_in_text()
     │
     └── 狀態機驅動
-        ├── _find_state_for_action(token)
-        ├── _window.set_state(state_key)
+        ├── _state_service.parse_state_from_action(token)
+        ├── _state_service.set_state(state_key)
         └── _movement.apply_directional_move(direction)
 ```
 
@@ -214,11 +218,11 @@ StateService    MovementManager   BubbleController
 
 ---
 
-## 🎬 TransitionState：狀態轉換動畫系統 ⭐ NEW
+## 🎬 Transition：狀態轉換動畫系統 ⭐ NEW
 
 ### **核心概念**
 
-**TransitionState** 管理兩個狀態之間的過渡動畫。
+**Transition** 管理兩個狀態之間的過渡動畫。
 
 ```
 狀態 A (idle) → 轉換動畫 (transition.gif) → 狀態 B (happy)
@@ -228,7 +232,7 @@ StateService    MovementManager   BubbleController
 
 ```
 ┌─────────────────┬──────────────────┬─────────────────┐
-│     特性        │   MoveState      │ TransitionState │
+│     特性        │   MoveState      │ Transition      │
 ├─────────────────┼──────────────────┼─────────────────┤
 │ 用途            │ 移動動作          │ 狀態切換動畫     │
 │ 觸發時機        │ LLM 指令/手動     │ 狀態轉換時       │
@@ -243,7 +247,7 @@ StateService    MovementManager   BubbleController
 
 ```python
 @dataclass(frozen=True)
-class TransitionState:
+class Transition:
     key: str                          # "idle_to_happy"
     from_state: str                   # "idle"
     to_state: str                     # "happy"
@@ -271,7 +275,7 @@ if transition:
 5. 切換狀態：excited (興奮狀態)
 ```
 
-### **TransitionState vs Movement**
+### **Transition vs Movement**
 
 ```
 Movement (移動動作)：
@@ -328,21 +332,20 @@ cleaned_text, actions = parse_actions_from_text(assistant_text)
 # 3. 執行狀態轉換
 for kind, token in actions:
     if kind == "paren":  # (STATE: xxx)
-        state_key = self._window._find_state_for_action(token)
+        state_key = self._state_service.parse_state_from_action(token)
         if state_key:
-            self._window._set_state(state_key)  # ← FSM 狀態轉換
+            self._state_service.set_state(state_key)  # ← FSM 狀態轉換
 
     elif kind == "bracket":  # [MOVE: direction]
-        if self._movement.handle_move_bracket(token):
-            # ← 觸發移動
-            continue
+        if self._movement.handle_move_bracket(token, move_reports):
+            continue  # ← 觸發移動
 
 # 4. 狀態改變觸發視覺更新
 StateService.set_state(state_key)
     ↓
-on_state_changed 事件
+on_state_changed callback
     ↓
-DoroWindow._on_state_changed()
+StateController → CoreManager (Qt Signal)
     ↓
 更新 GIF、顏色、氣泡
 ```
@@ -471,9 +474,9 @@ StateService.on_state_changed = lambda event: update_ui(event.new_state)
 ```
 doro_app/
 ├── 【FSM 核心】 core/state/
-│   ├── models.py (392行)                # State, MoveState, TransitionState, Collections
+│   ├── models.py (392行)                # State, MoveState, Transition, Collections
 │   ├── service.py (860行)               # StateService (FSM 大腦)
-│   ├── repository.py (741行)            # 數據持久化 (含 TransitionStateRepository)
+│   ├── repository.py (741行)            # 數據持久化 (含 TransitionRepository)
 │   ├── transition_player.py (257行)     # 轉換動畫播放器
 │   ├── transition_coordinator.py (180行) # 轉換協調器
 │   ├── gif_manager.py (189行)           # GIF 資源管理
@@ -567,7 +570,7 @@ doro_app/
 
 儲存所有自訂狀態的配置（不包含內建的 `idle` 狀態）。
 
-**檔案路徑**: `~/.doro/STATE/states.json`
+**檔案路徑**: `res/state/states.json`
 
 **結構範例**:
 ```json
@@ -594,7 +597,7 @@ doro_app/
 
 定義所有移動動作及其參數。
 
-**檔案路徑**: `~/.doro/STATE/move_states.json`
+**檔案路徑**: `res/state/move_states.json`
 
 **結構範例**:
 ```json
@@ -634,7 +637,7 @@ doro_app/
 
 定義狀態之間的轉換動畫。
 
-**檔案路徑**: `~/.doro/STATE/transitions.json`
+**檔案路徑**: `res/state/transitions.json`
 
 **結構範例**:
 ```json
@@ -684,10 +687,10 @@ else:
 
 ### **4. GIF 資源目錄結構**
 
-**根目錄**: `~/.doro/STATE/`
+**根目錄**: `res/state/`
 
 ```
-STATE/
+state/
 ├── idle.gif                    # 內建 idle 狀態的 GIF
 ├── happy.gif                   # happy 狀態的主要 GIF
 ├── happy_variants/             # happy 狀態的變體 GIF 資料夾
@@ -726,7 +729,7 @@ StateService.initialize()
 │ 3. MoveStateRepository.load_all()│
 │    └─ 從 move_states.json 載入   │
 ├─────────────────────────────────┤
-│ 4. TransitionStateRepository     │
+│ 4. TransitionRepository           │
 │    .load_all() ⭐ NEW            │
 │    └─ 從 transitions.json 載入   │
 ├─────────────────────────────────┤
@@ -743,7 +746,7 @@ StateService.initialize()
 **觸發時機**:
 - 新增/編輯/刪除狀態
 - 新增/編輯/刪除 MoveState
-- 新增/編輯/刪除 TransitionState
+- 新增/編輯/刪除 Transition
 - 修改狀態的 GIF
 - 修改狀態的視覺配置
 
@@ -775,7 +778,7 @@ UI 更新反映變更
 4. **GIF 檔案存在性**: 檢查 GIF 檔案是否存在
 5. **狀態引用完整性**:
    - MoveState 的 `state_key` 是否指向存在的狀態
-   - TransitionState 的 `from_state` 和 `to_state` 是否存在
+   - Transition 的 `from_state` 和 `to_state` 是否存在
 
 **錯誤處理**:
 - 格式錯誤 → 跳過該項目，記錄警告
@@ -817,15 +820,18 @@ LLM 輸出格式：
 def _handle_actions_in_text(self, assistant_text: str) -> str:
     # 1. 解析指令
     cleaned_text, actions = parse_actions_from_text(assistant_text)
+    move_reports: list[str] = []
 
     # 2. 執行每個指令
     for kind, token in actions:
-        if kind == "paren":  # (STATE: xxx)
-            state_key = self._window._find_state_for_action(token)
-            self._window._set_state(state_key)  # ← 驅動 FSM
-
-        elif kind == "bracket":  # [MOVE: xxx]
-            self._movement.handle_move_bracket(token)  # ← 驅動移動
+        if kind == "bracket":  # [MOVE: xxx]
+            if self._movement.handle_move_bracket(token, move_reports):
+                continue
+        elif kind == "paren":  # (STATE: xxx)
+            state_key = self._state_service.parse_state_from_action(token)
+            if state_key:
+                self._state_service.set_state(state_key)  # ← 驅動 FSM
+                continue
 
     # 3. 返回清理後的文本
     return cleaned_text

@@ -2,7 +2,7 @@
 
 ## 概述
 
-當 doro 連不上 LLM 伺服器 伺服器時，會從 `network_fail_doro.txt` 檔案中隨機挑選一句可愛的訊息顯示給用戶。
+當 doro 連不上 LLM 伺服器時，會從 `network_fail_doro.txt` 檔案中隨機挑選一句可愛的訊息顯示給用戶。
 
 ---
 
