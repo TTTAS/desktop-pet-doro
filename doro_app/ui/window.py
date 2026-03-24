@@ -414,6 +414,9 @@ class DoroWindow(QtWidgets.QWidget):
     def on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
         """Handle transition movie loaded signal from TransitionPlayer."""
         if self._sprite_controller:
+            # Under Live2D mode, skip transition GIFs — model stays visible.
+            if self._sprite_controller.renderer_type == "live2d":
+                return
             self._sprite_controller.set_movie_directly(movie, sprite_size)
 
     def set_busy_cursor(self, enabled: bool):

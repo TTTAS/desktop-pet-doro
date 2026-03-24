@@ -254,6 +254,9 @@ class DoroApp:
     def _on_domain_state_changed(self, state_key: str):
         """Translate state changed domain event to UI GIF loading."""
         self.window.current_state_key = state_key
+        # Under Live2D mode the model is persistent — skip sprite reloading.
+        if self._sprite_controller.renderer_type == "live2d":
+            return
         self._load_gif_for_state(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):

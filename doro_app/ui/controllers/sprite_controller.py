@@ -124,10 +124,7 @@ class SpriteController(QtCore.QObject):
         Set a QMovie directly (used by TransitionPlayer for transition GIFs).
 
         This bypasses the normal load path — the caller owns the movie lifetime.
-        Temporarily switches to GIF renderer so the transition is visible
-        even when Live2D is the active renderer.
         """
-        self.switch_renderer("gif")
         self._gif_renderer.set_movie(movie)
         self._view_model.set_sprite_size(sprite_size)
         self.sprite_renderer_changed.emit()
