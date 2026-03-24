@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,6 +44,7 @@ class ContextMenuController:
         core_manager: CoreManager,
         chat_ui: ChatUIHelper,
         default_idle_gif: Path,
+        reload_sprite: Callable[[str], None] | None = None,
     ) -> None:
         self._window = window
         self._state_service = state_service
@@ -52,6 +54,7 @@ class ContextMenuController:
         self._core_manager = core_manager
         self._chat_ui = chat_ui
         self._default_idle_gif = default_idle_gif
+        self._reload_sprite = reload_sprite
 
     # ──────────────────────────────────────────────────────────
     # Public API
@@ -135,5 +138,6 @@ class ContextMenuController:
             self._state_controller.set_live2d_model(state_key, LIVE2D_MODEL_PATH)
         else:
             self._state_controller.clear_live2d_model(state_key)
-        # Re-trigger state to reload sprite
-        self._state_controller.set_state(state_key)
+        # Reload sprite for the current state (set_state skips same-key changes)
+        if self._reload_sprite:
+            self._reload_sprite(state_key)

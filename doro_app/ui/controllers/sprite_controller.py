@@ -176,7 +176,8 @@ class SpriteController(QtCore.QObject):
             self._current_movie = movie
             movie.frameChanged.connect(self._on_frame_changed)
 
-            # Update renderer + size
+            # Ensure GIF renderer is active + update size
+            self.switch_renderer("gif")
             self._gif_renderer.set_movie(movie)
 
             frame_rect = movie.frameRect()
