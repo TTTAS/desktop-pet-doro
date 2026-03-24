@@ -131,13 +131,13 @@ class ContextMenuController:
         )
 
     def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
-        """Toggle between Live2D and GIF mode for the current state."""
+        """Toggle Live2D mode globally (applies to all states)."""
         if not state_key:
             return
         if checked:
-            self._state_controller.set_live2d_model(state_key, LIVE2D_MODEL_PATH)
+            self._state_controller.set_live2d_model_all(LIVE2D_MODEL_PATH)
         else:
-            self._state_controller.clear_live2d_model(state_key)
-        # Reload sprite for the current state (set_state skips same-key changes)
+            self._state_controller.clear_live2d_model_all()
+        # Reload sprite for the current state
         if self._reload_sprite:
             self._reload_sprite(state_key)
