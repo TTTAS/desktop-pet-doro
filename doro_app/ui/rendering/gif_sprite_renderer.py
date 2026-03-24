@@ -43,6 +43,18 @@ class GifSpriteRenderer:
         """Direct access to underlying QMovie (needed by SpriteController)."""
         return self._movie
 
+    def _is_movie_alive(self) -> bool:
+        """Check if the underlying C++ QMovie object is still valid."""
+        if self._movie is None:
+            return False
+        try:
+            self._movie.state()  # lightweight C++ call
+            return True
+        except RuntimeError:
+            # C++ object already deleted
+            self._movie = None
+            return False
+
     # ── SpriteRenderer protocol ────────────────────────────────
 
     def render(
@@ -56,7 +68,7 @@ class GifSpriteRenderer:
         painter.translate(center.x(), center.y() + bob)
         painter.scale(scale, scale)
 
-        if self._movie and not self._movie.currentPixmap().isNull():
+        if self._is_movie_alive() and not self._movie.currentPixmap().isNull():
             pixmap = self._movie.currentPixmap()
             painter.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             painter.drawPixmap(0, 0, pixmap)
@@ -72,21 +84,17 @@ class GifSpriteRenderer:
         painter.restore()
 
     def current_size(self) -> QtCore.QSize:
-        if self._movie:
+        if self._is_movie_alive():
             rect = self._movie.frameRect()
             if rect.isValid():
                 return rect.size()
         return _FALLBACK_SIZE
 
     def is_valid(self) -> bool:
-        return (
-            self._movie is not None
-            and self._movie.isValid()
-            and not self._movie.currentPixmap().isNull()
-        )
+        return self._is_movie_alive() and not self._movie.currentPixmap().isNull()
 
     def current_pixmap(self) -> QtGui.QPixmap | None:
-        if self._movie and self._movie.isValid():
+        if self._is_movie_alive() and self._movie.isValid():
             pix = self._movie.currentPixmap()
             if not pix.isNull():
                 return pix
