@@ -240,6 +240,10 @@ class DoroWindow(QtWidgets.QWidget):
         # Signal business layer to process movement
         self.tick_requested.emit(dt)
 
+        # Advance sprite renderer (needed for Live2D frame generation)
+        if self._sprite_controller:
+            self._sprite_controller.tick(dt)
+
         # Use ViewModel for animation time
         self._view_model.tick(dt)
         self.update()
@@ -448,6 +452,10 @@ class DoroWindow(QtWidgets.QWidget):
             # Clear all GIF resources via SpriteController
             if self._sprite_controller:
                 self._sprite_controller.gif_player.clear()
+
+            # Dispose Live2D GL resources
+            if hasattr(self, '_sprite_renderer') and hasattr(self._sprite_renderer, 'dispose'):
+                self._sprite_renderer.dispose()
 
             if self._timer:
                 try:
