@@ -23,7 +23,7 @@ class MenuSnapshot:
     has_default_idle_gif: bool
     is_chat_inflight: bool
     has_chat_history: bool
-    has_live2d_model: bool = False  # current state has a Live2D model assigned
+    using_live2d: bool = False  # current state is using Live2D model
     live2d_available: bool = False  # live2d-py library is installed
 
 
@@ -36,8 +36,7 @@ class MenuCallbacks:
     show_move_state_manager: Callable[[], None]
     toggle_bubble: Callable[[bool], None]
     clear_state_gif: Callable[[], None]
-    load_live2d_model: Callable[[], None]
-    clear_live2d_model: Callable[[], None]
+    toggle_live2d: Callable[[bool], None]
     show_rename_dialog: Callable[[], None]
     prompt_chat: Callable[[], None]
     edit_chat_prompt: Callable[[], None]
@@ -365,17 +364,12 @@ def build_context_menu_content(
     clear_gif_action.setEnabled(snapshot.has_default_idle_gif)
     clear_gif_action.triggered.connect(callbacks.clear_state_gif)
 
-    # Live2D submenu
-    live2d_menu = visuals_menu.addMenu("Live2D")
-    load_live2d_action = live2d_menu.addAction("Load model...")
-    load_live2d_action.setEnabled(snapshot.live2d_available)
-    load_live2d_action.triggered.connect(callbacks.load_live2d_model)
-    if not snapshot.live2d_available:
-        load_live2d_action.setToolTip("需要安裝 live2d-py")
-
-    clear_live2d_action = live2d_menu.addAction("Clear model (use GIF)")
-    clear_live2d_action.setEnabled(snapshot.has_live2d_model)
-    clear_live2d_action.triggered.connect(callbacks.clear_live2d_model)
+    # Live2D toggle
+    live2d_action = visuals_menu.addAction("Use Live2D")
+    live2d_action.setCheckable(True)
+    live2d_action.setChecked(snapshot.using_live2d)
+    live2d_action.setEnabled(snapshot.live2d_available)
+    live2d_action.triggered.connect(callbacks.toggle_live2d)
 
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(callbacks.show_rename_dialog)

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 
+from ...utils.paths import LIVE2D_MODEL_PATH
 from ..theme.themed_menu import (
     MenuCallbacks,
     MenuSnapshot,
@@ -96,7 +97,7 @@ class ContextMenuController:
             has_default_idle_gif=self._default_idle_gif.is_file(),
             is_chat_inflight=self._core_manager.is_chat_inflight,
             has_chat_history=self._core_manager.has_chat_history,
-            has_live2d_model=bool(
+            using_live2d=bool(
                 current_state and current_state.live2d_model_path
             ),
             live2d_available=_LIVE2D_AVAILABLE,
@@ -112,8 +113,7 @@ class ContextMenuController:
             clear_state_gif=lambda: self._state_controller.clear_state_gif(
                 current_key
             ),
-            load_live2d_model=lambda: self._load_live2d_model(current_key),
-            clear_live2d_model=lambda: self._clear_live2d_model(current_key),
+            toggle_live2d=lambda checked: self._toggle_live2d(current_key, checked),
             show_rename_dialog=lambda: (
                 self._dialog_manager.show_rename_dialog(current_key)
                 and self._window.update()
@@ -127,27 +127,13 @@ class ContextMenuController:
             quit_app=QtWidgets.QApplication.instance().quit,
         )
 
-    def _load_live2d_model(self, state_key: str | None) -> None:
-        """Open file dialog to pick a Live2D model and assign it to the current state."""
+    def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
+        """Toggle between Live2D and GIF mode for the current state."""
         if not state_key:
             return
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self._window,
-            "Select Live2D Model",
-            "",
-            "Live2D Model (*.model3.json);;All Files (*.*)",
-        )
-        if not file_path:
-            return
-        path = Path(file_path)
-        if self._state_controller.set_live2d_model(state_key, path):
-            # Re-trigger state to reload the sprite
-            self._state_controller.set_state(state_key)
-
-    def _clear_live2d_model(self, state_key: str | None) -> None:
-        """Clear Live2D model from the current state and revert to GIF."""
-        if not state_key:
-            return
-        if self._state_controller.clear_live2d_model(state_key):
-            # Re-trigger state to reload the sprite (will use GIF now)
-            self._state_controller.set_state(state_key)
+        if checked:
+            self._state_controller.set_live2d_model(state_key, LIVE2D_MODEL_PATH)
+        else:
+            self._state_controller.clear_live2d_model(state_key)
+        # Re-trigger state to reload sprite
+        self._state_controller.set_state(state_key)
