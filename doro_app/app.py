@@ -266,6 +266,15 @@ class DoroApp:
         if gif_path:
             self._sprite_controller.load_sprite(str(gif_path))
 
+    def _on_live2d_unavailable(self):
+        """Notify the user via bubble that live2d-py is not installed."""
+        self._bubble_controller.set_text(
+            "需要安裝 live2d-py 才能使用 Live2D 模型喔！\n"
+            "pip install live2d-py",
+            auto_hide=True,
+            hide_delay_ms=8000,
+        )
+
     def _on_bubble_toggle_requested(self, state_key: str, checked: bool):
         """Handle bubble toggle from UI — delegates to StateController + BubbleController."""
         if self._state_controller.toggle_bubble_visibility(state_key, checked):
@@ -347,6 +356,9 @@ class DoroApp:
         )
         self._sprite_controller.sprite_size_changed.connect(
             lambda _: self.window.on_sprite_renderer_changed()
+        )
+        self._sprite_controller.live2d_unavailable.connect(
+            self._on_live2d_unavailable
         )
 
         # ─────────────────────────────────────────────────────────

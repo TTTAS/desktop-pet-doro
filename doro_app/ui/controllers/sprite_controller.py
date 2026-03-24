@@ -36,6 +36,7 @@ class SpriteController(QtCore.QObject):
     sprite_size_changed = QtCore.Signal(QtCore.QSize)  # new_size
     frame_changed = QtCore.Signal(int)  # frame_number
     repaint_requested = QtCore.Signal()
+    live2d_unavailable = QtCore.Signal()  # emitted when Live2D model requested but library missing
 
     def __init__(self, view_model: DoroViewModel) -> None:
         super().__init__()
@@ -54,6 +55,10 @@ class SpriteController(QtCore.QObject):
             self._live2d_renderer = Live2DSpriteRenderer(view_model)
             self._renderers["live2d"] = self._live2d_renderer
             logger.info("Live2D renderer registered")
+        else:
+            logger.info("Live2D renderer not available (live2d-py not installed)")
+
+        logger.info("Available renderers: %s", ", ".join(sorted(self._renderers)))
 
     @property
     def renderer(self) -> SpriteRenderer:
@@ -137,6 +142,7 @@ class SpriteController(QtCore.QObject):
     def _load_live2d(self, path: Path) -> bool:
         if self._live2d_renderer is None:
             logger.warning("live2d-py not installed — cannot load Live2D model")
+            self.live2d_unavailable.emit()
             return False
         try:
             ok = self._live2d_renderer.load_model(path)
