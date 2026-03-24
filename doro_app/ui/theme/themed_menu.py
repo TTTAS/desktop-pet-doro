@@ -365,11 +365,12 @@ def build_context_menu_content(
     clear_gif_action.triggered.connect(callbacks.clear_state_gif)
 
     # Live2D toggle
-    live2d_label = "Use Live2D" if snapshot.live2d_available else "Use Live2D (未安裝)"
-    live2d_action = visuals_menu.addAction(live2d_label)
+    live2d_action = visuals_menu.addAction("Use Live2D")
     live2d_action.setCheckable(True)
     live2d_action.setChecked(snapshot.using_live2d)
     live2d_action.setEnabled(snapshot.live2d_available)
+    if not snapshot.live2d_available:
+        live2d_action.setToolTip("pip install live2d-py")
     live2d_action.triggered.connect(callbacks.toggle_live2d)
 
     name_tag_action = visuals_menu.addAction("Rename pet")

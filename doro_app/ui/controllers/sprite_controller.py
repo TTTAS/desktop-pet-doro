@@ -56,9 +56,7 @@ class SpriteController(QtCore.QObject):
             self._renderers["live2d"] = self._live2d_renderer
             logger.info("Live2D renderer registered")
         else:
-            logger.info("Live2D renderer not available (live2d-py not installed)")
-
-        logger.info("Available renderers: %s", ", ".join(sorted(self._renderers)))
+            self._live2d_renderer = None
 
     @property
     def renderer(self) -> SpriteRenderer:
