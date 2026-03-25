@@ -225,6 +225,8 @@ class DoroWindow(QtWidgets.QWidget):
 
     def on_sprite_renderer_changed(self):
         """Handle sprite renderer content update from SpriteController."""
+        if self._sprite_controller:
+            self._sprite_renderer = self._sprite_controller.renderer
         self.apply_window_preferred_size()
         self.update()
 
