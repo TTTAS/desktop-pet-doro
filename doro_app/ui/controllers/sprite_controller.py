@@ -147,8 +147,10 @@ class SpriteController(QtCore.QObject):
             if not ok:
                 return False
             self.switch_renderer("live2d")
-            size = self._live2d_renderer.current_size()
-            self._view_model.set_sprite_size(QtCore.QSize(size))
+            # Use 200x200 sprite size to match GIF sprites; the FBO
+            # renders at higher resolution and is scaled down.
+            size = QtCore.QSize(200, 200)
+            self._view_model.set_sprite_size(size)
             self.sprite_size_changed.emit(QtCore.QSize(size))
             self.sprite_renderer_changed.emit()
             self.repaint_requested.emit()

@@ -100,6 +100,7 @@ class Live2DSpriteRenderer:
         painter.restore()
 
     def current_size(self) -> QtCore.QSize:
+        """Return the display size of the cached image (already scaled)."""
         if self._current_image and not self._current_image.isNull():
             return self._current_image.size()
         return _FALLBACK_SIZE
@@ -189,12 +190,18 @@ class Live2DSpriteRenderer:
             # Read FBO as QImage (Format_ARGB32_Premultiplied keeps alpha)
             image = self._fbo.toImage()
             if not image.isNull():
-                # OpenGL Y-axis is flipped relative to Qt — mirror vertically
-                image = image.mirrored(horizontally=False, vertically=True)
                 # Ensure premultiplied alpha for correct QPainter compositing
                 if image.format() != QtGui.QImage.Format.Format_ARGB32_Premultiplied:
                     image = image.convertToFormat(
                         QtGui.QImage.Format.Format_ARGB32_Premultiplied
+                    )
+                # Scale to target sprite size (FBO is high-res for quality)
+                target = self._view_model.sprite_size
+                if target.isValid() and target != image.size():
+                    image = image.scaled(
+                        target,
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
                     )
                 self._current_image = image
                 # One-time diagnostic: confirm FBO is producing visible content
