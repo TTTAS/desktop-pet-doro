@@ -71,6 +71,7 @@ class Live2DSpriteRenderer:
         # Cached QImage from last draw
         self._current_image: QtGui.QImage | None = None
         self._model_size = QtCore.QSize(_FBO_WIDTH, _FBO_HEIGHT)
+        self._frame_logged = False
 
     # ── SpriteRenderer protocol ────────────────────────────────
 
@@ -190,6 +191,18 @@ class Live2DSpriteRenderer:
                         QtGui.QImage.Format.Format_ARGB32_Premultiplied
                     )
                 self._current_image = image
+                # One-time diagnostic: confirm FBO is producing visible content
+                if not self._frame_logged:
+                    has_content = any(
+                        image.pixel(x, y) & 0xFF000000
+                        for y in range(0, image.height(), 64)
+                        for x in range(0, image.width(), 64)
+                    )
+                    logger.info(
+                        "Live2D first frame: %dx%d, has_visible_pixels=%s, format=%s",
+                        image.width(), image.height(), has_content, image.format(),
+                    )
+                    self._frame_logged = True
 
         except Exception:
             logger.exception("Error during Live2D frame update")
@@ -222,12 +235,14 @@ class Live2DSpriteRenderer:
             return
 
         # Request an OpenGL context with alpha
+        # Use Compatibility Profile — live2d-py shaders require legacy GLSL
+        # which is unavailable under Core Profile.
         fmt = QtGui.QSurfaceFormat()
         fmt.setAlphaBufferSize(8)
         fmt.setDepthBufferSize(24)
         fmt.setStencilBufferSize(8)
         fmt.setVersion(3, 3)
-        fmt.setProfile(QtGui.QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+        fmt.setProfile(QtGui.QSurfaceFormat.OpenGLContextProfile.CompatibilityProfile)
 
         ctx = QtGui.QOpenGLContext()
         ctx.setFormat(fmt)
