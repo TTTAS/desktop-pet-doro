@@ -153,9 +153,15 @@ class Live2DSpriteRenderer:
     def update(self, dt: float) -> None:
         """Advance model animation and render a new frame into the FBO."""
         if self._model is None or not _LIVE2D_AVAILABLE:
+            if not self._frame_logged:
+                print(f"[Live2D] update skipped: model={self._model is not None}, available={_LIVE2D_AVAILABLE}")
+                self._frame_logged = True
             return
 
         if not self._make_current():
+            if not self._frame_logged:
+                print("[Live2D] update skipped: _make_current() failed")
+                self._frame_logged = True
             return
 
         try:
@@ -198,9 +204,9 @@ class Live2DSpriteRenderer:
                         for y in range(0, image.height(), 64)
                         for x in range(0, image.width(), 64)
                     )
-                    logger.info(
-                        "Live2D first frame: %dx%d, has_visible_pixels=%s, format=%s",
-                        image.width(), image.height(), has_content, image.format(),
+                    print(
+                        f"[Live2D] first frame: {image.width()}x{image.height()}, "
+                        f"has_visible_pixels={has_content}, format={image.format()}"
                     )
                     self._frame_logged = True
 
@@ -234,27 +240,30 @@ class Live2DSpriteRenderer:
         if self._gl_context is not None:
             return
 
-        # Request an OpenGL context with alpha
-        # Use Compatibility Profile — live2d-py shaders require legacy GLSL
-        # which is unavailable under Core Profile.
+        # Do NOT request a specific version or profile — let the driver pick
+        # the best available context.  live2d-py works with GL 2.x–4.x.
         fmt = QtGui.QSurfaceFormat()
         fmt.setAlphaBufferSize(8)
         fmt.setDepthBufferSize(24)
         fmt.setStencilBufferSize(8)
-        fmt.setVersion(3, 3)
-        fmt.setProfile(QtGui.QSurfaceFormat.OpenGLContextProfile.CompatibilityProfile)
 
         ctx = QtGui.QOpenGLContext()
         ctx.setFormat(fmt)
         if not ctx.create():
-            logger.error("Failed to create QOpenGLContext")
+            print("[Live2D] ERROR: Failed to create QOpenGLContext")
             return
+
+        actual = ctx.format()
+        print(
+            f"[Live2D] GL context created: {actual.majorVersion()}.{actual.minorVersion()} "
+            f"profile={actual.profile()}"
+        )
 
         surface = QtGui.QOffscreenSurface()
         surface.setFormat(ctx.format())
         surface.create()
         if not surface.isValid():
-            logger.error("Failed to create QOffscreenSurface")
+            print("[Live2D] ERROR: Failed to create QOffscreenSurface")
             return
 
         self._gl_context = ctx
