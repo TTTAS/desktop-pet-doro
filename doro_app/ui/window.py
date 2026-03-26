@@ -418,6 +418,7 @@ class DoroWindow(QtWidgets.QWidget):
         if self._sprite_controller:
             # Under Live2D mode, skip transition GIFs — model stays visible.
             if self._sprite_controller.renderer_type == "live2d":
+                movie.stop()
                 return
             self._sprite_controller.set_movie_directly(movie, sprite_size)
 
@@ -457,10 +458,8 @@ class DoroWindow(QtWidgets.QWidget):
             # Clear all GIF resources via SpriteController
             if self._sprite_controller:
                 self._sprite_controller.gif_player.clear()
-
-            # Dispose Live2D GL resources
-            if hasattr(self, '_sprite_renderer') and hasattr(self._sprite_renderer, 'dispose'):
-                self._sprite_renderer.dispose()
+                # Dispose ALL renderers (Live2D GL context, FBOs, etc.)
+                self._sprite_controller.dispose_all()
 
             if self._timer:
                 try:

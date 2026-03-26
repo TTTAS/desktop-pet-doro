@@ -85,6 +85,12 @@ class SpriteController(QtCore.QObject):
             )
         if self._renderer.renderer_type == renderer_type:
             return
+        # Clean up outgoing GIF movie signals to prevent phantom repaints
+        if self._renderer.renderer_type == "gif" and self._current_movie:
+            try:
+                self._current_movie.frameChanged.disconnect(self._on_frame_changed)
+            except (TypeError, RuntimeError):
+                pass
         self._renderer = self._renderers[renderer_type]
         logger.info(f"Switched renderer to {renderer_type!r}")
         self.sprite_renderer_changed.emit()
@@ -94,6 +100,15 @@ class SpriteController(QtCore.QObject):
     def gif_player(self) -> GifPlayer:
         """GifPlayer instance (needed by Window for resource cleanup)."""
         return self._gif_player
+
+    def dispose_all(self) -> None:
+        """Release resources for ALL renderers (call on application exit)."""
+        for r in self._renderers.values():
+            if hasattr(r, "dispose"):
+                try:
+                    r.dispose()
+                except Exception:
+                    logger.warning("Error disposing renderer %s", r.renderer_type, exc_info=True)
 
     def load_sprite(self, path: str | Path | None) -> bool:
         """
