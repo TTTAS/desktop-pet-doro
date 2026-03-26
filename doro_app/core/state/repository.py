@@ -20,6 +20,14 @@ from .models import MoveState, State, Transition, VisualConfig
 
 logger = get_logger(__name__)
 
+# Supported animated image formats (GIF, APNG, WebP)
+ANIMATED_EXTENSIONS = frozenset({".gif", ".apng", ".webp"})
+
+
+def _is_animated_file(path: Path) -> bool:
+    """Check if a path has a supported animated image extension."""
+    return path.suffix.lower() in ANIMATED_EXTENSIONS and path.is_file()
+
 
 class GifRepository:
     """
@@ -151,7 +159,12 @@ class GifRepository:
             Path where the move GIF should be stored
         """
         safe_key = self._sanitize_key(move_key)
-        return self.storage_dir.parent / "ACTION" / "MOVE" / f"{safe_key}.gif"
+        move_dir = self.storage_dir.parent / "ACTION" / "MOVE"
+        for ext in ANIMATED_EXTENSIONS:
+            p = move_dir / f"{safe_key}{ext}"
+            if p.is_file():
+                return p
+        return move_dir / f"{safe_key}.gif"
 
     def sanitize_filename(self, key: str) -> str:
         """
@@ -179,7 +192,7 @@ class GifRepository:
         state_dir = self._state_dir(state_key)
         if not state_dir.is_dir():
             return []
-        return sorted(p for p in state_dir.iterdir() if p.suffix.lower() == ".gif" and p.is_file())
+        return sorted(p for p in state_dir.iterdir() if _is_animated_file(p))
 
     def pick_random_gif(self, state_key: str) -> Optional[Path]:
         """
@@ -227,10 +240,13 @@ class GifRepository:
 
         safe_key = self._sanitize_key(state_key)
 
+        # Preserve the source file extension (.gif, .apng, .webp, etc.)
+        ext = source_path.suffix.lower() if source_path.suffix else ".gif"
+
         # Auto-migrate: move single file into subfolder if transitioning to multi
         primary = self._primary_path(state_key)
         if primary.is_file() and not self.list_gifs(state_key):
-            migrated = state_dir / f"{safe_key}_1.gif"
+            migrated = state_dir / f"{safe_key}_1{primary.suffix}"
             try:
                 shutil.move(str(primary), str(migrated))
             except OSError as e:
@@ -239,11 +255,11 @@ class GifRepository:
         # Find next available index
         existing = self.list_gifs(state_key)
         index = len(existing) + 1
-        dest = state_dir / f"{safe_key}_{index}.gif"
+        dest = state_dir / f"{safe_key}_{index}{ext}"
         # Handle collision (shouldn't happen normally)
         while dest.exists():
             index += 1
-            dest = state_dir / f"{safe_key}_{index}.gif"
+            dest = state_dir / f"{safe_key}_{index}{ext}"
 
         try:
             shutil.copy2(source_path, dest)
@@ -338,8 +354,18 @@ class GifRepository:
         return self.storage_dir / safe_key
 
     def _primary_path(self, state_key: str) -> Path:
-        """Get single-file GIF path for a state."""
+        """Get single-file sprite path for a state.
+
+        Checks all supported animated formats (.gif, .apng, .webp)
+        and returns the first match. Falls back to {key}.gif for
+        backwards compatibility (e.g. when the file doesn't exist yet).
+        """
         safe_key = self._sanitize_key(state_key)
+        for ext in ANIMATED_EXTENSIONS:
+            p = self.storage_dir / f"{safe_key}{ext}"
+            if p.is_file():
+                return p
+        # Fallback: default to .gif for new files / non-existent paths
         return self.storage_dir / f"{safe_key}.gif"
 
     def _to_resource_id(self, path: Path) -> str:

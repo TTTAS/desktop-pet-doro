@@ -30,7 +30,7 @@ build-backend = "setuptools.build_meta"
 packages = ["doro_app"]
 
 [tool.setuptools.package-data]
-doro_app = ["**/*.json", "**/*.txt", "**/*.gif", "**/*.png"]
+doro_app = ["**/*.json", "**/*.txt", "**/*.gif", "**/*.apng", "**/*.webp", "**/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

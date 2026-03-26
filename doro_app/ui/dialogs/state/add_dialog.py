@@ -55,7 +55,7 @@ class AddStateDialog(FramelessDialog):
             self,
             "Select GIF file(s)",
             "",
-            "GIF Files (*.gif);;All Files (*.*)"
+            "Animated Images (*.gif *.apng *.webp);;All Files (*.*)"
         )
 
         if file_paths:

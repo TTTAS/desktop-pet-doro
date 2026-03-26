@@ -128,11 +128,13 @@ class TransitionPlayer(QtCore.QObject):
         if gif_path.exists():
             return gif_path
 
-        # Try without extension
-        if not gif_id.lower().endswith(".gif"):
-            gif_path = ACTION_TRANSITION_DIR / f"{gif_id}.gif"
-            if gif_path.exists():
-                return gif_path
+        # Try appending each supported animated extension
+        from .repository import ANIMATED_EXTENSIONS
+        if not any(gif_id.lower().endswith(ext) for ext in ANIMATED_EXTENSIONS):
+            for ext in ANIMATED_EXTENSIONS:
+                candidate = ACTION_TRANSITION_DIR / f"{gif_id}{ext}"
+                if candidate.exists():
+                    return candidate
 
         return None
 
