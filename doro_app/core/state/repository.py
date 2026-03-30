@@ -20,8 +20,8 @@ from .models import MoveState, State, Transition, VisualConfig
 
 logger = get_logger(__name__)
 
-# Supported animated image formats (GIF, APNG, WebP)
-ANIMATED_EXTENSIONS = frozenset({".gif", ".apng", ".webp"})
+# Supported animated image formats — ordered by priority for _primary_path lookups.
+ANIMATED_EXTENSIONS = (".gif", ".apng", ".webp")
 
 
 def _is_animated_file(path: Path) -> bool:

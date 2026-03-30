@@ -71,7 +71,10 @@ class Live2DSpriteRenderer:
         # Cached QImage from last draw
         self._current_image: QtGui.QImage | None = None
         self._model_size = QtCore.QSize(_FBO_WIDTH, _FBO_HEIGHT)
-        self._frame_logged = False
+
+        # Scaling cache: avoid SmoothTransformation on every frame
+        self._scaled_target = QtCore.QSize()  # last requested sprite_size
+        self._scaled_size = QtCore.QSize()    # actual size after KeepAspectRatio
 
     # ── SpriteRenderer protocol ────────────────────────────────
 
@@ -154,15 +157,9 @@ class Live2DSpriteRenderer:
     def update(self, dt: float) -> None:
         """Advance model animation and render a new frame into the FBO."""
         if self._model is None or not _LIVE2D_AVAILABLE:
-            if not self._frame_logged:
-                print(f"[Live2D] update skipped: model={self._model is not None}, available={_LIVE2D_AVAILABLE}")
-                self._frame_logged = True
             return
 
         if not self._make_current():
-            if not self._frame_logged:
-                print("[Live2D] update skipped: _make_current() failed")
-                self._frame_logged = True
             return
 
         try:
@@ -195,27 +192,24 @@ class Live2DSpriteRenderer:
                     image = image.convertToFormat(
                         QtGui.QImage.Format.Format_ARGB32_Premultiplied
                     )
-                # Scale to target sprite size (FBO is high-res for quality)
+                # Scale to target sprite size if changed (FBO is high-res)
                 target = self._view_model.sprite_size
                 if target.isValid() and target != image.size():
-                    image = image.scaled(
-                        target,
-                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                        QtCore.Qt.TransformationMode.SmoothTransformation,
-                    )
+                    if target != self._scaled_target:
+                        self._scaled_target = target
+                        image = image.scaled(
+                            target,
+                            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                            QtCore.Qt.TransformationMode.SmoothTransformation,
+                        )
+                        self._scaled_size = image.size()
+                    else:
+                        image = image.scaled(
+                            self._scaled_size,
+                            QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
+                            QtCore.Qt.TransformationMode.FastTransformation,
+                        )
                 self._current_image = image
-                # One-time diagnostic: confirm FBO is producing visible content
-                if not self._frame_logged:
-                    has_content = any(
-                        image.pixel(x, y) & 0xFF000000
-                        for y in range(0, image.height(), 64)
-                        for x in range(0, image.width(), 64)
-                    )
-                    print(
-                        f"[Live2D] first frame: {image.width()}x{image.height()}, "
-                        f"has_visible_pixels={has_content}, format={image.format()}"
-                    )
-                    self._frame_logged = True
 
         except Exception:
             logger.exception("Error during Live2D frame update")
@@ -257,20 +251,20 @@ class Live2DSpriteRenderer:
         ctx = QtGui.QOpenGLContext()
         ctx.setFormat(fmt)
         if not ctx.create():
-            print("[Live2D] ERROR: Failed to create QOpenGLContext")
+            logger.error("Failed to create QOpenGLContext")
             return
 
         actual = ctx.format()
-        print(
-            f"[Live2D] GL context created: {actual.majorVersion()}.{actual.minorVersion()} "
-            f"profile={actual.profile()}"
+        logger.info(
+            "GL context created: %d.%d profile=%s",
+            actual.majorVersion(), actual.minorVersion(), actual.profile(),
         )
 
         surface = QtGui.QOffscreenSurface()
         surface.setFormat(ctx.format())
         surface.create()
         if not surface.isValid():
-            print("[Live2D] ERROR: Failed to create QOffscreenSurface")
+            logger.error("Failed to create QOffscreenSurface")
             return
 
         self._gl_context = ctx
