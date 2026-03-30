@@ -118,8 +118,8 @@ class _StateCard(QtWidgets.QFrame):
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.setSpacing(4)
 
-        manage_btn = QtWidgets.QPushButton("GIFs")
-        manage_btn.setToolTip("Manage GIFs")
+        manage_btn = QtWidgets.QPushButton("Animation")
+        manage_btn.setToolTip("Manage animations")
         manage_btn.setFixedHeight(26)
         manage_btn.setStyleSheet(self._small_btn_style())
         manage_btn.clicked.connect(lambda: self.edit_gif_clicked.emit(self._key))
