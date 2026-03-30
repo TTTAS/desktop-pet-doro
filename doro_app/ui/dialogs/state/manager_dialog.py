@@ -85,7 +85,7 @@ class _StateCard(QtWidgets.QFrame):
             f"1/{count}" if count > 0 else "No GIF"
         )
         self._counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._counter.setStyleSheet("font-size: 11px; color: #e8609c; font-weight: 600;")
+        self._counter.setStyleSheet("font-size: 12px; color: #e8609c; font-weight: 600;")
         layout.addWidget(self._counter)
 
         # Hide arrows if <= 1 GIF
@@ -105,13 +105,13 @@ class _StateCard(QtWidgets.QFrame):
         label_text = state.label or self._key
         name = QtWidgets.QLabel(label_text)
         name.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        name.setStyleSheet("font-size: 13px; font-weight: bold; color: #4a2040;")
+        name.setStyleSheet("font-size: 15px; font-weight: bold; color: #4a2040;")
         name.setWordWrap(True)
         layout.addWidget(name)
 
         key_label = QtWidgets.QLabel(self._key)
         key_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        key_label.setStyleSheet("font-size: 11px; color: #9c6b8a;")
+        key_label.setStyleSheet("font-size: 12px; font-weight: 600; color: #9c6b8a;")
         layout.addWidget(key_label)
 
         # ── Action buttons ──
@@ -183,7 +183,7 @@ class _StateCard(QtWidgets.QFrame):
         return (
             "QPushButton { background: rgba(232,96,156,0.12); color: #c0266e;"
             " border: none; border-radius: 6px; padding: 2px 8px;"
-            " font-size: 11px; font-weight: 600; }"
+            " font-size: 12px; font-weight: bold; }"
             "QPushButton:hover { background: rgba(232,96,156,0.25); }"
         )
 
@@ -192,7 +192,7 @@ class _StateCard(QtWidgets.QFrame):
         return (
             "QPushButton { background: rgba(200,40,40,0.10); color: #c62828;"
             " border: none; border-radius: 6px; padding: 2px 8px;"
-            " font-size: 11px; font-weight: 600; }"
+            " font-size: 12px; font-weight: bold; }"
             "QPushButton:hover { background: rgba(200,40,40,0.22); }"
         )
 
