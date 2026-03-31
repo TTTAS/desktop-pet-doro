@@ -9,12 +9,12 @@ from .constants import (
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
-    MOVEMENT_STEP_PX,
 )
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
 from .core.movement.manager import MovementManager
+from .core.movement.repository import MovementRepository
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
@@ -23,6 +23,7 @@ from .ui.controllers import ClickActionController, DialogManager, SpriteControll
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
+from .utils import paths
 from .utils.paths import STATE_DIR
 
 
@@ -90,10 +91,12 @@ class DoroApp:
             parent_window=self.window,
             state_service=self._state_service,
         )
+        self._movement_repo = MovementRepository(paths.ACTION_MOVE_DIR / "movements.json")
+        self._movement_repo.load()
         self._movement = MovementManager(
             window=self.window,
             state_service=self._state_service,
-            movement_step_px=MOVEMENT_STEP_PX,
+            movement_repo=self._movement_repo,
         )
 
         # ═════════════════════════════════════════════════════════════

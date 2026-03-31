@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "speed": {
+      "slow": 80.0,
+      "med": 140.0,
+      "fast": 220.0
+    },
+    "step_px": 60,
+    "completion_threshold": 0.5
+  },
+  "movement_states": {
+    "walking": {
+      "state_key": "walking",
+      "direction": "any",
+      "default_speed": "med",
+      "default_distance": null,
+      "animation": "walking.gif"
+    }
+  }
+}
