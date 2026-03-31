@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .core.movement.repository import MovementRepository
 from .core.state import GifRepository, MoveStateRepository, StateRepository, StateService
 from .core.state import TransitionRepository
 from .utils.config_manager import ConfigManager
-from .utils.paths import ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
+from .utils.paths import ACTION_MOVE_DIR, ACTION_TRANSITION_DIR, CLICK_ACTIONS_PATH, MOVE_DIR, PROMPT_PATH, STATE_DIR
 
 
 class BootstrapError(RuntimeError):
@@ -21,6 +22,7 @@ class BootstrappedDependencies:
 
     config_manager: ConfigManager
     state_service: StateService
+    movement_repo: MovementRepository
     default_idle_gif: Path
     prompt_file_path: Path
     click_actions_path: Path
@@ -61,6 +63,9 @@ def bootstrap_environment() -> BootstrappedDependencies:
     move_repo = MoveStateRepository(STATE_DIR / "move_states.json")
     transition_repo = TransitionRepository(transition_action_dir / "transitions.json")
 
+    movement_repo = MovementRepository(ACTION_MOVE_DIR / "movements.json")
+    movement_repo.load()
+
     state_service = StateService(
         state_repo,
         move_repo,
@@ -68,11 +73,13 @@ def bootstrap_environment() -> BootstrappedDependencies:
         STATE_DIR / "state_list.txt",
         transition_repo,
         transition_gif_repo=transition_gif_repo,
+        movement_repo=movement_repo,
     )
 
     return BootstrappedDependencies(
         config_manager=config_manager,
         state_service=state_service,
+        movement_repo=movement_repo,
         default_idle_gif=default_idle_gif,
         prompt_file_path=prompt_path,
         click_actions_path=click_actions_path,
