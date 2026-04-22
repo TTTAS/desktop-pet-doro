@@ -289,6 +289,9 @@ class DoroWindow(QtWidgets.QWidget):
     def mark_user_activity(self):
         self._last_user_activity = time.monotonic()
 
+    def seconds_since_last_activity(self) -> float:
+        return time.monotonic() - self._last_user_activity
+
     def update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
         self._view_model.set_bubble_side("center")

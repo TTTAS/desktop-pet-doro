@@ -13,6 +13,7 @@ from .constants import (
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
+from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
@@ -22,7 +23,7 @@ from .ui.controllers import ClickActionController, DialogManager, SpriteControll
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
-from .utils.paths import STATE_DIR
+from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
 
 
 class DoroApp:
@@ -115,6 +116,14 @@ class DoroApp:
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
             chat_orchestrator=self._chat_orchestrator,
+        )
+        self._idle_behavior = IdleBehaviorManager(
+            companion_file=COMPANION_PROMPTS_PATH,
+            chat_orchestrator=self._chat_orchestrator,
+            movement_manager=self._movement,
+            state_service=self._state_service,
+            idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
+            mark_activity=lambda: self.window.mark_user_activity(),
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -345,6 +354,8 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
         )
+        mouse_handler.click_detected.connect(self._idle_behavior.reset)
+        mouse_handler.user_activity_detected.connect(self._idle_behavior.reset)
 
         # ─────────────────────────────────────────────────────────
         # Connect UI controller signals → Window
