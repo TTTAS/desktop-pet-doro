@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Callable
 from PySide6 import QtCore
 
 from ..constants import IDLE_BEHAVIOR_MIN_INTERVAL, IDLE_BEHAVIOR_MAX_INTERVAL
+from ..utils.actions import MOVE_DIRECTIONS
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -19,10 +20,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DIRECTIONS = [
-    (1, 0), (-1, 0), (0, -1), (0, 1),
-    (1, -1), (-1, -1), (1, 1), (-1, 1),
-]
+_DIRECTIONS = list(set(MOVE_DIRECTIONS.values()))
 
 
 class IdleActionType(Enum):
@@ -31,10 +29,13 @@ class IdleActionType(Enum):
     TRANSITION = auto()
 
 
+_IDLE_ACTIONS = list(IdleActionType)
+
+
 class IdleBehaviorManager(QtCore.QObject):
     """Triggers random autonomous actions (speak / move / transition) at idle intervals."""
 
-    action_triggered = QtCore.Signal(str)  # description of what happened
+    action_triggered = QtCore.Signal(str)
 
     def __init__(
         self,
@@ -62,12 +63,12 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule_next()
 
     def _load_lines(self, path: Path) -> None:
-        if not path.exists():
-            return
         try:
             raw = path.read_text(encoding="utf-8")
             self._lines = [l.strip() for l in raw.splitlines() if l.strip()]
             logger.debug("Loaded %d companion lines", len(self._lines))
+        except FileNotFoundError:
+            pass
         except OSError as e:
             logger.warning("Failed to load companion lines: %s", e)
 
@@ -89,11 +90,11 @@ class IdleBehaviorManager(QtCore.QObject):
             self._schedule_next()
             return
 
-        if self._movement._active_movement is not None:
+        if self._movement.has_active_movement:
             self._schedule_next()
             return
 
-        action = random.choice(list(IdleActionType))
+        action = random.choice(_IDLE_ACTIONS)
         logger.debug("Idle action: %s", action.name)
 
         if action is IdleActionType.SPEAK:

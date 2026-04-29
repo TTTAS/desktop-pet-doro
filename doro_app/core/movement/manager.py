@@ -61,6 +61,10 @@ class MovementManager:
 
     # ------------------------------------------------------------------ Public API
 
+    @property
+    def has_active_movement(self) -> bool:
+        return self._active_movement is not None
+
     def get_last_error(self) -> Optional[str]:
         """Get the last movement parsing error, if any."""
         return self._last_error

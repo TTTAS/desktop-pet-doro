@@ -354,7 +354,6 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
         )
-        mouse_handler.click_detected.connect(self._idle_behavior.reset)
         mouse_handler.user_activity_detected.connect(self._idle_behavior.reset)
 
         # ─────────────────────────────────────────────────────────
