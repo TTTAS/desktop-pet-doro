@@ -94,6 +94,10 @@ class IdleBehaviorManager(QtCore.QObject):
             self._schedule_next()
             return
 
+        if self._state_service.is_transitioning():
+            self._schedule_next()
+            return
+
         action = random.choice(_IDLE_ACTIONS)
         logger.debug("Idle action: %s", action.name)
 
