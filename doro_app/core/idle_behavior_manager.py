@@ -35,8 +35,6 @@ _IDLE_ACTIONS = list(IdleActionType)
 class IdleBehaviorManager(QtCore.QObject):
     """Triggers random autonomous actions (speak / move / transition) at idle intervals."""
 
-    action_triggered = QtCore.Signal(str)
-
     def __init__(
         self,
         *,
@@ -117,12 +115,10 @@ class IdleBehaviorManager(QtCore.QObject):
             return
         line = random.choice(self._lines)
         self._chat_orchestrator.send_message(line, silent=True, is_auto=True)
-        self.action_triggered.emit(f"speak: {line}")
 
     def _do_move(self) -> None:
         direction = random.choice(_DIRECTIONS)
-        report = self._movement.apply_directional_move(direction)
-        self.action_triggered.emit(f"move: {report}")
+        self._movement.apply_directional_move(direction)
 
     def _do_transition(self) -> None:
         keys = [
@@ -135,4 +131,3 @@ class IdleBehaviorManager(QtCore.QObject):
             return
         target = random.choice(keys)
         self._state_service.set_state(target)
-        self.action_triggered.emit(f"transition: {target}")
