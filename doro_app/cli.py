@@ -5,18 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 
-from PySide6 import QtCore, QtWidgets
-
-from .utils.actions import parse_actions_from_text
-from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
-from .utils.config_manager import ConfigManager
-from .utils.paths import PROMPT_PATH
-from .utils.prompts import load_prompt_text
-from .bootstrap import BootstrapError, bootstrap_environment
-from .app import DoroApp
-
 
 def run_chat_test(message: str | None) -> int:
+    from .utils.actions import parse_actions_from_text
+    from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
+    from .utils.config_manager import ConfigManager
+    from .utils.paths import PROMPT_PATH
+    from .utils.prompts import load_prompt_text
+
     test_message = (message or "Hello from Doro test!").strip()
     if not test_message:
         print("Chat test aborted: message is empty.")
@@ -25,7 +21,6 @@ def run_chat_test(message: str | None) -> int:
     prompt_path = PROMPT_PATH
     system_prompt = load_prompt_text(prompt_path)
 
-    # Use ConfigManager for type-safe config access
     config_manager = ConfigManager()
     server_url = config_manager.chat.server_url
     model = config_manager.chat.model
@@ -96,13 +91,39 @@ def main():
     if args.test_chat is not None:
         sys.exit(run_chat_test(args.test_chat))
 
+    # --- Preflight: check environment before importing PySide6 ---
+    from .preflight import preflight_check
+
+    errors, warnings = preflight_check()
+    for w in warnings:
+        print(f"  ⚠ {w}")
+    if errors:
+        print("Doro 無法啟動：")
+        for e in errors:
+            print(f"  ✗ {e}")
+        print("\n請確認已在虛擬環境中安裝所有依賴：pip install -e .")
+        sys.exit(1)
+
+    # --- Safe to import PySide6 now ---
+    from PySide6 import QtWidgets
+
+    from .bootstrap import BootstrapError, bootstrap_environment
+    from .app import DoroApp
+
     qt_app = QtWidgets.QApplication(sys.argv)
     try:
         deps = bootstrap_environment()
+        doro_app = DoroApp(not_topmost=args.not_topmost, deps=deps)
     except BootstrapError as exc:
-        print(f"Failed to start Doro: {exc}")
+        QtWidgets.QMessageBox.critical(None, "Doro 啟動失敗", str(exc))
+        sys.exit(1)
+    except Exception as exc:
+        QtWidgets.QMessageBox.critical(
+            None,
+            "Doro 啟動失敗",
+            f"未預期的錯誤：{exc}",
+        )
         sys.exit(1)
 
-    doro_app = DoroApp(not_topmost=args.not_topmost, deps=deps)
     doro_app.run()
     sys.exit(qt_app.exec())
