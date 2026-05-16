@@ -376,11 +376,6 @@ class DoroWindow(QtWidgets.QWidget):
         else:
             self._panel_rect_cache = None
 
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setWeight(QtGui.QFont.Weight.Bold)
-        p.setFont(font)
-
     # ═══════════════════════════════════════════════════════════
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
