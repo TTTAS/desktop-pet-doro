@@ -91,7 +91,6 @@ def main():
     if args.test_chat is not None:
         sys.exit(run_chat_test(args.test_chat))
 
-    # --- Preflight: check environment before importing PySide6 ---
     from .preflight import preflight_check
 
     errors, warnings = preflight_check()
@@ -104,7 +103,6 @@ def main():
         print("\n請確認已在虛擬環境中安裝所有依賴：pip install -e .")
         sys.exit(1)
 
-    # --- Safe to import PySide6 now ---
     from PySide6 import QtWidgets
 
     from .bootstrap import BootstrapError, bootstrap_environment

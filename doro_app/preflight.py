@@ -26,7 +26,6 @@ def preflight_check() -> tuple[list[str], list[str]]:
         errors.append(f"Python {need}+ 必要，目前版本為 {cur}")
 
     try:
-        import PySide6  # noqa: F401
         pyside_ver = pkg_version("PySide6")
         if _parse_version(pyside_ver) < _parse_version(_MIN_PYSIDE6):
             errors.append(f"PySide6 {_MIN_PYSIDE6}+ 必要，目前版本為 {pyside_ver}")
