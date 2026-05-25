@@ -239,10 +239,13 @@ class TestMovementManagerSmoke:
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
         # This should not crash
+        from doro_app.core.movement.repository import MovementRepository
+        movement_repo = MovementRepository(tmp_path / "movements.json")
+        movement_repo.load()
         manager = MovementManager(
             window=mock_window,
             state_service=state_service,
-            movement_step_px=60,
+            movement_repo=movement_repo,
         )
         assert manager is not None
 
@@ -265,7 +268,10 @@ class TestMovementManagerSmoke:
         gif_repo = GifRepository(tmp_path / "resources")
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
-        manager = MovementManager(mock_window, state_service, 60)
+        from doro_app.core.movement.repository import MovementRepository
+        movement_repo = MovementRepository(tmp_path / "movements.json")
+        movement_repo.load()
+        manager = MovementManager(mock_window, state_service, movement_repo)
 
         # Should return instruction text (not empty)
         instructions = manager.instruction_text()
