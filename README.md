@@ -33,12 +33,6 @@ cd doro-exp-
 pip install -e .
 ```
 
-For development tools (linting, testing):
-
-```bash
-pip install -e ".[dev]"
-```
-
 ## Usage
 
 ```bash
