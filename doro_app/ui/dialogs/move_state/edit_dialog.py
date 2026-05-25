@@ -205,7 +205,7 @@ class EditMoveStateDialog(FramelessDialog):
     def _on_select_gif(self):
         """Handle GIF file selection."""
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select GIF file", "", "GIF Files (*.gif);;All Files (*.*)"
+            self, "Select sprite file", "", "Animated Images (*.gif *.apng *.webp);;All Files (*.*)"
         )
 
         if file_path:

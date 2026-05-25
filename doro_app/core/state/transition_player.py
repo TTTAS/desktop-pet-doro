@@ -10,6 +10,7 @@ from PySide6 import QtCore, QtGui
 from ...ui.components.gif_player import GifPlayer
 from ...utils.logger import get_logger
 from ...utils.paths import ACTION_TRANSITION_DIR  # kept for fallback
+from .repository import ANIMATED_EXTENSIONS
 
 if TYPE_CHECKING:
     from .service import StateService
@@ -128,11 +129,12 @@ class TransitionPlayer(QtCore.QObject):
         if gif_path.exists():
             return gif_path
 
-        # Try without extension
-        if not gif_id.lower().endswith(".gif"):
-            gif_path = ACTION_TRANSITION_DIR / f"{gif_id}.gif"
-            if gif_path.exists():
-                return gif_path
+        # Try appending each supported animated extension
+        if not any(gif_id.lower().endswith(ext) for ext in ANIMATED_EXTENSIONS):
+            for ext in ANIMATED_EXTENSIONS:
+                candidate = ACTION_TRANSITION_DIR / f"{gif_id}{ext}"
+                if candidate.exists():
+                    return candidate
 
         return None
 

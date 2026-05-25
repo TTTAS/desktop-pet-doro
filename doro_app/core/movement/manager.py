@@ -8,12 +8,6 @@ from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ...constants import (
-    MOVEMENT_COMPLETION_THRESHOLD,
-    MOVEMENT_SPEED_SLOW,
-    MOVEMENT_SPEED_MEDIUM,
-    MOVEMENT_SPEED_FAST,
-)
 from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
 from ...utils.models import MoveStateSettings, MovementRequest
 from ...utils.paths import MOVEMENT_INSTRUCTION_PATH
@@ -27,6 +21,7 @@ from .parser import (
     normalize_direction_key,
     parse_move_bracket,
 )
+from .repository import MovementRepository
 
 if TYPE_CHECKING:
     from .port import MovementWindowPort
@@ -43,10 +38,16 @@ MIN_MOVEMENT_STEP = 0.01
 class MovementManager:
     """Encapsulates movement parsing, execution, and reporting."""
 
-    def __init__(self, window: "MovementWindowPort", state_service: StateService, movement_step_px: int):
+    def __init__(
+        self,
+        window: "MovementWindowPort",
+        state_service: StateService,
+        movement_repo: MovementRepository,
+    ):
         self._window = window
         self._state_service = state_service
-        self._movement_step_px = movement_step_px
+        self._repo = movement_repo
+        self._movement_step_px = movement_repo.defaults.step_px
         self._active_movement: MovementRequest | None = None
         self._movement_remaining = 0.0
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -59,6 +60,10 @@ class MovementManager:
         self._last_error: Optional[str] = None  # Track last parse error
 
     # ------------------------------------------------------------------ Public API
+
+    @property
+    def has_active_movement(self) -> bool:
+        return self._active_movement is not None
 
     def get_last_error(self) -> Optional[str]:
         """Get the last movement parsing error, if any."""
@@ -157,7 +162,7 @@ class MovementManager:
             actual_dx = target.x() - current.x()
             actual_dy = target.y() - current.y()
             actual_distance = math.hypot(actual_dx, actual_dy)
-            if actual_distance <= MOVEMENT_COMPLETION_THRESHOLD:
+            if actual_distance <= self._repo.defaults.completion_threshold:
                 return True
 
             direction_vector = (actual_dx / actual_distance, actual_dy / actual_distance)
@@ -214,7 +219,7 @@ class MovementManager:
 
         moved_distance = math.hypot(actual_dx, actual_dy)
         remaining = self._movement_remaining - moved_distance
-        if remaining <= MOVEMENT_COMPLETION_THRESHOLD or moved_distance <= MIN_MOVEMENT_STEP:
+        if remaining <= self._repo.defaults.completion_threshold or moved_distance <= MIN_MOVEMENT_STEP:
             self._finish_movement(final_position=clamped)
         else:
             self._movement_remaining = remaining
@@ -386,13 +391,7 @@ class MovementManager:
         return None
 
     def _resolve_speed_value(self, speed_name: str) -> float:
-        lookup = {
-            "slow": MOVEMENT_SPEED_SLOW,
-            "med": MOVEMENT_SPEED_MEDIUM,
-            "medium": MOVEMENT_SPEED_MEDIUM,
-            "fast": MOVEMENT_SPEED_FAST,
-        }
-        return lookup.get(speed_name.lower(), MOVEMENT_SPEED_MEDIUM)
+        return self._repo.resolve_speed(speed_name)
 
     def _resolve_move_state_settings(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
         """Resolve movement state settings via StateService only."""

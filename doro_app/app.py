@@ -9,11 +9,11 @@ from .constants import (
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
-    MOVEMENT_STEP_PX,
 )
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
+from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
@@ -23,7 +23,7 @@ from .ui.controllers import ClickActionController, DialogManager, SpriteControll
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
-from .utils.paths import STATE_DIR
+from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
 
 
 class DoroApp:
@@ -90,10 +90,11 @@ class DoroApp:
             parent_window=self.window,
             state_service=self._state_service,
         )
+        self._movement_repo = deps.movement_repo
         self._movement = MovementManager(
             window=self.window,
             state_service=self._state_service,
-            movement_step_px=MOVEMENT_STEP_PX,
+            movement_repo=self._movement_repo,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -115,6 +116,14 @@ class DoroApp:
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
             chat_orchestrator=self._chat_orchestrator,
+        )
+        self._idle_behavior = IdleBehaviorManager(
+            companion_file=COMPANION_PROMPTS_PATH,
+            chat_orchestrator=self._chat_orchestrator,
+            movement_manager=self._movement,
+            state_service=self._state_service,
+            idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
+            mark_activity=lambda: self.window.mark_user_activity(),
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -254,6 +263,9 @@ class DoroApp:
     def _on_domain_state_changed(self, state_key: str):
         """Translate state changed domain event to UI GIF loading."""
         self.window.current_state_key = state_key
+        # Under Live2D mode the model is persistent — skip sprite reloading.
+        if self._sprite_controller.renderer_type == "live2d":
+            return
         self._load_gif_for_state(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):
@@ -265,6 +277,15 @@ class DoroApp:
         gif_path = self._state_service.get_gif_path(state_key)
         if gif_path:
             self._sprite_controller.load_sprite(str(gif_path))
+
+    def _on_live2d_unavailable(self):
+        """Notify the user via bubble that live2d-py is not installed."""
+        self._bubble_controller.set_text(
+            "需要安裝 live2d-py 才能使用 Live2D 模型喔！\n"
+            "pip install live2d-py",
+            auto_hide=True,
+            hide_delay_ms=8000,
+        )
 
     def _on_bubble_toggle_requested(self, state_key: str, checked: bool):
         """Handle bubble toggle from UI — delegates to StateController + BubbleController."""
@@ -314,6 +335,7 @@ class DoroApp:
             core_manager=self.core_manager,
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
+            reload_sprite=self._load_gif_for_state,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -332,6 +354,7 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
         )
+        mouse_handler.user_activity_detected.connect(self._idle_behavior.reset)
 
         # ─────────────────────────────────────────────────────────
         # Connect UI controller signals → Window
@@ -347,6 +370,9 @@ class DoroApp:
         )
         self._sprite_controller.sprite_size_changed.connect(
             lambda _: self.window.on_sprite_renderer_changed()
+        )
+        self._sprite_controller.live2d_unavailable.connect(
+            self._on_live2d_unavailable
         )
 
         # ─────────────────────────────────────────────────────────

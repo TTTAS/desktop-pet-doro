@@ -221,7 +221,7 @@ class GifGalleryDialog(FramelessDialog):
             self,
             "Select GIF file(s)",
             "",
-            "GIF Files (*.gif);;All Files (*.*)",
+            "Animated Images (*.gif *.apng *.webp);;All Files (*.*)",
         )
         if not file_paths:
             return

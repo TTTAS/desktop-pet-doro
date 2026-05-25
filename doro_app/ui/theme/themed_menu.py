@@ -23,6 +23,8 @@ class MenuSnapshot:
     has_default_idle_gif: bool
     is_chat_inflight: bool
     has_chat_history: bool
+    using_live2d: bool = False  # current state is using Live2D model
+    live2d_available: bool = False  # live2d-py library is installed
 
 
 @dataclasses.dataclass(frozen=True)
@@ -34,6 +36,7 @@ class MenuCallbacks:
     show_move_state_manager: Callable[[], None]
     toggle_bubble: Callable[[bool], None]
     clear_state_gif: Callable[[], None]
+    toggle_live2d: Callable[[bool], None]
     show_rename_dialog: Callable[[], None]
     prompt_chat: Callable[[], None]
     edit_chat_prompt: Callable[[], None]
@@ -360,6 +363,15 @@ def build_context_menu_content(
     clear_gif_action = visuals_menu.addAction("Reset GIF to default")
     clear_gif_action.setEnabled(snapshot.has_default_idle_gif)
     clear_gif_action.triggered.connect(callbacks.clear_state_gif)
+
+    # Live2D toggle
+    live2d_action = visuals_menu.addAction("Use Live2D")
+    live2d_action.setCheckable(True)
+    live2d_action.setChecked(snapshot.using_live2d)
+    live2d_action.setEnabled(snapshot.live2d_available)
+    if not snapshot.live2d_available:
+        live2d_action.setToolTip("pip install live2d-py")
+    live2d_action.triggered.connect(callbacks.toggle_live2d)
 
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(callbacks.show_rename_dialog)

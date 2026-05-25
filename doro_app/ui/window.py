@@ -225,6 +225,8 @@ class DoroWindow(QtWidgets.QWidget):
 
     def on_sprite_renderer_changed(self):
         """Handle sprite renderer content update from SpriteController."""
+        if self._sprite_controller:
+            self._sprite_renderer = self._sprite_controller.renderer
         self.apply_window_preferred_size()
         self.update()
 
@@ -239,6 +241,10 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Signal business layer to process movement
         self.tick_requested.emit(dt)
+
+        # Advance sprite renderer (needed for Live2D frame generation)
+        if self._sprite_controller:
+            self._sprite_controller.tick(dt)
 
         # Use ViewModel for animation time
         self._view_model.tick(dt)
@@ -282,6 +288,9 @@ class DoroWindow(QtWidgets.QWidget):
 
     def mark_user_activity(self):
         self._last_user_activity = time.monotonic()
+
+    def seconds_since_last_activity(self) -> float:
+        return time.monotonic() - self._last_user_activity
 
     def update_bubble_side_from_offset(self):
         """Update bubble side based on offset (called by BubbleController)."""
@@ -367,11 +376,6 @@ class DoroWindow(QtWidgets.QWidget):
         else:
             self._panel_rect_cache = None
 
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setWeight(QtGui.QFont.Weight.Bold)
-        p.setFont(font)
-
     # ═══════════════════════════════════════════════════════════
     # Public Movement API - Window Operations
     # ═══════════════════════════════════════════════════════════
@@ -410,6 +414,10 @@ class DoroWindow(QtWidgets.QWidget):
     def on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
         """Handle transition movie loaded signal from TransitionPlayer."""
         if self._sprite_controller:
+            # Under Live2D mode, skip transition GIFs — model stays visible.
+            if self._sprite_controller.renderer_type == "live2d":
+                movie.stop()
+                return
             self._sprite_controller.set_movie_directly(movie, sprite_size)
 
     def set_busy_cursor(self, enabled: bool):
@@ -448,6 +456,8 @@ class DoroWindow(QtWidgets.QWidget):
             # Clear all GIF resources via SpriteController
             if self._sprite_controller:
                 self._sprite_controller.gif_player.clear()
+                # Dispose ALL renderers (Live2D GL context, FBOs, etc.)
+                self._sprite_controller.dispose_all()
 
             if self._timer:
                 try:

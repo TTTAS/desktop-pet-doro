@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError
@@ -31,6 +31,9 @@ from .repository import (
     StateRepository,
     TransitionRepository,
 )
+
+if TYPE_CHECKING:
+    from ..movement.repository import MovementRepository
 
 logger = get_logger(__name__)
 
@@ -59,12 +62,14 @@ class StateService:
         state_list_path: Path,
         transition_repo: Optional[TransitionRepository] = None,
         transition_gif_repo: Optional[GifRepository] = None,
+        movement_repo: Optional[MovementRepository] = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
         self._move_repo = move_repo
         self._gif_repo = gif_repo
         self._transition_repo = transition_repo
+        self._movement_repo = movement_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
         # Private - managers for specialized operations
@@ -86,31 +91,49 @@ class StateService:
 
     def get_gif_path(self, state_key: str) -> Optional[Path]:
         """
-        Get a GIF path for a state.
+        Get a sprite path for a state.
 
-        If the state has multiple GIFs (subfolder), picks one at random.
-        Falls back to the single-file gif_id if no subfolder exists.
+        Resolution priority:
+        0. Live2D model path (if set)
+        1. Multi-GIF subfolder (random pick)
+        2. Single-file via gif_id
+        3. Movement state fallback
 
         Args:
             state_key: State key
 
         Returns:
-            Absolute path to GIF file or None if not found
+            Absolute path to sprite file or None if not found
         """
+        # Priority 0: Live2D model path
+        state = self._states.get(state_key)
+        if state and state.live2d_model_path:
+            live2d_path = Path(state.live2d_model_path)
+            if live2d_path.is_file():
+                return live2d_path
+            else:
+                logger.warning("Live2D model not found: %s", state.live2d_model_path)
+
         # Priority 1: multi-GIF subfolder (random pick)
         random_path = self._gif_manager.pick_random_gif(state_key)
         if random_path:
             return random_path
 
         # Priority 2: single-file via gif_id
-        state = self._states.get(state_key)
+        if not state:
+            state = self._states.get(state_key)
         if state and state.gif_id:
             path = self._gif_manager.get_path_by_id(state.gif_id)
             if path:
                 return path
 
-        # Priority 3: movement state fallback (ACTION/MOVE/{key}.gif)
+        # Priority 3: movement state fallback (animation from movements.json)
         if self._move_states.is_movement_only(state_key):
+            if self._movement_repo:
+                anim_path = self._movement_repo.resolve_animation_path(state_key)
+                if anim_path:
+                    return anim_path
+            # Fallback: scan ACTION/MOVE/ directory
             move_path = self._gif_repo.get_move_storage_path(state_key)
             if move_path.is_file():
                 return move_path
@@ -392,36 +415,62 @@ class StateService:
         # Set initial state
         self._states.set_current("idle")
 
-        # Ensure walking state exists
-        self._ensure_walking_state()
+        # Ensure movement states from movements.json exist
+        self._ensure_movement_states()
 
         # Write initial state list
         self.write_state_list()
 
-    def _ensure_walking_state(self) -> None:
-        """Ensure a default walking movement state exists."""
-        walking_key = "walking"
+    def _ensure_movement_states(self) -> None:
+        """Ensure movement states from movements.json exist.
 
-        # Check if movement state exists
-        if not self._move_states.get(walking_key):
-            walk_move = MoveState(
-                key=walking_key,
-                state_key=walking_key,
-                direction="any",
-                default_distance=60.0,
-                default_speed="med",
-            )
-            self._move_states.add(walk_move)
+        Entries from MovementRepository are used as defaults — user-customized
+        states loaded from move_states.json take priority.
+        Falls back to hardcoded walking state when no MovementRepository is available.
+        """
+        if self._movement_repo:
+            for key, entry in self._movement_repo.entries.items():
+                # User customization (move_states.json) wins over movements.json defaults
+                if not self._move_states.get(key):
+                    move = MoveState(
+                        key=entry.key,
+                        state_key=entry.state_key,
+                        direction=entry.direction,
+                        default_distance=entry.default_distance,
+                        default_speed=entry.default_speed,
+                    )
+                    self._move_states.add(move)
 
-        # Ensure corresponding display state exists
-        if not self._states.get(walking_key):
-            walk_state = State(
-                key=walking_key,
-                label="Walking",
-                name_tag="doro",
-            )
-            self._states.add(walk_state)
-            self._states.protect(walking_key)
+                # Ensure a corresponding display State exists
+                if not self._states.get(entry.state_key):
+                    display_state = State(
+                        key=entry.state_key,
+                        label=entry.state_key.capitalize(),
+                        name_tag="doro",
+                    )
+                    self._states.add(display_state)
+                    self._states.protect(entry.state_key)
+        else:
+            # Fallback for tests or when movements.json is unavailable
+            walking_key = "walking"
+            if not self._move_states.get(walking_key):
+                walk_move = MoveState(
+                    key=walking_key,
+                    state_key=walking_key,
+                    direction="any",
+                    default_distance=60.0,
+                    default_speed="med",
+                )
+                self._move_states.add(walk_move)
+
+            if not self._states.get(walking_key):
+                walk_state = State(
+                    key=walking_key,
+                    label="Walking",
+                    name_tag="doro",
+                )
+                self._states.add(walk_state)
+                self._states.protect(walking_key)
 
     # ═══════════════════════════════════════════════════════════
     # State Operations
@@ -841,11 +890,17 @@ class StateService:
                 gif_paths[key] = self._gif_repo.get_path(state.gif_id)
                 gif_counts[key] = 1 if gif_paths[key] else 0
             else:
-                # Fallback: check ACTION/MOVE/ for movement states
+                # Fallback: check movement animation paths
                 if self._move_states.is_movement_only(key):
-                    move_path = self._gif_repo.get_move_storage_path(key)
-                    if move_path.is_file():
-                        gif_paths[key] = move_path
+                    anim_path = None
+                    if self._movement_repo:
+                        anim_path = self._movement_repo.resolve_animation_path(key)
+                    if not anim_path:
+                        move_path = self._gif_repo.get_move_storage_path(key)
+                        if move_path.is_file():
+                            anim_path = move_path
+                    if anim_path:
+                        gif_paths[key] = anim_path
                         gif_counts[key] = 1
                         continue
                 gif_paths[key] = None

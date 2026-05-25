@@ -6,7 +6,10 @@
 
 TIMER_INTERVAL_MS = 16  # ~60 FPS (1000ms / 60 = 16.67ms)
 BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
-COMPANION_IDLE_THRESHOLD_SECONDS = 10.0
+
+# Idle behavior timing (seconds)
+IDLE_BEHAVIOR_MIN_INTERVAL = 60.0   # 1 minute minimum between idle actions
+IDLE_BEHAVIOR_MAX_INTERVAL = 180.0  # 3 minutes maximum between idle actions
 
 # ═══════════════════════════════════════════════════════════
 # Window Size Constants
