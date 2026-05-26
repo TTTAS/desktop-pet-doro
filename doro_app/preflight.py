@@ -37,6 +37,21 @@ def preflight_check() -> tuple[list[str], list[str]]:
     except ImportError:
         warnings.append("anthropic 未安裝，聊天功能將無法使用 — pip install anthropic")
 
+    # Phase 1c automation: pynput is only required when DORO_MOUSE=true (or
+    # the user enabled mouse_enabled in settings). Don't penalize default users.
+    if os.environ.get("DORO_MOUSE", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            import pynput  # noqa: F401
+        except ImportError:
+            warnings.append(
+                "DORO_MOUSE 已設為 true 但 pynput 未安裝；滑鼠自動化將被停用 — "
+                "pip install 'doro[automation]'"
+            )
+        if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+            warnings.append(
+                "偵測到 Wayland 純會話（無 XWayland）；滑鼠自動化目前僅支援 X11 / Windows，將進入 disabled 狀態。"
+            )
+
     if sys.platform.startswith("linux"):
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             errors.append("找不到顯示伺服器（$DISPLAY / $WAYLAND_DISPLAY 未設定）")

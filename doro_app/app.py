@@ -10,6 +10,7 @@ from .constants import (
     BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
 )
+from .core.automation.manager import AutomationManager
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
@@ -108,10 +109,17 @@ class DoroApp:
             movement_hint_provider=lambda: self._movement.instruction_text(),
             config_manager=self._config_manager,
         )
+        # ─── Automation (Phase 1c) ───────────────────────────────
+        # Optional: only constructed if mouse_enabled is True or the env var
+        # was set at startup. Even when constructed, every click is gated by
+        # the runtime allowlist + kill-switch — see AutomationManager.
+        self._automation: AutomationManager | None = self._maybe_build_automation()
+
         self._chat_orchestrator = ChatOrchestrator(
             self._chat_controller,
             self._movement,
             self._state_service,
+            automation=self._automation,
         )
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
@@ -390,3 +398,103 @@ class DoroApp:
     def run(self):
         """Start the application by showing the main window."""
         self.window.show()
+
+    # ═════════════════════════════════════════════════════════════════
+    # Automation (Phase 1c) construction
+    # ═════════════════════════════════════════════════════════════════
+
+    def _maybe_build_automation(self) -> "AutomationManager | None":
+        """Build the AutomationManager only if automation.mouse_enabled is True
+        in config (or DORO_MOUSE=true at startup). Returns None on any setup
+        failure — Doro still works fine without automation.
+        """
+        if not self._config_manager.automation.mouse_enabled:
+            return None
+
+        try:
+            from .core.automation.backend_pynput import PynputBackend
+        except Exception as exc:  # pragma: no cover - import-time path
+            from .utils.logger import get_logger as _gl
+            _gl(__name__).warning(f"Automation requested but pynput unavailable: {exc}")
+            return None
+
+        try:
+            backend = PynputBackend()
+        except Exception as exc:  # pragma: no cover - runtime path
+            from .utils.logger import get_logger as _gl
+            _gl(__name__).warning(f"Automation backend init failed: {exc}")
+            return None
+
+        window_port = _QtAutomationWindowAdapter(self.window)
+
+        from PySide6 import QtCore as _QtCore
+
+        def _schedule(ms: int, fn) -> None:
+            _QtCore.QTimer.singleShot(int(ms), fn)
+
+        # Reuse the existing transition lock — wrapping the StateService
+        # begin/end calls so IdleBehaviorManager (which already respects
+        # `state_service.is_transitioning()`) won't preempt the wind-up.
+        coord = _TransitionCoordinatorAdapter(self._state_service)
+
+        manager = AutomationManager(
+            config_manager=self._config_manager,
+            window=window_port,
+            input_backend=backend,
+            transition_coordinator=coord,
+            schedule=_schedule,
+        )
+        return manager
+
+
+class _TransitionCoordinatorAdapter:
+    """Adapter giving AutomationManager `begin()` / `end()` over StateService."""
+
+    def __init__(self, state_service) -> None:
+        self._state_service = state_service
+
+    def begin(self) -> bool:
+        return self._state_service.begin_transition()
+
+    def end(self) -> bool:
+        return self._state_service.end_transition()
+
+
+class _QtAutomationWindowAdapter:
+    """Adapter exposing the live DoroWindow as an :class:`AutomationWindowPort`."""
+
+    def __init__(self, window) -> None:
+        self._window = window
+
+    def foot_position_logical(self) -> tuple[int, int]:
+        frame = self._window.frameGeometry()
+        return (frame.center().x(), frame.bottom() - 1)
+
+    def foot_position_physical(self) -> tuple[int, int]:
+        from .core.automation.coordinates import compute_physical_pixel_for_qt_window
+
+        result = compute_physical_pixel_for_qt_window(self._window)
+        if result is not None:
+            return result
+        # Fallback: assume DPR=1 (better than crashing).
+        return self.foot_position_logical()
+
+    def set_mouse_transparent(self, transparent: bool) -> None:
+        from PySide6 import QtCore as _QtCore
+
+        try:
+            self._window.setAttribute(
+                _QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, bool(transparent)
+            )
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    def screen_size_logical(self) -> tuple[int, int]:
+        try:
+            screen = self._window.screen()
+            if screen is None:
+                return (1920, 1080)
+            size = screen.availableGeometry().size()
+            return (size.width(), size.height())
+        except Exception:  # pragma: no cover - defensive
+            return (1920, 1080)

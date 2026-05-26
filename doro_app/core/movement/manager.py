@@ -102,6 +102,14 @@ class MovementManager:
         action_lower = action.lower()
         if action_lower in ("none", "stay", "idle", "停", "不動"):
             return True
+
+        # Phase 1c: absolute-target form `[move:to;x=X;y=Y]` — walk Doro to an
+        # absolute screen coordinate using the existing walking animation.
+        # Negative coordinates are rejected; out-of-screen coordinates are
+        # clamped (same behavior as the directional form).
+        if action_lower in ("to", "goto"):
+            return self._handle_target_move(params, reports)
+
         base_moves = {"", "move", "walk", "slide", "step"}
         if action_lower and action_lower not in base_moves and action_lower not in {"face", "none", "stay", "idle", "停", "不動"}:
             if params.get("dir") is None:
@@ -223,6 +231,77 @@ class MovementManager:
             self._finish_movement(final_position=clamped)
         else:
             self._movement_remaining = remaining
+
+    def _handle_target_move(self, params: dict, reports: list) -> bool:
+        """Handle `[move:to;x=X;y=Y]` — walk Doro to an absolute screen coord.
+
+        Returns True when the bracket is consumed (even on validation
+        failure — the caller already matched action=='to' and should not
+        fall through to other parsers). Errors are appended to `reports`.
+        """
+        x_raw = params.get("x")
+        y_raw = params.get("y")
+        if x_raw is None or y_raw is None:
+            self._last_error = f"move:to 需要 x 與 y 參數 (got x={x_raw!r}, y={y_raw!r})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
+
+        try:
+            target_x = int(float(x_raw))
+            target_y = int(float(y_raw))
+        except (TypeError, ValueError):
+            self._last_error = f"move:to 的 x/y 必須為數字 (got x={x_raw!r}, y={y_raw!r})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
+
+        if target_x < 0 or target_y < 0:
+            self._last_error = f"move:to 的 x/y 不可為負 (got {target_x},{target_y})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
+
+        window = self._window
+        current = window.current_position()
+        clamped = window.clamp_window_position(QtCore.QPoint(target_x, target_y))
+        actual_dx = clamped.x() - current.x()
+        actual_dy = clamped.y() - current.y()
+        actual_distance = math.hypot(actual_dx, actual_dy)
+        if actual_distance <= self._repo.defaults.completion_threshold:
+            # Already at (or essentially at) the target — nothing to animate.
+            return True
+
+        direction_vector = (actual_dx / actual_distance, actual_dy / actual_distance)
+        direction_label_text = direction_label(direction_vector)
+        report = format_move_report(
+            clamped,
+            direction_label_text,
+            int(round(actual_dx)),
+            int(round(actual_dy)),
+        )
+
+        speed_param = params.get("speed") or params.get("spd") or params.get("速度") or "med"
+        move_state_key = self._state_service.get_default_movement_state()
+        _, move_state_settings = self._resolve_move_state_settings(move_state_key)
+
+        self._start_movement(
+            direction_vector,
+            actual_distance,
+            speed_name=str(speed_param).lower(),
+            state_hint=None,
+            report=report,
+            move_state=move_state_settings,
+            move_state_name=move_state_key,
+        )
+        return True
+
+    def apply_target_move(self, target_x: int, target_y: int) -> str | None:
+        """Programmatic equivalent of `[move:to;x=...;y=...]`.
+
+        Returns the resulting move report (also stored in history), or None
+        if Doro is already at the target.
+        """
+        reports: list[str] = []
+        self._handle_target_move({"x": target_x, "y": target_y}, reports)
+        return reports[0] if reports else self._movement_pending_report
 
     def apply_directional_move(self, direction: tuple[int, int]) -> str | None:
         dx, dy = direction

@@ -9,6 +9,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+automation = [
+    "pynput>=1.7.6",
+]
 test = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

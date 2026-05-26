@@ -113,6 +113,38 @@ MOVEMENT_SPEED_FAST = 220.0  # pixels per second
 MOVEMENT_COMPLETION_THRESHOLD = 0.5  # pixels - movement is "done" when within this distance
 
 # ═══════════════════════════════════════════════════════════
+# Automation (Phase 1c: restricted mouse click)
+# ═══════════════════════════════════════════════════════════
+
+# Wind-up duration before sending the synthetic click. Acts as the visible
+# "she's about to do it" window during which the user can drag Doro elsewhere
+# (redirecting the click) or press Esc (cancelling).
+CLICK_WIND_UP_MS = 1500
+
+# Minimum interval between two consecutive synthetic clicks, to defeat
+# accidental LLM spam.
+CLICK_RATE_LIMIT_MS = 2000
+
+# After wind-up, if the user is still pressing the left mouse button, wait
+# up to this many ms for them to release before firing (or giving up).
+CLICK_DRAG_GRACE_MS = 1000
+
+# Three Esc presses within KILL_SWITCH_ESC_WINDOW_MS disables automation
+# globally.
+KILL_SWITCH_ESC_COUNT = 3
+KILL_SWITCH_ESC_WINDOW_MS = 800
+
+# Default allowlist of foreground-window class names where automation is
+# permitted to click. Used when no user-configured value is present.
+DEFAULT_MOUSE_TARGET_ALLOWLIST: tuple[str, ...] = (
+    "Firefox",
+    "Chromium",
+    "Chrome",
+    "Navigator",
+    "Google-chrome",
+)
+
+# ═══════════════════════════════════════════════════════════
 # Bubble Scale Limits
 # ═══════════════════════════════════════════════════════════
 

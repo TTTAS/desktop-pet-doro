@@ -15,6 +15,7 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from ..automation.manager import AutomationManager
     from ..movement.manager import MovementManager
     from ..state import StateService
 
@@ -28,11 +29,19 @@ class ChatOrchestrator(QtCore.QObject):
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
     notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
 
-    def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
+    def __init__(
+        self,
+        controller: ChatController,
+        movement: MovementManager,
+        state_service: StateService,
+        *,
+        automation: "AutomationManager | None" = None,
+    ):
         super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
         self._state_service = state_service
+        self._automation = automation
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -205,6 +214,9 @@ class ChatOrchestrator(QtCore.QObject):
 
         for kind, token in actions:
             if kind == "bracket":
+                # Phase 1c automation: `[mouse:click]` is the only accepted form.
+                if self._handle_mouse_bracket(token):
+                    continue
                 if self._movement.handle_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
@@ -250,6 +262,29 @@ class ChatOrchestrator(QtCore.QObject):
                 self._movement.record_manual_report(report)
 
         return self._clean_assistant_dialogue(cleaned_text)
+
+    def _handle_mouse_bracket(self, token: str) -> bool:
+        """Handle `[mouse:...]` brackets. Returns True if the token was claimed
+        (the parser recognized it as a mouse bracket), regardless of whether
+        the action was permitted. Returning True prevents downstream parsers
+        from re-interpreting the same token.
+        """
+        from ..automation.parser import parse_mouse_bracket
+
+        parse = parse_mouse_bracket(token)
+        if parse is None:
+            return False  # not a mouse bracket — let other parsers try
+
+        if not parse.accepted:
+            logger.warning(f"[automation] rejected mouse bracket: {parse.reason}")
+            return True
+
+        if self._automation is None:
+            logger.info("[automation] [mouse:click] received but automation not wired; ignoring")
+            return True
+
+        self._automation.execute_click()
+        return True
 
     def _strip_control_tokens(self, text: str) -> str:
         stripped = (text or "").strip()

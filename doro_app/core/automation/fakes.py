@@ -1,0 +1,90 @@
+"""Test doubles for the automation subsystem.
+
+These let `AutomationManager` be exercised without pynput, without a
+display server, and without spawning background threads. Tests can drive
+the foreground-window class string, mouse-button state, and Esc callbacks
+deterministically.
+"""
+
+from __future__ import annotations
+
+from typing import Callable, Optional
+
+
+class FakeInputBackend:
+    """In-memory recorder for the :class:`InputBackendPort` protocol."""
+
+    def __init__(self) -> None:
+        self.click_calls: list[tuple[int, int]] = []
+        self.window_class_at: dict[tuple[int, int], str] = {}
+        self.window_class_default: Optional[str] = None
+        self.left_button_pressed: bool = False
+        self.esc_callback: Optional[Callable[[], None]] = None
+        self.shutdown_called: bool = False
+
+    # InputBackendPort ---------------------------------------------------
+
+    def click_left(self, x: int, y: int) -> None:
+        self.click_calls.append((int(x), int(y)))
+
+    def read_window_class_at(self, x: int, y: int) -> Optional[str]:
+        key = (int(x), int(y))
+        if key in self.window_class_at:
+            return self.window_class_at[key]
+        return self.window_class_default
+
+    def is_left_button_pressed(self) -> bool:
+        return self.left_button_pressed
+
+    def install_esc_listener(self, on_esc: Callable[[], None]) -> None:
+        self.esc_callback = on_esc
+
+    def shutdown(self) -> None:
+        self.shutdown_called = True
+
+    # Test conveniences --------------------------------------------------
+
+    def set_window_class(self, class_name: Optional[str]) -> None:
+        """Set the class returned for any point not otherwise mapped."""
+        self.window_class_default = class_name
+
+    def press_esc(self) -> None:
+        if self.esc_callback is not None:
+            self.esc_callback()
+
+
+class FakeAutomationWindow:
+    """Stand-in for the Doro window in automation tests."""
+
+    def __init__(
+        self,
+        *,
+        foot_logical: tuple[int, int] = (100, 100),
+        foot_physical: Optional[tuple[int, int]] = None,
+        screen_size: tuple[int, int] = (1920, 1080),
+    ) -> None:
+        self._foot_logical = foot_logical
+        self._foot_physical = foot_physical or foot_logical
+        self._screen_size = screen_size
+        self.mouse_transparent: bool = False
+        self.transparent_toggles: list[bool] = []
+
+    def foot_position_logical(self) -> tuple[int, int]:
+        return self._foot_logical
+
+    def foot_position_physical(self) -> tuple[int, int]:
+        return self._foot_physical
+
+    def set_mouse_transparent(self, transparent: bool) -> None:
+        self.mouse_transparent = transparent
+        self.transparent_toggles.append(transparent)
+
+    def screen_size_logical(self) -> tuple[int, int]:
+        return self._screen_size
+
+    # Test conveniences --------------------------------------------------
+
+    def move_foot_to(self, logical: tuple[int, int], physical: Optional[tuple[int, int]] = None) -> None:
+        """Simulate the user dragging Doro to a new position during wind-up."""
+        self._foot_logical = logical
+        self._foot_physical = physical or logical

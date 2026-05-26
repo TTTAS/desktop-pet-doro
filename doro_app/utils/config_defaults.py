@@ -21,3 +21,12 @@ DEFAULT_CHAT_API_KEY = _env("DORO_CHAT_API_KEY", "")
 DEFAULT_CHAT_MAX_RETRIES = 2  # Number of retries for failed requests
 DEFAULT_CHAT_STOP_TOKENS = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
 DEFAULT_CHAT_MAX_STOP_TOKENS = 0  # 0 = no limit
+
+
+# ═══════════════════════════════════════════════════════════
+# Automation (Phase 1c) Defaults
+# ═══════════════════════════════════════════════════════════
+
+# Master opt-in for synthetic-click automation. `DORO_MOUSE=true` flips this
+# on at process start. Anything else (unset, "0", "false") leaves it off.
+DEFAULT_MOUSE_AUTOMATION_ENABLED = _env("DORO_MOUSE", "false").strip().lower() in ("1", "true", "yes", "on")

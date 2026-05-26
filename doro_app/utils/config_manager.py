@@ -18,7 +18,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from PySide6 import QtCore
 
-from .config_schema import ChatConfig, UIConfig, AppConfig, DoroConfig
+from .config_schema import ChatConfig, UIConfig, AppConfig, AutomationConfig, DoroConfig
 from ..constants import (
     CHAT_DEFAULT_HISTORY_TURNS,
     CHAT_DEFAULT_TIMEOUT_SECONDS,
@@ -27,6 +27,7 @@ from ..constants import (
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
+    DEFAULT_MOUSE_TARGET_ALLOWLIST,
 )
 from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
@@ -36,6 +37,7 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_MOUSE_AUTOMATION_ENABLED,
 )
 from ..utils.logger import get_logger
 
@@ -78,6 +80,17 @@ def _safe_str_list(value: Any, default: list[str]) -> list[str]:
     if isinstance(value, list):
         return [str(v) for v in value]
     return list(default)
+
+
+def _safe_bool(value: Any, default: bool) -> bool:
+    """Convert QSettings value to bool — QSettings returns strings like 'true'."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -158,6 +171,11 @@ class ConfigManager:
         return self._config.app
 
     @property
+    def automation(self) -> AutomationConfig:
+        """Get automation (synthetic mouse click) configuration (read-only)."""
+        return self._config.automation
+
+    @property
     def config(self) -> DoroConfig:
         """Get complete configuration (read-only)."""
         return self._config
@@ -225,6 +243,27 @@ class ConfigManager:
         self._config.ui = new_config
 
         logger.debug(f"UI config updated: {kwargs}")
+
+    def update_automation(self, **kwargs) -> None:
+        """Update automation configuration with validation.
+
+        Args:
+            **kwargs: Fields to update — `mouse_enabled` (bool),
+                `mouse_target_allowlist` (tuple[str, ...]).
+
+        Raises:
+            ValueError: If any value fails validation.
+        """
+        current = self._config.automation
+        updated_values = {
+            "mouse_enabled": kwargs.get("mouse_enabled", current.mouse_enabled),
+            "mouse_target_allowlist": kwargs.get(
+                "mouse_target_allowlist", current.mouse_target_allowlist
+            ),
+        }
+        new_config = AutomationConfig(**updated_values)
+        self._config.automation = new_config
+        logger.debug(f"Automation config updated: {kwargs}")
 
     def update_app(self, **kwargs) -> None:
         """
@@ -336,6 +375,32 @@ class ConfigManager:
             logger.warning(f"Invalid UI config, using defaults: {e}")
             self._config.ui = UIConfig()
 
+        # Load automation config
+        try:
+            allowlist_raw = self._settings.value("automation/mouse_target_allowlist")
+            if allowlist_raw is None:
+                allowlist = DEFAULT_MOUSE_TARGET_ALLOWLIST
+            elif isinstance(allowlist_raw, (list, tuple)):
+                allowlist = tuple(str(v) for v in allowlist_raw)
+            elif isinstance(allowlist_raw, str):
+                allowlist = tuple(part.strip() for part in allowlist_raw.split(",") if part.strip())
+            else:
+                allowlist = DEFAULT_MOUSE_TARGET_ALLOWLIST
+
+            automation_config = AutomationConfig(
+                mouse_enabled=_safe_bool(
+                    self._settings.value("automation/mouse_enabled"),
+                    DEFAULT_MOUSE_AUTOMATION_ENABLED,
+                ),
+                mouse_target_allowlist=allowlist,
+            )
+            self._config.automation = automation_config
+        except ValueError as e:
+            logger.warning(f"Invalid automation config, using defaults: {e}")
+            self._config.automation = AutomationConfig(
+                mouse_enabled=DEFAULT_MOUSE_AUTOMATION_ENABLED,
+            )
+
         # Load app config
         try:
             app_config = AppConfig(
@@ -378,6 +443,14 @@ class ConfigManager:
         self._settings.setValue("ui/bubble_offset_x", float(ui.bubble_offset_x))
         self._settings.setValue("ui/bubble_offset_y", float(ui.bubble_offset_y))
         self._settings.setValue("ui/bubble_scale", float(ui.bubble_scale))
+
+        # Save automation config
+        automation = self._config.automation
+        self._settings.setValue("automation/mouse_enabled", bool(automation.mouse_enabled))
+        self._settings.setValue(
+            "automation/mouse_target_allowlist",
+            list(automation.mouse_target_allowlist),
+        )
 
         # Save app config
         app = self._config.app

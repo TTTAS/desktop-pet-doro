@@ -22,6 +22,7 @@ from ..constants import (
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
+    DEFAULT_MOUSE_TARGET_ALLOWLIST,
 )
 from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
@@ -31,6 +32,7 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_MOUSE_AUTOMATION_ENABLED,
 )
 
 
@@ -129,6 +131,37 @@ class UIConfig:
 
 
 @dataclass
+class AutomationConfig:
+    """Phase 1c automation configuration (restricted synthetic mouse clicks).
+
+    Defaults are conservative: `mouse_enabled=False` means no synthetic
+    events will ever fire even if the LLM emits `[mouse:click]`. The
+    allowlist gates which foreground-window classes are considered
+    valid click targets at the moment of firing.
+    """
+
+    mouse_enabled: bool = False
+    mouse_target_allowlist: tuple[str, ...] = DEFAULT_MOUSE_TARGET_ALLOWLIST
+
+    def __post_init__(self):
+        if not isinstance(self.mouse_enabled, bool):
+            raise ValueError(f"mouse_enabled must be bool, got {type(self.mouse_enabled)}")
+        if not isinstance(self.mouse_target_allowlist, (tuple, list)):
+            raise ValueError(
+                f"mouse_target_allowlist must be tuple/list, got {type(self.mouse_target_allowlist)}"
+            )
+        # Normalize to tuple of stripped non-empty strings
+        normalized = tuple(
+            str(item).strip() for item in self.mouse_target_allowlist if str(item).strip()
+        )
+        object.__setattr__(self, "mouse_target_allowlist", normalized)
+
+    @property
+    def config_key_prefix(self) -> str:
+        return "automation"
+
+
+@dataclass
 class AppConfig:
     """
     Application-level configuration.
@@ -169,6 +202,7 @@ class DoroConfig:
     chat: ChatConfig = field(default_factory=ChatConfig)
     ui: UIConfig = field(default_factory=UIConfig)
     app: AppConfig = field(default_factory=AppConfig)
+    automation: AutomationConfig = field(default_factory=AutomationConfig)
 
     def __repr__(self) -> str:
         """Readable representation of configuration."""
