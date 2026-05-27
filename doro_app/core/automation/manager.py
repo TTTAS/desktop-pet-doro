@@ -43,7 +43,7 @@ from ...utils.logger import get_logger
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...utils.config_manager import ConfigManager
     from ..state.transition_coordinator import TransitionCoordinator
-    from .port import AutomationWindowPort, InputBackendPort
+    from .port import AutomationWindowPort, InputBackendPort, WindUpAnimatorPort
 
 
 logger = get_logger("doro.automation")
@@ -101,6 +101,7 @@ class AutomationManager:
         window: "AutomationWindowPort",
         input_backend: "InputBackendPort",
         transition_coordinator: Optional["TransitionCoordinator"] = None,
+        wind_up_animator: Optional["WindUpAnimatorPort"] = None,
         schedule: ScheduleFn,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
@@ -111,6 +112,7 @@ class AutomationManager:
         self._window = window
         self._backend = input_backend
         self._transitions = transition_coordinator
+        self._wind_up_animator = wind_up_animator
         self._schedule = schedule
         self._clock = clock
 
@@ -188,6 +190,11 @@ class AutomationManager:
                 self._transitions.begin()
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(f"TransitionCoordinator.begin() raised: {exc}")
+        if self._wind_up_animator is not None:
+            try:
+                self._wind_up_animator.begin()
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("WindUpAnimator.begin() raised")
 
         logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
         self._schedule(self._wind_up_ms, self._on_wind_up_finished)
@@ -279,6 +286,11 @@ class AutomationManager:
     def _finalize(self, outcome: ClickOutcome, detail: str) -> None:
         """Single exit path — every wind-up flow must end here so the
         transition lock is always released."""
+        if self._wind_up_animator is not None:
+            try:
+                self._wind_up_animator.end()
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("WindUpAnimator.end() raised")
         if self._transitions is not None:
             try:
                 self._transitions.end()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from .bootstrap import BootstrappedDependencies, bootstrap_environment
 from .constants import (
     BUBBLE_AUTO_HIDE_MS,
@@ -159,6 +161,12 @@ class DoroApp:
         # Initialize StateService and restore last state
         # ─────────────────────────────────────────────────────────
         self._state_service.initialize(default_gif_path=self._default_idle_gif)
+
+        # Register the click_action protected state (Phase 1c).
+        # Must run after StateService.initialize so it can register through
+        # the same channels and pick up any user-bound GIF from actions.json.
+        self._action_service = deps.action_service
+        self._action_service.bootstrap()
 
         # Use ConfigManager for type-safe config access
         saved_state_key = self._config_manager.app.current_state
@@ -486,15 +494,50 @@ class DoroApp:
         # begin/end calls so IdleBehaviorManager (which already respects
         # `state_service.is_transitioning()`) won't preempt the wind-up.
         coord = _TransitionCoordinatorAdapter(self._state_service)
+        animator = _QtWindUpAnimatorAdapter(
+            self._state_service,
+            self._action_service.click_state_key,
+        )
 
         manager = AutomationManager(
             config_manager=self._config_manager,
             window=window_port,
             input_backend=backend,
             transition_coordinator=coord,
+            wind_up_animator=animator,
             schedule=_schedule,
         )
         return manager
+
+
+class _QtWindUpAnimatorAdapter:
+    """Drive the click wind-up animation by swapping the visible state.
+
+    The :class:`ActionService` registered ``click_action`` as a hidden
+    protected state with the appropriate ``gif_id`` (user-bound or
+    fallback) at bootstrap. During wind-up we ``set_state`` to it with
+    ``force=True`` (the transition lock is already engaged), record the
+    previous state, and restore on end. Restoration uses ``force=True``
+    too because the lock is still held until AutomationManager finalizes.
+    """
+
+    def __init__(self, state_service, click_state_key: str) -> None:
+        self._state_service = state_service
+        self._click_state_key = click_state_key
+        self._prev_state_key: Optional[str] = None
+
+    def begin(self) -> None:
+        self._prev_state_key = self._state_service.get_current_state_key()
+        if not self._state_service.set_state(self._click_state_key, force=True):
+            # State not registered or set_state refused — drop the saved key
+            # so end() doesn't try to flip back from a state we never left.
+            self._prev_state_key = None
+
+    def end(self) -> None:
+        if self._prev_state_key is None:
+            return
+        self._state_service.set_state(self._prev_state_key, force=True)
+        self._prev_state_key = None
 
 
 class _TransitionCoordinatorAdapter:

@@ -57,3 +57,23 @@ class AutomationWindowPort(Protocol):
 
     def screen_size_logical(self) -> tuple[int, int]:
         """Return (width, height) of the available screen geometry in logical px."""
+
+
+class WindUpAnimatorPort(Protocol):
+    """Drives the visual wind-up animation during a click.
+
+    Real implementation (Qt side) switches the current display state to
+    the protected ``click_action`` state registered by
+    :class:`ActionService`; tests provide a recording stub. Both calls
+    are optional from the manager's perspective — they MUST be safe to
+    invoke even when no GIF is bound (the implementation handles the
+    fallback chain).
+    """
+
+    def begin(self) -> None:
+        """Start playing the click wind-up animation."""
+
+    def end(self) -> None:
+        """Restore the prior display state. Called at every wind-up
+        exit path (fired, aborted, allowlist miss, grace-exceeded).
+        """

@@ -123,6 +123,31 @@ def coord_stub():
     return coord
 
 
+class RecordingWindUpAnimator:
+    """Records begin/end calls for the wind_up_animator port."""
+
+    def __init__(self) -> None:
+        self.begin_calls: int = 0
+        self.end_calls: int = 0
+        self.raise_on_begin: bool = False
+        self.raise_on_end: bool = False
+
+    def begin(self) -> None:
+        self.begin_calls += 1
+        if self.raise_on_begin:
+            raise RuntimeError("animator begin failed")
+
+    def end(self) -> None:
+        self.end_calls += 1
+        if self.raise_on_end:
+            raise RuntimeError("animator end failed")
+
+
+@pytest.fixture
+def wind_up_animator() -> RecordingWindUpAnimator:
+    return RecordingWindUpAnimator()
+
+
 @pytest.fixture
 def manager(
     config_stub: ConfigManagerStub,

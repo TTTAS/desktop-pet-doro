@@ -319,6 +319,39 @@ class StateService:
         return self._gif_manager.remove_transition_gif(transition_key, filename)
 
     # ═══════════════════════════════════════════════════════════
+    # Public API - Action State Registration (Phase 1c)
+    # ═══════════════════════════════════════════════════════════
+
+    def ensure_action_state(
+        self,
+        key: str,
+        label: str,
+        gif_id: Optional[str] = None,
+    ) -> None:
+        """Idempotently register a protected, hidden internal state.
+
+        Used by :class:`ActionService` to put a display state behind a
+        named action (e.g. ``click_action``). The state is:
+
+        - **Protected** so it cannot be deleted by the user.
+        - **Hidden** so it is filtered out of ``visible_state_keys()`` —
+          it must not appear in personality menus, idle picks, or the
+          LLM-facing state list.
+
+        Safe to call after :meth:`initialize`. If the state already
+        exists its ``gif_id`` is synced when *gif_id* is provided.
+        """
+        existing = self._states.get(key)
+        if existing is None:
+            new_state = State(key=key, label=label, name_tag="doro", gif_id=gif_id)
+            self._states.add(new_state)
+        elif gif_id is not None and existing.gif_id != gif_id:
+            self._states.add(existing.with_changes(gif_id=gif_id))
+
+        self._states.protect(key)
+        self._states.hide(key)
+
+    # ═══════════════════════════════════════════════════════════
     # Public API - State Modification
     # ═══════════════════════════════════════════════════════════
 

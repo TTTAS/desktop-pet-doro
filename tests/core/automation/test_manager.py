@@ -283,3 +283,134 @@ class TestTransitionLockRelease:
         clock.advance(2.0)
         scheduler.run_next()  # grace times out
         coord_stub.end.assert_called_once()
+
+
+class TestWindUpAnimator:
+    """The wind_up_animator port plays the click GIF during wind-up.
+
+    Like transition_coordinator, every exit path MUST call ``end()``
+    exactly once — otherwise the click_action display state stays stuck
+    and Doro looks frozen.
+    """
+
+    def _build_manager(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        from doro_app.core.automation.manager import AutomationManager
+        return AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            wind_up_animator=wind_up_animator,
+            schedule=scheduler,
+            clock=clock,
+        )
+
+    def test_begin_fires_when_wind_up_starts(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # begin() must run before the wind-up timer expires so the click
+        # GIF is on screen for the full ~1.5s, not just at fire time.
+        assert wind_up_animator.begin_calls == 1
+        assert wind_up_animator.end_calls == 0
+
+    def test_fired_path_calls_end_exactly_once(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert wind_up_animator.end_calls == 1
+
+    def test_allowlist_miss_still_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        fake_backend.set_window_class("KeePassXC")
+        manager.execute_click()
+        scheduler.flush()
+        assert wind_up_animator.end_calls == 1
+
+    def test_esc_abort_still_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        fake_backend.press_esc()
+        scheduler.flush()
+        assert wind_up_animator.end_calls == 1
+
+    def test_grace_exceeded_still_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        fake_backend.set_window_class("Firefox")
+        fake_backend.left_button_pressed = True
+        manager.execute_click()
+        scheduler.run_next()
+        clock.advance(2.0)
+        scheduler.run_next()
+        assert wind_up_animator.end_calls == 1
+
+    def test_animator_exception_does_not_strand_other_locks(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, wind_up_animator,
+    ):
+        """A raising animator.end() must not block transition_coordinator.end()."""
+        manager = self._build_manager(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, wind_up_animator,
+        )
+        wind_up_animator.raise_on_end = True
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        coord_stub.end.assert_called_once()
+
+    def test_manager_works_without_animator(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """``wind_up_animator`` is optional; older wiring must keep working."""
+        from doro_app.core.automation.manager import AutomationManager
+        manager = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        # No animator passed → no crash, and transition coord still ran.
+        coord_stub.end.assert_called_once()
