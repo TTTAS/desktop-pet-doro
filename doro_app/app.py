@@ -108,6 +108,7 @@ class DoroApp:
             state_text_provider=lambda: self._state_controller.get_state_list_text(),
             movement_hint_provider=lambda: self._movement.instruction_text(),
             config_manager=self._config_manager,
+            doro_state_provider=lambda: self._build_doro_state_text(),
         )
         # ─── Automation (Phase 1c) ───────────────────────────────
         # Optional: only constructed if mouse_enabled is True or the env var
@@ -398,6 +399,55 @@ class DoroApp:
     def run(self):
         """Start the application by showing the main window."""
         self.window.show()
+
+    # ═════════════════════════════════════════════════════════════════
+    # Chat context injection (Phase 1c hotfix)
+    # ═════════════════════════════════════════════════════════════════
+
+    def _build_doro_state_text(self) -> str:
+        """Compose the ``[Doro 當下狀態]`` block injected before each chat turn.
+
+        Three sampled facts the LLM needs to choose a sensible
+        ``[MOVE:to;...]`` target: Doro's current logical position, the
+        screen size, and the class string of the foreground window under
+        Doro's feet. Each sub-step is defensive so partial info still
+        reaches the LLM if e.g. the X server is missing.
+        """
+        try:
+            frame = self.window.frameGeometry()
+            cx = int(frame.center().x())
+            cy = int(frame.center().y())
+        except Exception:
+            return ""
+
+        sw, sh = 1920, 1080
+        try:
+            screen = self.window.screen()
+            if screen is not None:
+                size = screen.availableGeometry().size()
+                sw, sh = size.width(), size.height()
+        except Exception:
+            pass
+
+        class_name = "unknown"
+        try:
+            from .core.automation.coordinates import compute_physical_pixel_for_qt_window
+            from .core.automation import window_class
+
+            phys = compute_physical_pixel_for_qt_window(self.window)
+            if phys is not None:
+                read = window_class.read_at(phys[0], phys[1])
+                if read:
+                    class_name = read
+        except Exception:
+            pass
+
+        return (
+            "[Doro 當下狀態]\n"
+            f"位置: x={cx}, y={cy}\n"
+            f"螢幕: {sw}×{sh}\n"
+            f"前景視窗 class: {class_name}"
+        )
 
     # ═════════════════════════════════════════════════════════════════
     # Automation (Phase 1c) construction

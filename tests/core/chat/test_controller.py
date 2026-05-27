@@ -282,6 +282,63 @@ class TestPayloadBuilding:
         # Should include state information from provider
         assert "idle" in prompt or "happy" in prompt
 
+    def test_compose_system_prompt_appends_doro_state(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """_compose_system_prompt appends the [Doro 當下狀態] block after movement hint."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "[Doro 當下狀態]\n位置: x=200, y=400\n螢幕: 1920×1080\n前景視窗 class: chrome",
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "MOVE_HINT_MARKER" in prompt
+        assert "[Doro 當下狀態]" in prompt
+        assert "x=200, y=400" in prompt
+        assert "1920×1080" in prompt
+        assert "chrome" in prompt
+        # Doro state must appear AFTER the movement hint, not before.
+        assert prompt.index("MOVE_HINT_MARKER") < prompt.index("[Doro 當下狀態]")
+
+    def test_compose_system_prompt_omits_doro_state_when_provider_empty(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Empty doro_state_provider must not introduce blank trailing sections."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "",
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "[Doro 當下狀態]" not in prompt
+        # No trailing whitespace burp from the absent section.
+        assert not prompt.endswith("\n\n\n")
+
+    def test_compose_system_prompt_default_provider_is_noop(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Omitting doro_state_provider behaves like the empty provider (back-compat)."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+        )
+        # No doro_state_provider passed — default lambda returns "".
+        prompt = controller._compose_system_prompt()
+        assert "[Doro 當下狀態]" not in prompt
+
 
 # ═══════════════════════════════════════════════════════════
 # Signal Emission Tests

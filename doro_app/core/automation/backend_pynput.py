@@ -14,7 +14,6 @@ missing class as "not in allowlist" and refuses to fire.
 
 from __future__ import annotations
 
-import sys
 from typing import Callable, Optional
 
 from ...utils.logger import get_logger
@@ -53,13 +52,9 @@ class PynputBackend:
         self._mouse_controller.click(self._Button.left, 1)
 
     def read_window_class_at(self, x: int, y: int) -> Optional[str]:
-        if sys.platform.startswith("linux"):
-            return _read_window_class_x11(int(x), int(y))
-        if sys.platform == "win32":
-            return _read_window_class_win32(int(x), int(y))
-        if sys.platform == "darwin":  # pragma: no cover - not the dev target
-            return _read_window_class_macos(int(x), int(y))
-        return None
+        from .window_class import read_at
+
+        return read_at(x, y)
 
     def is_left_button_pressed(self) -> bool:
         return self._left_pressed
@@ -119,55 +114,6 @@ class PynputBackend:
             self._mouse_listener = None
 
 
-# ────────────────────────────────────────────────────────────────────────
-# Platform-specific window-class readers. Each only reads the class string
-# (NOT the title, NOT the contents) and returns None on any error.
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _read_window_class_x11(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs X server
-    try:
-        from Xlib import display, X  # type: ignore[import-not-found]
-    except ImportError:
-        return None
-    try:
-        d = display.Display()
-        root = d.screen().root
-        # Find the topmost child window at (x, y).
-        target = root
-        while True:
-            data = target.query_pointer()
-            child = data.child
-            if child == X.NONE or not child:
-                break
-            target = child
-            # Don't loop forever — XQueryPointer with a point we set
-            target_data = target.translate_coords(root, x, y)  # noqa: F841
-        wm_class = target.get_wm_class()
-        return wm_class[1] if wm_class and len(wm_class) >= 2 else None
-    except Exception:
-        return None
-
-
-def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs Windows
-    try:
-        import ctypes
-        from ctypes import wintypes
-    except ImportError:
-        return None
-    try:
-        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        pt = wintypes.POINT(int(x), int(y))
-        hwnd = user32.WindowFromPoint(pt)
-        if not hwnd:
-            return None
-        buf = ctypes.create_unicode_buffer(256)
-        user32.GetClassNameW(hwnd, buf, 256)
-        return buf.value or None
-    except Exception:
-        return None
-
-
-def _read_window_class_macos(x: int, y: int) -> Optional[str]:  # pragma: no cover - not on dev target
-    # Out of scope for Phase 1c — return None so the allowlist check refuses.
-    return None
+# Platform-specific window-class readers were moved to ``window_class.py``
+# so they can be reused (without the pynput dependency) by the LLM context
+# injection in ``DoroApp._build_doro_state_text``.

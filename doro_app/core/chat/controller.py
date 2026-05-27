@@ -97,6 +97,7 @@ class ChatController(QtCore.QObject):
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
         config_manager: ConfigManager,
+        doro_state_provider: TextProvider | None = None,
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
@@ -107,6 +108,7 @@ class ChatController(QtCore.QObject):
         self._state_service = state_service
         self._state_text_provider = state_text_provider
         self._movement_hint_provider = movement_hint_provider
+        self._doro_state_provider: TextProvider = doro_state_provider or (lambda: "")
 
         # Response validation
         self._validator = ResponseValidator(state_service)
@@ -467,6 +469,10 @@ class ChatController(QtCore.QObject):
         movement_hint = self._safe_call_provider(self._movement_hint_provider)
         if movement_hint:
             prompt = f"{prompt}\n\n{movement_hint}" if prompt else movement_hint
+
+        doro_state = self._safe_call_provider(self._doro_state_provider)
+        if doro_state:
+            prompt = f"{prompt}\n\n{doro_state}" if prompt else doro_state
         return prompt
 
     def _safe_call_provider(self, provider: TextProvider) -> str:
