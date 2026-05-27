@@ -56,6 +56,10 @@ class ChatSettingsDialog(FramelessDialog):
         self._build_ui()
         self._populate_from_settings()
 
+    def refresh(self) -> None:
+        """Re-read settings into the form (use when re-showing a cached dialog)."""
+        self._populate_from_settings()
+
     # ── build ──────────────────────────────────────────────
 
     def _build_ui(self):

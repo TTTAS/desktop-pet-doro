@@ -45,6 +45,10 @@ class ChatUIHelper:
     ) -> None:
         self.window = window
         self._core_manager = core_manager
+        # ChatSettingsDialog is heavy to build (translucent frameless QDialog
+        # + 6-layer antialiased shadow + Qt stylesheet parse). Cache it after
+        # first construction so subsequent opens are instant.
+        self._settings_dialog = None
         self._bubble_controller = bubble_controller
 
     @property
@@ -217,7 +221,12 @@ class ChatUIHelper:
 
     def open_settings_dialog(self) -> None:
         """Open the unified API settings dialog."""
-        from ..dialogs.chat_settings_dialog import ChatSettingsDialog
+        if self._settings_dialog is None:
+            from ..dialogs.chat_settings_dialog import ChatSettingsDialog
 
-        dialog = ChatSettingsDialog(self._core_manager, parent=self.window)
-        dialog.exec()
+            self._settings_dialog = ChatSettingsDialog(self._core_manager, parent=self.window)
+        else:
+            # Re-read current settings — values may have changed via env / other UI.
+            self._settings_dialog.refresh()
+
+        self._settings_dialog.exec()
