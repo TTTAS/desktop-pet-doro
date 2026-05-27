@@ -292,20 +292,21 @@ class TestMovementProcessing:
 class TestEventHandlers:
     """Test internal event handlers."""
 
-    def test_transition_completed_emits_signals(self, core_manager):
-        """Transition completion emits both transition_completed and state_changed."""
-        # Connect Mock listeners to verify both signals are emitted
+    def test_transition_completed_emits_only_transition_signal(self, core_manager):
+        """Transition completion emits transition_completed but NOT state_changed.
+
+        Regression guard: emitting state_changed here caused the target GIF to
+        load twice. Only transition_completed should fire.
+        """
         mock_tc_listener = Mock()
         mock_sc_listener = Mock()
         core_manager.transition_completed.connect(mock_tc_listener)
         core_manager.state_changed.connect(mock_sc_listener)
 
-        # Manually trigger the internal handler
         core_manager._on_transition_completed("walking")
 
-        # Verify both signals were emitted
         mock_tc_listener.assert_called_once_with("walking")
-        mock_sc_listener.assert_called_once_with("walking")
+        mock_sc_listener.assert_not_called()
 
     def test_on_user_clicked(self, core_manager):
         """on_user_clicked can be called without error."""

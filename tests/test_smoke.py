@@ -239,10 +239,13 @@ class TestMovementManagerSmoke:
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
         # This should not crash
+        from doro_app.core.movement.repository import MovementRepository
+        movement_repo = MovementRepository(tmp_path / "movements.json")
+        movement_repo.load()
         manager = MovementManager(
             window=mock_window,
             state_service=state_service,
-            movement_step_px=60,
+            movement_repo=movement_repo,
         )
         assert manager is not None
 
@@ -265,7 +268,10 @@ class TestMovementManagerSmoke:
         gif_repo = GifRepository(tmp_path / "resources")
         state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
 
-        manager = MovementManager(mock_window, state_service, 60)
+        from doro_app.core.movement.repository import MovementRepository
+        movement_repo = MovementRepository(tmp_path / "movements.json")
+        movement_repo.load()
+        manager = MovementManager(mock_window, state_service, movement_repo)
 
         # Should return instruction text (not empty)
         instructions = manager.instruction_text()
@@ -309,25 +315,25 @@ class TestContextMenuSmoke:
 
     def test_context_menu_exec_compatibility(self):
         """
-        Test that contextMenuEvent handles exec/exec_() compatibility.
+        Test that the context menu shower handles exec/exec_() compatibility.
 
         PySide6 versions differ in QMenu method names:
         - Newer: menu.exec(pos)
         - Older: menu.exec_(pos)
 
-        This test ensures the window handles both cases.
+        This test ensures the controller handles both cases.
         """
         import inspect
-        from doro_app.ui.window import DoroWindow
+        from doro_app.ui.components.context_menu_controller import (
+            ContextMenuController,
+        )
 
-        # Get the source code of contextMenuEvent
-        source = inspect.getsource(DoroWindow.contextMenuEvent)
+        source = inspect.getsource(ContextMenuController.show)
 
-        # Verify it handles exec/exec_ compatibility
         assert ("hasattr(menu, 'exec')" in source or "hasattr(menu, \"exec\")" in source), \
-            "contextMenuEvent should check for exec availability"
+            "ContextMenuController.show should check for exec availability"
         assert ("exec_" in source), \
-            "contextMenuEvent should fall back to exec_() for compatibility"
+            "ContextMenuController.show should fall back to exec_() for compatibility"
 
 
 class TestMouseEventHandlingSmoke:

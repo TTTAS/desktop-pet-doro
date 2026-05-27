@@ -6,6 +6,10 @@ from pathlib import Path
 from PySide6 import QtCore
 
 from doro_app.core.chat.controller import ChatController
+from doro_app.utils.config_defaults import (
+    DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_MAX_STOP_TOKENS,
+)
 
 
 @pytest.fixture
@@ -35,6 +39,8 @@ def mock_config_manager():
     manager.chat.endpoint_path = "/v1/chat/completions"
     manager.chat.timeout_seconds = 30
     manager.chat.temperature = 0.7
+    manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
+    manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     return manager
 
 
@@ -60,6 +66,8 @@ def controller_with_qsettings(tmp_prompt_file, mock_state_service, mock_config_m
     default_manager.chat.endpoint_path = "/v1/chat/completions"
     default_manager.chat.timeout_seconds = 30
     default_manager.chat.temperature = 0.7
+    default_manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
+    default_manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     default_manager.update_chat = Mock()
     default_manager.save = Mock()
 
@@ -377,6 +385,8 @@ class TestEdgeCases:
         manager.chat.endpoint_path = "/custom/endpoint"
         manager.chat.timeout_seconds = 60
         manager.chat.temperature = 0.9
+        manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
+        manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
         manager.update_chat = Mock()
         manager.save = Mock()
 

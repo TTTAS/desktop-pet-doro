@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 
@@ -12,7 +13,13 @@ _MIN_PYSIDE6 = "6.5.0"
 
 
 def _parse_version(v: str) -> tuple[int, ...]:
-    return tuple(int(x) for x in v.split(".")[:3])
+    # Take leading digits from each of the first 3 dot-separated parts so
+    # prerelease/dev/post suffixes (e.g. "6.7.0a1", "6.5.0.dev2") don't crash.
+    parts: list[int] = []
+    for chunk in v.split(".")[:3]:
+        m = re.match(r"\d+", chunk)
+        parts.append(int(m.group()) if m else 0)
+    return tuple(parts)
 
 
 def preflight_check() -> tuple[list[str], list[str]]:
