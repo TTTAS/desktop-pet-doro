@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtWidgets
 
@@ -10,7 +10,7 @@ from ...core.state import StateService
 from ...utils.logger import get_logger
 
 if TYPE_CHECKING:
-    pass
+    from ...core.action import ActionService
 
 logger = get_logger(__name__)
 
@@ -26,16 +26,25 @@ class DialogManager:
     - Coordinate dialog lifecycle
     """
 
-    def __init__(self, parent_window: QtWidgets.QWidget, state_service: StateService):
+    def __init__(
+        self,
+        parent_window: QtWidgets.QWidget,
+        state_service: StateService,
+        action_service: Optional["ActionService"] = None,
+    ):
         """
         Initialize DialogManager.
 
         Args:
             parent_window: Parent widget for dialogs
             state_service: State management service
+            action_service: Named-action service (Phase 1c). When passed,
+                the action manager dialog exposes a Click action card and
+                the Edit Action dialog gains the third "Action" option.
         """
         self._parent = parent_window
         self._state_service = state_service
+        self._action_service = action_service
 
     def show_state_manager(self) -> None:
         """Show the state manager dialog."""
@@ -45,7 +54,11 @@ class DialogManager:
     def show_move_state_manager(self) -> None:
         """Show the move state manager dialog."""
         from ..dialogs.move_state import show_move_state_manager
-        show_move_state_manager(self._state_service, parent=self._parent)
+        show_move_state_manager(
+            self._state_service,
+            parent=self._parent,
+            action_service=self._action_service,
+        )
 
     def show_add_state_dialog(self) -> str | None:
         """

@@ -56,6 +56,7 @@ class DoroApp:
 
         self._config_manager = deps.config_manager
         self._state_service: StateService = deps.state_service
+        self._action_service = deps.action_service
         self._default_idle_gif = deps.default_idle_gif
         self._prompt_file_path = deps.prompt_file_path
         self._click_actions_path = deps.click_actions_path
@@ -92,6 +93,7 @@ class DoroApp:
         self._dialog_manager = DialogManager(
             parent_window=self.window,
             state_service=self._state_service,
+            action_service=self._action_service,
         )
         self._movement_repo = deps.movement_repo
         self._movement = MovementManager(
@@ -165,7 +167,6 @@ class DoroApp:
         # Register the click_action protected state (Phase 1c).
         # Must run after StateService.initialize so it can register through
         # the same channels and pick up any user-bound GIF from actions.json.
-        self._action_service = deps.action_service
         self._action_service.bootstrap()
 
         # Use ConfigManager for type-safe config access

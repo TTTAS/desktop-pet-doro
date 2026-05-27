@@ -7,26 +7,35 @@ from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ....core.action import ActionService
+from ....core.action.repository import CLICK_ACTION_KEY
 from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
 
 
 class EditMoveStateDialog(FramelessDialog):
-    """Dialog for adding or editing a movement state or transition."""
+    """Dialog for adding or editing a movement state, transition, or named action."""
 
     def __init__(
         self,
         service: StateService,
         move_state_key: Optional[str],
         parent: Optional[QtWidgets.QWidget] = None,
+        *,
+        action_service: Optional[ActionService] = None,
+        edit_action_key: Optional[str] = None,
     ):
-        title = "Edit Action" if move_state_key is not None else "Add Action"
+        # action edit mode wins over move_state edit semantics.
+        self._edit_action_key = edit_action_key
+        is_action_edit = edit_action_key is not None
+        title = "Edit Action" if (move_state_key is not None or is_action_edit) else "Add Action"
         super().__init__(title, parent)
         self.service = service
+        self._action_service = action_service
         self.move_state_key = move_state_key
-        self.is_edit = move_state_key is not None
-        self.action_type = "movement"  # "movement" or "transition"
+        self.is_edit = move_state_key is not None or is_action_edit
+        self.action_type = "action" if is_action_edit else "movement"
 
         self.setMinimumWidth(600)
         self.setMinimumHeight(550)
@@ -39,7 +48,10 @@ class EditMoveStateDialog(FramelessDialog):
 
         self._setup_ui()
 
-        if self.is_edit:
+        if is_action_edit:
+            self._on_action_type_changed("Action")
+            self._load_action_data()
+        elif self.is_edit:
             self._load_data()
         else:
             # For new actions, default to movement type
@@ -55,6 +67,11 @@ class EditMoveStateDialog(FramelessDialog):
             type_label.setStyleSheet("color: #e8609c; font-weight: bold;")
             self.type_combo = QtWidgets.QComboBox()
             self.type_combo.addItems(["Movement", "Transition"])
+            # The "Action" option is gated on an injected ActionService so
+            # legacy callers that don't know about named actions keep their
+            # existing two-option menu.
+            if self._action_service is not None:
+                self.type_combo.addItem("Action")
             self.type_combo.currentTextChanged.connect(self._on_action_type_changed)
             type_layout.addWidget(type_label)
             type_layout.addWidget(self.type_combo)
@@ -166,9 +183,17 @@ class EditMoveStateDialog(FramelessDialog):
         main_layout.addWidget(buttons)
 
     def _on_action_type_changed(self, action_type_text: str):
-        """Handle action type change (Movement/Transition)."""
+        """Handle action type change (Movement / Transition / Action)."""
         is_movement = action_type_text == "Movement"
-        self.action_type = "movement" if is_movement else "transition"
+        is_action = action_type_text == "Action"
+        is_transition = not is_movement and not is_action
+
+        if is_action:
+            self.action_type = "action"
+        elif is_movement:
+            self.action_type = "movement"
+        else:
+            self.action_type = "transition"
 
         # Show/hide movement fields
         self.state_label.setVisible(is_movement)
@@ -179,18 +204,35 @@ class EditMoveStateDialog(FramelessDialog):
         self.speed_combo.setVisible(is_movement)
 
         # Show/hide transition fields
-        self.from_state_label.setVisible(not is_movement)
-        self.from_state_combo.setVisible(not is_movement)
-        self.to_state_label.setVisible(not is_movement)
-        self.to_state_combo.setVisible(not is_movement)
+        self.from_state_label.setVisible(is_transition)
+        self.from_state_combo.setVisible(is_transition)
+        self.to_state_label.setVisible(is_transition)
+        self.to_state_combo.setVisible(is_transition)
 
         # Show manage GIFs button only for transitions
-        self.manage_gifs_btn.setVisible(not is_movement)
+        self.manage_gifs_btn.setVisible(is_transition)
+
+        # Named-action edits pin the key — Phase 1c only opens this slot
+        # for the builtin "click" entry.
+        if is_action:
+            self.key_edit.setText(CLICK_ACTION_KEY)
+            self.key_edit.setEnabled(False)
+            self.key_label.setText("Action key:")
+        elif not self.is_edit:
+            # Re-enable when switching back to movement / transition modes
+            # in the new-action flow.
+            self.key_edit.setEnabled(True)
+            self.key_label.setText("Key (identifier):")
 
         # Update info label
         if is_movement:
             self.info_label.setText(
                 "💡 Movement: LLM determines distance at runtime. Direction can be 'any', 'left', 'right', etc."
+            )
+        elif is_action:
+            self.info_label.setText(
+                "💡 Action: Bind the GIF that plays during a click wind-up. "
+                "Leaving this empty falls back to a random stand pose at runtime."
             )
         else:
             self.info_label.setText(
@@ -300,6 +342,21 @@ class EditMoveStateDialog(FramelessDialog):
                 self.gif_status_label.setText("No GIF selected")
                 self.gif_status_label.setStyleSheet("color: #9c6b8a;")
 
+    def _load_action_data(self) -> None:
+        """Populate the dialog with an existing named action's GIF preview."""
+        if self._action_service is None or not self._edit_action_key:
+            return
+
+        # Resolve via the same fallback chain the runtime uses, so what
+        # the user sees here is what the next click will actually render.
+        path = self._action_service.resolve_action_gif_path(self._edit_action_key)
+        if path is not None:
+            self._load_preview_movie(path)
+            self.gif_status_label.setText(f"Current: {path.name}")
+            self.gif_status_label.setStyleSheet("color: #2e7d32;")
+        else:
+            self.preview_label.setText("No GIF bound — runtime will fall back to a stand pose.")
+
     def _load_data(self):
         """Load existing move state data."""
         if not self.move_state_key:
@@ -332,10 +389,39 @@ class EditMoveStateDialog(FramelessDialog):
             QtWidgets.QMessageBox.warning(self, "Validation", "Key cannot be empty.")
             return
 
+        if self.action_type == "action":
+            return self._save_action()
         if self.action_type == "movement":
             return self._save_movement()
-        else:
-            return self._save_transition()
+        return self._save_transition()
+
+    def _save_action(self):
+        """Persist the user's GIF choice for a named action.
+
+        Phase 1c only supports the builtin ``click`` action. Selecting no
+        new GIF is treated as "keep what's bound" (matches the rest of
+        the dialog) rather than "clear binding".
+        """
+        if self._action_service is None:
+            QtWidgets.QMessageBox.warning(
+                self, "Save",
+                "Action editor is not available in this dialog. "
+                "Wire the ActionService through and try again.",
+            )
+            return
+
+        if self.selected_gif_path is None:
+            # Nothing to do — closing the dialog without uploading is a
+            # no-op for now. Future: add an explicit "Unbind" button.
+            self.accept()
+            return
+
+        if not self._action_service.bind_click_gif(self.selected_gif_path):
+            QtWidgets.QMessageBox.warning(
+                self, "Save", "Failed to bind the GIF to the click action.",
+            )
+            return
+        self.accept()
 
     def _save_movement(self):
         """Save movement state."""
