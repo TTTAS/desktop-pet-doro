@@ -28,6 +28,7 @@ class ChatOrchestrator(QtCore.QObject):
     bubble_clear_requested = QtCore.Signal()
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
     notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
+    test_result = QtCore.Signal(str, str)  # (raw_assistant_text, error_message)
 
     def __init__(
         self,
@@ -46,6 +47,7 @@ class ChatOrchestrator(QtCore.QObject):
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
         controller.request_failed.connect(self._on_request_failed)
+        controller.test_result.connect(self.test_result)
 
     # ------------------------------------------------------------------ Public API
 
@@ -149,6 +151,15 @@ class ChatOrchestrator(QtCore.QObject):
     def clear_history(self):
         """Clear the conversation history."""
         self._controller.clear_history()
+
+    def send_test_request(self, message: str, **overrides) -> None:
+        """Fire a diagnostic request; result arrives via the ``test_result`` signal.
+
+        Accepts the same overrides as ``ChatController.send_test_request``
+        (server_url, endpoint_path, model, api_key, temperature, timeout) so the
+        settings form can probe unsaved values.
+        """
+        self._controller.send_test_request(message, **overrides)
 
     # ------------------------------------------------------------------ Controller callbacks
 

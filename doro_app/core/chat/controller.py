@@ -88,6 +88,7 @@ class ChatController(QtCore.QObject):
     request_succeeded = QtCore.Signal(str, bool)
     request_failed = QtCore.Signal(str, bool)
     request_cancelled = QtCore.Signal(str)
+    test_result = QtCore.Signal(str, str)  # (raw_assistant_text, error_message)
 
     def __init__(
         self,
@@ -139,6 +140,7 @@ class ChatController(QtCore.QObject):
         self._inflight = False
         self._last_user_message = ""
         self._request_is_auto = False
+        self._test_workers: dict[str, ChatWorker] = {}
 
         self._persist_timer = QtCore.QTimer(self)
         self._persist_timer.setSingleShot(True)
@@ -293,6 +295,75 @@ class ChatController(QtCore.QObject):
         # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
         self.request_cancelled.emit(request_id)  # emit 保存的 ID
+
+    def send_test_request(
+        self,
+        message: str,
+        *,
+        server_url: str | None = None,
+        endpoint_path: str | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+        temperature: float | None = None,
+        timeout: int | None = None,
+    ) -> None:
+        """Fire a one-off diagnostic request and emit ``test_result`` with the
+        raw assistant text (before any tag stripping) or an error message.
+
+        Isolated from normal chat: it does not touch history, inflight state, or
+        retries. Any unset override falls back to the current saved setting, so
+        the caller can probe values typed in the settings form before saving.
+        """
+        cleaned = (message or "").strip()
+        if not cleaned:
+            self.test_result.emit("", "Message cannot be empty.")
+            return
+
+        endpoint = resolve_chat_endpoint(
+            server_url if server_url is not None else self._server_url,
+            endpoint_path if endpoint_path is not None else self._endpoint_path,
+        )
+        if not endpoint:
+            self.test_result.emit("", "Chat server URL is not configured.")
+            return
+
+        use_model = model if model is not None else self._model
+        use_temp = float(temperature if temperature is not None else self._temperature)
+        use_key = api_key if api_key is not None else self._api_key
+        use_timeout = int(timeout if timeout is not None else self._timeout_seconds)
+
+        payload = self._build_test_payload(cleaned, use_model, use_temp)
+        request_id = QtCore.QUuid.createUuid().toString()
+        worker = ChatWorker(request_id, endpoint, payload, use_timeout, use_key)
+        worker.signals.result.connect(
+            self._handle_test_result, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.error.connect(
+            self._handle_test_error, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.finished.connect(
+            self._handle_test_finished, QtCore.Qt.ConnectionType.QueuedConnection
+        )
+        self._test_workers[request_id] = worker
+        logger.info(f"Submitting test chat request (id={request_id}) to {endpoint}")
+        self._pool.start(worker)
+
+    @QtCore.Slot(str, tuple)
+    def _handle_test_result(self, request_id: str, result: tuple):
+        if request_id not in self._test_workers:
+            return
+        assistant_text, error_message = result
+        self.test_result.emit(assistant_text or "", error_message or "")
+
+    @QtCore.Slot(str, str)
+    def _handle_test_error(self, request_id: str, error_message: str):
+        if request_id not in self._test_workers:
+            return
+        self.test_result.emit("", error_message or "Unknown error")
+
+    @QtCore.Slot(str)
+    def _handle_test_finished(self, request_id: str):
+        self._test_workers.pop(request_id, None)
 
     # ------------------------------------------------------------------ Worker callbacks
 
@@ -456,6 +527,27 @@ class ChatController(QtCore.QObject):
             "messages": messages,
             "temperature": self._temperature,
             "max_tokens": max_tokens,
+            "stop": stop_tokens,
+        }
+
+    def _build_test_payload(self, user_message: str, model: str, temperature: float) -> dict:
+        """Build a payload for a diagnostic request: composed system prompt plus
+        a single user message, with no conversation history."""
+        system_prompt = self._compose_system_prompt()
+        stop_tokens = self._stop_tokens
+        if self._max_stop_tokens > 0:
+            stop_tokens = stop_tokens[:self._max_stop_tokens]
+
+        if system_prompt:
+            messages = build_messages_for_mistral_instruct(system_prompt, user_message)
+        else:
+            messages = [{"role": "user", "content": user_message}]
+
+        return {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": self._config_manager.chat.max_tokens,
             "stop": stop_tokens,
         }
 

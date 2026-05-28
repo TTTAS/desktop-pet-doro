@@ -42,6 +42,14 @@ QPushButton#eyeButton {
     background: transparent; border: none; font-size: 14pt; padding: 0 4px;
 }
 QPushButton#eyeButton:hover { background: #FFC4F0; border-radius: 4px; }
+QPushButton#testButton {
+    background: white; color: #4a2040; font-weight: bold;
+    border: 2px solid #FFC4F0; border-radius: 8px;
+    padding: 6px 18px; font-size: 10pt;
+}
+QPushButton#testButton:hover { border: 2px solid #FF9BE3; background: #FFF0FB; }
+QPushButton#testButton:disabled { color: #B79AAE; border-color: #EED9E8; }
+QLabel#testHeader { color: #4a2040; font-weight: bold; font-size: 10pt; }
 """
 
 class ChatSettingsDialog(FramelessDialog):
@@ -122,6 +130,29 @@ class ChatSettingsDialog(FramelessDialog):
 
         layout.addLayout(form)
 
+        # ── Test server response ───────────────────────────────
+        test_header = QtWidgets.QLabel("測試伺服器回應")
+        test_header.setObjectName("testHeader")
+        layout.addWidget(test_header)
+
+        test_row = QtWidgets.QHBoxLayout()
+        self._test_input = QtWidgets.QLineEdit()
+        self._test_input.setPlaceholderText("測試訊息（預設：你好）")
+        test_row.addWidget(self._test_input, 1)
+        self._test_btn = QtWidgets.QPushButton("測試")
+        self._test_btn.setObjectName("testButton")
+        self._test_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        test_row.addWidget(self._test_btn)
+        layout.addLayout(test_row)
+
+        self._test_output = QtWidgets.QPlainTextEdit()
+        self._test_output.setReadOnly(True)
+        self._test_output.setFixedHeight(120)
+        self._test_output.setPlaceholderText(
+            "伺服器原始回應會顯示在這裡（包含 [MOVE:...] 等控制標籤）。"
+        )
+        layout.addWidget(self._test_output)
+
         # Save button
         save_btn = QtWidgets.QPushButton("儲存")
         save_btn.setObjectName("saveButton")
@@ -131,6 +162,9 @@ class ChatSettingsDialog(FramelessDialog):
         # Connections
         self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._eye_btn.clicked.connect(self._toggle_api_key_visibility)
+        self._test_btn.clicked.connect(self._on_test)
+        self._test_input.returnPressed.connect(self._on_test)
+        self._cm.test_result.connect(self._on_test_result)
         save_btn.clicked.connect(self._on_save)
 
     # ── populate ───────────────────────────────────────────
@@ -190,6 +224,29 @@ class ChatSettingsDialog(FramelessDialog):
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal)
         else:
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+
+    def _on_test(self):
+        message = self._test_input.text().strip() or "你好"
+        self._test_btn.setEnabled(False)
+        self._test_output.setPlainText("傳送中…")
+        self._cm.send_test_request(
+            message,
+            server_url=self._server_url_edit.text().strip(),
+            endpoint_path=self._endpoint_edit.text().strip(),
+            model=self._model_edit.text().strip(),
+            api_key=self._api_key_edit.text().strip(),
+            temperature=self._temperature_spin.value(),
+            timeout=self._timeout_spin.value(),
+        )
+
+    def _on_test_result(self, raw_text: str, error: str):
+        self._test_btn.setEnabled(True)
+        if error:
+            self._test_output.setPlainText(f"錯誤：\n{error}")
+        elif not raw_text:
+            self._test_output.setPlainText("（伺服器未回傳任何文字）")
+        else:
+            self._test_output.setPlainText(raw_text)
 
     def _on_save(self):
         cm = self._cm
