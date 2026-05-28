@@ -351,7 +351,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Calculate sprite center using RenderingEngine
         sprite_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top
+            self.size(), self._sprite_anchor_top, self._panel_height_hint
         )
         if new_anchor is not None:
             self._sprite_anchor_top = new_anchor

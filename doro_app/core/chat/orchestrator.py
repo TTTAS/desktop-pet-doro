@@ -163,7 +163,10 @@ class ChatOrchestrator(QtCore.QObject):
         if display_text:
             self.bubble_text_requested.emit(display_text, {})
         else:
-            fallback = assistant_text.strip()
+            # No dialogue survived action processing. Strip any control tokens
+            # so a command-only reply (e.g. "[MOVE:dir=right]") never leaks its
+            # raw tags into the bubble; if nothing readable remains, hide it.
+            fallback = self._strip_control_tokens(assistant_text)
             if fallback:
                 self.bubble_text_requested.emit(fallback, {"override_visibility": True})
             else:

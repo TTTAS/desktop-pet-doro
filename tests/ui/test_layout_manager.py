@@ -253,3 +253,35 @@ class TestComputePanelSizeHint:
             sprite_size, "Single"
         )
         assert height > single_height
+
+
+class TestComputePreferredWindowSize:
+    """Window must grow tall enough to hold a taller bubble (grow-to-fit)."""
+
+    def test_desired_height_grows_with_panel_height_hint(self):
+        sprite_size = QtCore.QSize(200, 200)
+
+        _, short_h = WindowLayoutManager.compute_preferred_window_size(
+            sprite_size, panel_width_hint=200.0, panel_height_hint=100.0
+        )
+        _, tall_h = WindowLayoutManager.compute_preferred_window_size(
+            sprite_size, panel_width_hint=200.0, panel_height_hint=600.0
+        )
+
+        assert tall_h > short_h
+        # Window must leave room for the whole panel beneath the sprite plus
+        # the sprite itself, otherwise the bubble would be clipped.
+        assert tall_h >= sprite_size.height() + 600.0
+
+    def test_desired_width_grows_with_panel_width_hint(self):
+        sprite_size = QtCore.QSize(200, 200)
+
+        narrow_w, _ = WindowLayoutManager.compute_preferred_window_size(
+            sprite_size, panel_width_hint=200.0, panel_height_hint=100.0
+        )
+        wide_w, _ = WindowLayoutManager.compute_preferred_window_size(
+            sprite_size, panel_width_hint=900.0, panel_height_hint=100.0
+        )
+
+        assert wide_w > narrow_w
+        assert wide_w >= 900.0

@@ -316,3 +316,55 @@ class TestEventHandlers:
 
         # Should not emit bubble text for auto requests
         mock_listener.assert_not_called()
+
+
+class TestControlTagLeak:
+    """Movement/control-only replies must never show raw tags in the bubble."""
+
+    def test_movement_only_response_clears_bubble_without_tag(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[MOVE:dir=right]", False)
+
+        clear_listener.assert_called_once()
+        # The raw tag must never reach the bubble via any emit.
+        for emitted in text_listener.call_args_list:
+            assert "MOVE" not in emitted[0][0]
+            assert "[" not in emitted[0][0]
+
+    def test_lowercase_move_only_response_clears_bubble(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[move:left]", False)
+
+        clear_listener.assert_called_once()
+        text_listener.assert_not_called()
+
+    def test_state_and_mouse_only_response_clears_bubble(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[STATE:walk_right][mouse:click]", False)
+
+        clear_listener.assert_called_once()
+        for emitted in text_listener.call_args_list:
+            assert "[" not in emitted[0][0]
+
+    def test_dialogue_with_trailing_move_tag_strips_tag(self, orchestrator):
+        text_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+
+        orchestrator._on_request_succeeded("早安！ [MOVE:dir=right]", False)
+
+        text_listener.assert_called()
+        emitted = text_listener.call_args[0][0]
+        assert "早安" in emitted
+        assert "[" not in emitted and "]" not in emitted
