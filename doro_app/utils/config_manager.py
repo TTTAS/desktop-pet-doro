@@ -28,6 +28,7 @@ from ..constants import (
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
     DEFAULT_MOUSE_TARGET_ALLOWLIST,
+    DEFAULT_A11Y_APP_BLACKLIST,
 )
 from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
@@ -38,6 +39,7 @@ from .config_defaults import (
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
+    DEFAULT_A11Y_ENABLED,
 )
 from ..utils.logger import get_logger
 
@@ -91,6 +93,17 @@ def _safe_bool(value: Any, default: bool) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("1", "true", "yes", "on")
     return bool(value)
+
+
+def _parse_class_list(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse a window-class list from QSettings (list/tuple or comma string)."""
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)):
+        return tuple(str(v) for v in value)
+    if isinstance(value, str):
+        return tuple(part.strip() for part in value.split(",") if part.strip())
+    return default
 
 
 # ═══════════════════════════════════════════════════════════
@@ -260,6 +273,10 @@ class ConfigManager:
             "mouse_target_allowlist": kwargs.get(
                 "mouse_target_allowlist", current.mouse_target_allowlist
             ),
+            "a11y_enabled": kwargs.get("a11y_enabled", current.a11y_enabled),
+            "a11y_app_blacklist": kwargs.get(
+                "a11y_app_blacklist", current.a11y_app_blacklist
+            ),
         }
         new_config = AutomationConfig(**updated_values)
         self._config.automation = new_config
@@ -377,15 +394,14 @@ class ConfigManager:
 
         # Load automation config
         try:
-            allowlist_raw = self._settings.value("automation/mouse_target_allowlist")
-            if allowlist_raw is None:
-                allowlist = DEFAULT_MOUSE_TARGET_ALLOWLIST
-            elif isinstance(allowlist_raw, (list, tuple)):
-                allowlist = tuple(str(v) for v in allowlist_raw)
-            elif isinstance(allowlist_raw, str):
-                allowlist = tuple(part.strip() for part in allowlist_raw.split(",") if part.strip())
-            else:
-                allowlist = DEFAULT_MOUSE_TARGET_ALLOWLIST
+            allowlist = _parse_class_list(
+                self._settings.value("automation/mouse_target_allowlist"),
+                DEFAULT_MOUSE_TARGET_ALLOWLIST,
+            )
+            blacklist = _parse_class_list(
+                self._settings.value("automation/a11y_app_blacklist"),
+                DEFAULT_A11Y_APP_BLACKLIST,
+            )
 
             automation_config = AutomationConfig(
                 mouse_enabled=_safe_bool(
@@ -393,12 +409,18 @@ class ConfigManager:
                     DEFAULT_MOUSE_AUTOMATION_ENABLED,
                 ),
                 mouse_target_allowlist=allowlist,
+                a11y_enabled=_safe_bool(
+                    self._settings.value("automation/a11y_enabled"),
+                    DEFAULT_A11Y_ENABLED,
+                ),
+                a11y_app_blacklist=blacklist,
             )
             self._config.automation = automation_config
         except ValueError as e:
             logger.warning(f"Invalid automation config, using defaults: {e}")
             self._config.automation = AutomationConfig(
                 mouse_enabled=DEFAULT_MOUSE_AUTOMATION_ENABLED,
+                a11y_enabled=DEFAULT_A11Y_ENABLED,
             )
 
         # Load app config
@@ -450,6 +472,11 @@ class ConfigManager:
         self._settings.setValue(
             "automation/mouse_target_allowlist",
             list(automation.mouse_target_allowlist),
+        )
+        self._settings.setValue("automation/a11y_enabled", bool(automation.a11y_enabled))
+        self._settings.setValue(
+            "automation/a11y_app_blacklist",
+            list(automation.a11y_app_blacklist),
         )
 
         # Save app config

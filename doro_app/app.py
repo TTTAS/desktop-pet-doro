@@ -106,6 +106,11 @@ class DoroApp:
         # Phase 4: Create ChatController (needs StateController + MovementManager)
         # ═════════════════════════════════════════════════════════════
 
+        # ─── A11y tree reader (Phase 1d) ─────────────────────────
+        # Optional: only constructed if a11y_enabled. Independent of mouse
+        # clicking — the user may grant "see the window" without "click it".
+        self._a11y = self._maybe_build_a11y()
+
         self._chat_controller = ChatController(
             self._prompt_file_path,
             state_service=self._state_service,
@@ -113,6 +118,7 @@ class DoroApp:
             movement_hint_provider=lambda: self._movement.instruction_text(),
             config_manager=self._config_manager,
             doro_state_provider=lambda: self._build_doro_state_text(),
+            a11y_tree_provider=lambda: self._a11y.read_foreground_tree() if self._a11y else "",
         )
         # ─── Automation (Phase 1c) ───────────────────────────────
         # Optional: only constructed if mouse_enabled is True or the env var
@@ -509,6 +515,34 @@ class DoroApp:
             schedule=_schedule,
         )
         return manager
+
+    # ═════════════════════════════════════════════════════════════════
+    # A11y tree reader (Phase 1d) construction
+    # ═════════════════════════════════════════════════════════════════
+
+    def _maybe_build_a11y(self):
+        """Build the A11yService only if automation.a11y_enabled is True
+        (or DORO_A11Y=true at startup). Picks the platform backend; on any
+        setup failure returns None — chat still works without it.
+        """
+        if not self._config_manager.automation.a11y_enabled:
+            return None
+
+        import sys
+
+        try:
+            from .core.a11y.service import A11yService
+            if sys.platform == "win32":
+                from .core.a11y.backend_uiautomation import UIAutomationBackend
+                backend = UIAutomationBackend()
+            else:
+                from .core.a11y.backend_null import NullA11yBackend
+                backend = NullA11yBackend()
+            return A11yService(config_manager=self._config_manager, backend=backend)
+        except Exception as exc:  # pragma: no cover - import/setup path
+            from .utils.logger import get_logger as _gl
+            _gl(__name__).warning(f"A11y requested but setup failed: {exc}")
+            return None
 
 
 class _QtWindUpAnimatorAdapter:

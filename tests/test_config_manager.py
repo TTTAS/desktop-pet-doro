@@ -191,6 +191,27 @@ class TestConfigManagerPersistence:
 
         assert manager2.app.current_state == "happy"
 
+    def test_save_persists_automation_a11y_config(self, tmp_path):
+        """Save round-trips the Phase 1d a11y fields through QSettings."""
+        settings_path = tmp_path / "test.ini"
+        manager = ConfigManager(settings_path)
+
+        manager.update_automation(
+            a11y_enabled=True,
+            a11y_app_blacklist=("KeePassXC", "Bitwarden"),
+        )
+        manager.save()
+
+        manager2 = ConfigManager(settings_path)
+
+        assert manager2.automation.a11y_enabled is True
+        assert manager2.automation.a11y_app_blacklist == ("KeePassXC", "Bitwarden")
+
+    def test_a11y_enabled_defaults_to_false(self, tmp_path):
+        """A fresh config keeps a11y disabled (privacy default)."""
+        manager = ConfigManager(tmp_path / "test.ini")
+        assert manager.automation.a11y_enabled is False
+
     def test_load_handles_invalid_values(self, tmp_path):
         """Load gracefully handles invalid persisted values."""
         settings_path = tmp_path / "test.ini"

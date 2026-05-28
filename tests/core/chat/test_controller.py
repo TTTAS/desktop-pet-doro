@@ -339,6 +339,56 @@ class TestPayloadBuilding:
         prompt = controller._compose_system_prompt()
         assert "[Doro 當下狀態]" not in prompt
 
+    def test_compose_system_prompt_appends_a11y_tree_after_doro_state(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """The [前景視窗元件樹] block is injected after the [Doro 當下狀態] block."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "[Doro 當下狀態]\n位置: x=200, y=400",
+            a11y_tree_provider=lambda: '[前景視窗元件樹]\nbutton "書籤" (1850,80 24x24)',
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "[前景視窗元件樹]" in prompt
+        assert '書籤' in prompt
+        assert prompt.index("[Doro 當下狀態]") < prompt.index("[前景視窗元件樹]")
+
+    def test_compose_system_prompt_omits_a11y_tree_when_provider_empty(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Empty a11y provider must not add a blank section or trailing burp."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+            a11y_tree_provider=lambda: "",
+        )
+        prompt = controller._compose_system_prompt()
+        assert "[前景視窗元件樹]" not in prompt
+        assert not prompt.endswith("\n\n\n")
+
+    def test_compose_system_prompt_a11y_default_provider_is_noop(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Omitting a11y_tree_provider behaves like the empty provider (back-compat)."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+        )
+        prompt = controller._compose_system_prompt()
+        assert "[前景視窗元件樹]" not in prompt
+
 
 # ═══════════════════════════════════════════════════════════
 # Signal Emission Tests

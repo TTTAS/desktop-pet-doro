@@ -73,3 +73,54 @@ def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cov
 def _read_window_class_macos(x: int, y: int) -> Optional[str]:  # pragma: no cover - not on dev target
     # Out of scope for Phase 1c — return None so the allowlist check refuses.
     return None
+
+
+def read_foreground_window_handle() -> Optional[int]:
+    """Return the OS handle of the focused (foreground) window, or None.
+
+    Phase 1d: the a11y backend needs a handle to anchor its subtree read.
+    Windows is implemented; other platforms return None (no tree is read,
+    which the A11yService treats as "nothing to show").
+    """
+    if sys.platform == "win32":
+        return _get_foreground_window_handle_win32()
+    # X11 / macOS / Wayland: deferred to a later phase.
+    return None
+
+
+def window_class_for_handle(handle: int) -> Optional[str]:
+    """Return the class string of the window identified by ``handle``, or None.
+
+    Used to gate a11y reads against the sensitive-app blacklist without a
+    pixel coordinate. Reads only the class — never title, content, or pixels.
+    """
+    if sys.platform == "win32":
+        return _window_class_for_handle_win32(handle)
+    return None
+
+
+def _get_foreground_window_handle_win32() -> Optional[int]:  # pragma: no cover - needs Windows
+    try:
+        import ctypes
+    except ImportError:
+        return None
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        hwnd = user32.GetForegroundWindow()
+        return int(hwnd) if hwnd else None
+    except Exception:
+        return None
+
+
+def _window_class_for_handle_win32(handle: int) -> Optional[str]:  # pragma: no cover - needs Windows
+    try:
+        import ctypes
+    except ImportError:
+        return None
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(int(handle), buf, 256)
+        return buf.value or None
+    except Exception:
+        return None

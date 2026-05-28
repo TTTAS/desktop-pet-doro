@@ -56,3 +56,29 @@ def test_module_imports_without_pynput():
     """
     import doro_app.core.automation.window_class as wc  # noqa: F401
     # If the import above succeeded, the test passes.
+
+
+def test_foreground_handle_none_on_non_windows():
+    with patch.object(window_class.sys, "platform", "linux"):
+        assert window_class.read_foreground_window_handle() is None
+    with patch.object(window_class.sys, "platform", "darwin"):
+        assert window_class.read_foreground_window_handle() is None
+
+
+def test_foreground_handle_dispatches_on_windows():
+    with patch.object(window_class.sys, "platform", "win32"), \
+         patch.object(window_class, "_get_foreground_window_handle_win32", return_value=4242) as m:
+        assert window_class.read_foreground_window_handle() == 4242
+        m.assert_called_once_with()
+
+
+def test_window_class_for_handle_none_on_non_windows():
+    with patch.object(window_class.sys, "platform", "linux"):
+        assert window_class.window_class_for_handle(99) is None
+
+
+def test_window_class_for_handle_dispatches_on_windows():
+    with patch.object(window_class.sys, "platform", "win32"), \
+         patch.object(window_class, "_window_class_for_handle_win32", return_value="Chrome") as m:
+        assert window_class.window_class_for_handle(99) == "Chrome"
+        m.assert_called_once_with(99)

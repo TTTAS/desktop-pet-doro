@@ -145,6 +145,34 @@ DEFAULT_MOUSE_TARGET_ALLOWLIST: tuple[str, ...] = (
 )
 
 # ═══════════════════════════════════════════════════════════
+# Accessibility tree reading (Phase 1d)
+# ═══════════════════════════════════════════════════════════
+
+# Foreground-window class fragments that suppress a11y tree reading entirely
+# (case-insensitive substring match). Password managers, mail clients, and
+# banking apps must never have their element trees serialized into a prompt.
+DEFAULT_A11Y_APP_BLACKLIST: tuple[str, ...] = (
+    "KeePassXC",
+    "KeePass",
+    "Bitwarden",
+    "1Password",
+    "thunderbird",
+    "evolution",
+)
+
+# Hard ceiling on the serialized element block. Past this the serializer
+# truncates and appends a "still N more" marker so the prompt can't blow up.
+A11Y_MAX_SERIALIZED_BYTES = 4096
+
+# A single tree read must return within this budget; UIA/AT-SPI can hang on
+# some app states, so the read runs on a worker and is abandoned past this.
+A11Y_READ_TIMEOUT_SECONDS = 0.1
+
+# Consecutive read timeouts for one window class before it is added to the
+# session-local blacklist (so the LLM stops stalling every turn).
+A11Y_TIMEOUT_BLACKLIST_THRESHOLD = 3
+
+# ═══════════════════════════════════════════════════════════
 # Bubble Scale Limits
 # ═══════════════════════════════════════════════════════════
 
