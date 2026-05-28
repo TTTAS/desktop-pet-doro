@@ -28,7 +28,6 @@ class ChatOrchestrator(QtCore.QObject):
     bubble_clear_requested = QtCore.Signal()
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
     notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
-    test_result = QtCore.Signal(str, str)  # (raw_assistant_text, error_message)
 
     def __init__(
         self,
@@ -47,7 +46,6 @@ class ChatOrchestrator(QtCore.QObject):
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
         controller.request_failed.connect(self._on_request_failed)
-        controller.test_result.connect(self.test_result)
 
     # ------------------------------------------------------------------ Public API
 
@@ -152,14 +150,16 @@ class ChatOrchestrator(QtCore.QObject):
         """Clear the conversation history."""
         self._controller.clear_history()
 
-    def send_test_request(self, message: str, **overrides) -> None:
-        """Fire a diagnostic request; result arrives via the ``test_result`` signal.
+    def simulate_response(self, assistant_text: str) -> str:
+        """Inject text as if the chat server had returned it, for testing Doro.
 
-        Accepts the same overrides as ``ChatController.send_test_request``
-        (server_url, endpoint_path, model, api_key, temperature, timeout) so the
-        settings form can probe unsaved values.
+        Runs the exact same handling a real reply gets — movement/state/mouse
+        tags are parsed and executed and the cleaned dialogue is shown in the
+        bubble — without contacting the server or touching history. Returns the
+        dialogue Doro will display (empty when the reply is actions-only).
         """
-        self._controller.send_test_request(message, **overrides)
+        logger.info("Simulating chat response for testing")
+        return self._on_request_succeeded(assistant_text or "", False)
 
     # ------------------------------------------------------------------ Controller callbacks
 
@@ -168,11 +168,12 @@ class ChatOrchestrator(QtCore.QObject):
         self.bubble_text_requested.emit("Thinking...", {"auto_hide": False})
         self.busy_cursor_requested.emit(True)
 
-    def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
+    def _on_request_succeeded(self, assistant_text: str, _was_auto: bool) -> str:
         logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
             self.bubble_text_requested.emit(display_text, {})
+            shown = display_text
         else:
             # No dialogue survived action processing. Strip any control tokens
             # so a command-only reply (e.g. "[MOVE:dir=right]") never leaks its
@@ -180,9 +181,12 @@ class ChatOrchestrator(QtCore.QObject):
             fallback = self._strip_control_tokens(assistant_text)
             if fallback:
                 self.bubble_text_requested.emit(fallback, {"override_visibility": True})
+                shown = fallback
             else:
                 self.bubble_clear_requested.emit()
+                shown = ""
         self.busy_cursor_requested.emit(False)
+        return shown
 
     def _get_random_network_fail_message(self) -> str:
         """

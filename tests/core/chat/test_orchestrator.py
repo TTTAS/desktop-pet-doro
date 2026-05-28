@@ -368,3 +368,27 @@ class TestControlTagLeak:
         emitted = text_listener.call_args[0][0]
         assert "早安" in emitted
         assert "[" not in emitted and "]" not in emitted
+
+
+class TestSimulateResponse:
+    """simulate_response injects text through the real reply pipeline."""
+
+    def test_simulate_shows_cleaned_dialogue_and_returns_it(self, orchestrator):
+        text_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+
+        shown = orchestrator.simulate_response("早安！ [MOVE:dir=right]")
+
+        assert "早安" in shown
+        assert "[" not in shown
+        text_listener.assert_called()
+        assert "[" not in text_listener.call_args[0][0]
+
+    def test_simulate_actions_only_clears_bubble_returns_empty(self, orchestrator):
+        clear_listener = Mock()
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        shown = orchestrator.simulate_response("[MOVE:dir=right]")
+
+        assert shown == ""
+        clear_listener.assert_called_once()

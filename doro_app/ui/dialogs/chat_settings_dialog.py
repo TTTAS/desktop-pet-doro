@@ -130,27 +130,30 @@ class ChatSettingsDialog(FramelessDialog):
 
         layout.addLayout(form)
 
-        # ── Test server response ───────────────────────────────
-        test_header = QtWidgets.QLabel("測試伺服器回應")
+        # ── Simulate a server reply (test Doro) ────────────────
+        test_header = QtWidgets.QLabel("模擬回應（測試 Doro）")
         test_header.setObjectName("testHeader")
         layout.addWidget(test_header)
 
+        self._test_input = QtWidgets.QPlainTextEdit()
+        self._test_input.setFixedHeight(72)
+        self._test_input.setPlaceholderText(
+            "輸入要假裝成伺服器回應的內容，Doro 會照著反應。\n"
+            "例如：你好呀！[MOVE:dir=right]"
+        )
+        layout.addWidget(self._test_input)
+
         test_row = QtWidgets.QHBoxLayout()
-        self._test_input = QtWidgets.QLineEdit()
-        self._test_input.setPlaceholderText("測試訊息（預設：你好）")
-        test_row.addWidget(self._test_input, 1)
-        self._test_btn = QtWidgets.QPushButton("測試")
+        test_row.addStretch(1)
+        self._test_btn = QtWidgets.QPushButton("送給 Doro")
         self._test_btn.setObjectName("testButton")
         self._test_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         test_row.addWidget(self._test_btn)
         layout.addLayout(test_row)
 
-        self._test_output = QtWidgets.QPlainTextEdit()
-        self._test_output.setReadOnly(True)
-        self._test_output.setFixedHeight(120)
-        self._test_output.setPlaceholderText(
-            "伺服器原始回應會顯示在這裡（包含 [MOVE:...] 等控制標籤）。"
-        )
+        self._test_output = QtWidgets.QLabel("")
+        self._test_output.setWordWrap(True)
+        self._test_output.setObjectName("instructionLabel")
         layout.addWidget(self._test_output)
 
         # Save button
@@ -162,9 +165,7 @@ class ChatSettingsDialog(FramelessDialog):
         # Connections
         self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._eye_btn.clicked.connect(self._toggle_api_key_visibility)
-        self._test_btn.clicked.connect(self._on_test)
-        self._test_input.returnPressed.connect(self._on_test)
-        self._cm.test_result.connect(self._on_test_result)
+        self._test_btn.clicked.connect(self._on_simulate)
         save_btn.clicked.connect(self._on_save)
 
     # ── populate ───────────────────────────────────────────
@@ -225,28 +226,16 @@ class ChatSettingsDialog(FramelessDialog):
         else:
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
-    def _on_test(self):
-        message = self._test_input.text().strip() or "你好"
-        self._test_btn.setEnabled(False)
-        self._test_output.setPlainText("傳送中…")
-        self._cm.send_test_request(
-            message,
-            server_url=self._server_url_edit.text().strip(),
-            endpoint_path=self._endpoint_edit.text().strip(),
-            model=self._model_edit.text().strip(),
-            api_key=self._api_key_edit.text().strip(),
-            temperature=self._temperature_spin.value(),
-            timeout=self._timeout_spin.value(),
-        )
-
-    def _on_test_result(self, raw_text: str, error: str):
-        self._test_btn.setEnabled(True)
-        if error:
-            self._test_output.setPlainText(f"錯誤：\n{error}")
-        elif not raw_text:
-            self._test_output.setPlainText("（伺服器未回傳任何文字）")
+    def _on_simulate(self):
+        text = self._test_input.toPlainText().strip()
+        if not text:
+            self._test_output.setText("請先輸入要模擬的回應內容。")
+            return
+        dialogue = self._cm.simulate_response(text)
+        if dialogue:
+            self._test_output.setText(f"Doro 說：{dialogue}")
         else:
-            self._test_output.setPlainText(raw_text)
+            self._test_output.setText("（這段回應只有動作／狀態指令，沒有對話）")
 
     def _on_save(self):
         cm = self._cm
