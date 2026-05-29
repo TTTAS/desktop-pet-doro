@@ -144,6 +144,8 @@ class ContextMenuController:
         cm = self._core_manager.config_manager
         cm.update_automation(a11y_enabled=bool(checked))
         cm.save()
+        if checked and self._core_manager.a11y_service is not None:
+            self._core_manager.a11y_service.clear_session_blacklist()
 
     def _preview_a11y(self) -> None:
         """Count down a few seconds (so the user can focus the target window),

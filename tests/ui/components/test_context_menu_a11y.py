@@ -104,6 +104,31 @@ def test_toggle_a11y_persists():
     core.config_manager.save.assert_called_once()
 
 
+def _make_controller(core):
+    return ContextMenuController(
+        window=Mock(),
+        state_service=Mock(),
+        state_controller=Mock(),
+        dialog_manager=Mock(),
+        bubble_controller=Mock(),
+        core_manager=core,
+        chat_ui=Mock(),
+        default_idle_gif=Mock(),
+    )
+
+
+def test_toggle_on_clears_session_blacklist():
+    core = Mock()
+    _make_controller(core)._toggle_a11y(True)
+    core.a11y_service.clear_session_blacklist.assert_called_once()
+
+
+def test_toggle_off_does_not_clear_session_blacklist():
+    core = Mock()
+    _make_controller(core)._toggle_a11y(False)
+    core.a11y_service.clear_session_blacklist.assert_not_called()
+
+
 def test_show_a11y_result_success(monkeypatch):
     captured = {}
     monkeypatch.setattr(

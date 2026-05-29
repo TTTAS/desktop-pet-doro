@@ -8,7 +8,7 @@ Pipeline for each call to :meth:`read_foreground_tree`::
        │
     window class ──blacklisted / session-blacklisted──▶ ""
        │
-    backend.read_elements (≤100ms) ──timeout/none──▶ "" (3 timeouts ⇒ blacklist class)
+    backend.read_elements (timeout) ──timeout/none──▶ "" (3 timeouts ⇒ blacklist class)
        │
     filter + redact ──empty──▶ ""
        │
@@ -32,6 +32,7 @@ from .port import A11yBackendPort
 from .serializer import serialize
 from ..automation import window_class
 from ...constants import (
+    A11Y_PREVIEW_TIMEOUT_SECONDS,
     A11Y_READ_TIMEOUT_SECONDS,
     A11Y_TIMEOUT_BLACKLIST_THRESHOLD,
 )
@@ -126,7 +127,12 @@ class A11yService:
         if cls_key and cls_key in self._session_blacklist:
             return False, f"此程式（{window_cls}）先前多次逾時，本次 session 已略過"
 
-        elements = self._read_with_timeout(handle, cls_key)
+        elements = self._read_with_timeout(
+            handle,
+            cls_key,
+            timeout=A11Y_PREVIEW_TIMEOUT_SECONDS,
+            count_timeout=False,
+        )
         if elements is None:
             return False, self._backend_unavailable_reason()
 
@@ -150,16 +156,34 @@ class A11yService:
                 msg += "；可能未安裝 uiautomation，請執行 pip install \"doro[a11y]\""
         return msg
 
+    def clear_session_blacklist(self) -> None:
+        """Forget any window classes skipped after repeated timeouts.
+
+        Lets the user re-enable a11y (or restart) to retry a window that was
+        temporarily skipped, without restarting the whole app.
+        """
+        self._session_blacklist.clear()
+        self._timeout_counts.clear()
+
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False)
 
     # ------------------------------------------------------------------ internals
 
-    def _read_with_timeout(self, handle: int, cls_key: str):
+    def _read_with_timeout(
+        self,
+        handle: int,
+        cls_key: str,
+        *,
+        timeout: float = A11Y_READ_TIMEOUT_SECONDS,
+        count_timeout: bool = True,
+    ):
         future = self._executor.submit(self._backend.read_elements, handle)
         try:
-            return future.result(timeout=A11Y_READ_TIMEOUT_SECONDS)
+            return future.result(timeout=timeout)
         except FuturesTimeout:
+            if not count_timeout:
+                return None
             count = self._timeout_counts.get(cls_key, 0) + 1
             self._timeout_counts[cls_key] = count
             if count >= A11Y_TIMEOUT_BLACKLIST_THRESHOLD and cls_key:

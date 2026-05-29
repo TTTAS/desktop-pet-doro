@@ -328,7 +328,11 @@ class ChatSettingsDialog(FramelessDialog):
         cm.set_stop_tokens(tokens)
 
         config = self._core.config_manager
-        config.update_automation(a11y_enabled=self._a11y_checkbox.isChecked())
+        a11y_enabled = self._a11y_checkbox.isChecked()
+        config.update_automation(a11y_enabled=a11y_enabled)
         config.save()
+
+        if a11y_enabled and self._core.a11y_service is not None:
+            self._core.a11y_service.clear_session_blacklist()
 
         self.accept()

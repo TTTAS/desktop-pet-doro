@@ -6,7 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from doro_app.constants import A11Y_TIMEOUT_BLACKLIST_THRESHOLD
+from doro_app.constants import (
+    A11Y_READ_TIMEOUT_SECONDS,
+    A11Y_TIMEOUT_BLACKLIST_THRESHOLD,
+)
 from doro_app.core.a11y.fakes import FakeA11yBackend
 from doro_app.core.a11y.models import A11yElement
 from doro_app.core.a11y.service import A11yService
@@ -155,22 +158,25 @@ class TestDiagnose:
 
 class TestTimeout:
     def test_slow_read_times_out_to_empty(self, audit_file):
-        backend = FakeA11yBackend([_button()], delay=0.3)
+        # A read slower than the live budget is abandoned and yields "".
+        backend = FakeA11yBackend([_button()], delay=A11Y_READ_TIMEOUT_SECONDS + 0.2)
         svc = _make_service(backend, audit_path=audit_file)
         assert svc.read_foreground_tree() == ""
 
     def test_repeated_timeouts_blacklist_class_for_session(self, audit_file):
-        backend = FakeA11yBackend([_button()], delay=0.3)
+        # Drive the timeout path directly with a tiny budget so the test is fast
+        # and independent of the live constant.
+        backend = FakeA11yBackend([_button()], delay=0.1)
         svc = _make_service(backend, window_cls="LaggyApp", audit_path=audit_file)
 
         for _ in range(A11Y_TIMEOUT_BLACKLIST_THRESHOLD):
-            assert svc.read_foreground_tree() == ""
+            assert svc._read_with_timeout(1234, "laggyapp", timeout=0.01) is None
 
         assert "laggyapp" in svc._session_blacklist
 
         calls_before = len(backend.read_calls)
+        # Session-blacklisted class must not hit the backend on the public read.
         assert svc.read_foreground_tree() == ""
-        # Session-blacklisted class must not hit the backend again.
         assert len(backend.read_calls) == calls_before
 
     def test_success_resets_timeout_streak(self, audit_file):
@@ -179,3 +185,35 @@ class TestTimeout:
         svc._timeout_counts["app"] = 2
         svc.read_foreground_tree()
         assert "app" not in svc._timeout_counts
+
+
+class TestPreviewTimeout:
+    def test_preview_uses_longer_budget_than_live(self, audit_file):
+        # A tree that's too slow for the live budget still completes for preview.
+        delay = A11Y_READ_TIMEOUT_SECONDS + 0.2
+        svc = _make_service(FakeA11yBackend([_button()], delay=delay), audit_path=audit_file)
+        assert svc.read_foreground_tree() == ""
+        ok, body = svc.diagnose_foreground_tree()
+        assert ok is True
+        assert "button" in body
+
+    def test_preview_timeout_does_not_blacklist(self, audit_file):
+        backend = FakeA11yBackend([_button()], delay=0.1)
+        svc = _make_service(backend, window_cls="LaggyApp", audit_path=audit_file)
+        for _ in range(A11Y_TIMEOUT_BLACKLIST_THRESHOLD + 1):
+            assert (
+                svc._read_with_timeout(1234, "laggyapp", timeout=0.01, count_timeout=False)
+                is None
+            )
+        assert svc._session_blacklist == set()
+        assert svc._timeout_counts == {}
+
+
+class TestClearBlacklist:
+    def test_clear_session_blacklist(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
+        svc._session_blacklist.add("foo")
+        svc._timeout_counts["foo"] = 2
+        svc.clear_session_blacklist()
+        assert svc._session_blacklist == set()
+        assert svc._timeout_counts == {}

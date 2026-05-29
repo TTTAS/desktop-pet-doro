@@ -164,9 +164,16 @@ DEFAULT_A11Y_APP_BLACKLIST: tuple[str, ...] = (
 # truncates and appends a "still N more" marker so the prompt can't blow up.
 A11Y_MAX_SERIALIZED_BYTES = 4096
 
-# A single tree read must return within this budget; UIA/AT-SPI can hang on
-# some app states, so the read runs on a worker and is abandoned past this.
-A11Y_READ_TIMEOUT_SECONDS = 0.1
+# A single live tree read must return within this budget; UIA/AT-SPI can hang
+# on some app states, so the read runs on a worker and is abandoned past this.
+# This blocks the chat-send (main) thread, so it doubles as the max UI stall
+# per message — keep it modest. Walking a browser subtree via COM is slow, so
+# 0.1s was effectively "never succeeds".
+A11Y_READ_TIMEOUT_SECONDS = 0.8
+
+# The manual "preview what Doro sees" read is a one-off user action (not on the
+# chat path), so it can wait long enough to actually finish a large tree walk.
+A11Y_PREVIEW_TIMEOUT_SECONDS = 3.0
 
 # Consecutive read timeouts for one window class before it is added to the
 # session-local blacklist (so the LLM stops stalling every turn).

@@ -119,6 +119,26 @@ def test_save_persists_a11y_toggle(qtbot):
     config.save.assert_called_once()
 
 
+def test_save_enabling_a11y_clears_session_blacklist(qtbot):
+    service = Mock()
+    dialog, _, _ = _make_dialog(qtbot, a11y_enabled=False, a11y_service=service)
+    dialog._a11y_checkbox.setChecked(True)
+
+    dialog._on_save()
+
+    service.clear_session_blacklist.assert_called_once()
+
+
+def test_save_without_a11y_does_not_clear_blacklist(qtbot):
+    service = Mock()
+    dialog, _, _ = _make_dialog(qtbot, a11y_enabled=False, a11y_service=service)
+    dialog._a11y_checkbox.setChecked(False)
+
+    dialog._on_save()
+
+    service.clear_session_blacklist.assert_not_called()
+
+
 def test_preview_shows_tree_on_success(qtbot):
     service = Mock()
     service.diagnose_foreground_tree.return_value = (True, 'button "OK" (10,20 30x40)')
