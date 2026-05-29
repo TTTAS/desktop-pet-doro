@@ -156,6 +156,26 @@ class TestDiagnose:
         assert not audit_file.exists()
 
 
+class TestDiagnoseDetails:
+    def test_none_reason_includes_backend_last_error(self, audit_file):
+        backend = FakeA11yBackend(return_none=True)
+        backend.last_error = "ControlFromHandle 取不到視窗根節點（handle=999）"
+        svc = _make_service(backend, audit_path=audit_file)
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "ControlFromHandle" in msg
+
+    def test_empty_chrome_includes_renderer_hint_and_count(self, audit_file):
+        deco = A11yElement(role="pane", name="bg", x=0, y=0, width=5, height=5)
+        backend = FakeA11yBackend([deco])
+        backend.last_visited = 42
+        svc = _make_service(backend, window_cls="Chrome_WidgetWin_1", audit_path=audit_file)
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "chrome://accessibility" in msg
+        assert "42" in msg
+
+
 class TestTimeout:
     def test_slow_read_times_out_to_empty(self, audit_file):
         # A read slower than the live budget is abandoned and yields "".

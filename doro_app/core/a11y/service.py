@@ -140,15 +140,28 @@ class A11yService:
         filtered = filter_elements(elements)
         body = serialize(filtered) if filtered else ""
         if not body:
-            return False, "前景視窗沒有可互動元件（按鈕／連結／輸入框等）"
+            visited = getattr(self._backend, "last_visited", 0)
+            hint = (
+                "前景視窗沒有可互動元件（按鈕／連結／輸入框等）。"
+                f"（走訪了 {visited} 個節點）"
+            )
+            if "chrome" in (window_cls or "").lower():
+                hint += (
+                    "\nChrome 預設不對外開放網頁內容的無障礙樹；請開網頁無障礙："
+                    "網址列輸入 chrome://accessibility 並勾選，或用 "
+                    "--force-renderer-accessibility 啟動 Chrome，再試一次。"
+                )
+            return False, hint
 
         return True, body
 
-    @staticmethod
-    def _backend_unavailable_reason() -> str:
+    def _backend_unavailable_reason(self) -> str:
         import sys
 
         msg = "讀不到元件樹（視窗可能不支援，或讀取逾時）"
+        detail = getattr(self._backend, "last_error", None)
+        if detail:
+            msg += f"\n原因：{detail}"
         if sys.platform == "win32":
             import importlib.util
 

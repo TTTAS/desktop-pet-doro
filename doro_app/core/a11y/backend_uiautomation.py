@@ -37,21 +37,37 @@ _ROLE_MAP = {
 class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
     """Reads the focused window subtree via Windows UI Automation."""
 
+    def __init__(self) -> None:
+        # Populated on every read_elements() call so the preview/diagnostic can
+        # explain *why* a read came back empty instead of a vague message.
+        self.last_error: Optional[str] = None
+        self.last_visited: int = 0
+        self.last_found: int = 0
+
     def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
+        self.last_error = None
+        self.last_visited = 0
+        self.last_found = 0
         try:
             import uiautomation as auto
         except Exception as exc:
+            self.last_error = f"uiautomation 無法載入：{exc}"
             logger.debug(f"uiautomation unavailable: {exc}")
             return None
 
         try:
             root = auto.ControlFromHandle(int(handle))
             if root is None:
+                self.last_error = f"ControlFromHandle 取不到視窗根節點（handle={handle}）"
                 return None
             elements: list[A11yElement] = []
-            self._walk(root, elements, [0])
+            counter = [0]
+            self._walk(root, elements, counter)
+            self.last_visited = counter[0]
+            self.last_found = len(elements)
             return elements
         except Exception as exc:
+            self.last_error = f"UIA 讀取例外：{type(exc).__name__}: {exc}"
             logger.debug(f"UIA read failed: {exc}")
             return None
 
