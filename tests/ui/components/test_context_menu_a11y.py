@@ -85,6 +85,48 @@ def test_menu_has_preview_action(qtbot):
     cbs.preview_a11y.assert_called_once()
 
 
+def test_menu_has_simulate_response_action(qtbot):
+    window = QtWidgets.QWidget()
+    qtbot.addWidget(window)
+    menu = DoroMenu(window)
+    cbs = _callbacks()
+
+    build_context_menu_content(menu, window, _snapshot(), cbs)
+    submenus = [a.menu() for a in menu.actions() if a.menu() is not None]  # keep alive
+    assert submenus
+
+    simulate = _find(menu, "假傳伺服器回應（測試）")
+    assert simulate is not None
+
+    simulate.trigger()
+    cbs.simulate_response.assert_called_once()
+
+
+def test_simulate_response_feeds_orchestrator(monkeypatch):
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog,
+        "getMultiLineText",
+        lambda *a, **k: ("(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]", True),
+    )
+    core = Mock()
+    ctrl = _make_controller(core)
+
+    ctrl._simulate_response()
+
+    core.chat_orchestrator.simulate_response.assert_called_once_with(
+        "(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]"
+    )
+
+
+def test_simulate_response_cancelled_does_nothing(monkeypatch):
+    monkeypatch.setattr(
+        QtWidgets.QInputDialog, "getMultiLineText", lambda *a, **k: ("ignored", False)
+    )
+    core = Mock()
+    _make_controller(core)._simulate_response()
+    core.chat_orchestrator.simulate_response.assert_not_called()
+
+
 def test_toggle_a11y_persists():
     core = Mock()
     ctrl = ContextMenuController(

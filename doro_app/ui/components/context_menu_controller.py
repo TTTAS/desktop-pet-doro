@@ -132,6 +132,7 @@ class ContextMenuController:
             open_settings_dialog=self._chat_ui.open_settings_dialog,
             toggle_a11y=self._toggle_a11y,
             preview_a11y=self._preview_a11y,
+            simulate_response=self._simulate_response,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
 
@@ -166,6 +167,23 @@ class ContextMenuController:
         ok, message = service.diagnose_foreground_tree()
         title = "Doro 現在看到" if ok else "目前讀不到內容"
         QtWidgets.QMessageBox.information(self._window, title, message)
+
+    def _simulate_response(self) -> None:
+        """Prompt for a fake assistant reply and run it through the exact same
+        handling a real server reply gets (movement/state/mouse parsing), so the
+        user can test Doro without hitting the server."""
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self._window,
+            "假傳伺服器回應",
+            "輸入要模擬的回應（例：(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]）：",
+        )
+        if not ok or not text.strip():
+            return
+        dialogue = self._core_manager.chat_orchestrator.simulate_response(text.strip())
+        if not dialogue:
+            QtWidgets.QMessageBox.information(
+                self._window, "Doro", "（這段回應只有動作／狀態指令，沒有對話）"
+            )
 
     def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
         """Toggle Live2D mode globally (applies to all states)."""

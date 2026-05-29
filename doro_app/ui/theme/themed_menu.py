@@ -45,6 +45,7 @@ class MenuCallbacks:
     open_settings_dialog: Callable[[], None]
     toggle_a11y: Callable[[bool], None]
     preview_a11y: Callable[[], None]
+    simulate_response: Callable[[], None]
     quit_app: Callable[[], None]
 
 
@@ -403,6 +404,10 @@ def build_context_menu_content(
 
     a11y_preview_action = chat_menu.addAction("預覽 Doro 看到什麼")
     a11y_preview_action.triggered.connect(callbacks.preview_a11y)
+
+    simulate_action = chat_menu.addAction("假傳伺服器回應（測試）")
+    simulate_action.setEnabled(not snapshot.is_chat_inflight)
+    simulate_action.triggered.connect(callbacks.simulate_response)
 
     menu.addSeparator()
 
