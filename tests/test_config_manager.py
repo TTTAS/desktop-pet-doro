@@ -116,6 +116,20 @@ class TestConfigManagerUpdate:
         with pytest.raises(ValueError, match="timeout_seconds must be positive"):
             manager.update_chat(timeout_seconds=-1)
 
+    def test_update_automation_a11y_only_preserves_mouse(self, tmp_path):
+        """Toggling a11y_enabled alone must not disturb mouse settings.
+
+        The settings dialog saves only a11y_enabled; the merge in
+        update_automation must keep the other automation fields intact.
+        """
+        manager = ConfigManager(tmp_path / "test.ini")
+        manager.update_automation(mouse_enabled=True)
+
+        manager.update_automation(a11y_enabled=True)
+
+        assert manager.automation.a11y_enabled is True
+        assert manager.automation.mouse_enabled is True
+
     def test_update_ui_single_field(self, tmp_path):
         """Can update single UI config field."""
         manager = ConfigManager(tmp_path / "test.ini")

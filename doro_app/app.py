@@ -521,13 +521,14 @@ class DoroApp:
     # ═════════════════════════════════════════════════════════════════
 
     def _maybe_build_a11y(self):
-        """Build the A11yService only if automation.a11y_enabled is True
-        (or DORO_A11Y=true at startup). Picks the platform backend; on any
+        """Build the A11yService whenever the platform backend can be set up.
+
+        The service self-gates on ``automation.a11y_enabled`` at every read, so
+        building it unconditionally lets the settings toggle take effect at
+        runtime (no restart) while costing nothing when disabled — the read
+        short-circuits before importing the backend or spawning threads. On any
         setup failure returns None — chat still works without it.
         """
-        if not self._config_manager.automation.a11y_enabled:
-            return None
-
         import sys
 
         try:
@@ -541,7 +542,7 @@ class DoroApp:
             return A11yService(config_manager=self._config_manager, backend=backend)
         except Exception as exc:  # pragma: no cover - import/setup path
             from .utils.logger import get_logger as _gl
-            _gl(__name__).warning(f"A11y requested but setup failed: {exc}")
+            _gl(__name__).warning(f"A11y setup failed: {exc}")
             return None
 
 

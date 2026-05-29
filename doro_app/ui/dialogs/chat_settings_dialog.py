@@ -29,6 +29,7 @@ QComboBox {
 QComboBox:focus { border: 2px solid #FF9BE3; }
 QComboBox::drop-down { border: none; padding-right: 8px; }
 QLabel { color: #4a2040; font-size: 10pt; }
+QCheckBox { color: #4a2040; font-size: 10pt; spacing: 6px; }
 QPushButton#saveButton {
     background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #FFC4F0, stop:1 #FF9BE3);
     color: white; font-weight: bold;
@@ -57,6 +58,7 @@ class ChatSettingsDialog(FramelessDialog):
 
     def __init__(self, core_manager, parent=None):
         super().__init__("API Settings", parent)
+        self._core = core_manager
         self._cm = core_manager.chat_orchestrator
         self._applying_preset = False
         self.setFixedWidth(480)
@@ -130,6 +132,20 @@ class ChatSettingsDialog(FramelessDialog):
 
         layout.addLayout(form)
 
+        # ── Accessibility tree reading (Phase 1d) ──────────────
+        self._a11y_checkbox = QtWidgets.QCheckBox(
+            "讓 Doro 讀取前景視窗的可點元素（無障礙樹）"
+        )
+        layout.addWidget(self._a11y_checkbox)
+        a11y_hint = QtWidgets.QLabel(
+            "開啟後，目前前景視窗的按鈕／連結／輸入框與座標會加進提示詞，"
+            "讓 Doro 能「點某個按鈕」。預設關閉；目前僅 Windows 有真實後端；"
+            "密碼欄位會自動遮蔽；每次讀取會記到本機稽核檔 ~/.doro/share_audit.log。"
+        )
+        a11y_hint.setObjectName("instructionLabel")
+        a11y_hint.setWordWrap(True)
+        layout.addWidget(a11y_hint)
+
         # ── Simulate a server reply (test Doro) ────────────────
         test_header = QtWidgets.QLabel("模擬回應（測試 Doro）")
         test_header.setObjectName("testHeader")
@@ -188,6 +204,10 @@ class ChatSettingsDialog(FramelessDialog):
         tokens = cm.get_stop_tokens()
         display = "\n".join(t.replace("\n", "\\n") for t in tokens)
         self._stop_tokens_edit.setPlainText(display)
+
+        self._a11y_checkbox.setChecked(
+            self._core.config_manager.automation.a11y_enabled
+        )
 
         # Detect which provider matches
         matched = "Custom"
@@ -253,5 +273,9 @@ class ChatSettingsDialog(FramelessDialog):
             if line.strip()
         ]
         cm.set_stop_tokens(tokens)
+
+        config = self._core.config_manager
+        config.update_automation(a11y_enabled=self._a11y_checkbox.isChecked())
+        config.save()
 
         self.accept()

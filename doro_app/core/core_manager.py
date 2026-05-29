@@ -219,6 +219,11 @@ class CoreManager(QtCore.QObject):
         return self._chat_orchestrator
 
     @property
+    def config_manager(self) -> "ConfigManager":
+        """Get ConfigManager (read-only access)."""
+        return self._config_manager
+
+    @property
     def movement_manager(self) -> MovementManager:
         """Get MovementManager (read-only access)."""
         return self._movement
