@@ -155,6 +155,42 @@ def test_show_a11y_result_success(monkeypatch):
     assert 'button "OK"' in captured["text"]
 
 
+def test_preview_a11y_reads_immediately(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "information",
+        lambda parent, title, text: captured.update(title=title, text=text),
+    )
+    service = Mock()
+    service.diagnose_foreground_tree.return_value = (True, 'button "OK" (1,2 3x4)')
+    core = Mock()
+    core.a11y_service = service
+    ctrl = _make_controller(core)
+
+    ctrl._preview_a11y()
+
+    service.diagnose_foreground_tree.assert_called_once()
+    assert captured["title"] == "Doro 現在看到"
+    assert 'button "OK"' in captured["text"]
+
+
+def test_preview_a11y_handles_missing_service(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "information",
+        lambda parent, title, text: captured.update(title=title, text=text),
+    )
+    core = Mock()
+    core.a11y_service = None
+    ctrl = _make_controller(core)
+
+    ctrl._preview_a11y()
+
+    assert "未建立" in captured["text"]
+
+
 def test_show_a11y_result_failure(monkeypatch):
     captured = {}
     monkeypatch.setattr(

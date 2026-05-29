@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from .bootstrap import BootstrappedDependencies, bootstrap_environment
@@ -12,6 +13,7 @@ from .constants import (
     BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
 )
+from .core.automation.foreground_tracker import ForegroundTracker
 from .core.automation.manager import AutomationManager
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
@@ -109,6 +111,10 @@ class DoroApp:
         # ─── A11y tree reader (Phase 1d) ─────────────────────────
         # Optional: only constructed if a11y_enabled. Independent of mouse
         # clicking — the user may grant "see the window" without "click it".
+        # The tracker remembers the last *external* foreground window so a11y
+        # reads the app the user was using, not Doro's own (self-activating) window.
+        self._fg_tracker = ForegroundTracker(os.getpid())
+        self._fg_tracker.start()
         self._a11y = self._maybe_build_a11y()
 
         self._chat_controller = ChatController(
@@ -540,7 +546,11 @@ class DoroApp:
             else:
                 from .core.a11y.backend_null import NullA11yBackend
                 backend = NullA11yBackend()
-            return A11yService(config_manager=self._config_manager, backend=backend)
+            return A11yService(
+                config_manager=self._config_manager,
+                backend=backend,
+                handle_provider=self._fg_tracker.handle,
+            )
         except Exception as exc:  # pragma: no cover - import/setup path
             from .utils.logger import get_logger as _gl
             _gl(__name__).warning(f"A11y setup failed: {exc}")

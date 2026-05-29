@@ -88,6 +88,18 @@ def read_foreground_window_handle() -> Optional[int]:
     return None
 
 
+def pid_for_handle(handle: int) -> Optional[int]:
+    """Return the process id that owns ``handle``, or None.
+
+    Used by the foreground tracker to skip Doro's own windows when remembering
+    "the last external window the user looked at". Windows is implemented;
+    other platforms return None.
+    """
+    if sys.platform == "win32":
+        return _pid_for_handle_win32(handle)
+    return None
+
+
 def window_class_for_handle(handle: int) -> Optional[str]:
     """Return the class string of the window identified by ``handle``, or None.
 
@@ -108,6 +120,21 @@ def _get_foreground_window_handle_win32() -> Optional[int]:  # pragma: no cover 
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
         hwnd = user32.GetForegroundWindow()
         return int(hwnd) if hwnd else None
+    except Exception:
+        return None
+
+
+def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - needs Windows
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return None
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        pid = wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(int(handle), ctypes.byref(pid))
+        return int(pid.value) or None
     except Exception:
         return None
 
