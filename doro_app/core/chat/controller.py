@@ -309,6 +309,16 @@ class ChatController(QtCore.QObject):
             return
 
         assistant_text, error_message = result
+
+        # Debug: surface the raw server reply on the terminal (the console log
+        # handler only shows WARNING+, so INFO-level text never reaches it).
+        raw = f"(error) {error_message}" if error_message else assistant_text
+        print(
+            f"\n===== [Doro] 伺服器原始回傳 =====\n{raw}\n"
+            "================================\n",
+            flush=True,
+        )
+
         if error_message:
             self._handle_worker_error(error_message)
             return
