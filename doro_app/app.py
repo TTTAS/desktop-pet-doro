@@ -97,25 +97,28 @@ class DoroApp:
             state_service=self._state_service,
             action_service=self._action_service,
         )
+        # ─── A11y tree reader (Phase 1d) ─────────────────────────
+        # Built before MovementManager so `[move:to;id=N]` can resolve element
+        # ids. Optional: self-gates on a11y_enabled. The tracker remembers the
+        # last *external* foreground window so a11y reads the app the user was
+        # using, not Doro's own (self-activating) window.
+        self._fg_tracker = ForegroundTracker(os.getpid())
+        self._fg_tracker.start()
+        self._a11y = self._maybe_build_a11y()
+
         self._movement_repo = deps.movement_repo
         self._movement = MovementManager(
             window=self.window,
             state_service=self._state_service,
             movement_repo=self._movement_repo,
+            element_resolver=lambda eid: (
+                self._a11y.element_center_for_id(eid) if self._a11y else None
+            ),
         )
 
         # ═════════════════════════════════════════════════════════════
         # Phase 4: Create ChatController (needs StateController + MovementManager)
         # ═════════════════════════════════════════════════════════════
-
-        # ─── A11y tree reader (Phase 1d) ─────────────────────────
-        # Optional: only constructed if a11y_enabled. Independent of mouse
-        # clicking — the user may grant "see the window" without "click it".
-        # The tracker remembers the last *external* foreground window so a11y
-        # reads the app the user was using, not Doro's own (self-activating) window.
-        self._fg_tracker = ForegroundTracker(os.getpid())
-        self._fg_tracker.start()
-        self._a11y = self._maybe_build_a11y()
 
         self._chat_controller = ChatController(
             self._prompt_file_path,

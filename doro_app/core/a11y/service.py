@@ -68,6 +68,9 @@ class A11yService:
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="a11y")
         self._session_blacklist: set[str] = set()
         self._timeout_counts: dict[str, int] = {}
+        # Elements from the most recent read, in the same order they were
+        # serialized (so the `#N` the LLM sees resolves back to an element).
+        self._last_elements: list = []
 
     def read_foreground_tree(self) -> str:
         """Return the serialized element block, or "" if nothing to show."""
@@ -102,8 +105,24 @@ class A11yService:
         if not body:
             return ""
 
+        # Cache for id→coordinate resolution at click time. Index matches the
+        # `#N` prefix the serializer emits for the same list.
+        self._last_elements = filtered
+
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
+
+    def element_center_for_id(self, index: int) -> Optional[tuple[int, int]]:
+        """Return the physical-pixel centre of element ``#index`` from the last
+        read, or None if the index is out of range.
+
+        Lets ``[move:to;id=N]`` aim Doro's foot at an element the LLM picked by
+        number, so the model never has to compute coordinates itself.
+        """
+        if 0 <= index < len(self._last_elements):
+            el = self._last_elements[index]
+            return (el.x + el.width // 2, el.y + el.height // 2)
+        return None
 
     def diagnose_foreground_tree(self) -> tuple[bool, str]:
         """Like :meth:`read_foreground_tree`, but for the settings preview.

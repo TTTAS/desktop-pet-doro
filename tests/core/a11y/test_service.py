@@ -93,6 +93,31 @@ class TestHappyPath:
         assert "[redacted-password]" in out
 
 
+class TestElementResolution:
+    def test_center_for_id_after_read(self, audit_file):
+        # _button: x=1850, y=80, 24x24 → centre (1862, 92).
+        svc = _make_service(FakeA11yBackend([_button("書籤", 1850, 80)]), audit_path=audit_file)
+        svc.read_foreground_tree()
+        assert svc.element_center_for_id(0) == (1862, 92)
+
+    def test_center_for_id_matches_serialized_index(self, audit_file):
+        backend = FakeA11yBackend([_button("a", 0, 0), _button("b", 100, 200)])
+        svc = _make_service(backend, audit_path=audit_file)
+        svc.read_foreground_tree()
+        # #1 is the second button (100,200 24x24) → centre (112, 212).
+        assert svc.element_center_for_id(1) == (112, 212)
+
+    def test_out_of_range_id_returns_none(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
+        svc.read_foreground_tree()
+        assert svc.element_center_for_id(5) is None
+        assert svc.element_center_for_id(-1) is None
+
+    def test_no_read_yet_returns_none(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
+        assert svc.element_center_for_id(0) is None
+
+
 class TestEmptyResults:
     def test_backend_none_returns_empty(self, audit_file):
         backend = FakeA11yBackend(return_none=True)

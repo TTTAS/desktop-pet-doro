@@ -2,10 +2,12 @@
 
 Produces lines like::
 
-    button "書籤" (350,120 24x24)
-    input "網址列" (140,75 800x36)  value="https://example.com"
+    #0 button "書籤" (350,120 24x24)
+    #1 input "網址列" (140,75 800x36)  value="https://example.com"
 
-rather than XML/JSON, to keep prompt token cost low. The output is capped
+The leading ``#N`` is the element's index so the LLM can click it by id
+(``[move:to;id=N]``) instead of computing pixel coordinates. The output is
+capped
 at ``A11Y_MAX_SERIALIZED_BYTES``; past the cap it stops and appends a
 "還有 N 個元件未列出" marker so the prompt can't balloon.
 """
@@ -35,7 +37,7 @@ def serialize(elements: list[A11yElement], max_bytes: int = A11Y_MAX_SERIALIZED_
     lines: list[str] = []
     used = 0
     for index, el in enumerate(elements):
-        line = _format_element(el)
+        line = f"#{index} {_format_element(el)}"
         cost = len(line.encode("utf-8")) + 1  # +1 for the newline
         if used + cost > budget and lines:
             remaining = len(elements) - index
