@@ -102,6 +102,57 @@ class TestEmptyResults:
         assert svc.read_foreground_tree() == ""
 
 
+class TestDiagnose:
+    def test_disabled_reason(self, audit_file):
+        svc = _make_service(
+            FakeA11yBackend([_button()]), config=_config(enabled=False), audit_path=audit_file
+        )
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "未啟用" in msg
+
+    def test_no_handle_reason(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), handle=None, audit_path=audit_file)
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "前景視窗" in msg
+
+    def test_blacklisted_reason(self, audit_file):
+        svc = _make_service(
+            FakeA11yBackend([_button()]),
+            config=_config(blacklist=("KeePass",)),
+            window_cls="Qt.KeePassXC.Window",
+            audit_path=audit_file,
+        )
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "黑名單" in msg
+
+    def test_backend_none_reason(self, audit_file):
+        svc = _make_service(FakeA11yBackend(return_none=True), audit_path=audit_file)
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "讀不到元件樹" in msg
+
+    def test_no_interactable_reason(self, audit_file):
+        deco = A11yElement(role="pane", name="bg", x=0, y=0, width=5, height=5)
+        svc = _make_service(FakeA11yBackend([deco]), audit_path=audit_file)
+        ok, msg = svc.diagnose_foreground_tree()
+        assert ok is False
+        assert "可互動元件" in msg
+
+    def test_success_returns_serialized_body(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button("書籤", 1850, 80)]), audit_path=audit_file)
+        ok, body = svc.diagnose_foreground_tree()
+        assert ok is True
+        assert 'button "書籤" (1850,80 24x24)' in body
+
+    def test_diagnose_does_not_write_audit(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
+        svc.diagnose_foreground_tree()
+        assert not audit_file.exists()
+
+
 class TestTimeout:
     def test_slow_read_times_out_to_empty(self, audit_file):
         backend = FakeA11yBackend([_button()], delay=0.3)

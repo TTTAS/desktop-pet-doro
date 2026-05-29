@@ -55,17 +55,18 @@ class _StubConfigManager:
 
 
 class _StubCoreManager:
-    def __init__(self, orchestrator, config_manager):
+    def __init__(self, orchestrator, config_manager, a11y_service=None):
         self.chat_orchestrator = orchestrator
         self.config_manager = config_manager
+        self.a11y_service = a11y_service
 
 
-def _make_dialog(qtbot, simulate_return="", a11y_enabled=False):
+def _make_dialog(qtbot, simulate_return="", a11y_enabled=False, a11y_service=None):
     from doro_app.ui.dialogs.chat_settings_dialog import ChatSettingsDialog
 
     orch = _StubOrchestrator(simulate_return=simulate_return)
     config = _StubConfigManager(a11y_enabled=a11y_enabled)
-    dialog = ChatSettingsDialog(_StubCoreManager(orch, config))
+    dialog = ChatSettingsDialog(_StubCoreManager(orch, config, a11y_service))
     qtbot.addWidget(dialog)
     return dialog, orch, config
 
@@ -116,3 +117,31 @@ def test_save_persists_a11y_toggle(qtbot):
 
     config.update_automation.assert_called_once_with(a11y_enabled=True)
     config.save.assert_called_once()
+
+
+def test_preview_shows_tree_on_success(qtbot):
+    service = Mock()
+    service.diagnose_foreground_tree.return_value = (True, 'button "OK" (10,20 30x40)')
+    dialog, _, _ = _make_dialog(qtbot, a11y_service=service)
+
+    dialog._run_a11y_preview()
+
+    assert 'button "OK"' in dialog._a11y_output.toPlainText()
+
+
+def test_preview_shows_reason_on_failure(qtbot):
+    service = Mock()
+    service.diagnose_foreground_tree.return_value = (False, "a11y 未啟用（請在設定勾選）")
+    dialog, _, _ = _make_dialog(qtbot, a11y_service=service)
+
+    dialog._run_a11y_preview()
+
+    assert "未啟用" in dialog._a11y_output.toPlainText()
+
+
+def test_preview_handles_missing_service(qtbot):
+    dialog, _, _ = _make_dialog(qtbot, a11y_service=None)
+
+    dialog._run_a11y_preview()
+
+    assert "未建立" in dialog._a11y_output.toPlainText()

@@ -146,6 +146,23 @@ class ChatSettingsDialog(FramelessDialog):
         a11y_hint.setWordWrap(True)
         layout.addWidget(a11y_hint)
 
+        preview_row = QtWidgets.QHBoxLayout()
+        preview_row.addStretch(1)
+        self._a11y_preview_btn = QtWidgets.QPushButton("預覽 Doro 現在看到什麼")
+        self._a11y_preview_btn.setObjectName("testButton")
+        self._a11y_preview_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        preview_row.addWidget(self._a11y_preview_btn)
+        layout.addLayout(preview_row)
+
+        self._a11y_output = QtWidgets.QPlainTextEdit()
+        self._a11y_output.setReadOnly(True)
+        self._a11y_output.setFixedHeight(110)
+        self._a11y_output.setPlaceholderText(
+            "按上面的按鈕後倒數 3 秒，切到你要讓 Doro 看的視窗，"
+            "就會顯示 Doro 此刻讀到的元件清單（或讀不到的原因）。"
+        )
+        layout.addWidget(self._a11y_output)
+
         # ── Simulate a server reply (test Doro) ────────────────
         test_header = QtWidgets.QLabel("模擬回應（測試 Doro）")
         test_header.setObjectName("testHeader")
@@ -181,6 +198,7 @@ class ChatSettingsDialog(FramelessDialog):
         # Connections
         self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._eye_btn.clicked.connect(self._toggle_api_key_visibility)
+        self._a11y_preview_btn.clicked.connect(self._on_preview_a11y)
         self._test_btn.clicked.connect(self._on_simulate)
         save_btn.clicked.connect(self._on_save)
 
@@ -245,6 +263,41 @@ class ChatSettingsDialog(FramelessDialog):
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal)
         else:
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+
+    def _on_preview_a11y(self):
+        """Count down a few seconds (so the user can focus the target window),
+        then run the diagnostic read and show the result."""
+        self._a11y_preview_btn.setEnabled(False)
+        self._a11y_countdown = 3
+        self._a11y_output.setPlainText(
+            f"{self._a11y_countdown} 秒後擷取…（請切到你要讓 Doro 看的視窗）"
+        )
+        self._a11y_timer = QtCore.QTimer(self)
+        self._a11y_timer.setInterval(1000)
+        self._a11y_timer.timeout.connect(self._a11y_tick)
+        self._a11y_timer.start()
+
+    def _a11y_tick(self):
+        self._a11y_countdown -= 1
+        if self._a11y_countdown > 0:
+            self._a11y_output.setPlainText(
+                f"{self._a11y_countdown} 秒後擷取…（請切到你要讓 Doro 看的視窗）"
+            )
+            return
+        self._a11y_timer.stop()
+        self._run_a11y_preview()
+        self._a11y_preview_btn.setEnabled(True)
+
+    def _run_a11y_preview(self):
+        service = self._core.a11y_service
+        if service is None:
+            self._a11y_output.setPlainText("a11y 服務未建立（初始化可能失敗）。")
+            return
+        ok, message = service.diagnose_foreground_tree()
+        if ok:
+            self._a11y_output.setPlainText(f"Doro 現在看到：\n{message}")
+        else:
+            self._a11y_output.setPlainText(f"目前讀不到內容：\n{message}")
 
     def _on_simulate(self):
         text = self._test_input.toPlainText().strip()

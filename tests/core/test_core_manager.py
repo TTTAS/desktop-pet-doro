@@ -125,6 +125,32 @@ class TestCoreManagerInitialization:
         assert core_manager.chat_orchestrator is mock_chat_orchestrator
         assert core_manager.movement_manager is mock_movement_manager
 
+    def test_a11y_service_defaults_none(self, core_manager):
+        """a11y_service is optional and defaults to None."""
+        assert core_manager.a11y_service is None
+
+    def test_a11y_service_is_exposed(
+        self,
+        mock_state_service,
+        mock_chat_controller,
+        mock_chat_orchestrator,
+        mock_movement_manager,
+        mock_transition_player,
+        mock_config_manager,
+    ):
+        """A passed a11y_service is exposed via the property."""
+        sentinel = object()
+        manager = CoreManager(
+            state_service=mock_state_service,
+            chat_controller=mock_chat_controller,
+            chat_orchestrator=mock_chat_orchestrator,
+            movement_manager=mock_movement_manager,
+            transition_player=mock_transition_player,
+            config_manager=mock_config_manager,
+            a11y_service=sentinel,
+        )
+        assert manager.a11y_service is sentinel
+
     def test_connects_internal_components(
         self,
         mock_chat_orchestrator,

@@ -104,6 +104,52 @@ class A11yService:
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
 
+    def diagnose_foreground_tree(self) -> tuple[bool, str]:
+        """Like :meth:`read_foreground_tree`, but for the settings preview.
+
+        Returns ``(True, serialized_block)`` on success, or ``(False, reason)``
+        with a plain-language explanation of why nothing was read. Does not
+        write the audit log (this is a diagnostic, not a prompt injection).
+        """
+        if not self._config.automation.a11y_enabled:
+            return False, "a11y 未啟用（請在設定勾選「讓 Doro 讀取前景視窗的可點元素」）"
+
+        handle = self._handle_provider()
+        if handle is None:
+            return False, "取不到前景視窗（此功能目前僅 Windows 有真實後端）"
+
+        window_cls = self._class_provider(handle)
+        cls_key = (window_cls or "").strip().lower()
+
+        if is_blacklisted(window_cls, self._config.automation.a11y_app_blacklist):
+            return False, f"此程式（{window_cls}）在隱私黑名單中，已略過"
+        if cls_key and cls_key in self._session_blacklist:
+            return False, f"此程式（{window_cls}）先前多次逾時，本次 session 已略過"
+
+        elements = self._read_with_timeout(handle, cls_key)
+        if elements is None:
+            return False, self._backend_unavailable_reason()
+
+        self._timeout_counts.pop(cls_key, None)
+        filtered = filter_elements(elements)
+        body = serialize(filtered) if filtered else ""
+        if not body:
+            return False, "前景視窗沒有可互動元件（按鈕／連結／輸入框等）"
+
+        return True, body
+
+    @staticmethod
+    def _backend_unavailable_reason() -> str:
+        import sys
+
+        msg = "讀不到元件樹（視窗可能不支援，或讀取逾時）"
+        if sys.platform == "win32":
+            import importlib.util
+
+            if importlib.util.find_spec("uiautomation") is None:
+                msg += "；可能未安裝 uiautomation，請執行 pip install \"doro[a11y]\""
+        return msg
+
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False)
 

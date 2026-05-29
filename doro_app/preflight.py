@@ -52,6 +52,19 @@ def preflight_check() -> tuple[list[str], list[str]]:
                 "偵測到 Wayland 純會話（無 XWayland）；滑鼠自動化目前僅支援 X11 / Windows，將進入 disabled 狀態。"
             )
 
+    # Phase 1d a11y: the Windows backend needs the optional `uiautomation`
+    # package. Warn (don't fail) when a11y is requested via env but it's
+    # missing, so the tree-read doesn't silently return nothing.
+    if os.environ.get("DORO_A11Y", "").strip().lower() in ("1", "true", "yes", "on"):
+        if sys.platform == "win32":
+            import importlib.util
+
+            if importlib.util.find_spec("uiautomation") is None:
+                warnings.append(
+                    "DORO_A11Y 已設為 true 但 uiautomation 未安裝；無障礙樹讀取將回傳空白 — "
+                    "pip install 'doro[a11y]'"
+                )
+
     if sys.platform.startswith("linux"):
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             errors.append("找不到顯示伺服器（$DISPLAY / $WAYLAND_DISPLAY 未設定）")

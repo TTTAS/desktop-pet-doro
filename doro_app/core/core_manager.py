@@ -71,6 +71,7 @@ class CoreManager(QtCore.QObject):
         movement_manager: MovementManager,
         transition_player: TransitionPlayer,
         config_manager: ConfigManager,
+        a11y_service=None,
     ):
         """
         Initialize CoreManager with all business logic components.
@@ -82,6 +83,7 @@ class CoreManager(QtCore.QObject):
             movement_manager: Movement logic manager
             transition_player: State transition player
             config_manager: Configuration manager
+            a11y_service: Optional A11yService for the settings preview (may be None)
         """
         super().__init__()
 
@@ -97,6 +99,7 @@ class CoreManager(QtCore.QObject):
         self._movement = movement_manager
         self._transition_player = transition_player
         self._config_manager = config_manager
+        self._a11y_service = a11y_service
 
         # Track previous state for transition detection
         self._previous_state_key: str | None = None
@@ -222,6 +225,11 @@ class CoreManager(QtCore.QObject):
     def config_manager(self) -> "ConfigManager":
         """Get ConfigManager (read-only access)."""
         return self._config_manager
+
+    @property
+    def a11y_service(self):
+        """Get the A11yService (read-only access); may be None."""
+        return self._a11y_service
 
     @property
     def movement_manager(self) -> MovementManager:

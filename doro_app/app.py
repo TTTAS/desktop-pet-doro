@@ -156,6 +156,7 @@ class DoroApp:
             movement_manager=self._movement,
             transition_player=self._transition_player,
             config_manager=self._config_manager,
+            a11y_service=self._a11y,
         )
 
         # ═════════════════════════════════════════════════════════════
