@@ -25,6 +25,7 @@ class MenuSnapshot:
     has_chat_history: bool
     using_live2d: bool = False  # current state is using Live2D model
     live2d_available: bool = False  # live2d-py library is installed
+    a11y_enabled: bool = False  # accessibility tree reading is on
 
 
 @dataclasses.dataclass(frozen=True)
@@ -42,6 +43,8 @@ class MenuCallbacks:
     edit_chat_prompt: Callable[[], None]
     clear_chat_history: Callable[[], None]
     open_settings_dialog: Callable[[], None]
+    toggle_a11y: Callable[[bool], None]
+    preview_a11y: Callable[[], None]
     quit_app: Callable[[], None]
 
 
@@ -391,6 +394,15 @@ def build_context_menu_content(
 
     configure_action = chat_menu.addAction("Configure")
     configure_action.triggered.connect(callbacks.open_settings_dialog)
+
+    chat_menu.addSeparator()
+    a11y_toggle_action = chat_menu.addAction("讓 Doro 看畫面（無障礙樹）")
+    a11y_toggle_action.setCheckable(True)
+    a11y_toggle_action.setChecked(snapshot.a11y_enabled)
+    a11y_toggle_action.triggered.connect(callbacks.toggle_a11y)
+
+    a11y_preview_action = chat_menu.addAction("預覽 Doro 看到什麼")
+    a11y_preview_action.triggered.connect(callbacks.preview_a11y)
 
     menu.addSeparator()
 

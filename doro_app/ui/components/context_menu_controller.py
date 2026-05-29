@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...utils.paths import LIVE2D_MODEL_PATH
 from ..theme.themed_menu import (
@@ -104,6 +104,9 @@ class ContextMenuController:
                 current_state and current_state.live2d_model_path
             ),
             live2d_available=_LIVE2D_AVAILABLE,
+            a11y_enabled=bool(
+                self._core_manager.config_manager.automation.a11y_enabled
+            ),
         )
 
     def _build_callbacks(self) -> MenuCallbacks:
@@ -127,8 +130,41 @@ class ContextMenuController:
             edit_chat_prompt=self._chat_ui.edit_chat_prompt,
             clear_chat_history=self._chat_ui.clear_chat_history,
             open_settings_dialog=self._chat_ui.open_settings_dialog,
+            toggle_a11y=self._toggle_a11y,
+            preview_a11y=self._preview_a11y,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
+
+    def _toggle_a11y(self, checked: bool) -> None:
+        """Flip accessibility tree reading on/off and persist it.
+
+        The A11yService reads this flag live on every read, so no restart is
+        needed.
+        """
+        cm = self._core_manager.config_manager
+        cm.update_automation(a11y_enabled=bool(checked))
+        cm.save()
+
+    def _preview_a11y(self) -> None:
+        """Count down a few seconds (so the user can focus the target window),
+        then run the diagnostic read and show the result in a popup."""
+        service = self._core_manager.a11y_service
+        if service is None:
+            QtWidgets.QMessageBox.information(
+                self._window, "Doro", "a11y 服務未建立（初始化可能失敗）。"
+            )
+            return
+        QtWidgets.QToolTip.showText(
+            QtGui.QCursor.pos(),
+            "3 秒後擷取…請切到你要讓 Doro 看的視窗",
+            self._window,
+        )
+        QtCore.QTimer.singleShot(3000, lambda: self._show_a11y_result(service))
+
+    def _show_a11y_result(self, service) -> None:
+        ok, message = service.diagnose_foreground_tree()
+        title = "Doro 現在看到" if ok else "目前讀不到內容"
+        QtWidgets.QMessageBox.information(self._window, title, message)
 
     def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
         """Toggle Live2D mode globally (applies to all states)."""
