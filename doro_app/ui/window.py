@@ -392,6 +392,25 @@ class DoroWindow(QtWidgets.QWidget):
         """Move window to position (public API)."""
         self._move_window_to(pos)
 
+    def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:
+        """Convert an OS physical pixel (a11y/mouse space) to a Qt logical point.
+
+        Used by `[move:to]` so a coordinate the LLM read off the element tree
+        lands at the right spot even when the display is scaled (DPR != 1).
+        """
+        from ..core.automation.coordinates import compute_logical_point_from_physical
+
+        screen = self.screen()
+        if screen is None:
+            return QtCore.QPoint(int(x), int(y))
+        geom = screen.geometry()
+        lx, ly = compute_logical_point_from_physical(
+            (int(x), int(y)),
+            screen_origin_logical=(geom.x(), geom.y()),
+            device_pixel_ratio=screen.devicePixelRatio(),
+        )
+        return QtCore.QPoint(lx, ly)
+
     def get_bubble_offset(self) -> QtCore.QPointF:
         """Get the current bubble offset (public API for movement)."""
         if self._bubble_controller:

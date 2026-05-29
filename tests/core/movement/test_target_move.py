@@ -101,10 +101,26 @@ class TestClamping:
         assert manager.has_active_movement is True
 
     def test_already_at_target_is_noop(self):
+        # Window at (100,100), size 100x100 → foot offset (50, 99), so the foot
+        # already sits at physical (150, 199). Targeting that is a no-op.
         manager, window = _make_manager(origin=(100, 100))
         reports: list[str] = []
-        manager.handle_move_bracket("move:to;x=100;y=100", reports)
+        manager.handle_move_bracket("move:to;x=150;y=199", reports)
         # Effectively no movement queued.
         assert manager.has_active_movement is False
         # No error either — it's a valid no-op.
         assert all(not r.startswith("[移動錯誤]") for r in reports)
+
+
+class TestFootPlacement:
+    def test_top_left_backs_out_foot_offset(self):
+        # Foot target physical (200,200); window 100x100 → foot offset (50,99),
+        # so the window top-left must end up at (150, 101) to put the foot there.
+        manager, window = _make_manager(origin=(1000, 1000))
+        reports: list[str] = []
+
+        report = manager.apply_target_move(200, 200)
+
+        assert manager.has_active_movement is True
+        assert report is not None
+        assert "位置 150, 101" in report

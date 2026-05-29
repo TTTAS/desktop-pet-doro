@@ -62,10 +62,9 @@ class ForegroundTracker(QtCore.QObject):
         self._own_pid = own_pid
         self._handle_provider = handle_provider
         self._pid_provider = pid_provider
+        self._interval_ms = interval_ms
         self._last: Optional[int] = None
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(interval_ms)
-        self._timer.timeout.connect(self._sample)
+        self._timer: QtCore.QTimer | None = None
 
     def _sample(self) -> None:
         handle = self._handle_provider()
@@ -78,7 +77,12 @@ class ForegroundTracker(QtCore.QObject):
 
     def start(self) -> None:
         self._sample()
+        if self._timer is None:
+            self._timer = QtCore.QTimer(self)
+            self._timer.setInterval(self._interval_ms)
+            self._timer.timeout.connect(self._sample)
         self._timer.start()
 
     def stop(self) -> None:
-        self._timer.stop()
+        if self._timer is not None:
+            self._timer.stop()

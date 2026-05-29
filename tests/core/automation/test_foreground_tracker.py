@@ -28,7 +28,7 @@ def test_missing_pid_keeps_previous():
     assert next_external_handle(handle=300, pid=None, own_pid=OWN_PID, previous=100) == 100
 
 
-def test_sample_updates_handle(qtbot):
+def test_sample_updates_handle():
     foreground = {"handle": 111, "pid": 9}
     tracker = ForegroundTracker(
         OWN_PID,

@@ -54,6 +54,10 @@ class MovementWindowFake(MovementWindowPort):
     def move_window_to(self, pos: QtCore.QPoint):
         self._rect.moveTopLeft(pos)
 
+    def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:
+        # Headless fake assumes DPR=1, so physical and logical coincide.
+        return QtCore.QPoint(int(x), int(y))
+
     def get_bubble_offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._bubble_offset)
 

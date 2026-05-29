@@ -261,7 +261,17 @@ class MovementManager:
 
         window = self._window
         current = window.current_position()
-        clamped = window.clamp_window_position(QtCore.QPoint(target_x, target_y))
+        # (x, y) is where Doro's *foot* should land, in *physical* pixels — that
+        # is what the a11y tree reports and what [mouse:click] uses. Convert to
+        # logical space, then back out the window top-left from the foot offset
+        # (foot = window centre-x, bottom) so the click point hits the target.
+        foot_logical = window.logical_point_for_physical(target_x, target_y)
+        frame = window.frameGeometry()
+        top_left = QtCore.QPoint(
+            foot_logical.x() - frame.width() // 2,
+            foot_logical.y() - max(frame.height() - 1, 0),
+        )
+        clamped = window.clamp_window_position(top_left)
         actual_dx = clamped.x() - current.x()
         actual_dy = clamped.y() - current.y()
         actual_distance = math.hypot(actual_dx, actual_dy)

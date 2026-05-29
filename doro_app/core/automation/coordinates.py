@@ -44,6 +44,31 @@ def compute_physical_pixel_at(
     )
 
 
+def compute_logical_point_from_physical(
+    point_physical: tuple[int, int],
+    *,
+    screen_origin_logical: tuple[int, int],
+    device_pixel_ratio: float,
+) -> tuple[int, int]:
+    """Inverse of :func:`compute_physical_pixel_at`: OS physical pixel → Qt logical point.
+
+    The a11y element tree and mouse clicks live in physical pixels, but Qt
+    window moves use logical coordinates. ``[move:to]`` needs this direction to
+    place Doro at a coordinate the LLM read off the element tree.
+    """
+    if sys.platform == "darwin":
+        return int(point_physical[0]), int(point_physical[1])
+
+    origin_x, origin_y = screen_origin_logical
+    dpr = device_pixel_ratio or 1.0
+    local_x = point_physical[0] - origin_x
+    local_y = point_physical[1] - origin_y
+    return (
+        int(origin_x + local_x / dpr),
+        int(origin_y + local_y / dpr),
+    )
+
+
 def compute_physical_pixel_for_qt_window(window) -> Optional[tuple[int, int]]:
     """Convenience: read foot position + screen DPR off a live Qt widget.
 
