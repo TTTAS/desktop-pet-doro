@@ -6,17 +6,28 @@ Lifecycle of one `[mouse:click]`:
       ├─ enabled? rate-limited? kill-switch tripped?
       ├─ transition_coordinator.begin()       (idle suppression)
       ├─ start wind-up timer (CLICK_WIND_UP_MS)
-      │     (during this window the user can drag Doro elsewhere or press Esc)
+      │     (during this window the user can press Esc to cancel; the
+      │      red warning overlay frames the click target so it's visible)
       └─ on wind-up expiry → _on_wind_up_finished()
             ├─ if left button is being held → enter drag-grace loop
-            ├─ read window class at Doro's current foot position
+            ├─ pick click coord: last [MOVE:to] target if any, else Doro's foot
+            ├─ read window class at that coord
             ├─ class in allowlist → fire click via InputBackendPort
             └─ class miss / kill-switch / esc → no click, audit-log it
           (always) transition_coordinator.end()
 
-The manager never holds the click coordinate; it samples Doro's foot
-position fresh at fire time. This is the core safety invariant from the
-plan: the user, by dragging or not dragging, has the final say.
+Click coordinate sourcing: the manager prefers `click_target_provider()`
+(typically `MovementManager.last_target_physical`) over the live foot
+position. Foot sampling falls back when there is no recent MOVE target.
+This lets clicks land on edge-of-screen targets that the foot cannot
+reach (window clamps to screen, so the foot's reachable region is
+`[w/2, screen_w - w/2] × [h-1, screen_h - 1]`).
+
+Safety: the user cancels via Esc (1.5s wind-up window), or the 3-Esc
+kill-switch globally disables automation. The red warning overlay
+visualises the actual click coordinate during wind-up so the user can
+verify before it fires. Dragging Doro during wind-up no longer
+redirects the click — only Esc does.
 
 The manager intentionally has no Qt dependency in its hot path — wind-up
 expiry is driven by a caller-supplied scheduler so tests can advance
@@ -111,6 +122,7 @@ class AutomationManager:
         wind_up_animator: Optional["WindUpAnimatorPort"] = None,
         warning_overlay: Optional["ClickWarningOverlayPort"] = None,
         bounds_provider: Optional["BoundsProvider"] = None,
+        click_target_provider: Optional[Callable[[], Optional[tuple[int, int]]]] = None,
         schedule: ScheduleFn,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
@@ -124,6 +136,7 @@ class AutomationManager:
         self._wind_up_animator = wind_up_animator
         self._warning_overlay = warning_overlay
         self._bounds_provider = bounds_provider
+        self._click_target_provider = click_target_provider
         self._schedule = schedule
         self._clock = clock
 
@@ -264,12 +277,28 @@ class AutomationManager:
         self._schedule(50, self._check_grace)
 
     def _fire_now(self) -> None:
-        """Sample Doro's foot position, validate against allowlist, send click."""
+        """Pick click coord (target if available, else foot), validate, click."""
         if self._pending is None:
             return
 
-        fx_phys, fy_phys = self._window.foot_position_physical()
-        class_name = self._backend.read_window_class_at(fx_phys, fy_phys)
+        # Prefer the most recent [MOVE:to] target — the foot may not have
+        # reached it (window clamps to screen, so edge targets like the
+        # browser bookmark bar / window controls land outside foot reach).
+        # Falling back to the foot keeps clicks without a prior MOVE working.
+        target = self._click_target_provider() if self._click_target_provider else None
+        if target is not None:
+            cx, cy = target
+        else:
+            cx, cy = self._window.foot_position_physical()
+
+        # Safety clamp to screen: a stale or LLM-miscomputed target may
+        # land off-screen. Clamp so the synthetic event always points at a
+        # real pixel rather than relying on OS-level handling of OOB coords.
+        sw, sh = self._window.screen_size_physical()
+        cx = max(0, min(sw - 1, int(cx)))
+        cy = max(0, min(sh - 1, int(cy)))
+
+        class_name = self._backend.read_window_class_at(cx, cy)
 
         if not self._is_allowlisted(class_name):
             self._finalize(
@@ -285,7 +314,7 @@ class AutomationManager:
         except Exception:  # pragma: no cover - defensive
             logger.exception("set_mouse_transparent(True) failed")
         try:
-            self._backend.click_left(fx_phys, fy_phys)
+            self._backend.click_left(cx, cy)
         except Exception:  # pragma: no cover - backend failure should not strand the lock
             logger.exception("click_left raised")
         finally:
@@ -295,9 +324,10 @@ class AutomationManager:
                 logger.exception("set_mouse_transparent(False) failed")
 
         self._last_click_at = self._clock()
+        source = "target" if target is not None else "foot"
         self._finalize(
             ClickOutcome.FIRED,
-            f"click@({fx_phys},{fy_phys}) class={class_name!r}",
+            f"click@({cx},{cy}) source={source} class={class_name!r}",
         )
 
     def _finalize(self, outcome: ClickOutcome, detail: str) -> None:

@@ -543,6 +543,7 @@ class DoroApp:
             wind_up_animator=animator,
             warning_overlay=overlay_adapter,
             bounds_provider=self._click_target_bounds,
+            click_target_provider=lambda: self._movement.last_target_physical,
             schedule=_schedule,
         )
         return manager
@@ -696,5 +697,16 @@ class _QtAutomationWindowAdapter:
                 return (1920, 1080)
             size = screen.availableGeometry().size()
             return (size.width(), size.height())
+        except Exception:  # pragma: no cover - defensive
+            return (1920, 1080)
+
+    def screen_size_physical(self) -> tuple[int, int]:
+        try:
+            screen = self._window.screen()
+            if screen is None:
+                return (1920, 1080)
+            size = screen.geometry().size()
+            dpr = screen.devicePixelRatio() or 1.0
+            return (int(size.width() * dpr), int(size.height() * dpr))
         except Exception:  # pragma: no cover - defensive
             return (1920, 1080)

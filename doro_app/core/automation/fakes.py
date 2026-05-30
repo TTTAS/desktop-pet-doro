@@ -82,6 +82,9 @@ class FakeAutomationWindow:
     def screen_size_logical(self) -> tuple[int, int]:
         return self._screen_size
 
+    def screen_size_physical(self) -> tuple[int, int]:
+        return self._screen_size
+
     # Test conveniences --------------------------------------------------
 
     def move_foot_to(self, logical: tuple[int, int], physical: Optional[tuple[int, int]] = None) -> None:

@@ -58,6 +58,15 @@ class AutomationWindowPort(Protocol):
     def screen_size_logical(self) -> tuple[int, int]:
         """Return (width, height) of the available screen geometry in logical px."""
 
+    def screen_size_physical(self) -> tuple[int, int]:
+        """Return (width, height) of the screen in physical px.
+
+        Used by the manager to safety-clamp the click coordinate when it
+        comes from `click_target_provider` (which lives in physical space
+        like the a11y tree). A stale or miscomputed target should not
+        flow through to `click_left` as an off-screen coord.
+        """
+
 
 class WindUpAnimatorPort(Protocol):
     """Drives the visual wind-up animation during a click.

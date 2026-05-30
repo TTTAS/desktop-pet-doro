@@ -566,3 +566,102 @@ class TestClickWarningOverlay:
         manager.execute_click()
         scheduler.flush()
         coord_stub.end.assert_called_once()
+
+
+class TestClickTargetProvider:
+    """Click coord sourcing: target_provider wins; foot is fallback."""
+
+    def _build(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, target_provider,
+    ):
+        from doro_app.core.automation.manager import AutomationManager
+        return AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            click_target_provider=target_provider,
+            schedule=scheduler,
+            clock=clock,
+        )
+
+    def test_target_overrides_foot(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        # fake_window has foot at (500, 500). Target should win.
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, target_provider=lambda: (190, 102),
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(190, 102)]
+
+    def test_none_target_falls_back_to_foot(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, target_provider=lambda: None,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(500, 500)]
+
+    def test_no_provider_falls_back_to_foot(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """No `click_target_provider` arg → old behaviour: click at foot."""
+        from doro_app.core.automation.manager import AutomationManager
+        manager = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(500, 500)]
+
+    def test_target_clamped_to_screen(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        # fake_window default screen is 1920×1080. Off-screen target must clamp.
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, target_provider=lambda: (5000, -50),
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(1919, 0)]
+
+    def test_window_class_read_at_clicked_coord(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """Allowlist check must use the actual click coord, not the foot —
+        otherwise edge targets could be allowlisted via Doro's own window."""
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, target_provider=lambda: (190, 102),
+        )
+        # Map: foot position belongs to Firefox, target belongs to KeePass.
+        fake_backend.window_class_at = {
+            (500, 500): "Firefox",
+            (190, 102): "KeePassXC",
+        }
+        manager.execute_click()
+        scheduler.flush()
+        # KeePassXC is not in allowlist → no click should fire.
+        assert fake_backend.click_calls == []
