@@ -77,3 +77,28 @@ class WindUpAnimatorPort(Protocol):
         """Restore the prior display state. Called at every wind-up
         exit path (fired, aborted, allowlist miss, grace-exceeded).
         """
+
+
+class ClickWarningOverlayPort(Protocol):
+    """Draws a red warning frame around the click target during wind-up.
+
+    Gives the user a clear visual confirmation of which a11y element the
+    pending click will land on, so the 1.5s Esc-cancel window is actually
+    usable. The overlay is purely informational — it does NOT influence
+    where the click fires (that still tracks Doro's foot position).
+
+    Both methods MUST be safe to call unconditionally: ``begin(None)``
+    when there's no element bounds to show (e.g. raw x/y move) should be
+    a no-op, and ``end()`` must be idempotent because it's invoked from
+    every wind-up exit path.
+    """
+
+    def begin(self, bounds_physical: Optional[tuple[int, int, int, int]]) -> None:
+        """Show the warning frame at the given physical-pixel bounds.
+
+        ``None`` means no a11y element was resolved for this click; the
+        implementation should not display anything.
+        """
+
+    def end(self) -> None:
+        """Hide the warning frame. Called at every wind-up exit path."""

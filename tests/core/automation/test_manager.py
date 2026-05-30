@@ -414,3 +414,155 @@ class TestWindUpAnimator:
         scheduler.flush()
         # No animator passed → no crash, and transition coord still ran.
         coord_stub.end.assert_called_once()
+
+
+class TestClickWarningOverlay:
+    """The warning_overlay port frames the click target during wind-up.
+
+    Same exit-path guarantee as wind_up_animator: every terminal path
+    (FIRED / ABORTED_BY_ESC / REJECTED_BY_ALLOWLIST / DRAG_GRACE_EXCEEDED)
+    must call ``end()`` exactly once so the red frame never gets stuck on
+    screen.
+    """
+
+    def _build(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay, bounds=(100, 200, 50, 30),
+    ):
+        from doro_app.core.automation.manager import AutomationManager
+        return AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            warning_overlay=warning_overlay,
+            bounds_provider=lambda: bounds,
+            schedule=scheduler,
+            clock=clock,
+        )
+
+    def test_begin_called_with_provider_bounds(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay, bounds=(10, 20, 80, 40),
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        assert warning_overlay.begin_calls == [(10, 20, 80, 40)]
+        assert warning_overlay.end_calls == 0
+
+    def test_fired_path_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert warning_overlay.end_calls == 1
+
+    def test_esc_abort_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        fake_backend.press_esc()
+        scheduler.flush()
+        assert warning_overlay.end_calls == 1
+
+    def test_allowlist_miss_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay,
+        )
+        fake_backend.set_window_class("KeePassXC")
+        manager.execute_click()
+        scheduler.flush()
+        assert warning_overlay.end_calls == 1
+
+    def test_grace_exceeded_calls_end(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay,
+        )
+        fake_backend.set_window_class("Firefox")
+        fake_backend.left_button_pressed = True
+        manager.execute_click()
+        scheduler.run_next()
+        clock.advance(2.0)
+        scheduler.run_next()
+        assert warning_overlay.end_calls == 1
+
+    def test_none_bounds_still_calls_begin(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        """When the bounds provider returns None (e.g. raw x/y move with no
+        a11y id), the manager still drives the port — the adapter is the
+        one that decides not to display anything."""
+        from doro_app.core.automation.manager import AutomationManager
+        manager = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            warning_overlay=warning_overlay,
+            bounds_provider=lambda: None,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        assert warning_overlay.begin_calls == [None]
+
+    def test_overlay_exception_does_not_strand_other_locks(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        """A raising overlay.end() must not block transition_coordinator.end()."""
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, warning_overlay,
+        )
+        warning_overlay.raise_on_end = True
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        coord_stub.end.assert_called_once()
+
+    def test_manager_works_without_overlay(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """``warning_overlay`` is optional; older wiring must keep working."""
+        from doro_app.core.automation.manager import AutomationManager
+        manager = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        coord_stub.end.assert_called_once()

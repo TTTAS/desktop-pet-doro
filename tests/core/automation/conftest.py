@@ -148,6 +148,31 @@ def wind_up_animator() -> RecordingWindUpAnimator:
     return RecordingWindUpAnimator()
 
 
+class RecordingWarningOverlay:
+    """Records begin/end calls for the warning_overlay port."""
+
+    def __init__(self) -> None:
+        self.begin_calls: list = []  # list of bounds args
+        self.end_calls: int = 0
+        self.raise_on_begin: bool = False
+        self.raise_on_end: bool = False
+
+    def begin(self, bounds_physical) -> None:
+        self.begin_calls.append(bounds_physical)
+        if self.raise_on_begin:
+            raise RuntimeError("overlay begin failed")
+
+    def end(self) -> None:
+        self.end_calls += 1
+        if self.raise_on_end:
+            raise RuntimeError("overlay end failed")
+
+
+@pytest.fixture
+def warning_overlay() -> RecordingWarningOverlay:
+    return RecordingWarningOverlay()
+
+
 @pytest.fixture
 def manager(
     config_stub: ConfigManagerStub,

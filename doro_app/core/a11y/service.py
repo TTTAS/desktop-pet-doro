@@ -71,6 +71,10 @@ class A11yService:
         # Elements from the most recent read, in the same order they were
         # serialized (so the `#N` the LLM sees resolves back to an element).
         self._last_elements: list = []
+        # Element returned by the most recent successful `element_center_for_id`.
+        # Surfaced via `last_resolved_bounds_physical` so the click warning
+        # overlay can frame the same rect the LLM aimed at.
+        self._last_resolved_element = None
 
     def read_foreground_tree(self) -> str:
         """Return the serialized element block, or "" if nothing to show."""
@@ -121,8 +125,23 @@ class A11yService:
         """
         if 0 <= index < len(self._last_elements):
             el = self._last_elements[index]
+            self._last_resolved_element = el
             return (el.x + el.width // 2, el.y + el.height // 2)
         return None
+
+    def last_resolved_bounds_physical(self) -> Optional[tuple[int, int, int, int]]:
+        """Physical-pixel bounds ``(x, y, w, h)`` of the element returned by
+        the most recent successful ``element_center_for_id`` call, or None
+        if no id has been resolved yet.
+
+        A failed lookup (out-of-range index) does NOT clear the cache — the
+        click warning overlay reads this at wind-up time, and the contract
+        is "frame the element we just walked to".
+        """
+        el = self._last_resolved_element
+        if el is None:
+            return None
+        return (el.x, el.y, el.width, el.height)
 
     def diagnose_foreground_tree(self) -> tuple[bool, str]:
         """Like :meth:`read_foreground_tree`, but for the settings preview.

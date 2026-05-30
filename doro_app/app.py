@@ -516,12 +516,23 @@ class DoroApp:
             self._action_service.click_state_key,
         )
 
+        from .ui.click_warning_overlay import ClickWarningOverlay
+
+        self._click_warning_overlay = ClickWarningOverlay()
+        overlay_adapter = _QtClickWarningOverlayAdapter(
+            self._click_warning_overlay, self.window
+        )
+
         manager = AutomationManager(
             config_manager=self._config_manager,
             window=window_port,
             input_backend=backend,
             transition_coordinator=coord,
             wind_up_animator=animator,
+            warning_overlay=overlay_adapter,
+            bounds_provider=(
+                lambda: self._a11y.last_resolved_bounds_physical() if self._a11y else None
+            ),
             schedule=_schedule,
         )
         return manager
@@ -588,6 +599,27 @@ class _QtWindUpAnimatorAdapter:
             return
         self._state_service.set_state(self._prev_state_key, force=True)
         self._prev_state_key = None
+
+
+class _QtClickWarningOverlayAdapter:
+    """Adapter exposing a :class:`ClickWarningOverlay` widget as a
+    :class:`ClickWarningOverlayPort` for the AutomationManager.
+
+    ``begin(None)`` is a no-op so the manager can call us unconditionally
+    even when the click didn't go through the a11y id path.
+    """
+
+    def __init__(self, overlay, host_window) -> None:
+        self._overlay = overlay
+        self._host = host_window
+
+    def begin(self, bounds_physical) -> None:
+        if bounds_physical is None:
+            return
+        self._overlay.set_bounds_and_show(bounds_physical, self._host)
+
+    def end(self) -> None:
+        self._overlay.hide_and_clear()
 
 
 class _TransitionCoordinatorAdapter:

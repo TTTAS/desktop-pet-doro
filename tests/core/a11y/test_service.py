@@ -118,6 +118,35 @@ class TestElementResolution:
         assert svc.element_center_for_id(0) is None
 
 
+class TestLastResolvedBounds:
+    """``last_resolved_bounds_physical`` surfaces the rect of the most recent
+    successful ``element_center_for_id`` so the click warning overlay can
+    frame it during wind-up."""
+
+    def test_none_before_any_resolve(self, audit_file):
+        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
+        svc.read_foreground_tree()
+        assert svc.last_resolved_bounds_physical() is None
+
+    def test_returns_bounds_after_successful_resolve(self, audit_file):
+        # _button() defaults to (100, 200) and 24x24.
+        svc = _make_service(
+            FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
+        )
+        svc.read_foreground_tree()
+        svc.element_center_for_id(0)
+        assert svc.last_resolved_bounds_physical() == (100, 200, 24, 24)
+
+    def test_bad_id_does_not_clear_previous_bounds(self, audit_file):
+        svc = _make_service(
+            FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
+        )
+        svc.read_foreground_tree()
+        svc.element_center_for_id(0)
+        svc.element_center_for_id(999)  # out of range, should NOT clear cache
+        assert svc.last_resolved_bounds_physical() == (100, 200, 24, 24)
+
+
 class TestEmptyResults:
     def test_backend_none_returns_empty(self, audit_file):
         backend = FakeA11yBackend(return_none=True)
