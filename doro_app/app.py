@@ -98,9 +98,10 @@ class DoroApp:
             action_service=self._action_service,
         )
         # ─── A11y tree reader (Phase 1d) ─────────────────────────
-        # Built before MovementManager so `[move:to;id=N]` can resolve element
-        # ids. Optional: self-gates on a11y_enabled. The tracker remembers the
-        # last *external* foreground window so a11y reads the app the user was
+        # Tree feeds the chat prompt and also lets the click warning overlay
+        # frame the element under Doro's foot at wind-up time. Optional:
+        # self-gates on a11y_enabled. The tracker remembers the last
+        # *external* foreground window so a11y reads the app the user was
         # using, not Doro's own (self-activating) window.
         self._fg_tracker = ForegroundTracker(os.getpid())
         self._fg_tracker.start()
@@ -111,9 +112,6 @@ class DoroApp:
             window=self.window,
             state_service=self._state_service,
             movement_repo=self._movement_repo,
-            element_resolver=lambda eid: (
-                self._a11y.element_center_for_id(eid) if self._a11y else None
-            ),
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -530,12 +528,22 @@ class DoroApp:
             transition_coordinator=coord,
             wind_up_animator=animator,
             warning_overlay=overlay_adapter,
-            bounds_provider=(
-                lambda: self._a11y.last_resolved_bounds_physical() if self._a11y else None
-            ),
+            bounds_provider=self._click_target_bounds,
             schedule=_schedule,
         )
         return manager
+
+    def _click_target_bounds(self):
+        """Bounds (physical px) of the a11y element under the latest
+        ``[move:to;x=;y=]`` target — what the click warning overlay frames
+        during the 1.5s wind-up. ``None`` if no a11y read or no recent
+        target."""
+        if self._a11y is None:
+            return None
+        target = self._movement.last_target_physical
+        if target is None:
+            return None
+        return self._a11y.bounds_at_physical_point(*target)
 
     # ═════════════════════════════════════════════════════════════════
     # A11y tree reader (Phase 1d) construction
@@ -606,7 +614,7 @@ class _QtClickWarningOverlayAdapter:
     :class:`ClickWarningOverlayPort` for the AutomationManager.
 
     ``begin(None)`` is a no-op so the manager can call us unconditionally
-    even when the click didn't go through the a11y id path.
+    even when there's no a11y element at the click target.
     """
 
     def __init__(self, overlay, host_window) -> None:
@@ -615,10 +623,13 @@ class _QtClickWarningOverlayAdapter:
 
     def begin(self, bounds_physical) -> None:
         if bounds_physical is None:
+            print("[doro warning-frame] begin: no a11y bounds, frame hidden", flush=True)
             return
+        print(f"[doro warning-frame] begin: {bounds_physical}", flush=True)
         self._overlay.set_bounds_and_show(bounds_physical, self._host)
 
     def end(self) -> None:
+        print("[doro warning-frame] end", flush=True)
         self._overlay.hide_and_clear()
 
 

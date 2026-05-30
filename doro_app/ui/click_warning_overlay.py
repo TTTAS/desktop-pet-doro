@@ -22,11 +22,13 @@ from ..core.automation.coordinates import compute_logical_point_from_physical
 
 
 _BORDER_COLOR = QtGui.QColor(220, 30, 30)
-_BORDER_WIDTH_PX = 3
+_FILL_COLOR = QtGui.QColor(220, 30, 30, 40)  # ~16% red wash so the frame is visible
+_BORDER_WIDTH_PX = 4
 
 
 class ClickWarningOverlay(QtWidgets.QWidget):
-    """Frameless click-through window that paints a red border."""
+    """Frameless click-through window that paints a red border around the
+    a11y element Doro is about to click."""
 
     def __init__(self) -> None:
         super().__init__(None)
@@ -35,9 +37,11 @@ class ClickWarningOverlay(QtWidgets.QWidget):
             | QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
             | QtCore.Qt.WindowType.WindowTransparentForInput
+            | QtCore.Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.hide()
 
     def set_bounds_and_show(
@@ -46,14 +50,12 @@ class ClickWarningOverlay(QtWidgets.QWidget):
         host_window: QtWidgets.QWidget,
     ) -> None:
         """Place the overlay over ``bounds_physical`` (a11y physical pixels)
-        and show it.
-
-        Uses ``host_window``'s screen for the origin/DPR conversion. Single-
-        screen scope: when the target element lives on a different monitor
-        than Doro, the placement will be wrong (out of scope for now).
+        and show it. Single-screen scope: uses ``host_window``'s screen for
+        origin/DPR; cross-monitor targets will be misplaced (out of scope).
         """
         screen = host_window.screen() or QtGui.QGuiApplication.primaryScreen()
         if screen is None:
+            print("[doro warning-frame] no screen available, skipping", flush=True)
             return
         geom = screen.geometry()
         dpr = screen.devicePixelRatio() or 1.0
@@ -64,8 +66,6 @@ class ClickWarningOverlay(QtWidgets.QWidget):
             screen_origin_logical=(geom.x(), geom.y()),
             device_pixel_ratio=dpr,
         )
-        # macOS path returns physical points unchanged; widths/heights must
-        # match that. Mirror the helper's branch.
         import sys
         if sys.platform == "darwin":
             lw, lh = int(w_phys), int(h_phys)
@@ -73,16 +73,31 @@ class ClickWarningOverlay(QtWidgets.QWidget):
             lw = max(1, round(w_phys / dpr))
             lh = max(1, round(h_phys / dpr))
 
+        print(
+            f"[doro warning-frame] phys{bounds_physical} → logical=({lx},{ly} {lw}x{lh}) dpr={dpr}",
+            flush=True,
+        )
+
+        # Order matters on Windows: show first so a native handle gets
+        # created on the right screen, then setGeometry, then raise/update.
         self.setGeometry(lx, ly, lw, lh)
-        self.show()
+        if not self.isVisible():
+            self.show()
+        else:
+            # Already visible from a prior wind-up — make sure geometry sticks.
+            self.setGeometry(lx, ly, lw, lh)
         self.raise_()
+        self.update()
 
     def hide_and_clear(self) -> None:
         self.hide()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, False)
+        # Semi-transparent fill makes the frame visible even when the border
+        # falls on top of a same-colour element edge.
+        painter.fillRect(self.rect(), _FILL_COLOR)
         pen = QtGui.QPen(_BORDER_COLOR, _BORDER_WIDTH_PX)
         pen.setJoinStyle(QtCore.Qt.PenJoinStyle.MiterJoin)
         painter.setPen(pen)

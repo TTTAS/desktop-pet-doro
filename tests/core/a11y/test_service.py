@@ -93,58 +93,40 @@ class TestHappyPath:
         assert "[redacted-password]" in out
 
 
-class TestElementResolution:
-    def test_center_for_id_after_read(self, audit_file):
-        # _button: x=1850, y=80, 24x24 → centre (1862, 92).
-        svc = _make_service(FakeA11yBackend([_button("書籤", 1850, 80)]), audit_path=audit_file)
-        svc.read_foreground_tree()
-        assert svc.element_center_for_id(0) == (1862, 92)
+class TestBoundsAtPhysicalPoint:
+    """The click warning overlay calls this at wind-up time with Doro's foot
+    position to frame the a11y element the click will land on."""
 
-    def test_center_for_id_matches_serialized_index(self, audit_file):
-        backend = FakeA11yBackend([_button("a", 0, 0), _button("b", 100, 200)])
-        svc = _make_service(backend, audit_path=audit_file)
-        svc.read_foreground_tree()
-        # #1 is the second button (100,200 24x24) → centre (112, 212).
-        assert svc.element_center_for_id(1) == (112, 212)
-
-    def test_out_of_range_id_returns_none(self, audit_file):
+    def test_none_when_no_read(self, audit_file):
         svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
-        svc.read_foreground_tree()
-        assert svc.element_center_for_id(5) is None
-        assert svc.element_center_for_id(-1) is None
+        assert svc.bounds_at_physical_point(100, 100) is None
 
-    def test_no_read_yet_returns_none(self, audit_file):
-        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
-        assert svc.element_center_for_id(0) is None
-
-
-class TestLastResolvedBounds:
-    """``last_resolved_bounds_physical`` surfaces the rect of the most recent
-    successful ``element_center_for_id`` so the click warning overlay can
-    frame it during wind-up."""
-
-    def test_none_before_any_resolve(self, audit_file):
-        svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
-        svc.read_foreground_tree()
-        assert svc.last_resolved_bounds_physical() is None
-
-    def test_returns_bounds_after_successful_resolve(self, audit_file):
-        # _button() defaults to (100, 200) and 24x24.
+    def test_returns_bounds_when_point_inside_element(self, audit_file):
+        # _button() defaults to (100, 200) and 24x24 → covers x∈[100,124), y∈[200,224).
         svc = _make_service(
             FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
         )
         svc.read_foreground_tree()
-        svc.element_center_for_id(0)
-        assert svc.last_resolved_bounds_physical() == (100, 200, 24, 24)
+        assert svc.bounds_at_physical_point(110, 210) == (100, 200, 24, 24)
 
-    def test_bad_id_does_not_clear_previous_bounds(self, audit_file):
+    def test_returns_none_when_point_outside_any_element(self, audit_file):
         svc = _make_service(
             FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
         )
         svc.read_foreground_tree()
-        svc.element_center_for_id(0)
-        svc.element_center_for_id(999)  # out of range, should NOT clear cache
-        assert svc.last_resolved_bounds_physical() == (100, 200, 24, 24)
+        assert svc.bounds_at_physical_point(0, 0) is None
+        # On the right/bottom edge is "outside" (half-open interval).
+        assert svc.bounds_at_physical_point(124, 224) is None
+
+    def test_returns_smallest_match_when_nested(self, audit_file):
+        # Outer container covers (0,0)–(1000,1000); inner button covers
+        # (100,200)–(124,224). A point inside both should resolve to the
+        # smaller (inner) button.
+        outer = A11yElement(role="group", name="toolbar", x=0, y=0, width=1000, height=1000)
+        inner = _button("ok", 100, 200)
+        svc = _make_service(FakeA11yBackend([outer, inner]), audit_path=audit_file)
+        svc.read_foreground_tree()
+        assert svc.bounds_at_physical_point(110, 210) == (100, 200, 24, 24)
 
 
 class TestEmptyResults:

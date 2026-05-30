@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import math
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 
@@ -43,14 +43,10 @@ class MovementManager:
         window: "MovementWindowPort",
         state_service: StateService,
         movement_repo: MovementRepository,
-        element_resolver: Callable[[int], Optional[tuple[int, int]]] | None = None,
     ):
         self._window = window
         self._state_service = state_service
         self._repo = movement_repo
-        # Maps an a11y element id to its physical-pixel centre; lets
-        # `[move:to;id=N]` target an element the LLM picked by number.
-        self._element_resolver = element_resolver
         self._movement_step_px = movement_repo.defaults.step_px
         self._active_movement: MovementRequest | None = None
         self._movement_remaining = 0.0
@@ -62,6 +58,12 @@ class MovementManager:
         self._movement_reports: list[str] = []
         self._last_move_report = ""
         self._last_error: Optional[str] = None  # Track last parse error
+        # Physical-pixel target of the most recent successful `[move:to;x=;y=]`.
+        # The click warning overlay reads this at wind-up time to frame the
+        # a11y element Doro is walking towards (the foot hasn't arrived yet
+        # when wind-up starts, so sampling the current foot position would
+        # frame the wrong element).
+        self.last_target_physical: Optional[tuple[int, int]] = None
 
     # ------------------------------------------------------------------ Public API
 
@@ -236,61 +238,34 @@ class MovementManager:
         else:
             self._movement_remaining = remaining
 
-    def _resolve_element_id(self, id_raw, reports: list) -> Optional[tuple[int, int]]:
-        """Resolve a `move:to;id=N` to the element's physical centre, or None
-        (appending a `[移動錯誤]` report) if it can't be resolved."""
-        if self._element_resolver is None:
-            self._last_error = "move:to;id 需要 a11y 元件解析器，但未提供"
-            reports.append(f"[移動錯誤] {self._last_error}")
-            return None
-        try:
-            element_id = int(float(id_raw))
-        except (TypeError, ValueError):
-            self._last_error = f"move:to 的 id 必須為數字 (got {id_raw!r})"
-            reports.append(f"[移動錯誤] {self._last_error}")
-            return None
-        center = self._element_resolver(element_id)
-        if center is None:
-            self._last_error = f"找不到編號 #{element_id} 的元件（元件樹可能已更新）"
-            reports.append(f"[移動錯誤] {self._last_error}")
-            return None
-        print(f"[doro click] 解析元件 #{element_id} → 中心(實體) {center}", flush=True)
-        return center
-
     def _handle_target_move(self, params: dict, reports: list) -> bool:
-        """Handle `[move:to;x=X;y=Y]` or `[move:to;id=N]` — walk Doro to a target.
+        """Handle `[move:to;x=X;y=Y]` — walk Doro to a target.
 
         Returns True when the bracket is consumed (even on validation
         failure — the caller already matched action=='to' and should not
         fall through to other parsers). Errors are appended to `reports`.
         """
-        id_raw = params.get("id") or params.get("編號") or params.get("element")
-        if id_raw is not None:
-            resolved = self._resolve_element_id(id_raw, reports)
-            if resolved is None:
-                return True
-            target_x, target_y = resolved
-        else:
-            x_raw = params.get("x")
-            y_raw = params.get("y")
-            if x_raw is None or y_raw is None:
-                self._last_error = f"move:to 需要 x 與 y 參數 (got x={x_raw!r}, y={y_raw!r})"
-                reports.append(f"[移動錯誤] {self._last_error}")
-                return True
+        x_raw = params.get("x")
+        y_raw = params.get("y")
+        if x_raw is None or y_raw is None:
+            self._last_error = f"move:to 需要 x 與 y 參數 (got x={x_raw!r}, y={y_raw!r})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
 
-            try:
-                target_x = int(float(x_raw))
-                target_y = int(float(y_raw))
-            except (TypeError, ValueError):
-                self._last_error = f"move:to 的 x/y 必須為數字 (got x={x_raw!r}, y={y_raw!r})"
-                reports.append(f"[移動錯誤] {self._last_error}")
-                return True
+        try:
+            target_x = int(float(x_raw))
+            target_y = int(float(y_raw))
+        except (TypeError, ValueError):
+            self._last_error = f"move:to 的 x/y 必須為數字 (got x={x_raw!r}, y={y_raw!r})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
 
-            if target_x < 0 or target_y < 0:
-                self._last_error = f"move:to 的 x/y 不可為負 (got {target_x},{target_y})"
-                reports.append(f"[移動錯誤] {self._last_error}")
-                return True
+        if target_x < 0 or target_y < 0:
+            self._last_error = f"move:to 的 x/y 不可為負 (got {target_x},{target_y})"
+            reports.append(f"[移動錯誤] {self._last_error}")
+            return True
 
+        self.last_target_physical = (target_x, target_y)
         window = self._window
         current = window.current_position()
         # (x, y) is where Doro's *foot* should land, in *physical* pixels — that

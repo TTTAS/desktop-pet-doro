@@ -18,7 +18,7 @@ from doro_app.core.movement.manager import MovementManager
 from doro_app.core.movement.repository import MovementRepository
 
 
-def _make_manager(*, origin=(0, 0), clamp=(0, 0, 1920, 1080), element_resolver=None):
+def _make_manager(*, origin=(0, 0), clamp=(0, 0, 1920, 1080)):
     window = MovementWindowFake(
         origin=QtCore.QPoint(*origin),
         size=QtCore.QSize(100, 100),
@@ -39,7 +39,6 @@ def _make_manager(*, origin=(0, 0), clamp=(0, 0, 1920, 1080), element_resolver=N
         window=window,
         state_service=state_service,
         movement_repo=repo,
-        element_resolver=element_resolver,
     )
     return manager, window
 
@@ -131,42 +130,3 @@ class TestFootPlacement:
         assert "位置 150, 101" in report
 
 
-class TestIdTarget:
-    def test_id_resolves_to_element_centre_and_backs_out_foot(self):
-        # Resolver maps id 7 → physical centre (200,200); window 100x100 →
-        # foot offset (50,99), so top-left lands at (150,101) just like x/y.
-        manager, window = _make_manager(
-            origin=(1000, 1000), element_resolver=lambda eid: (200, 200) if eid == 7 else None
-        )
-        reports: list[str] = []
-
-        consumed = manager.handle_move_bracket("move:to;id=7", reports)
-
-        assert consumed is True
-        assert manager.has_active_movement is True
-        assert all(not r.startswith("[移動錯誤]") for r in reports)
-        assert "位置 150, 101" in (manager._movement_pending_report or "")
-
-    def test_unknown_id_reports_error_and_no_move(self):
-        manager, _ = _make_manager(element_resolver=lambda eid: None)
-        reports: list[str] = []
-        consumed = manager.handle_move_bracket("move:to;id=99", reports)
-        assert consumed is True
-        assert manager.has_active_movement is False
-        assert any("找不到編號" in r for r in reports)
-
-    def test_id_without_resolver_reports_error(self):
-        manager, _ = _make_manager(element_resolver=None)
-        reports: list[str] = []
-        consumed = manager.handle_move_bracket("move:to;id=0", reports)
-        assert consumed is True
-        assert manager.has_active_movement is False
-        assert any("解析器" in r for r in reports)
-
-    def test_non_numeric_id_reports_error(self):
-        manager, _ = _make_manager(element_resolver=lambda eid: (10, 10))
-        reports: list[str] = []
-        consumed = manager.handle_move_bracket("move:to;id=foo", reports)
-        assert consumed is True
-        assert manager.has_active_movement is False
-        assert any("id 必須為數字" in r for r in reports)

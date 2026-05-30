@@ -12,20 +12,20 @@ def _el(role="button", name="書籤", x=350, y=120, w=24, h=24, value=None):
 
 def test_basic_format():
     line = serialize([_el()])
-    assert line == '#0 button "書籤" (350,120 24x24)'
+    assert line == 'button "書籤" (350,120 24x24)'
 
 
 def test_input_with_value():
     el = _el(role="input", name="網址列", x=140, y=75, w=800, h=36, value="https://example.com")
     line = serialize([el])
-    assert line == '#0 input "網址列" (140,75 800x36)  value="https://example.com"'
+    assert line == 'input "網址列" (140,75 800x36)  value="https://example.com"'
 
 
-def test_multiple_elements_numbered_and_joined_by_newline():
+def test_multiple_elements_joined_by_newline():
     out = serialize([_el(name="a"), _el(name="b")])
     assert out.splitlines() == [
-        '#0 button "a" (350,120 24x24)',
-        '#1 button "b" (350,120 24x24)',
+        'button "a" (350,120 24x24)',
+        'button "b" (350,120 24x24)',
     ]
 
 

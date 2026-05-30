@@ -68,13 +68,10 @@ class A11yService:
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="a11y")
         self._session_blacklist: set[str] = set()
         self._timeout_counts: dict[str, int] = {}
-        # Elements from the most recent read, in the same order they were
-        # serialized (so the `#N` the LLM sees resolves back to an element).
+        # Elements from the most recent read, kept so the click warning
+        # overlay can look up the rect under Doro's foot at wind-up time
+        # via `bounds_at_physical_point`.
         self._last_elements: list = []
-        # Element returned by the most recent successful `element_center_for_id`.
-        # Surfaced via `last_resolved_bounds_physical` so the click warning
-        # overlay can frame the same rect the LLM aimed at.
-        self._last_resolved_element = None
 
     def read_foreground_tree(self) -> str:
         """Return the serialized element block, or "" if nothing to show."""
@@ -109,39 +106,32 @@ class A11yService:
         if not body:
             return ""
 
-        # Cache for id→coordinate resolution at click time. Index matches the
-        # `#N` prefix the serializer emits for the same list.
+        # Cache for the click warning overlay's point-in-rect lookup at
+        # wind-up time (`bounds_at_physical_point`).
         self._last_elements = filtered
 
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
 
-    def element_center_for_id(self, index: int) -> Optional[tuple[int, int]]:
-        """Return the physical-pixel centre of element ``#index`` from the last
-        read, or None if the index is out of range.
+    def bounds_at_physical_point(
+        self, x: int, y: int
+    ) -> Optional[tuple[int, int, int, int]]:
+        """Return ``(x, y, w, h)`` of the smallest cached element containing
+        ``(x, y)`` in physical pixels, or None if no element covers it.
 
-        Lets ``[move:to;id=N]`` aim Doro's foot at an element the LLM picked by
-        number, so the model never has to compute coordinates itself.
+        Smallest-area wins so nested rects (e.g. a button inside a toolbar)
+        resolve to the inner one — that's almost always what we want to
+        frame as "the thing being clicked".
         """
-        if 0 <= index < len(self._last_elements):
-            el = self._last_elements[index]
-            self._last_resolved_element = el
-            return (el.x + el.width // 2, el.y + el.height // 2)
-        return None
-
-    def last_resolved_bounds_physical(self) -> Optional[tuple[int, int, int, int]]:
-        """Physical-pixel bounds ``(x, y, w, h)`` of the element returned by
-        the most recent successful ``element_center_for_id`` call, or None
-        if no id has been resolved yet.
-
-        A failed lookup (out-of-range index) does NOT clear the cache — the
-        click warning overlay reads this at wind-up time, and the contract
-        is "frame the element we just walked to".
-        """
-        el = self._last_resolved_element
-        if el is None:
-            return None
-        return (el.x, el.y, el.width, el.height)
+        best: Optional[tuple[int, int, int, int]] = None
+        best_area: Optional[int] = None
+        for el in self._last_elements:
+            if el.x <= x < el.x + el.width and el.y <= y < el.y + el.height:
+                area = el.width * el.height
+                if best_area is None or area < best_area:
+                    best = (el.x, el.y, el.width, el.height)
+                    best_area = area
+        return best
 
     def diagnose_foreground_tree(self) -> tuple[bool, str]:
         """Like :meth:`read_foreground_tree`, but for the settings preview.
