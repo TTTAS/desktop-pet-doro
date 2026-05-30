@@ -431,35 +431,49 @@ class DoroApp:
         """Compose the ``[Doro 當下狀態]`` block injected before each chat turn.
 
         Three sampled facts the LLM needs to choose a sensible
-        ``[MOVE:to;...]`` target: Doro's current logical position, the
-        screen size, and the class string of the foreground window under
-        Doro's feet. Each sub-step is defensive so partial info still
-        reaches the LLM if e.g. the X server is missing.
+        ``[MOVE:to;...]`` target: Doro's foot position (the same anchor
+        ``[MOVE:to;x;y]`` walks to and ``[mouse:click]`` fires at — kept in
+        physical pixels so the LLM's arithmetic on a11y element coordinates
+        works out), the screen size in those same physical pixels, and the
+        class string of the foreground window under Doro's feet.
         """
+        from .core.automation.coordinates import compute_physical_pixel_for_qt_window
+        from .core.automation import window_class
+
         try:
             frame = self.window.frameGeometry()
-            cx = int(frame.center().x())
-            cy = int(frame.center().y())
         except Exception:
             return ""
+
+        foot_phys = None
+        try:
+            foot_phys = compute_physical_pixel_for_qt_window(self.window)
+        except Exception:
+            pass
+        if foot_phys is not None:
+            fx, fy = foot_phys
+        else:
+            # Fallback before the widget has a screen attached: report the
+            # logical foot — equivalent on DPR=1, drifts on scaled displays
+            # but better than dropping the whole block.
+            fx = int(frame.center().x())
+            fy = int(frame.bottom() - 1)
 
         sw, sh = 1920, 1080
         try:
             screen = self.window.screen()
             if screen is not None:
                 size = screen.availableGeometry().size()
-                sw, sh = size.width(), size.height()
+                dpr = screen.devicePixelRatio() or 1.0
+                sw = int(size.width() * dpr)
+                sh = int(size.height() * dpr)
         except Exception:
             pass
 
         class_name = "unknown"
         try:
-            from .core.automation.coordinates import compute_physical_pixel_for_qt_window
-            from .core.automation import window_class
-
-            phys = compute_physical_pixel_for_qt_window(self.window)
-            if phys is not None:
-                read = window_class.read_at(phys[0], phys[1])
+            if foot_phys is not None:
+                read = window_class.read_at(foot_phys[0], foot_phys[1])
                 if read:
                     class_name = read
         except Exception:
@@ -467,7 +481,7 @@ class DoroApp:
 
         return (
             "[Doro 當下狀態]\n"
-            f"位置: x={cx}, y={cy}\n"
+            f"腳底位置: x={fx}, y={fy}\n"
             f"螢幕: {sw}×{sh}\n"
             f"前景視窗 class: {class_name}"
         )
