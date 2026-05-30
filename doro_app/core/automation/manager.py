@@ -288,8 +288,10 @@ class AutomationManager:
         target = self._click_target_provider() if self._click_target_provider else None
         if target is not None:
             cx, cy = target
+            source = "target"
         else:
             cx, cy = self._window.foot_position_physical()
+            source = "foot"
 
         # Safety clamp to screen: a stale or LLM-miscomputed target may
         # land off-screen. Clamp so the synthetic event always points at a
@@ -299,6 +301,10 @@ class AutomationManager:
         cy = max(0, min(sh - 1, int(cy)))
 
         class_name = self._backend.read_window_class_at(cx, cy)
+        print(
+            f"[doro click] fire source={source} coord=({cx},{cy}) class={class_name!r}",
+            flush=True,
+        )
 
         if not self._is_allowlisted(class_name):
             self._finalize(
@@ -324,7 +330,6 @@ class AutomationManager:
                 logger.exception("set_mouse_transparent(False) failed")
 
         self._last_click_at = self._clock()
-        source = "target" if target is not None else "foot"
         self._finalize(
             ClickOutcome.FIRED,
             f"click@({cx},{cy}) source={source} class={class_name!r}",
