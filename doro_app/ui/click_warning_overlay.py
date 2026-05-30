@@ -14,8 +14,6 @@ Esc-cancel window.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.automation.coordinates import compute_logical_point_from_physical

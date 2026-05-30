@@ -175,7 +175,7 @@ class ContextMenuController:
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self._window,
             "假傳伺服器回應",
-            "輸入要模擬的回應（例：(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]）：",
+            "輸入要模擬的回應（例：(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]）：",
         )
         if not ok or not text.strip():
             return

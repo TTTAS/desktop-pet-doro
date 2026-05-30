@@ -516,9 +516,9 @@ class DoroApp:
 
         from .ui.click_warning_overlay import ClickWarningOverlay
 
-        self._click_warning_overlay = ClickWarningOverlay()
+        # Widget stays alive through the adapter → manager → DoroApp chain.
         overlay_adapter = _QtClickWarningOverlayAdapter(
-            self._click_warning_overlay, self.window
+            ClickWarningOverlay(), self.window
         )
 
         manager = AutomationManager(

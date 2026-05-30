@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 from PySide6 import QtCore
 
 from doro_app.core.movement.fakes import MovementWindowFake

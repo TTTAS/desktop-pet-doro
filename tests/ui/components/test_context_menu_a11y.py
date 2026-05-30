@@ -106,7 +106,7 @@ def test_simulate_response_feeds_orchestrator(monkeypatch):
     monkeypatch.setattr(
         QtWidgets.QInputDialog,
         "getMultiLineText",
-        lambda *a, **k: ("(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]", True),
+        lambda *a, **k: ("(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]", True),
     )
     core = Mock()
     ctrl = _make_controller(core)
@@ -114,7 +114,7 @@ def test_simulate_response_feeds_orchestrator(monkeypatch):
     ctrl._simulate_response()
 
     core.chat_orchestrator.simulate_response.assert_called_once_with(
-        "(walking) 幫人點～ [MOVE:to;id=7] [mouse:click]"
+        "(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]"
     )
 
 
