@@ -301,8 +301,10 @@ class ChatOrchestrator(QtCore.QObject):
         if self._automation is None:
             logger.info("[automation] [mouse:click] received but automation not wired; ignoring")
             print(
-                "[doro click] AutomationManager not wired "
-                "(automation.mouse_enabled=False or pynput missing); ignoring [mouse:click]",
+                "[doro click] AutomationManager not built — pynput likely "
+                "missing (see startup `[doro click] pynput not installed` "
+                "line if any). Install with `pip install pynput` then "
+                "restart Doro.",
                 flush=True,
             )
             return True

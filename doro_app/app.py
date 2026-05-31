@@ -497,6 +497,11 @@ class DoroApp:
         except Exception as exc:  # pragma: no cover - import-time path
             from .utils.logger import get_logger as _gl
             _gl(__name__).warning(f"Automation requested but pynput unavailable: {exc}")
+            print(
+                f"[doro click] pynput not installed; mouse-click automation "
+                f"unavailable — install with `pip install pynput` ({exc})",
+                flush=True,
+            )
             return None
 
         try:
@@ -504,6 +509,11 @@ class DoroApp:
         except Exception as exc:  # pragma: no cover - runtime path
             from .utils.logger import get_logger as _gl
             _gl(__name__).warning(f"Automation backend init failed: {exc}")
+            print(
+                f"[doro click] pynput backend init failed; mouse-click "
+                f"automation unavailable ({exc})",
+                flush=True,
+            )
             return None
 
         window_port = _QtAutomationWindowAdapter(self.window)
