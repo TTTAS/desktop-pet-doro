@@ -268,15 +268,17 @@ class MovementManager:
         self.last_target_physical = (target_x, target_y)
         window = self._window
         current = window.current_position()
-        # (x, y) is where Doro's *foot* should land, in *physical* pixels — that
-        # is what the a11y tree reports and what [mouse:click] uses. Convert to
-        # logical space, then back out the window top-left from the foot offset
-        # (foot = window centre-x, bottom) so the click point hits the target.
+        # (x, y) is where Doro's *sprite foot* should land, in *physical*
+        # pixels — same anchor a11y elements / [mouse:click] / the warning
+        # frame all use. Convert to logical, then back out the window
+        # top-left from the sprite-foot offset (NOT frame centre/bottom —
+        # SPRITE_OFFSET_X + panel reserve push the sprite far from the
+        # window's geometric centre).
         foot_logical = window.logical_point_for_physical(target_x, target_y)
-        frame = window.frameGeometry()
+        foot_offset = window.sprite_foot_offset_logical()
         top_left = QtCore.QPoint(
-            foot_logical.x() - frame.width() // 2,
-            foot_logical.y() - max(frame.height() - 1, 0),
+            foot_logical.x() - foot_offset.x(),
+            foot_logical.y() - foot_offset.y(),
         )
         clamped = window.clamp_window_position(top_left)
         actual_dx = clamped.x() - current.x()

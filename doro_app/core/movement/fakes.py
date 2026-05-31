@@ -31,10 +31,14 @@ class MovementWindowFake(MovementWindowPort):
         size: Optional[QtCore.QSize] = None,
         clamp_rect: Optional[QtCore.QRect] = None,
         bubble_offset: Optional[QtCore.QPointF] = None,
+        sprite_foot_offset: Optional[QtCore.QPoint] = None,
     ):
         self._rect = QtCore.QRect(origin or QtCore.QPoint(0, 0), size or QtCore.QSize(100, 100))
         self._clamp_rect = clamp_rect
         self._bubble_offset = QtCore.QPointF(bubble_offset or QtCore.QPointF())
+        # Default mimics the legacy frame-bottom-centre foot: (width/2, height-1).
+        # Tests that exercise sprite-foot semantics pass an explicit offset.
+        self._sprite_foot_offset = sprite_foot_offset
         self.last_reset_time: float | None = None
 
     def frameGeometry(self) -> QtCore.QRect:  # pragma: no cover - Qt binding
@@ -57,6 +61,12 @@ class MovementWindowFake(MovementWindowPort):
     def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:
         # Headless fake assumes DPR=1, so physical and logical coincide.
         return QtCore.QPoint(int(x), int(y))
+
+    def sprite_foot_offset_logical(self) -> QtCore.QPoint:
+        if self._sprite_foot_offset is not None:
+            return QtCore.QPoint(self._sprite_foot_offset)
+        # Default: foot at frame bottom-centre (legacy behaviour).
+        return QtCore.QPoint(self._rect.width() // 2, max(self._rect.height() - 1, 0))
 
     def get_bubble_offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._bubble_offset)

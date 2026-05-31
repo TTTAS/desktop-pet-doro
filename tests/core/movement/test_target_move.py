@@ -129,3 +129,41 @@ class TestFootPlacement:
         assert "位置 150, 101" in report
 
 
+class TestSpriteFootOffset:
+    """`_handle_target_move` should back-out the window top-left from the
+    *sprite* foot offset, not the legacy frame-bottom-centre. Anchoring on
+    the sprite is what makes the visible Doro line up with the target."""
+
+    def test_uses_sprite_foot_offset_when_provided(self):
+        # sprite foot sits at (30, 70) within the 100×100 window — a
+        # SPRITE_OFFSET_X analogue. For foot target (200, 200), the
+        # window top-left must be (200-30, 200-70) = (170, 130), NOT
+        # the legacy (150, 101) from the frame bottom-centre.
+        window = MovementWindowFake(
+            origin=QtCore.QPoint(1000, 1000),
+            size=QtCore.QSize(100, 100),
+            clamp_rect=QtCore.QRect(0, 0, 1920, 1080),
+            sprite_foot_offset=QtCore.QPoint(30, 70),
+        )
+
+        state_service = MagicMock()
+        state_service.get_default_movement_state.return_value = "walking"
+        state_service.get_move_state.return_value = None
+        state_service.get_state.return_value = MagicMock()
+        state_service.get_current_state.return_value = MagicMock(key="idle")
+        state_service.find_move_states_by_direction.return_value = []
+        state_service.set_state = MagicMock()
+
+        repo = MovementRepository(Path("/nonexistent/movements.json"))
+        manager = MovementManager(
+            window=window,
+            state_service=state_service,
+            movement_repo=repo,
+        )
+
+        report = manager.apply_target_move(200, 200)
+
+        assert manager.has_active_movement is True
+        assert "位置 170, 130" in (report or "")
+
+

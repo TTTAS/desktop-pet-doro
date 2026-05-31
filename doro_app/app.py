@@ -437,27 +437,18 @@ class DoroApp:
         works out), the screen size in those same physical pixels, and the
         class string of the foreground window under Doro's feet.
         """
-        from .core.automation.coordinates import compute_physical_pixel_for_qt_window
         from .core.automation import window_class
 
+        # Reuse the live automation adapter when it exists so the LLM-facing
+        # foot matches exactly what `_fire_now` will sample. (Adapter lazily
+        # routes through `DoroWindow.sprite_foot_offset_logical` and the
+        # DPR helper.) Construct an ephemeral one when automation isn't
+        # wired — the LLM still benefits from a consistent number.
         try:
-            frame = self.window.frameGeometry()
+            adapter = _QtAutomationWindowAdapter(self.window)
+            fx, fy = adapter.foot_position_physical()
         except Exception:
             return ""
-
-        foot_phys = None
-        try:
-            foot_phys = compute_physical_pixel_for_qt_window(self.window)
-        except Exception:
-            pass
-        if foot_phys is not None:
-            fx, fy = foot_phys
-        else:
-            # Fallback before the widget has a screen attached: report the
-            # logical foot — equivalent on DPR=1, drifts on scaled displays
-            # but better than dropping the whole block.
-            fx = int(frame.center().x())
-            fy = int(frame.bottom() - 1)
 
         sw, sh = 1920, 1080
         try:
@@ -472,10 +463,9 @@ class DoroApp:
 
         class_name = "unknown"
         try:
-            if foot_phys is not None:
-                read = window_class.read_at(foot_phys[0], foot_phys[1])
-                if read:
-                    class_name = read
+            read = window_class.read_at(fx, fy)
+            if read:
+                class_name = read
         except Exception:
             pass
 
@@ -668,17 +658,31 @@ class _QtAutomationWindowAdapter:
         self._window = window
 
     def foot_position_logical(self) -> tuple[int, int]:
-        frame = self._window.frameGeometry()
-        return (frame.center().x(), frame.bottom() - 1)
+        # Sprite's visual foot, not frame.bottom() — see
+        # `DoroWindow.sprite_foot_offset_logical` for why.
+        top_left = self._window.frameGeometry().topLeft()
+        offset = self._window.sprite_foot_offset_logical()
+        return (top_left.x() + offset.x(), top_left.y() + offset.y())
 
     def foot_position_physical(self) -> tuple[int, int]:
-        from .core.automation.coordinates import compute_physical_pixel_for_qt_window
+        from PySide6 import QtCore as _QtCore
+        from PySide6 import QtGui as _QtGui
 
-        result = compute_physical_pixel_for_qt_window(self._window)
-        if result is not None:
-            return result
-        # Fallback: assume DPR=1 (better than crashing).
-        return self.foot_position_logical()
+        from .core.automation.coordinates import compute_physical_pixel_at
+
+        fx, fy = self.foot_position_logical()
+        screen = (
+            _QtGui.QGuiApplication.screenAt(_QtCore.QPoint(fx, fy))
+            or self._window.screen()
+        )
+        if screen is None:
+            return (fx, fy)
+        geom = screen.geometry()
+        return compute_physical_pixel_at(
+            (fx, fy),
+            screen_origin_logical=(geom.x(), geom.y()),
+            device_pixel_ratio=screen.devicePixelRatio(),
+        )
 
     def set_mouse_transparent(self, transparent: bool) -> None:
         from PySide6 import QtCore as _QtCore

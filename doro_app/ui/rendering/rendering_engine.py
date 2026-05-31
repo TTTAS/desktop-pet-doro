@@ -69,6 +69,17 @@ class RenderingEngine:
         half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
         half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
 
+        # Compact mode: window has been resized to match the sprite exactly
+        # (bubble hidden — see WindowLayoutManager.compute_preferred_window_size
+        # with compact=True). Skip SPRITE_OFFSET_X and the margin clamps so
+        # the sprite fills the window edge-to-edge; otherwise SPRITE_OFFSET_X
+        # would push the sprite halfway off the small window's left edge.
+        sprite_w = self._view_model.sprite_size.width()
+        sprite_h = self._view_model.sprite_size.height()
+        if window_size.width() <= sprite_w + 1 and window_size.height() <= sprite_h + 1:
+            center = QtCore.QPointF(window_size.width() / 2.0, window_size.height() / 2.0)
+            return center, max(0.0, center.y() - half_h)
+
         # Horizontal constraints
         margin_x = SPRITE_MARGIN_X
         min_center_x = half_w + margin_x

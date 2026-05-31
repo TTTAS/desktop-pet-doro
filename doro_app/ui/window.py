@@ -319,10 +319,26 @@ class DoroWindow(QtWidgets.QWidget):
         )
 
     def apply_window_preferred_size(self):
-        """Apply preferred window size. Delegates to WindowLayoutManager."""
+        """Apply preferred window size. Delegates to WindowLayoutManager.
+
+        When the bubble has no text and isn't being force-shown, request a
+        compact (sprite-sized) window so the visible sprite aligns with the
+        window edges — keeps Doro's drawn position consistent with
+        ``[MOVE:to]`` target arithmetic (which treats the window's bottom
+        centre as the foot anchor).
+        """
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
         self._panel_height_hint = panel_h_hint
+
+        compact = self._should_collapse_to_sprite()
+
+        # Visual continuity: in normal mode the sprite renders at the
+        # (margin + offset)-driven position inside the window; in compact
+        # mode it fills the window. Resizing without compensating moves
+        # the sprite on screen — adjust the top-left so the sprite stays
+        # put across the mode switch.
+        sprite_center_screen = self._sprite_center_in_screen_coords()
 
         self._sizing_in_progress = True
         try:
@@ -331,9 +347,58 @@ class DoroWindow(QtWidgets.QWidget):
                 self._view_model.sprite_size,
                 panel_w_hint,
                 panel_h_hint,
+                compact=compact,
             )
+            if sprite_center_screen is not None:
+                self._reposition_to_keep_sprite_center(sprite_center_screen)
         finally:
             self._sizing_in_progress = False
+
+    def _should_collapse_to_sprite(self) -> bool:
+        """True when no bubble text is showing — window can shrink to sprite size."""
+        if self._bubble_controller is None:
+            return False
+        if self._bubble_controller.text_show_override:
+            return False
+        if not (self._bubble_controller.text or "").strip():
+            return True
+        # Bubble has text but `set_visible(False)` may have been called.
+        return not self._view_model.bubble_visible
+
+    def _sprite_center_in_screen_coords(self) -> QtCore.QPointF | None:
+        """Sprite centre in screen logical pixels, or None if window not laid out yet."""
+        try:
+            top_left = self.frameGeometry().topLeft()
+        except Exception:
+            return None
+        sprite_center, _ = self._rendering_engine.calculate_sprite_center(
+            self.size(), self._sprite_anchor_top, self._panel_height_hint
+        )
+        return QtCore.QPointF(
+            top_left.x() + sprite_center.x(),
+            top_left.y() + sprite_center.y(),
+        )
+
+    def _reposition_to_keep_sprite_center(self, target_screen_center: QtCore.QPointF) -> None:
+        """After a resize, move the window so the sprite stays at the same
+        screen position. Computes the sprite centre in the NEW (post-resize)
+        window using the same layout helper rendering uses, then offsets
+        top-left to keep that screen point invariant."""
+        # Reset anchor so layout recomputes for the new window size.
+        self._sprite_anchor_top = None
+        new_local_center, new_anchor = self._rendering_engine.calculate_sprite_center(
+            self.size(), self._sprite_anchor_top, self._panel_height_hint
+        )
+        if new_anchor is not None:
+            self._sprite_anchor_top = new_anchor
+        new_top_left = QtCore.QPoint(
+            int(round(target_screen_center.x() - new_local_center.x())),
+            int(round(target_screen_center.y() - new_local_center.y())),
+        )
+        clamped = WindowLayoutManager.clamp_position(
+            new_top_left, self.size(), self._available_screen_geometry()
+        )
+        self.move(clamped)
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self.mark_user_activity()
@@ -391,6 +456,29 @@ class DoroWindow(QtWidgets.QWidget):
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
         self._move_window_to(pos)
+
+    def sprite_foot_offset_logical(self) -> QtCore.QPoint:
+        """Offset of the sprite's visual foot (bottom-centre) from the
+        window's top-left, in Qt logical pixels.
+
+        Anchor for `[MOVE:to;x;y]` and `foot_position_*`: the sprite is
+        rendered with `SPRITE_OFFSET_X` plus a panel reserve, so the
+        window's geometric centre/bottom sits far from where Doro's
+        sprite actually appears. Computing the offset off the same
+        `calculate_sprite_center` the painter uses keeps movement /
+        click / overlay anchored to the visible sprite, not the
+        invisible window frame.
+        """
+        sprite_center, _ = self._rendering_engine.calculate_sprite_center(
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
+        )
+        half_h = self._view_model.sprite_size.height() / 2.0
+        return QtCore.QPoint(
+            int(round(sprite_center.x())),
+            int(round(sprite_center.y() + half_h)) - 1,
+        )
 
     def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:
         """Convert an OS physical pixel (a11y/mouse space) to a Qt logical point.
