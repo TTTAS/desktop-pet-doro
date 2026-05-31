@@ -135,11 +135,15 @@ KILL_SWITCH_ESC_COUNT = 3
 KILL_SWITCH_ESC_WINDOW_MS = 800
 
 # Default allowlist of foreground-window class names where automation is
-# permitted to click. Used when no user-configured value is present.
+# permitted to click. Entries are matched as case-insensitive *prefixes*
+# of the foreground class (see AutomationManager._is_allowlisted), so
+# `Chrome` covers Windows-side `Chrome_WidgetWin_1`, `Chrome_RenderWidget
+# HostHWND`, etc. without one entry per variant.
 DEFAULT_MOUSE_TARGET_ALLOWLIST: tuple[str, ...] = (
-    "Firefox",
+    "Firefox",             # Linux / older builds
+    "MozillaWindowClass",  # Firefox on Windows
     "Chromium",
-    "Chrome",
+    "Chrome",              # Windows Chrome / Edge / Brave family → Chrome_WidgetWin_*
     "Navigator",
     "Google-chrome",
 )

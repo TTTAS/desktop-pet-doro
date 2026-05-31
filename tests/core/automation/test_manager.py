@@ -15,6 +15,8 @@ import pytest
 
 from doro_app.core.automation.manager import AutomationManager, ClickOutcome
 
+from .conftest import ConfigManagerStub
+
 
 # ────────────────────────────────────────────────────────────────────────
 # Happy path / opt-in
@@ -100,6 +102,61 @@ class TestAllowlistMiss:
         scheduler.flush()
 
         assert fake_backend.click_calls == []
+        assert manager.outcomes[-1] == ClickOutcome.REJECTED_BY_ALLOWLIST
+
+    @pytest.mark.parametrize(
+        "win_class",
+        [
+            "Chrome_WidgetWin_1",          # Windows Chrome main hwnd
+            "Chrome_WidgetWin_0",
+            "Chrome_RenderWidgetHostHWND",  # Chrome subwindow
+            "CHROME_WIDGETWIN_1",          # case-insensitive
+        ],
+    )
+    def test_prefix_match_lets_chrome_family_through(
+        self, fake_window, fake_backend, coord_stub, scheduler, clock, win_class
+    ):
+        """Allowlist entries are prefixes, so a single `Chrome` entry covers
+        all the Windows-side Chrome_* widget classes Chrome / Edge / Brave
+        actually report at the foreground."""
+        from doro_app.core.automation.manager import AutomationManager
+
+        config = ConfigManagerStub(mouse_enabled=True, allowlist=("Chrome",))
+        manager = AutomationManager(
+            config_manager=config,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class(win_class)
+        manager.execute_click()
+        scheduler.flush()
+
+        assert manager.outcomes[-1] == ClickOutcome.FIRED, (
+            f"{win_class!r} should match the `Chrome` prefix"
+        )
+
+    def test_prefix_match_does_not_match_unrelated_class(
+        self, fake_window, fake_backend, coord_stub, scheduler, clock
+    ):
+        """Prefix match is anchored, so `Firefox` doesn't accidentally allow
+        e.g. `Foo_Firefox_Bar` mid-string."""
+        from doro_app.core.automation.manager import AutomationManager
+
+        config = ConfigManagerStub(mouse_enabled=True, allowlist=("Firefox",))
+        manager = AutomationManager(
+            config_manager=config,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("NotFirefoxAtAll")
+        manager.execute_click()
+        scheduler.flush()
         assert manager.outcomes[-1] == ClickOutcome.REJECTED_BY_ALLOWLIST
 
 

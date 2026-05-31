@@ -396,11 +396,20 @@ class AutomationManager:
     # ------------------------------------------------------------------ Helpers
 
     def _is_allowlisted(self, class_name: Optional[str]) -> bool:
+        """Prefix match (case-insensitive). Apps on Windows expose multiple
+        widget-hierarchy classes off the same prefix, e.g. Chrome → "Chrome_
+        WidgetWin_1" / "Chrome_RenderWidgetHostHWND". Treating allowlist
+        entries as prefixes lets one entry ("Chrome") cover that family
+        without enumerating every variant."""
         if not class_name:
             return False
         allowlist = self._config.automation.mouse_target_allowlist
         lowered = class_name.strip().lower()
-        return any(lowered == item.strip().lower() for item in allowlist if item)
+        return any(
+            lowered.startswith(item.strip().lower())
+            for item in allowlist
+            if item and item.strip()
+        )
 
     def _record(self, outcome: ClickOutcome, detail: str) -> ClickOutcome:
         self.outcomes.append(outcome)
