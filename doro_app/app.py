@@ -548,6 +548,7 @@ class DoroApp:
             warning_overlay=overlay_adapter,
             bounds_provider=self._click_target_bounds,
             click_target_provider=lambda: self._movement.last_target_physical,
+            movement_active_provider=lambda: self._movement.has_active_movement,
             schedule=_schedule,
         )
         return manager

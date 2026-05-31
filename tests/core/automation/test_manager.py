@@ -722,3 +722,149 @@ class TestClickTargetProvider:
         scheduler.flush()
         # KeePassXC is not in allowlist → no click should fire.
         assert fake_backend.click_calls == []
+
+
+class TestMovementDefer:
+    """If [MOVE:to;...] is still walking when [mouse:click] arrives, the
+    wind-up timer waits for movement to complete before starting — so the
+    click doesn't fire mid-walk while Doro is still travelling toward the
+    target. Visual cues (warning frame, transition lock) ARE active
+    throughout the defer + wind-up so the user gets a longer warning."""
+
+    def _build(self, config_stub, fake_window, fake_backend, coord_stub,
+               scheduler, clock, *, movement_active, warning_overlay=None):
+        from doro_app.core.automation.manager import AutomationManager
+        return AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            warning_overlay=warning_overlay,
+            movement_active_provider=lambda: movement_active["value"],
+            schedule=scheduler,
+            clock=clock,
+        )
+
+    def test_no_wind_up_while_movement_active(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock, warning_overlay,
+    ):
+        active = {"value": True}
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, movement_active=active, warning_overlay=warning_overlay,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # Warning frame begins immediately (early visual cue, before walk done)
+        assert warning_overlay.begin_calls, "frame should show during defer"
+        # Click hasn't fired yet — we're still walking.
+        assert fake_backend.click_calls == []
+
+        # Poll once, still walking → still no click.
+        scheduler.run_next()
+        clock.advance(0.2)
+        scheduler.run_next()
+        assert fake_backend.click_calls == []
+
+    def test_wind_up_starts_when_movement_finishes(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        active = {"value": True}
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, movement_active=active,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # Two polls while still walking
+        scheduler.run_next()
+        clock.advance(0.2)
+        scheduler.run_next()
+        clock.advance(0.2)
+        # Now movement finishes
+        active["value"] = False
+        scheduler.run_next()  # poll detects done, schedules wind-up
+        scheduler.flush()      # wind-up fires
+        assert fake_backend.click_calls == [(500, 500)]
+
+    def test_esc_during_defer_aborts(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        active = {"value": True}
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, movement_active=active,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # User hits Esc while Doro is still walking
+        fake_backend.press_esc()
+        scheduler.flush()
+        assert fake_backend.click_calls == []
+        assert manager.outcomes[-1].value == "esc-abort"
+
+    def test_defer_times_out_if_movement_stuck(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        active = {"value": True}  # never changes — simulates stuck movement
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, movement_active=active,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # Advance past the 5s safety cap.
+        for _ in range(60):
+            clock.advance(0.1)
+            if scheduler.scheduled:
+                scheduler.run_next()
+            if not manager.is_busy:
+                break
+
+        from doro_app.core.automation.manager import ClickOutcome
+        assert manager.outcomes[-1] == ClickOutcome.MOVEMENT_DEFER_TIMEOUT
+        assert fake_backend.click_calls == []
+
+    def test_no_defer_when_movement_already_done(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """If movement isn't in flight, the wind-up starts immediately
+        (existing behaviour)."""
+        active = {"value": False}
+        manager = self._build(
+            config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock, movement_active=active,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(500, 500)]
+
+    def test_no_provider_means_no_defer(
+        self, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """`movement_active_provider` is optional; older wiring still fires
+        wind-up immediately."""
+        from doro_app.core.automation.manager import AutomationManager
+        manager = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_backend.click_calls == [(500, 500)]

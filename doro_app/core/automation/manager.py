@@ -44,6 +44,8 @@ from typing import Callable, Optional, TYPE_CHECKING
 
 from ...constants import (
     CLICK_DRAG_GRACE_MS,
+    CLICK_MOVEMENT_DEFER_POLL_MS,
+    CLICK_MOVEMENT_DEFER_TIMEOUT_MS,
     CLICK_RATE_LIMIT_MS,
     CLICK_WIND_UP_MS,
     KILL_SWITCH_ESC_COUNT,
@@ -77,6 +79,7 @@ class ClickOutcome(Enum):
     REJECTED_BY_ALLOWLIST = "redirect-blocked"
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
+    MOVEMENT_DEFER_TIMEOUT = "movement-defer-timeout"
     FIRED = "fired"
 
 
@@ -123,6 +126,7 @@ class AutomationManager:
         warning_overlay: Optional["ClickWarningOverlayPort"] = None,
         bounds_provider: Optional["BoundsProvider"] = None,
         click_target_provider: Optional[Callable[[], Optional[tuple[int, int]]]] = None,
+        movement_active_provider: Optional[Callable[[], bool]] = None,
         schedule: ScheduleFn,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
@@ -137,6 +141,7 @@ class AutomationManager:
         self._warning_overlay = warning_overlay
         self._bounds_provider = bounds_provider
         self._click_target_provider = click_target_provider
+        self._movement_active_provider = movement_active_provider
         self._schedule = schedule
         self._clock = clock
 
@@ -226,12 +231,56 @@ class AutomationManager:
             except Exception:  # pragma: no cover - defensive
                 logger.exception("WarningOverlay.begin() raised")
 
-        logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
-        self._schedule(self._wind_up_ms, self._on_wind_up_finished)
+        # If Doro is mid-walk to the click target, defer the wind-up until
+        # movement completes — otherwise the click fires while she's still
+        # halfway there (the wind-up runs in parallel with the walk
+        # animation). Visual cues (transition lock, click GIF, red warning
+        # frame) are ALREADY active so the user gets the early warning
+        # throughout the walk + the full 1.5s wind-up after arrival.
+        if self._movement_active_provider and self._movement_active_provider():
+            print(
+                f"[doro click] movement in flight; deferring wind-up "
+                f"(timeout {CLICK_MOVEMENT_DEFER_TIMEOUT_MS}ms)",
+                flush=True,
+            )
+            self._schedule(CLICK_MOVEMENT_DEFER_POLL_MS, self._poll_movement_done)
+        else:
+            logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
+            self._schedule(self._wind_up_ms, self._on_wind_up_finished)
         # Returning FIRED here would be a lie — the click hasn't fired yet.
         # We surface a synthetic "accepted" outcome via the side effect of
         # `is_busy=True` and the future audit log entry.
         return ClickOutcome.FIRED  # provisional; final outcome via audit log
+
+    def _poll_movement_done(self) -> None:
+        """Re-check whether movement is still in flight before starting
+        wind-up. Esc still aborts during this window."""
+        if self._pending is None:
+            return  # already finalised
+        if self._abort_pending:
+            self._finalize(ClickOutcome.ABORTED_BY_ESC, "esc pressed while deferring")
+            return
+
+        elapsed_ms = (self._clock() - self._pending.started_at) * 1000.0
+        if elapsed_ms >= CLICK_MOVEMENT_DEFER_TIMEOUT_MS:
+            self._finalize(
+                ClickOutcome.MOVEMENT_DEFER_TIMEOUT,
+                f"movement still in flight after {elapsed_ms:.0f}ms — giving up",
+            )
+            return
+
+        if self._movement_active_provider and self._movement_active_provider():
+            self._schedule(CLICK_MOVEMENT_DEFER_POLL_MS, self._poll_movement_done)
+            return
+
+        # Movement done — start the actual wind-up.
+        print(
+            f"[doro click] movement done after {elapsed_ms:.0f}ms; "
+            f"starting wind-up ({self._wind_up_ms}ms)",
+            flush=True,
+        )
+        logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
+        self._schedule(self._wind_up_ms, self._on_wind_up_finished)
 
     def shutdown(self) -> None:
         """Tear down the input backend's listener thread."""

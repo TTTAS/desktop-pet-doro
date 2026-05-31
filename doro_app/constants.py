@@ -129,6 +129,13 @@ CLICK_RATE_LIMIT_MS = 2000
 # up to this many ms for them to release before firing (or giving up).
 CLICK_DRAG_GRACE_MS = 1000
 
+# If a [mouse:click] follows a [MOVE:to;...] still in flight, the wind-up
+# timer is deferred until movement completes — but only up to this cap so
+# a stuck movement doesn't strand the pending click forever.
+CLICK_MOVEMENT_DEFER_TIMEOUT_MS = 5000
+# Poll interval while waiting for movement to finish.
+CLICK_MOVEMENT_DEFER_POLL_MS = 100
+
 # Three Esc presses within KILL_SWITCH_ESC_WINDOW_MS disables automation
 # globally.
 KILL_SWITCH_ESC_COUNT = 3
