@@ -146,6 +146,28 @@ def test_toggle_a11y_persists():
     core.config_manager.save.assert_called_once()
 
 
+def test_toggle_mouse_enabled_persists():
+    """Flipping the mouse-click toggle writes config + saves. The runtime
+    self-gate inside `AutomationManager.execute_click` reads the flag on
+    every click attempt, so no restart wiring is needed here."""
+    core = Mock()
+    ctrl = ContextMenuController(
+        window=Mock(),
+        state_service=Mock(),
+        state_controller=Mock(),
+        dialog_manager=Mock(),
+        bubble_controller=Mock(),
+        core_manager=core,
+        chat_ui=Mock(),
+        default_idle_gif=Mock(),
+    )
+
+    ctrl._toggle_mouse_enabled(True)
+
+    core.config_manager.update_automation.assert_called_once_with(mouse_enabled=True)
+    core.config_manager.save.assert_called_once()
+
+
 def _make_controller(core):
     return ContextMenuController(
         window=Mock(),

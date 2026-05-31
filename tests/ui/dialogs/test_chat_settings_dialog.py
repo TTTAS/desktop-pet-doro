@@ -48,8 +48,11 @@ class _StubOrchestrator(QtCore.QObject):
 
 
 class _StubConfigManager:
-    def __init__(self, a11y_enabled=False):
-        self.automation = SimpleNamespace(a11y_enabled=a11y_enabled)
+    def __init__(self, a11y_enabled=False, mouse_enabled=False):
+        self.automation = SimpleNamespace(
+            a11y_enabled=a11y_enabled,
+            mouse_enabled=mouse_enabled,
+        )
         self.update_automation = Mock()
         self.save = Mock()
 
@@ -115,7 +118,9 @@ def test_save_persists_a11y_toggle(qtbot):
 
     dialog._on_save()
 
-    config.update_automation.assert_called_once_with(a11y_enabled=True)
+    config.update_automation.assert_called_once_with(
+        a11y_enabled=True, mouse_enabled=False
+    )
     config.save.assert_called_once()
 
 

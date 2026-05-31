@@ -26,6 +26,7 @@ class MenuSnapshot:
     using_live2d: bool = False  # current state is using Live2D model
     live2d_available: bool = False  # live2d-py library is installed
     a11y_enabled: bool = False  # accessibility tree reading is on
+    mouse_enabled: bool = False  # synthetic mouse-click automation is on
 
 
 @dataclasses.dataclass(frozen=True)
@@ -45,6 +46,7 @@ class MenuCallbacks:
     open_settings_dialog: Callable[[], None]
     toggle_a11y: Callable[[bool], None]
     preview_a11y: Callable[[], None]
+    toggle_mouse_enabled: Callable[[bool], None]
     simulate_response: Callable[[], None]
     quit_app: Callable[[], None]
 
@@ -404,6 +406,11 @@ def build_context_menu_content(
 
     a11y_preview_action = chat_menu.addAction("預覽 Doro 看到什麼")
     a11y_preview_action.triggered.connect(callbacks.preview_a11y)
+
+    mouse_toggle_action = chat_menu.addAction("讓 Doro 幫忙點滑鼠")
+    mouse_toggle_action.setCheckable(True)
+    mouse_toggle_action.setChecked(snapshot.mouse_enabled)
+    mouse_toggle_action.triggered.connect(callbacks.toggle_mouse_enabled)
 
     simulate_action = chat_menu.addAction("假傳伺服器回應（測試）")
     simulate_action.setEnabled(not snapshot.is_chat_inflight)

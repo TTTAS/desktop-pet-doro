@@ -163,6 +163,21 @@ class ChatSettingsDialog(FramelessDialog):
         )
         layout.addWidget(self._a11y_output)
 
+        # ── Mouse-click automation (Phase 1c) ──────────────────
+        self._mouse_enabled_checkbox = QtWidgets.QCheckBox(
+            "讓 Doro 幫忙點滑鼠"
+        )
+        layout.addWidget(self._mouse_enabled_checkbox)
+        mouse_hint = QtWidgets.QLabel(
+            "開啟後，Doro 收到「點某某按鈕」之類指令會發合成滑鼠點擊。"
+            "點擊前會等 1.5 秒、紅色警示框會圈住即將被點的位置，期間"
+            "可按 Esc 取消；Esc 連按 3 次會永久關閉本選項當作 kill switch。"
+            "需要安裝 pynput；目前白名單預設只放 Firefox / Chrome / Chromium。"
+        )
+        mouse_hint.setObjectName("instructionLabel")
+        mouse_hint.setWordWrap(True)
+        layout.addWidget(mouse_hint)
+
         # ── Simulate a server reply (test Doro) ────────────────
         test_header = QtWidgets.QLabel("模擬回應（測試 Doro）")
         test_header.setObjectName("testHeader")
@@ -225,6 +240,9 @@ class ChatSettingsDialog(FramelessDialog):
 
         self._a11y_checkbox.setChecked(
             self._core.config_manager.automation.a11y_enabled
+        )
+        self._mouse_enabled_checkbox.setChecked(
+            self._core.config_manager.automation.mouse_enabled
         )
 
         # Detect which provider matches
@@ -329,7 +347,11 @@ class ChatSettingsDialog(FramelessDialog):
 
         config = self._core.config_manager
         a11y_enabled = self._a11y_checkbox.isChecked()
-        config.update_automation(a11y_enabled=a11y_enabled)
+        mouse_enabled = self._mouse_enabled_checkbox.isChecked()
+        config.update_automation(
+            a11y_enabled=a11y_enabled,
+            mouse_enabled=mouse_enabled,
+        )
         config.save()
 
         if a11y_enabled and self._core.a11y_service is not None:

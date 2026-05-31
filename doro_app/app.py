@@ -481,13 +481,17 @@ class DoroApp:
     # ═════════════════════════════════════════════════════════════════
 
     def _maybe_build_automation(self) -> "AutomationManager | None":
-        """Build the AutomationManager only if automation.mouse_enabled is True
-        in config (or DORO_MOUSE=true at startup). Returns None on any setup
-        failure — Doro still works fine without automation.
-        """
-        if not self._config_manager.automation.mouse_enabled:
-            return None
+        """Build the AutomationManager whenever pynput is importable.
 
+        The manager self-gates on ``automation.mouse_enabled`` at every
+        ``execute_click`` (early-returns DISABLED), so building it
+        unconditionally lets the settings toggle take effect at runtime
+        with no restart while costing nothing when disabled — the gate
+        short-circuits before any synthetic event fires.
+
+        Returns None on import / backend init failure — Doro still
+        works fine without automation.
+        """
         try:
             from .core.automation.backend_pynput import PynputBackend
         except Exception as exc:  # pragma: no cover - import-time path

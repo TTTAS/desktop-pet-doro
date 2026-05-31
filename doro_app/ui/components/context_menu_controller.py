@@ -107,6 +107,9 @@ class ContextMenuController:
             a11y_enabled=bool(
                 self._core_manager.config_manager.automation.a11y_enabled
             ),
+            mouse_enabled=bool(
+                self._core_manager.config_manager.automation.mouse_enabled
+            ),
         )
 
     def _build_callbacks(self) -> MenuCallbacks:
@@ -132,6 +135,7 @@ class ContextMenuController:
             open_settings_dialog=self._chat_ui.open_settings_dialog,
             toggle_a11y=self._toggle_a11y,
             preview_a11y=self._preview_a11y,
+            toggle_mouse_enabled=self._toggle_mouse_enabled,
             simulate_response=self._simulate_response,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
@@ -147,6 +151,17 @@ class ContextMenuController:
         cm.save()
         if checked and self._core_manager.a11y_service is not None:
             self._core_manager.a11y_service.clear_session_blacklist()
+
+    def _toggle_mouse_enabled(self, checked: bool) -> None:
+        """Flip mouse-click automation on/off and persist.
+
+        AutomationManager self-gates on this flag at execute_click time,
+        so no restart is needed — once pynput is available, toggling
+        lights it up immediately.
+        """
+        cm = self._core_manager.config_manager
+        cm.update_automation(mouse_enabled=bool(checked))
+        cm.save()
 
     def _preview_a11y(self) -> None:
         """Run the diagnostic read and show the result in a popup.
