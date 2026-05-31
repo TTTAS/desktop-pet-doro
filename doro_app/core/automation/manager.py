@@ -349,29 +349,42 @@ class AutomationManager:
         cx = max(0, min(sw - 1, int(cx)))
         cy = max(0, min(sh - 1, int(cy)))
 
-        class_name = self._backend.read_window_class_at(cx, cy)
-        print(
-            f"[doro click] fire source={source} coord=({cx},{cy}) class={class_name!r}",
-            flush=True,
-        )
-
-        if not self._is_allowlisted(class_name):
-            self._finalize(
-                ClickOutcome.REJECTED_BY_ALLOWLIST,
-                f"window class {class_name!r} not in allowlist",
-            )
-            return
-
-        # Brief transparent-toggle window to avoid Doro hit-testing herself.
-        # See plan §"Self-clicking trap".
+        # Self-clicking trap: Doro's main window AND the red warning frame
+        # both sit on top of the click target (sprite-foot anchor makes
+        # Doro overlap the target; the frame is WindowStaysOnTopHint by
+        # design). If we leave them visible / hit-testable, the OS-level
+        # WindowFromPoint query that backs read_window_class_at + the
+        # synthetic click_left both land on our own Qt windows instead of
+        # the real target. Hide / pass-through both before the class read
+        # so the allowlist check sees the target window's actual class.
+        if self._warning_overlay is not None:
+            try:
+                self._warning_overlay.end()
+            except Exception:  # pragma: no cover - defensive
+                logger.exception("WarningOverlay.end() (pre-fire) raised")
         try:
             self._window.set_mouse_transparent(True)
         except Exception:  # pragma: no cover - defensive
             logger.exception("set_mouse_transparent(True) failed")
+
         try:
-            self._backend.click_left(cx, cy)
-        except Exception:  # pragma: no cover - backend failure should not strand the lock
-            logger.exception("click_left raised")
+            class_name = self._backend.read_window_class_at(cx, cy)
+            print(
+                f"[doro click] fire source={source} coord=({cx},{cy}) class={class_name!r}",
+                flush=True,
+            )
+
+            if not self._is_allowlisted(class_name):
+                self._finalize(
+                    ClickOutcome.REJECTED_BY_ALLOWLIST,
+                    f"window class {class_name!r} not in allowlist",
+                )
+                return
+
+            try:
+                self._backend.click_left(cx, cy)
+            except Exception:  # pragma: no cover - backend failure should not strand the lock
+                logger.exception("click_left raised")
         finally:
             try:
                 self._window.set_mouse_transparent(False)
