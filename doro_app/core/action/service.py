@@ -40,6 +40,15 @@ logger = get_logger(__name__)
 CLICK_ACTION_STATE_KEY = "click_action"
 CLICK_ACTION_STATE_LABEL = "Click"
 
+# Hidden builtin state the ActionDispatcher flips to when a click
+# action fails (preflight rejection, allowlist miss, drag-grace
+# exceeded, etc.). Kept distinct from `click_action` so the user can
+# bind a different GIF — a sad / shrug animation — to make failures
+# legible. Until a GIF is bound, the resolution chain falls back to
+# the same stand/idle pool as `click_action`.
+CLICK_FAILED_STATE_KEY = "click_failed"
+CLICK_FAILED_STATE_LABEL = "Click Failed"
+
 
 class ActionService:
     """Coordinate :class:`ActionRepository` with the display state machine."""
@@ -80,6 +89,16 @@ class ActionService:
         self._state_service.ensure_action_state(
             key=CLICK_ACTION_STATE_KEY,
             label=CLICK_ACTION_STATE_LABEL,
+            gif_id=effective_gif_id,
+        )
+
+        # Register the failure-state too. Same fallback chain — until
+        # the user binds a dedicated GIF the dispatcher's brief flip
+        # will show a stand/idle frame, which is still better than the
+        # hard `set_state failed` error that otherwise pollutes the log.
+        self._state_service.ensure_action_state(
+            key=CLICK_FAILED_STATE_KEY,
+            label=CLICK_FAILED_STATE_LABEL,
             gif_id=effective_gif_id,
         )
 

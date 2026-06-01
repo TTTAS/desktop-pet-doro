@@ -22,12 +22,13 @@ from typing import Callable, Optional, TYPE_CHECKING
 
 from .dispatcher import Action
 from .phases import EffectPhase, Phase, ScheduleFn
+from .service import CLICK_FAILED_STATE_KEY
 
 if TYPE_CHECKING:
     from ..automation.manager import AutomationManager, ClickOutcome
 
 
-CLICK_FAILED_STATE_KEY = "click_failed"
+__all__ = ["CLICK_FAILED_STATE_KEY", "make_click_action"]
 
 # Safety cap for the await-outcome phase. Production click pipelines
 # resolve in ~1.5s (wind-up) plus optional drag grace. 30s is the same

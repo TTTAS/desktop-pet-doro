@@ -732,6 +732,22 @@ class _QtAutomationWindowAdapter:
         )
 
     def set_mouse_transparent(self, transparent: bool) -> None:
+        """Make Doro's window invisible to mouse hit-testing during a
+        sample.
+
+        Qt's `WA_TransparentForMouseEvents` only filters mouse events
+        inside Qt — it does NOT make Win32 `WindowFromPoint` skip the
+        window, which is what `read_window_class_at` actually calls.
+        Without the Win32-level flag the click pipeline self-clicks
+        whenever Doro's window overlaps the target (which is the common
+        case after `[move:to;...]` lands Doro's foot exactly on the
+        click coordinate).
+
+        On Windows we toggle `WS_EX_TRANSPARENT` (the actual mechanism
+        `WindowFromPoint` honours). On other platforms we fall back to
+        the Qt attribute alone, which is fine because non-Windows
+        platforms don't go through this self-click path.
+        """
         from PySide6 import QtCore as _QtCore
 
         try:
@@ -740,6 +756,32 @@ class _QtAutomationWindowAdapter:
             )
         except Exception:  # pragma: no cover - defensive
             pass
+
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            hwnd = int(self._window.winId())
+            if hwnd == 0:
+                return
+            GWL_EXSTYLE = -20
+            WS_EX_TRANSPARENT = 0x00000020
+            user32 = ctypes.windll.user32
+            # GetWindowLongW returns LONG (32-bit signed). On 64-bit
+            # Windows the extended style fits in a LONG; using the W
+            # variant matches Qt's own usage and avoids the LongPtr
+            # API surface we don't need here.
+            current = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            if bool(transparent):
+                new = current | WS_EX_TRANSPARENT
+            else:
+                new = current & ~WS_EX_TRANSPARENT
+            if new != current:
+                user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new)
+        except Exception:  # pragma: no cover - defensive
+            from .utils.logger import get_logger as _gl
+            _gl(__name__).exception("WS_EX_TRANSPARENT toggle failed")
 
     def screen_size_logical(self) -> tuple[int, int]:
         try:

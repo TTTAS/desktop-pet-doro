@@ -73,8 +73,16 @@ def test_bootstrap_registers_click_state_with_user_bound_gif(tmp_path):
     service = ActionService(repo, state_service, gif_repo)
     service.bootstrap()
 
+    # Both click_action and click_failed get the same gif_id by default —
+    # the user can bind click_failed independently later via the UI but
+    # at bootstrap they share the effective fallback chain.
+    from doro_app.core.action.service import (
+        CLICK_FAILED_STATE_KEY,
+        CLICK_FAILED_STATE_LABEL,
+    )
     assert state_service.ensure_calls == [
         (CLICK_ACTION_STATE_KEY, CLICK_ACTION_STATE_LABEL, "click/user.gif"),
+        (CLICK_FAILED_STATE_KEY, CLICK_FAILED_STATE_LABEL, "click/user.gif"),
     ]
 
 
@@ -95,11 +103,14 @@ def test_bootstrap_falls_back_to_random_stand_when_no_user_binding(tmp_path):
     service.bootstrap()
 
     # The fallback gif_id should be a forward-slash relative path under
-    # storage_dir so GifRepository.get_path can resolve it later.
-    assert len(state_service.ensure_calls) == 1
-    key, label, gif_id = state_service.ensure_calls[0]
-    assert key == CLICK_ACTION_STATE_KEY
-    assert gif_id == "stand/stand_2.gif"
+    # storage_dir so GifRepository.get_path can resolve it later. Both
+    # click_action and click_failed are registered with the same
+    # bootstrap-time fallback.
+    assert len(state_service.ensure_calls) == 2
+    keys = [c[0] for c in state_service.ensure_calls]
+    assert keys[0] == CLICK_ACTION_STATE_KEY
+    for _, _, gif_id in state_service.ensure_calls:
+        assert gif_id == "stand/stand_2.gif"
 
 
 def test_bootstrap_falls_back_to_single_stand_gif(tmp_path):
