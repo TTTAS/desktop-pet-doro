@@ -23,6 +23,14 @@ This lets clicks land on edge-of-screen targets that the foot cannot
 reach (window clamps to screen, so the foot's reachable region is
 `[w/2, screen_w - w/2] × [h-1, screen_h - 1]`).
 
+Sequencing with movement: previously this manager polled
+`movement_active_provider` and deferred the wind-up while Doro was
+walking, with a 5s safety cap. That coordination now lives in
+`ActionDispatcher` — callers dispatch a `MovementAction` then a
+`ClickAction`, and the dispatcher only starts the click after the
+movement listener fires. `execute_click` here assumes the caller has
+already arranged for Doro to be at the target.
+
 Safety: the user cancels via Esc (1.5s wind-up window), or the 3-Esc
 kill-switch globally disables automation. The red warning overlay
 visualises the actual click coordinate during wind-up so the user can
@@ -44,8 +52,6 @@ from typing import Callable, Optional, TYPE_CHECKING
 
 from ...constants import (
     CLICK_DRAG_GRACE_MS,
-    CLICK_MOVEMENT_DEFER_POLL_MS,
-    CLICK_MOVEMENT_DEFER_TIMEOUT_MS,
     CLICK_RATE_LIMIT_MS,
     CLICK_WIND_UP_MS,
     KILL_SWITCH_ESC_COUNT,
@@ -79,7 +85,6 @@ class ClickOutcome(Enum):
     REJECTED_BY_ALLOWLIST = "redirect-blocked"
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
-    MOVEMENT_DEFER_TIMEOUT = "movement-defer-timeout"
     FIRED = "fired"
 
 
@@ -126,7 +131,7 @@ class AutomationManager:
         warning_overlay: Optional["ClickWarningOverlayPort"] = None,
         bounds_provider: Optional["BoundsProvider"] = None,
         click_target_provider: Optional[Callable[[], Optional[tuple[int, int]]]] = None,
-        movement_active_provider: Optional[Callable[[], bool]] = None,
+        on_esc_extra: Optional[Callable[[], None]] = None,
         schedule: ScheduleFn,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
@@ -141,7 +146,11 @@ class AutomationManager:
         self._warning_overlay = warning_overlay
         self._bounds_provider = bounds_provider
         self._click_target_provider = click_target_provider
-        self._movement_active_provider = movement_active_provider
+        # Additional Esc hook fired alongside the built-in click-abort
+        # handling. Used by the application to forward Esc to the
+        # ActionDispatcher so any queued click (or in-flight movement
+        # waiter) is cancelled too.
+        self._on_esc_extra = on_esc_extra
         self._schedule = schedule
         self._clock = clock
 
@@ -160,6 +169,13 @@ class AutomationManager:
 
         # Bookkeeping for tests / debug; production never reads these.
         self.outcomes: list[ClickOutcome] = []
+
+        # Terminal-outcome listeners — `ClickAction` (via the
+        # ActionDispatcher) subscribes here to know when one click is
+        # finished so it can release the action queue. Listeners are
+        # callable as `cb(outcome, detail)` and fire exactly once per
+        # call to `_finalize`.
+        self._outcome_listeners: list[Callable[["ClickOutcome", str], None]] = []
 
         # Install the Esc listener. The backend MUST guarantee that the
         # callback only fires on Esc and that no other key data is recorded.
@@ -231,56 +247,32 @@ class AutomationManager:
             except Exception:  # pragma: no cover - defensive
                 logger.exception("WarningOverlay.begin() raised")
 
-        # If Doro is mid-walk to the click target, defer the wind-up until
-        # movement completes — otherwise the click fires while she's still
-        # halfway there (the wind-up runs in parallel with the walk
-        # animation). Visual cues (transition lock, click GIF, red warning
-        # frame) are ALREADY active so the user gets the early warning
-        # throughout the walk + the full 1.5s wind-up after arrival.
-        if self._movement_active_provider and self._movement_active_provider():
-            print(
-                f"[doro click] movement in flight; deferring wind-up "
-                f"(timeout {CLICK_MOVEMENT_DEFER_TIMEOUT_MS}ms)",
-                flush=True,
-            )
-            self._schedule(CLICK_MOVEMENT_DEFER_POLL_MS, self._poll_movement_done)
-        else:
-            logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
-            self._schedule(self._wind_up_ms, self._on_wind_up_finished)
-        # Returning FIRED here would be a lie — the click hasn't fired yet.
-        # We surface a synthetic "accepted" outcome via the side effect of
-        # `is_busy=True` and the future audit log entry.
-        return ClickOutcome.FIRED  # provisional; final outcome via audit log
-
-    def _poll_movement_done(self) -> None:
-        """Re-check whether movement is still in flight before starting
-        wind-up. Esc still aborts during this window."""
-        if self._pending is None:
-            return  # already finalised
-        if self._abort_pending:
-            self._finalize(ClickOutcome.ABORTED_BY_ESC, "esc pressed while deferring")
-            return
-
-        elapsed_ms = (self._clock() - self._pending.started_at) * 1000.0
-        if elapsed_ms >= CLICK_MOVEMENT_DEFER_TIMEOUT_MS:
-            self._finalize(
-                ClickOutcome.MOVEMENT_DEFER_TIMEOUT,
-                f"movement still in flight after {elapsed_ms:.0f}ms — giving up",
-            )
-            return
-
-        if self._movement_active_provider and self._movement_active_provider():
-            self._schedule(CLICK_MOVEMENT_DEFER_POLL_MS, self._poll_movement_done)
-            return
-
-        # Movement done — start the actual wind-up.
-        print(
-            f"[doro click] movement done after {elapsed_ms:.0f}ms; "
-            f"starting wind-up ({self._wind_up_ms}ms)",
-            flush=True,
-        )
         logger.info(f"Click wind-up starting (duration={self._wind_up_ms}ms)")
         self._schedule(self._wind_up_ms, self._on_wind_up_finished)
+        # Returning FIRED here would be a lie — the click hasn't fired yet.
+        # We surface a synthetic "accepted" outcome via the side effect of
+        # `is_busy=True` and the future outcome listener notification.
+        return ClickOutcome.FIRED  # provisional; final outcome via listener
+
+    def add_outcome_listener(
+        self, callback: Callable[["ClickOutcome", str], None]
+    ) -> Callable[[], None]:
+        """Register *callback* to receive the next terminal click outcome.
+
+        `ClickAction` uses this so the ActionDispatcher can wait for the
+        click pipeline to finish without polling `is_busy`. Returns an
+        `unsubscribe` callable; listeners persist across clicks until
+        they unsubscribe.
+        """
+        self._outcome_listeners.append(callback)
+
+        def _unsubscribe() -> None:
+            try:
+                self._outcome_listeners.remove(callback)
+            except ValueError:
+                pass
+
+        return _unsubscribe
 
     def shutdown(self) -> None:
         """Tear down the input backend's listener thread."""
@@ -419,6 +411,14 @@ class AutomationManager:
         self._abort_pending = False
         self._record(outcome, detail)
 
+        # Notify outcome listeners after recording, so listeners can read
+        # `outcomes[-1]` and see the same value they were just handed.
+        for listener in list(self._outcome_listeners):
+            try:
+                listener(outcome, detail)
+            except Exception:  # pragma: no cover - listeners should not raise
+                logger.exception("Click outcome listener raised")
+
     # ------------------------------------------------------------------ Esc / kill-switch
 
     def _on_esc_pressed(self) -> None:
@@ -440,6 +440,15 @@ class AutomationManager:
 
         if len(self._esc_press_times) >= KILL_SWITCH_ESC_COUNT and not self._kill_switch_engaged:
             self._engage_kill_switch()
+
+        # Forward to the optional extra hook (typically
+        # `ActionDispatcher.cancel_current`). Runs after the local
+        # bookkeeping so the dispatcher sees up-to-date state.
+        if self._on_esc_extra is not None:
+            try:
+                self._on_esc_extra()
+            except Exception:  # pragma: no cover - hook must not break Esc
+                logger.exception("on_esc_extra hook raised")
 
     def _engage_kill_switch(self) -> None:
         self._kill_switch_engaged = True

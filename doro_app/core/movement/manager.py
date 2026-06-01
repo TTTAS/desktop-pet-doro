@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import math
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 
@@ -64,12 +64,49 @@ class MovementManager:
         # when wind-up starts, so sampling the current foot position would
         # frame the wrong element).
         self.last_target_physical: Optional[tuple[int, int]] = None
+        # Completion listeners: invoked exactly once per `_finish_movement` call.
+        # Used by `MovementAction` (see core/action/movement_action.py) so the
+        # dispatcher can sequence the next action without polling. Listeners
+        # are also fired when `cancel_active_movement` ends a movement early
+        # so waiters don't strand.
+        self._completion_listeners: list[Callable[[], None]] = []
 
     # ------------------------------------------------------------------ Public API
 
     @property
     def has_active_movement(self) -> bool:
         return self._active_movement is not None
+
+    def add_completion_listener(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Register *callback* to fire after the next movement finishes.
+
+        Returns an `unsubscribe` callable so the caller can detach without
+        knowing the registration index (matches the WaitPhase contract used by
+        `MovementAction`). Listeners persist across movements until they
+        unsubscribe — typical usage subscribes per-action and unsubs on the
+        first fire.
+        """
+        self._completion_listeners.append(callback)
+
+        def _unsubscribe() -> None:
+            try:
+                self._completion_listeners.remove(callback)
+            except ValueError:
+                pass
+
+        return _unsubscribe
+
+    def cancel_active_movement(self) -> bool:
+        """Abort any in-flight movement, restoring the previous state.
+
+        Returns True iff a movement was actually running. Notifies all
+        completion listeners so action queue waiters unwind cleanly.
+        Idempotent — calling with no active movement is a no-op.
+        """
+        if self._active_movement is None:
+            return False
+        self._finish_movement()
+        return True
 
     def get_last_error(self) -> Optional[str]:
         """Get the last movement parsing error, if any."""
@@ -361,6 +398,16 @@ class MovementManager:
             if current != self._movement_previous_state:
                 self._state_service.set_state(self._movement_previous_state)
         self._movement_previous_state = None
+
+        # Notify completion listeners. Iterate over a snapshot — listeners may
+        # unsubscribe themselves during the callback (the common case for
+        # MovementAction's one-shot wait).
+        for listener in list(self._completion_listeners):
+            try:
+                listener()
+            except Exception:  # pragma: no cover - listeners should not raise
+                from ...utils.logger import get_logger as _gl
+                _gl(__name__).exception("Movement completion listener raised")
 
     def _direction_slug(self, direction: tuple[float, float]) -> Optional[str]:
         key = direction_key(direction)

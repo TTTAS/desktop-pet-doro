@@ -13,6 +13,7 @@ from .constants import (
     BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
 )
+from .core.action import ActionDispatcher
 from .core.automation.foreground_tracker import ForegroundTracker
 from .core.automation.manager import AutomationManager
 from .core.chat.controller import ChatController
@@ -133,11 +134,29 @@ class DoroApp:
         # the runtime allowlist + kill-switch — see AutomationManager.
         self._automation: AutomationManager | None = self._maybe_build_automation()
 
+        # ─── Action dispatcher ──────────────────────────────────
+        # Serializes movement + click into one ordered queue so the
+        # click pipeline only runs after Doro has actually walked to the
+        # target — replaces the old polling/timeout coordination that
+        # used to live inside AutomationManager.
+        from PySide6 import QtCore as _QtCore
+
+        def _dispatcher_schedule(ms: int, fn) -> None:
+            _QtCore.QTimer.singleShot(int(ms), fn)
+
+        self._dispatcher_schedule = _dispatcher_schedule
+        self._action_dispatcher = ActionDispatcher(
+            state_service=self._state_service,
+            schedule=_dispatcher_schedule,
+        )
+
         self._chat_orchestrator = ChatOrchestrator(
             self._chat_controller,
             self._movement,
             self._state_service,
             automation=self._automation,
+            action_dispatcher=self._action_dispatcher,
+            schedule=_dispatcher_schedule,
         )
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
@@ -150,6 +169,8 @@ class DoroApp:
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
             mark_activity=lambda: self.window.mark_user_activity(),
+            action_dispatcher=self._action_dispatcher,
+            schedule=self._dispatcher_schedule,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -548,10 +569,21 @@ class DoroApp:
             warning_overlay=overlay_adapter,
             bounds_provider=self._click_target_bounds,
             click_target_provider=lambda: self._movement.last_target_physical,
-            movement_active_provider=lambda: self._movement.has_active_movement,
+            on_esc_extra=self._cancel_dispatcher_on_esc,
             schedule=_schedule,
         )
         return manager
+
+    def _cancel_dispatcher_on_esc(self) -> None:
+        """Forward Esc to the ActionDispatcher so any queued click or
+        in-flight movement waiter unwinds. Called by AutomationManager's
+        Esc listener; safe before the dispatcher is constructed (no-op).
+        AutomationManager's own click-abort handling runs first, so an
+        in-flight click is already cancelled by the time we get here —
+        this hook is what cleans up the *next* queued action."""
+        dispatcher = getattr(self, "_action_dispatcher", None)
+        if dispatcher is not None:
+            dispatcher.cancel_current("esc")
 
     def _click_target_bounds(self):
         """Bounds (physical px) of the a11y element under the latest

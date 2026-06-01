@@ -15,6 +15,8 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from ..action import ActionDispatcher
+    from ..action.phases import ScheduleFn
     from ..automation.manager import AutomationManager
     from ..movement.manager import MovementManager
     from ..state import StateService
@@ -36,12 +38,20 @@ class ChatOrchestrator(QtCore.QObject):
         state_service: StateService,
         *,
         automation: "AutomationManager | None" = None,
+        action_dispatcher: "ActionDispatcher | None" = None,
+        schedule: "ScheduleFn | None" = None,
     ):
         super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
         self._state_service = state_service
         self._automation = automation
+        self._action_dispatcher = action_dispatcher
+        # Schedule is only used when building actions; tests that wire
+        # `action_dispatcher` are expected to pass one too. When the
+        # dispatcher is absent (legacy / unit-test path) movement and
+        # click run synchronously through their managers as before.
+        self._schedule = schedule
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -235,7 +245,7 @@ class ChatOrchestrator(QtCore.QObject):
                 # Phase 1c automation: `[mouse:click]` is the only accepted form.
                 if self._handle_mouse_bracket(token):
                     continue
-                if self._movement.handle_move_bracket(token, move_reports):
+                if self._dispatch_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
                 state_key = self._state_service.parse_state_from_action(token)
@@ -255,7 +265,7 @@ class ChatOrchestrator(QtCore.QObject):
 
             direction = self._movement.parse_movement_token(token)
             if direction:
-                report = self._movement.apply_directional_move(direction)
+                report = self._dispatch_directional_move(direction)
                 if report:
                     move_reports.append(report)
 
@@ -271,7 +281,7 @@ class ChatOrchestrator(QtCore.QObject):
                 # Try with a "move" prefix so MOVE_TOKEN_PATTERN can match
                 direction = self._movement.parse_movement_token(f"move {dir_str}")
             if direction:
-                report = self._movement.apply_directional_move(direction)
+                report = self._dispatch_directional_move(direction)
                 if report:
                     move_reports.append(report)
 
@@ -286,6 +296,11 @@ class ChatOrchestrator(QtCore.QObject):
         (the parser recognized it as a mouse bracket), regardless of whether
         the action was permitted. Returning True prevents downstream parsers
         from re-interpreting the same token.
+
+        When an `ActionDispatcher` is wired (production path), the click
+        is enqueued behind any in-flight movement so it cannot fire until
+        Doro has arrived. Without a dispatcher (legacy / unit-test path)
+        the click is started immediately — same behaviour as before.
         """
         from ..automation.parser import parse_mouse_bracket
 
@@ -309,8 +324,62 @@ class ChatOrchestrator(QtCore.QObject):
             )
             return True
 
-        self._automation.execute_click()
+        if self._action_dispatcher is not None and self._schedule is not None:
+            from ..action import make_click_action
+            self._action_dispatcher.dispatch(
+                make_click_action(self._automation, self._schedule)
+            )
+        else:
+            self._automation.execute_click()
         return True
+
+    def _dispatch_move_bracket(self, token: str, reports: list[str]) -> bool:
+        """Run a `[move:...]` bracket either through the dispatcher or directly.
+
+        Returns True iff the bracket was claimed (matches the legacy
+        `handle_move_bracket` contract). When dispatching, we parse the
+        bracket here and route a structured `MovementAction`; otherwise
+        we fall back to the manager's synchronous handler.
+        """
+        if self._action_dispatcher is None or self._schedule is None:
+            return self._movement.handle_move_bracket(token, reports)
+
+        # Defer parsing to the manager so the manager remains the single
+        # source of truth for `[move:...]` semantics. We run a dry parse
+        # path: send the bracket through the manager but capture the
+        # movement intent so we can re-issue it from inside a phase.
+        from ..action import make_movement_action
+
+        # Use the bracket form so the manager handles parsing + the kick-off.
+        # The dispatcher's EffectPhase will re-invoke the parser; that's a
+        # small double-parse cost but keeps movement parsing centralized.
+        # First check the token is actually a move bracket — if not,
+        # return False so the caller can try other parsers.
+        from ..movement.parser import parse_move_bracket
+        if parse_move_bracket(token) is None:
+            return False
+
+        self._action_dispatcher.dispatch(
+            make_movement_action(self._movement, self._schedule, bracket_token=token)
+        )
+        return True
+
+    def _dispatch_directional_move(self, direction: tuple[int, int]) -> str | None:
+        """Run a directional move either through the dispatcher or directly.
+
+        Returns the move-report string (also recorded in history) for
+        backwards compatibility with the existing caller logic; when
+        dispatching we return None because the move runs asynchronously
+        and its report is appended via the manager's own bookkeeping.
+        """
+        if self._action_dispatcher is None or self._schedule is None:
+            return self._movement.apply_directional_move(direction)
+
+        from ..action import make_movement_action
+        self._action_dispatcher.dispatch(
+            make_movement_action(self._movement, self._schedule, direction=direction)
+        )
+        return None
 
     def _strip_control_tokens(self, text: str) -> str:
         stripped = (text or "").strip()

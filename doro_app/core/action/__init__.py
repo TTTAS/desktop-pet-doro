@@ -15,7 +15,24 @@ Public surface:
 Companion class :class:`FakeActionRepository` lives in :mod:`.fakes`.
 """
 
+from .click_action import CLICK_FAILED_STATE_KEY, make_click_action
+from .dispatcher import Action, ActionDispatcher
+from .movement_action import make_movement_action
+from .phases import EffectPhase, Phase, VisualPhase, WaitPhase
 from .repository import ActionEntry, ActionRepository
 from .service import ActionService
 
-__all__ = ["ActionEntry", "ActionRepository", "ActionService"]
+__all__ = [
+    "Action",
+    "ActionDispatcher",
+    "ActionEntry",
+    "ActionRepository",
+    "ActionService",
+    "CLICK_FAILED_STATE_KEY",
+    "EffectPhase",
+    "Phase",
+    "VisualPhase",
+    "WaitPhase",
+    "make_click_action",
+    "make_movement_action",
+]
