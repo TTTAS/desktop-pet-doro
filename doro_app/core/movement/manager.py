@@ -470,6 +470,27 @@ class MovementManager:
             move_state=move_state,
             prefer_walking=move_state_name == self._state_service.get_default_movement_state(),
         )
+
+        # `_set_movement_state` triggered the walking GIF, which may have a
+        # different intrinsic size than the pre-walk sprite. The window
+        # auto-resizes to fit (`apply_window_preferred_size`) and
+        # `_reposition_to_keep_sprite_center` shifts the window top-left
+        # so the sprite *centre* stays put on screen — meaning the top-left
+        # we just recorded as `_movement_start_pos` is no longer where the
+        # window actually is. `process_active_movement` integrates velocity
+        # from the *current* top-left each tick, so an uncorrected shift
+        # would compound and land Doro short of (or past) the planned
+        # destination by the shift amount. Symptom: `[MOVE:to;x;y]` lands
+        # at a different absolute pixel depending on which walking sprite
+        # (direction) was picked.
+        #
+        # Undo the auto-reposition so the velocity vector and remaining
+        # distance both stay valid. The visual cost is a one-frame sprite
+        # jump at the start of the walk; the gain is pixel-accurate
+        # landing regardless of starting direction.
+        post_state_pos = window.current_position()
+        if post_state_pos != self._movement_start_pos:
+            window.move_window_to(self._movement_start_pos)
         current_state_obj = self._state_service.get_current_state()
         current_state = current_state_obj.key if current_state_obj else None
         self._active_movement = MovementRequest(
