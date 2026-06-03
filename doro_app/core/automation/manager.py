@@ -12,9 +12,20 @@ Lifecycle of one `[mouse:click]`:
             ├─ if left button is being held → enter drag-grace loop
             ├─ pick click coord: last [MOVE:to] target if any, else Doro's foot
             ├─ read window class at that coord
-            ├─ class in allowlist → fire click via InputBackendPort
+            ├─ class in allowlist → cursor-free click via A11yClickerPort
+            │                       (UIA InvokePattern at production)
+            ├─ no InvokePattern at target → NOT_INVOCABLE, no click
             └─ class miss / kill-switch / esc → no click, audit-log it
           (always) transition_coordinator.end()
+
+Cursor-free click: the click path used to call `InputBackendPort.click_left`
+which synthesised a real OS mouse event (pynput → SetCursorPos + mouse_event)
+and visibly moved the user's cursor on every click. That has been replaced
+with `A11yClickerPort.try_invoke_at` — UIA's InvokePattern fires the
+element's "click" action without touching the OS cursor. Elements that
+don't expose InvokePattern (canvas-rendered widgets / custom controls)
+surface as NOT_INVOCABLE so the LLM can retry rather than the user's
+cursor jumping unexpectedly.
 
 Click coordinate sourcing: the manager prefers `click_target_provider()`
 (typically `MovementManager.last_target_physical`) over the live foot
@@ -61,6 +72,7 @@ from ...utils.logger import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...utils.config_manager import ConfigManager
+    from ..a11y import A11yClickerPort
     from ..state.transition_coordinator import TransitionCoordinator
     from .port import (
         AutomationWindowPort,
@@ -85,6 +97,7 @@ class ClickOutcome(Enum):
     REJECTED_BY_ALLOWLIST = "redirect-blocked"
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
+    NOT_INVOCABLE = "not-invocable"        # UIA found no InvokePattern at target
     FIRED = "fired"
 
 
@@ -131,6 +144,7 @@ class AutomationManager:
         warning_overlay: Optional["ClickWarningOverlayPort"] = None,
         bounds_provider: Optional["BoundsProvider"] = None,
         click_target_provider: Optional[Callable[[], Optional[tuple[int, int]]]] = None,
+        a11y_clicker: Optional["A11yClickerPort"] = None,
         on_esc_extra: Optional[Callable[[], None]] = None,
         schedule: ScheduleFn,
         clock: Callable[[], float] = time.monotonic,
@@ -146,6 +160,12 @@ class AutomationManager:
         self._warning_overlay = warning_overlay
         self._bounds_provider = bounds_provider
         self._click_target_provider = click_target_provider
+        # Cursor-free click backend — UIA InvokePattern in production,
+        # `NullA11yClicker` on non-Windows (so the click is dropped with
+        # NOT_INVOCABLE rather than synthesising a mouse event that would
+        # move the user's cursor). When None the manager treats it as
+        # "no clicker wired" → NOT_INVOCABLE for every attempt.
+        self._a11y_clicker = a11y_clicker
         # Additional Esc hook fired alongside the built-in click-abort
         # handling. Used by the application to forward Esc to the
         # ActionDispatcher so any queued click (or in-flight movement
@@ -345,10 +365,13 @@ class AutomationManager:
         # both sit on top of the click target (sprite-foot anchor makes
         # Doro overlap the target; the frame is WindowStaysOnTopHint by
         # design). If we leave them visible / hit-testable, the OS-level
-        # WindowFromPoint query that backs read_window_class_at + the
-        # synthetic click_left both land on our own Qt windows instead of
-        # the real target. Hide / pass-through both before the class read
-        # so the allowlist check sees the target window's actual class.
+        # WindowFromPoint query that backs read_window_class_at lands on
+        # our own Qt windows instead of the real target. Hide / pass-
+        # through both before the class read so the allowlist check sees
+        # the target window's actual class. The UIA InvokePattern path
+        # doesn't move the cursor at all, but `ControlFromPoint` still
+        # walks the same hit-test tree, so keeping Doro transparent
+        # during the invoke is belt-and-suspenders.
         if self._warning_overlay is not None:
             try:
                 self._warning_overlay.end()
@@ -359,6 +382,8 @@ class AutomationManager:
         except Exception:  # pragma: no cover - defensive
             logger.exception("set_mouse_transparent(True) failed")
 
+        class_name: Optional[str] = None
+        invoke_ok = False
         try:
             class_name = self._backend.read_window_class_at(cx, cy)
             print(
@@ -373,10 +398,29 @@ class AutomationManager:
                 )
                 return
 
+            # Cursor-free click via UIA InvokePattern. The clicker returns
+            # False whenever the element under (cx, cy) doesn't expose an
+            # InvokePattern (canvas, custom widgets) — we surface that as
+            # NOT_INVOCABLE rather than falling back to a synthetic mouse
+            # event, because the whole point of this path is that the
+            # user's OS cursor never moves.
+            if self._a11y_clicker is None:
+                self._finalize(
+                    ClickOutcome.NOT_INVOCABLE,
+                    f"no a11y clicker wired ({cx},{cy}) class={class_name!r}",
+                )
+                return
             try:
-                self._backend.click_left(cx, cy)
-            except Exception:  # pragma: no cover - backend failure should not strand the lock
-                logger.exception("click_left raised")
+                invoke_ok = self._a11y_clicker.try_invoke_at(cx, cy)
+            except Exception:  # pragma: no cover - clicker should not raise
+                logger.exception("a11y clicker.try_invoke_at raised")
+                invoke_ok = False
+            if not invoke_ok:
+                self._finalize(
+                    ClickOutcome.NOT_INVOCABLE,
+                    f"no InvokePattern at ({cx},{cy}) class={class_name!r}",
+                )
+                return
         finally:
             try:
                 self._window.set_mouse_transparent(False)
@@ -386,7 +430,7 @@ class AutomationManager:
         self._last_click_at = self._clock()
         self._finalize(
             ClickOutcome.FIRED,
-            f"click@({cx},{cy}) source={source} class={class_name!r}",
+            f"invoke@({cx},{cy}) source={source} class={class_name!r}",
         )
 
     def _finalize(self, outcome: ClickOutcome, detail: str) -> None:

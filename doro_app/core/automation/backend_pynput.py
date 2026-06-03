@@ -1,7 +1,10 @@
 """Real input backend, layered over pynput.
 
-Only `pynput.mouse` (for synthesizing a single left click) and
-`pynput.keyboard.Listener` (for the Esc kill-switch) are touched.
+`pynput.mouse.Listener` (for the left-button-state observer used by drag
+grace) and `pynput.keyboard.Listener` (for the Esc kill-switch) are
+touched. Synthetic mouse clicking moved out of this backend — production
+now fires via UIA InvokePattern (see `core/a11y/clicker.py`) so the
+user's OS cursor does not move on every automated click.
 
 The Listener is filtered to Esc on the very first line of its callback;
 this is by design and is part of the privacy contract documented in the
@@ -35,7 +38,9 @@ class PynputBackend:
                 "pynput is required for automation; install with: pip install pynput"
             ) from exc
 
-        self._mouse_controller = _mouse.Controller()
+        # Mouse controller is no longer used for synthetic clicks (UIA
+        # InvokePattern handles that) — kept import-only for the mouse
+        # button-state listener installed below.
         self._Button = _mouse.Button
         self._Key = _keyboard.Key
         self._Listener = _keyboard.Listener
@@ -46,10 +51,6 @@ class PynputBackend:
         self._install_mouse_state_listener(_mouse)
 
     # ------------------------------------------------------------------ InputBackendPort
-
-    def click_left(self, x: int, y: int) -> None:
-        self._mouse_controller.position = (int(x), int(y))
-        self._mouse_controller.click(self._Button.left, 1)
 
     def read_window_class_at(self, x: int, y: int) -> Optional[str]:
         from .window_class import read_at

@@ -113,6 +113,24 @@ class A11yService:
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
 
+    def invoke_at_point(self, x: int, y: int) -> bool:
+        """Fire the UIA InvokePattern on the element under physical (x, y).
+
+        Self-gated by ``automation.a11y_enabled``: when a11y reads are
+        turned off the click path can't use this either (consistent with
+        the rest of the surface). Returns True iff the backend reports a
+        successful invoke; the manager treats False as NOT_INVOCABLE and
+        does **not** fall back to a synthetic mouse event (which would
+        move the user's cursor).
+        """
+        if not self._config.automation.a11y_enabled:
+            return False
+        try:
+            return self._backend.invoke_at_physical_point(int(x), int(y))
+        except Exception as exc:  # pragma: no cover - backend should not raise
+            logger.debug(f"a11y backend invoke raised: {exc}")
+            return False
+
     def bounds_at_physical_point(
         self, x: int, y: int
     ) -> Optional[tuple[int, int, int, int]]:

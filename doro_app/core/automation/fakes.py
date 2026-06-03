@@ -12,10 +12,14 @@ from typing import Callable, Optional
 
 
 class FakeInputBackend:
-    """In-memory recorder for the :class:`InputBackendPort` protocol."""
+    """In-memory recorder for the :class:`InputBackendPort` protocol.
+
+    Synthetic clicking is no longer the input backend's responsibility —
+    see :class:`FakeA11yClicker` (records ``invoke_calls``) for the
+    cursor-free UIA InvokePattern path that replaced ``click_left``.
+    """
 
     def __init__(self) -> None:
-        self.click_calls: list[tuple[int, int]] = []
         self.window_class_at: dict[tuple[int, int], str] = {}
         self.window_class_default: Optional[str] = None
         self.left_button_pressed: bool = False
@@ -23,9 +27,6 @@ class FakeInputBackend:
         self.shutdown_called: bool = False
 
     # InputBackendPort ---------------------------------------------------
-
-    def click_left(self, x: int, y: int) -> None:
-        self.click_calls.append((int(x), int(y)))
 
     def read_window_class_at(self, x: int, y: int) -> Optional[str]:
         key = (int(x), int(y))
@@ -51,6 +52,25 @@ class FakeInputBackend:
     def press_esc(self) -> None:
         if self.esc_callback is not None:
             self.esc_callback()
+
+
+class FakeA11yClicker:
+    """In-memory recorder for the :class:`A11yClickerPort` protocol.
+
+    Replaces the legacy ``FakeInputBackend.click_calls`` assertion path —
+    tests now assert against ``invoke_calls`` to verify the cursor-free
+    click fired at the expected coordinate. Set ``should_succeed=False``
+    to simulate "no InvokePattern" (canvas / custom widget) and exercise
+    the :data:`ClickOutcome.NOT_INVOCABLE` path.
+    """
+
+    def __init__(self, *, should_succeed: bool = True) -> None:
+        self.invoke_calls: list[tuple[int, int]] = []
+        self.should_succeed = bool(should_succeed)
+
+    def try_invoke_at(self, x: int, y: int) -> bool:
+        self.invoke_calls.append((int(x), int(y)))
+        return self.should_succeed
 
 
 class FakeAutomationWindow:

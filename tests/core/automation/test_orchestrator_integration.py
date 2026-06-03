@@ -51,6 +51,8 @@ def stub_state_service():
 
 @pytest.fixture
 def automation_setup():
+    from doro_app.core.automation.fakes import FakeA11yClicker
+
     backend = FakeInputBackend()
     backend.set_window_class("Firefox")
     window = FakeAutomationWindow(foot_logical=(640, 480), foot_physical=(640, 480))
@@ -60,18 +62,21 @@ def automation_setup():
     coord = MagicMock()
     coord.begin.return_value = True
     coord.end.return_value = True
+    clicker = FakeA11yClicker(should_succeed=True)
 
     manager = AutomationManager(
         config_manager=config,
         window=window,
         input_backend=backend,
         transition_coordinator=coord,
+        a11y_clicker=clicker,
         schedule=scheduler,
         clock=clock,
     )
     return {
         "manager": manager,
         "backend": backend,
+        "clicker": clicker,
         "window": window,
         "scheduler": scheduler,
         "clock": clock,
@@ -94,10 +99,10 @@ def test_mouse_click_bracket_routes_to_automation_manager(
     orchestrator._handle_actions_in_text(response)
 
     # Wind-up was scheduled; click hasn't fired yet.
-    assert automation_setup["backend"].click_calls == []
+    assert automation_setup["clicker"].invoke_calls == []
     automation_setup["scheduler"].flush()
 
-    assert automation_setup["backend"].click_calls == [(640, 480)]
+    assert automation_setup["clicker"].invoke_calls == [(640, 480)]
     assert automation_setup["manager"].outcomes[-1] == ClickOutcome.FIRED
 
 
@@ -116,7 +121,7 @@ def test_coordinate_form_is_rejected_silently(
     orchestrator._handle_actions_in_text(response)
     # Even if we flush the scheduler, nothing was ever scheduled.
     automation_setup["scheduler"].flush()
-    assert automation_setup["backend"].click_calls == []
+    assert automation_setup["clicker"].invoke_calls == []
 
 
 def test_orchestrator_without_automation_drops_bracket_quietly(
@@ -145,4 +150,4 @@ def test_unsupported_mouse_actions_never_fire(
     for bad in ["[mouse:double_click]", "[mouse:drag;dx=10;dy=10]", "[mouse:scroll;dy=120]"]:
         orchestrator._handle_actions_in_text(bad)
     automation_setup["scheduler"].flush()
-    assert automation_setup["backend"].click_calls == []
+    assert automation_setup["clicker"].invoke_calls == []

@@ -1,8 +1,12 @@
 """Port (dependency-inversion interface) for the automation subsystem.
 
-`InputBackendPort` is what the manager calls into to fire synthetic events
-and read OS-level state (foreground window class). Real implementations
-live in `backend_pynput.py`; tests substitute `FakeInputBackend`.
+`InputBackendPort` is what the manager calls into to read OS-level state
+(foreground window class, Esc key, mouse-button state). Real
+implementations live in `backend_pynput.py`; tests substitute
+`FakeInputBackend`. The click-firing port lives separately as
+`A11yClickerPort` (`core/a11y/clicker.py`) because production fires
+clicks through UI Automation rather than a synthetic mouse event — this
+keeps the user's OS cursor stationary.
 
 `AutomationWindowPort` is the minimal subset of `QtWidgets.QWidget` the
 manager needs from the Doro window. Kept narrow so headless tests can
@@ -15,10 +19,12 @@ from typing import Optional, Protocol
 
 
 class InputBackendPort(Protocol):
-    """Synthetic-input backend (pynput in production)."""
+    """OS-level input observer + window-class sampler.
 
-    def click_left(self, x: int, y: int) -> None:
-        """Synthesize a single left-button click at OS-level physical (x, y)."""
+    Production wires this to pynput (Esc key + left-button state) +
+    platform window-class helpers. The synthetic-click responsibility
+    has moved to `A11yClickerPort` (UIA InvokePattern, cursor-free).
+    """
 
     def read_window_class_at(self, x: int, y: int) -> Optional[str]:
         """Return the window-class string at the given screen point, or None.
@@ -64,7 +70,7 @@ class AutomationWindowPort(Protocol):
         Used by the manager to safety-clamp the click coordinate when it
         comes from `click_target_provider` (which lives in physical space
         like the a11y tree). A stale or miscomputed target should not
-        flow through to `click_left` as an off-screen coord.
+        flow through to the UIA invoke path as an off-screen coord.
         """
 
 

@@ -93,6 +93,42 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         for child in children:
             self._walk(child, out, counter)
 
+    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+        """UIA InvokePattern fire-and-forget at the screen point.
+
+        Used by `AutomationManager` to fire a click without moving the
+        OS cursor. ``ControlFromPoint`` walks the UIA tree to find the
+        leaf at (x, y); ``GetInvokePattern`` is None for elements that
+        don't expose Invoke (canvas / custom widgets) — in that case we
+        return False so the manager surfaces NOT_INVOCABLE rather than
+        silently doing nothing.
+        """
+        try:
+            import uiautomation as auto
+        except Exception as exc:
+            logger.debug(f"uiautomation unavailable for invoke: {exc}")
+            return False
+        try:
+            control = auto.ControlFromPoint(int(x), int(y))
+        except Exception as exc:
+            logger.debug(f"UIA ControlFromPoint({x},{y}) raised: {exc}")
+            return False
+        if control is None:
+            return False
+        try:
+            pattern = control.GetInvokePattern()
+        except Exception as exc:
+            logger.debug(f"UIA GetInvokePattern raised: {exc}")
+            return False
+        if pattern is None:
+            return False
+        try:
+            pattern.Invoke()
+            return True
+        except Exception as exc:
+            logger.debug(f"UIA Invoke() raised: {exc}")
+            return False
+
     def _to_element(self, control, role: str) -> Optional[A11yElement]:
         try:
             rect = control.BoundingRectangle

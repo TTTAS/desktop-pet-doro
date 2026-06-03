@@ -22,11 +22,14 @@ class FakeA11yBackend:
         *,
         delay: float = 0.0,
         return_none: bool = False,
+        invoke_succeeds: bool = True,
     ) -> None:
         self.elements = elements or []
         self.delay = delay
         self.return_none = return_none
+        self.invoke_succeeds = invoke_succeeds
         self.read_calls: list[int] = []
+        self.invoke_calls: list[tuple[int, int]] = []
 
     def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
         self.read_calls.append(int(handle))
@@ -35,3 +38,7 @@ class FakeA11yBackend:
         if self.return_none:
             return None
         return list(self.elements)
+
+    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+        self.invoke_calls.append((int(x), int(y)))
+        return bool(self.invoke_succeeds)

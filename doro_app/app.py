@@ -560,6 +560,18 @@ class DoroApp:
             ClickWarningOverlay(), self.window
         )
 
+        # Cursor-free click backend. Production uses UIA's InvokePattern
+        # via the already-built A11yService; on non-Windows (where the
+        # service runs against the NullA11yBackend) the clicker returns
+        # False and clicks surface as NOT_INVOCABLE rather than moving
+        # the user's cursor.
+        from .core.a11y import A11yClickerAdapter, NullA11yClicker
+        import sys as _sys
+        if _sys.platform == "win32" and self._a11y is not None:
+            a11y_clicker = A11yClickerAdapter(self._a11y)
+        else:
+            a11y_clicker = NullA11yClicker()
+
         manager = AutomationManager(
             config_manager=self._config_manager,
             window=window_port,
@@ -569,6 +581,7 @@ class DoroApp:
             warning_overlay=overlay_adapter,
             bounds_provider=self._click_target_bounds,
             click_target_provider=lambda: self._movement.last_target_physical,
+            a11y_clicker=a11y_clicker,
             on_esc_extra=self._cancel_dispatcher_on_esc,
             schedule=_schedule,
         )

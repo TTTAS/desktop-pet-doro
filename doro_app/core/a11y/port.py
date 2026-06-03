@@ -14,7 +14,8 @@ from .models import A11yElement
 
 
 class A11yBackendPort(Protocol):
-    """Reads interactable elements from a single focused window."""
+    """Reads interactable elements from a single focused window, and fires
+    UI Automation InvokePattern actions for cursor-free clicks."""
 
     def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
         """Return the window's interactable elements, or None if unavailable.
@@ -24,4 +25,15 @@ class A11yBackendPort(Protocol):
         empty list ("window has no interactable elements"). Implementations
         MUST read only roles, names, geometry, and (masked) field values —
         never window title or arbitrary content.
+        """
+
+    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+        """Fire the UIA InvokePattern on the element under (x, y).
+
+        Returns True iff an element was found, exposed InvokePattern, and
+        ``Invoke()`` returned without raising. Returns False for every
+        other case (no backend / no element / no pattern / COM error) so
+        the caller can route the click to a NOT_INVOCABLE outcome without
+        falling back to a synthetic mouse event that would move the
+        user's cursor.
         """

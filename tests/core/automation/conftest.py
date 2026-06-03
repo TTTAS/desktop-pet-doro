@@ -13,7 +13,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from doro_app.core.automation.fakes import FakeAutomationWindow, FakeInputBackend
+from doro_app.core.automation.fakes import (
+    FakeA11yClicker,
+    FakeAutomationWindow,
+    FakeInputBackend,
+)
 from doro_app.core.automation.manager import AutomationManager
 
 
@@ -93,6 +97,14 @@ class ClockStub:
 @pytest.fixture
 def fake_backend() -> FakeInputBackend:
     return FakeInputBackend()
+
+
+@pytest.fixture
+def fake_clicker() -> FakeA11yClicker:
+    """Default: pretends the UIA InvokePattern fired successfully. Tests
+    that want to exercise the NOT_INVOCABLE path build their own
+    ``FakeA11yClicker(should_succeed=False)`` instead."""
+    return FakeA11yClicker(should_succeed=True)
 
 
 @pytest.fixture
@@ -178,6 +190,7 @@ def manager(
     config_stub: ConfigManagerStub,
     fake_window: FakeAutomationWindow,
     fake_backend: FakeInputBackend,
+    fake_clicker: FakeA11yClicker,
     coord_stub,
     scheduler: ManualScheduler,
     clock: ClockStub,
@@ -187,6 +200,7 @@ def manager(
         window=fake_window,
         input_backend=fake_backend,
         transition_coordinator=coord_stub,
+        a11y_clicker=fake_clicker,
         schedule=scheduler,
         clock=clock,
     )
