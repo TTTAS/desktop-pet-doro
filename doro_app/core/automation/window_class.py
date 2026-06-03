@@ -59,8 +59,53 @@ def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cov
         return None
     try:
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+        # Bind argtypes/restype for the calls that take or return HWND.
+        # On 64-bit Windows HWND is pointer-sized; without explicit types
+        # ctypes treats them as `int` and truncates. POINT must be
+        # declared so it's passed by value correctly.
+        user32.GetDesktopWindow.restype = wintypes.HWND
+        user32.ChildWindowFromPointEx.argtypes = [
+            wintypes.HWND, wintypes.POINT, wintypes.UINT,
+        ]
+        user32.ChildWindowFromPointEx.restype = wintypes.HWND
+        user32.WindowFromPoint.argtypes = [wintypes.POINT]
+        user32.WindowFromPoint.restype = wintypes.HWND
+        user32.GetClassNameW.argtypes = [
+            wintypes.HWND, wintypes.LPWSTR, ctypes.c_int,
+        ]
+        user32.GetClassNameW.restype = ctypes.c_int
+
+        CWP_SKIPINVISIBLE = 0x0001
+        CWP_SKIPDISABLED = 0x0002
+        CWP_SKIPTRANSPARENT = 0x0004
+
         pt = wintypes.POINT(int(x), int(y))
-        hwnd = user32.WindowFromPoint(pt)
+
+        # `WindowFromPoint` honours neither WS_EX_TRANSPARENT nor invisible
+        # state — it returns the topmost window whose region contains the
+        # point, regardless of hit-test flags. That makes it land on
+        # transparent overlays the user can't even see: Doro itself (which
+        # we add WS_EX_TRANSPARENT to during sampling via
+        # `set_mouse_transparent`) and Win11's Snap Layouts overlay
+        # (`MultitaskingViewFrame`, owned by Explorer, sits on top of
+        # every window's maximize-button region).
+        #
+        # `ChildWindowFromPointEx(desktop, pt, CWP_SKIP*)` walks the
+        # desktop's z-order and skips windows matching the flags. With
+        # CWP_SKIPTRANSPARENT both Doro and Snap Layouts drop out and we
+        # land on the actual target top-level window (Chrome).
+        flags = CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT
+        desktop = user32.GetDesktopWindow()
+        # Desktop client coords coincide with screen coords, so no
+        # ScreenToClient is required for the parent==desktop step.
+        hwnd = user32.ChildWindowFromPointEx(desktop, pt, flags)
+        if not hwnd:
+            # ChildWindowFromPointEx returned NULL — fall back to the
+            # legacy WindowFromPoint so we still produce *some* class
+            # for the allowlist to gate on. This path is most likely
+            # when the click coordinate is genuinely off-screen.
+            hwnd = user32.WindowFromPoint(pt)
         if not hwnd:
             return None
         buf = ctypes.create_unicode_buffer(256)
