@@ -48,6 +48,7 @@ class MenuCallbacks:
     preview_a11y: Callable[[], None]
     toggle_mouse_enabled: Callable[[bool], None]
     simulate_response: Callable[[], None]
+    inspect_position: Callable[[], None]
     quit_app: Callable[[], None]
 
 
@@ -415,6 +416,9 @@ def build_context_menu_content(
     simulate_action = chat_menu.addAction("假傳伺服器回應（測試）")
     simulate_action.setEnabled(not snapshot.is_chat_inflight)
     simulate_action.triggered.connect(callbacks.simulate_response)
+
+    inspect_action = chat_menu.addAction("檢查 Doro 位置（debug）")
+    inspect_action.triggered.connect(callbacks.inspect_position)
 
     menu.addSeparator()
 

@@ -137,6 +137,7 @@ class ContextMenuController:
             preview_a11y=self._preview_a11y,
             toggle_mouse_enabled=self._toggle_mouse_enabled,
             simulate_response=self._simulate_response,
+            inspect_position=self._inspect_position,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
 
@@ -182,6 +183,56 @@ class ContextMenuController:
         ok, message = service.diagnose_foreground_tree()
         title = "Doro 現在看到" if ok else "目前讀不到內容"
         QtWidgets.QMessageBox.information(self._window, title, message)
+
+    def _inspect_position(self) -> None:
+        """Show window/sprite-foot/last-target coordinates for debugging
+        `[move:to;x;y]` landing precision. Result is also copied to clipboard
+        so the user can paste it back to verify foot-vs-target drift."""
+        win = self._window
+        mm = self._core_manager.movement_manager
+        top_left = win.current_position()
+        foot_offset = win.sprite_foot_offset_logical()
+        foot_logical = QtCore.QPoint(
+            top_left.x() + foot_offset.x(),
+            top_left.y() + foot_offset.y(),
+        )
+        screen = win.screen()
+        if screen is not None:
+            from ...core.automation.coordinates import compute_physical_pixel_at
+
+            geom = screen.geometry()
+            foot_phys = compute_physical_pixel_at(
+                (foot_logical.x(), foot_logical.y()),
+                screen_origin_logical=(geom.x(), geom.y()),
+                device_pixel_ratio=screen.devicePixelRatio(),
+            )
+        else:
+            foot_phys = (foot_logical.x(), foot_logical.y())
+
+        last_target = mm.last_target_physical
+        if last_target is not None:
+            dx = foot_phys[0] - last_target[0]
+            dy = foot_phys[1] - last_target[1]
+            delta_str = f"({dx:+d}, {dy:+d})"
+            target_str = f"{last_target[0]}, {last_target[1]}"
+        else:
+            delta_str = "—"
+            target_str = "—"
+
+        msg = (
+            f"window top-left (logical): {top_left.x()}, {top_left.y()}\n"
+            f"sprite foot offset (logical): {foot_offset.x()}, {foot_offset.y()}\n"
+            f"sprite foot (logical): {foot_logical.x()}, {foot_logical.y()}\n"
+            f"sprite foot (physical): {foot_phys[0]}, {foot_phys[1]}\n"
+            f"last [move:to] target (physical): {target_str}\n"
+            f"foot − target: {delta_str}"
+        )
+        clipboard = QtWidgets.QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(msg)
+        QtWidgets.QMessageBox.information(
+            win, "Doro 位置（已複製到剪貼簿）", msg
+        )
 
     def _simulate_response(self) -> None:
         """Prompt for a fake assistant reply and run it through the exact same

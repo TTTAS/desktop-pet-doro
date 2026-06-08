@@ -39,12 +39,20 @@ def _make_manager_with_state_shift(*, shift_dx: int, shift_dy: int):
     state_service.get_default_movement_state.return_value = "walking"
     state_service.get_move_state.return_value = None
     state_service.get_state.return_value = MagicMock()
-    state_service.get_current_state.return_value = MagicMock(key="idle")
     state_service.find_move_states_by_direction.return_value = []
+
+    # Track the "current state" so the revert path in `_finish_movement`
+    # actually fires its `set_state(previous)` (it only fires when the
+    # current key differs from the captured previous one).
+    current_key = {"key": "idle"}
+    state_service.get_current_state = MagicMock(
+        side_effect=lambda: MagicMock(key=current_key["key"])
+    )
 
     def _shift_on_state_change(key, force=False):
         current = window.current_position()
         window.move_window_to(QtCore.QPoint(current.x() + shift_dx, current.y() + shift_dy))
+        current_key["key"] = key
         return True
 
     state_service.set_state = MagicMock(side_effect=_shift_on_state_change)
@@ -72,26 +80,58 @@ class TestAnchorDriftFix:
 
     def test_endpoint_independent_of_state_shift_direction(self):
         """The whole point of the fix: regardless of which way the state
-        change shifts the window, Doro lands at (approximately) the same
-        endpoint when driven by `process_active_movement`."""
-        # Walk to the same target from the same start, varying only the
-        # state-change shift direction (mimics picking a different
-        # walking sprite size per direction).
+        change shifts the window, Doro lands at exactly the same endpoint
+        when driven by `process_active_movement`. With the `_finish_movement`
+        snap-back in place, the final position is `_movement_target`
+        regardless of revert-time shift — exact equality, not approximate."""
         endpoints: list[QtCore.QPoint] = []
         for shift_dx, shift_dy in [(0, 0), (5, -3), (-7, 4)]:
             manager, window, _ = _make_manager_with_state_shift(
                 shift_dx=shift_dx, shift_dy=shift_dy,
             )
             manager.handle_move_bracket("move:to;x=400;y=300", [])
-            # Drive the dt-loop to completion.
             for _ in range(200):
                 manager.process_active_movement(0.05)
                 if not manager.has_active_movement:
                     break
             endpoints.append(window.current_position())
 
-        # All three endpoints should match within a few pixels (the
-        # completion threshold drives sub-pixel rounding).
         for ep in endpoints[1:]:
-            assert abs(ep.x() - endpoints[0].x()) <= 2
-            assert abs(ep.y() - endpoints[0].y()) <= 2
+            assert ep == endpoints[0]
+
+    def test_finish_snaps_back_after_state_revert(self):
+        """On completion, the state-revert in `_finish_movement` triggers the
+        same reposition side-effect as `_start_movement` did. Without the
+        symmetric snap-back, the final foot position drifts by Δ; with it,
+        the window lands exactly on `_movement_target` (the top-left planned
+        in the idle/pre-walk frame, which is the frame we just reverted to)."""
+        manager, window, _ = _make_manager_with_state_shift(shift_dx=11, shift_dy=-7)
+        manager.handle_move_bracket("move:to;x=400;y=300", [])
+        planned_target = manager._movement_target
+        assert planned_target is not None
+        for _ in range(200):
+            manager.process_active_movement(0.05)
+            if not manager.has_active_movement:
+                break
+        assert window.current_position() == planned_target
+
+    def test_finish_does_not_snap_on_cancel(self):
+        """Cancellation (e.g. user drags Doro mid-walk) calls
+        `_finish_movement()` with no `final_position`. The snap-back must NOT
+        run — Doro should stay wherever the cancel left her, not jump back
+        to the original target."""
+        manager, window, _ = _make_manager_with_state_shift(shift_dx=11, shift_dy=-7)
+        manager.handle_move_bracket("move:to;x=400;y=300", [])
+        planned_target = manager._movement_target
+        assert planned_target is not None
+        # Drive a couple of frames so we're partway, then cancel.
+        manager.process_active_movement(0.05)
+        manager.process_active_movement(0.05)
+        pos_before_cancel = window.current_position()
+        manager.cancel_active_movement()
+        # state revert applied its (+11, -7) shift; nothing snapped it away.
+        expected = QtCore.QPoint(
+            pos_before_cancel.x() + 11, pos_before_cancel.y() - 7,
+        )
+        assert window.current_position() == expected
+        assert window.current_position() != planned_target

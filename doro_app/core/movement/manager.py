@@ -398,6 +398,11 @@ class MovementManager:
         if not self._active_movement:
             return
         window = self._window
+        # Caller-supplied final_position marks the completion path (vs cancel,
+        # which passes None). Only the completion path snaps the window back
+        # after state revert — cancellation should leave Doro wherever she was
+        # dragged to.
+        snap_target = final_position
         report = self._movement_pending_report
         if final_position is None:
             final_position = window.current_position()
@@ -415,6 +420,15 @@ class MovementManager:
             current = current_state.key if current_state else None
             if current != self._movement_previous_state:
                 self._state_service.set_state(self._movement_previous_state)
+                # Mirror of `_start_movement`'s snap-back: reverting the state
+                # may resize the sprite and trigger
+                # `_reposition_to_keep_sprite_center`, which shifts the window
+                # to preserve the sprite's screen *centre*. We want the *foot*
+                # to land on the originally targeted pixel; `snap_target` is
+                # the top-left computed against that foot in the pre-walk
+                # (idle) frame, which is the frame we just reverted to.
+                if snap_target is not None:
+                    window.move_window_to(snap_target)
         self._movement_previous_state = None
 
         # Notify completion listeners. Iterate over a snapshot — listeners may
