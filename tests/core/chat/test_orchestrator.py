@@ -370,6 +370,60 @@ class TestControlTagLeak:
         assert "[" not in emitted and "]" not in emitted
 
 
+class TestMouseBracketDeferred:
+    """Mouse brackets must be enqueued behind move brackets in the dispatcher
+    queue, regardless of text order — otherwise a click written before a
+    move bracket would fire immediately, bypassing the wait."""
+
+    def _make_orch_with_dispatcher(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        """Wire a fresh orchestrator with mock action_dispatcher/automation
+        so we can observe the order in which actions land on the queue."""
+        dispatcher = Mock()
+        dispatcher.dispatch = Mock()
+        automation = Mock()
+        schedule = Mock()
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            automation=automation,
+            action_dispatcher=dispatcher,
+            schedule=schedule,
+        )
+        return orch, dispatcher
+
+    def test_click_after_move_keeps_order(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        orch, dispatcher = self._make_orch_with_dispatcher(
+            mock_controller, mock_movement_manager, mock_state_service,
+        )
+        orch._on_request_succeeded(
+            "好！[MOVE:to;x=200;y=100] [mouse:click]", False,
+        )
+        kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
+        assert kinds == ["movement", "click"]
+
+    def test_click_before_move_in_text_still_dispatches_after_move(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        """The defence in depth: even when the LLM puts `[mouse:click]`
+        textually before `[move:to;...]`, the orchestrator defers the click
+        so the dispatcher receives the movement action first. Without this,
+        the click would fire immediately (movement never starts because the
+        action queue head is the click action)."""
+        orch, dispatcher = self._make_orch_with_dispatcher(
+            mock_controller, mock_movement_manager, mock_state_service,
+        )
+        orch._on_request_succeeded(
+            "好！[mouse:click] [MOVE:to;x=200;y=100]", False,
+        )
+        kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
+        assert kinds == ["movement", "click"]
+
+
 class TestSimulateResponse:
     """simulate_response injects text through the real reply pipeline."""
 

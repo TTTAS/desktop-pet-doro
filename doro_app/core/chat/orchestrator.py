@@ -239,11 +239,20 @@ class ChatOrchestrator(QtCore.QObject):
     def _handle_actions_in_text(self, assistant_text: str) -> str:
         cleaned_text, actions = parse_actions_from_text(assistant_text)
         move_reports: list[str] = []
+        # Mouse brackets are queued behind movement brackets in the dispatcher,
+        # so the click can only fire after Doro arrives. But if the LLM emits
+        # `[mouse:click]` BEFORE `[move:to;...]` in the same response, naïve
+        # text-order dispatch would put click first and skip the wait entirely.
+        # Defer all mouse brackets until after the loop so movement brackets
+        # always reach the dispatcher first.
+        from ..automation.parser import parse_mouse_bracket
+        pending_mouse_tokens: list[str] = []
 
         for kind, token in actions:
             if kind == "bracket":
                 # Phase 1c automation: `[mouse:click]` is the only accepted form.
-                if self._handle_mouse_bracket(token):
+                if parse_mouse_bracket(token) is not None:
+                    pending_mouse_tokens.append(token)
                     continue
                 if self._dispatch_move_bracket(token, move_reports):
                     continue
@@ -284,6 +293,11 @@ class ChatOrchestrator(QtCore.QObject):
                 report = self._dispatch_directional_move(direction)
                 if report:
                     move_reports.append(report)
+
+        # All movement brackets (and bare directional commands) are now in
+        # the dispatcher queue; finally enqueue the clicks behind them.
+        for token in pending_mouse_tokens:
+            self._handle_mouse_bracket(token)
 
         if move_reports:
             for report in move_reports:
