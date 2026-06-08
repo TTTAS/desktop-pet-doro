@@ -31,9 +31,6 @@ if TYPE_CHECKING:
 # Movement history size limit
 MAX_MOVE_REPORTS = 50
 
-# Movement threshold for minimum step (pixels)
-MIN_MOVEMENT_STEP = 0.01
-
 
 class MovementManager:
     """Encapsulates movement parsing, execution, and reporting."""
@@ -52,6 +49,13 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
         self._movement_start_pos = QtCore.QPoint()
+        # Floating-point integrator for the window top-left during a walk.
+        # Decouples the per-tick step from integer screen coordinates so
+        # shallow-angle diagonals don't lose the sub-pixel axis to rounding.
+        self._movement_fpos = QtCore.QPointF(0.0, 0.0)
+        # Pre-computed clamped destination so the final frame can snap exactly
+        # to the requested target instead of stopping wherever rounding lands.
+        self._movement_target = QtCore.QPoint()
         self._movement_direction_key: Optional[str] = None
         self._movement_pending_report: Optional[str] = None
         self._movement_previous_state: Optional[str] = None
@@ -257,23 +261,37 @@ class MovementManager:
         velocity = self._movement_velocity
         step_dx = velocity.x() * dt
         step_dy = velocity.y() * dt
-        if step_dx == 0.0 and step_dy == 0.0:
+        step_len = math.hypot(step_dx, step_dy)
+        if step_len == 0.0:
             return
 
         window = self._window
-        current_pos = window.current_position()
-        desired = QtCore.QPoint(round(current_pos.x() + step_dx), round(current_pos.y() + step_dy))
-        clamped = window.clamp_window_position(desired)
-        actual_dx = clamped.x() - current_pos.x()
-        actual_dy = clamped.y() - current_pos.y()
-        window.move_window_to(clamped)
+        # This step would reach or overshoot the destination — snap to the
+        # pre-computed target so we land on the exact requested pixel.
+        if step_len >= self._movement_remaining:
+            window.move_window_to(self._movement_target)
+            self._finish_movement(final_position=self._movement_target)
+            return
 
-        moved_distance = math.hypot(actual_dx, actual_dy)
-        remaining = self._movement_remaining - moved_distance
-        if remaining <= self._repo.defaults.completion_threshold or moved_distance <= MIN_MOVEMENT_STEP:
+        # Integrate in floating point so sub-pixel components survive between
+        # frames. We only round when actually moving the window.
+        self._movement_fpos = QtCore.QPointF(
+            self._movement_fpos.x() + step_dx,
+            self._movement_fpos.y() + step_dy,
+        )
+        desired = self._movement_fpos.toPoint()
+        clamped = window.clamp_window_position(desired)
+        window.move_window_to(clamped)
+        if clamped != desired:
+            # Hit a screen-edge clamp — can't progress further along this
+            # vector, finish in place rather than dragging on against the wall.
             self._finish_movement(final_position=clamped)
-        else:
-            self._movement_remaining = remaining
+            return
+
+        self._movement_remaining -= step_len
+        if self._movement_remaining <= self._repo.defaults.completion_threshold:
+            window.move_window_to(self._movement_target)
+            self._finish_movement(final_position=self._movement_target)
 
     def _handle_target_move(self, params: dict, reports: list) -> bool:
         """Handle `[move:to;x=X;y=Y]` — walk Doro to a target.
@@ -491,6 +509,15 @@ class MovementManager:
         post_state_pos = window.current_position()
         if post_state_pos != self._movement_start_pos:
             window.move_window_to(self._movement_start_pos)
+
+        # Seed the floating-point integrator at the real start, and pre-compute
+        # the clamped destination so `process_active_movement` can snap to it
+        # on completion instead of stopping at whatever pixel rounding lands on.
+        self._movement_fpos = QtCore.QPointF(self._movement_start_pos)
+        self._movement_target = window.clamp_window_position(QtCore.QPoint(
+            round(self._movement_start_pos.x() + unit_x * distance),
+            round(self._movement_start_pos.y() + unit_y * distance),
+        ))
         current_state_obj = self._state_service.get_current_state()
         current_state = current_state_obj.key if current_state_obj else None
         self._active_movement = MovementRequest(

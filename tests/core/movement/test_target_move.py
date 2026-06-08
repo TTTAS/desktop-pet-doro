@@ -7,6 +7,7 @@ We exercise `MovementManager.handle_move_bracket` directly with a real
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -166,4 +167,78 @@ class TestSpriteFootOffset:
         assert manager.has_active_movement is True
         assert "位置 170, 130" in (report or "")
 
+
+class TestMovementIntegrationPrecision:
+    """Regression tests for the float-integrator + target-snap rewrite of
+    `process_active_movement`. The previous integer-feedback loop dropped
+    sub-pixel components on shallow diagonals (banker's rounding pinned the
+    short axis to 0) and stopped at whatever pixel the threshold happened to
+    land on — symptom: Doro stopped a few pixels off, and shallow diagonals
+    looked jagged instead of tracing the true angle."""
+
+    @staticmethod
+    def _drive_to_completion(manager, max_ticks: int = 2000, dt: float = 0.016):
+        for _ in range(max_ticks):
+            if not manager.has_active_movement:
+                return
+            manager.process_active_movement(dt)
+        raise AssertionError("movement did not complete within max_ticks")
+
+    def test_shallow_diagonal_lands_exactly_on_target(self):
+        # Foot offset is (50, 99) for a 100×100 window with the default fake.
+        # Foot target (800, 130) → top-left target (750, 31). Starting at
+        # (0, 0) gives a shallow diagonal (dx=750, dy=31) — the case where
+        # the old integer-feedback loop pinned the y-axis to 0.
+        manager, window = _make_manager(origin=(0, 0))
+        manager.apply_target_move(800, 130)
+        assert manager.has_active_movement is True
+
+        self._drive_to_completion(manager)
+
+        assert window.current_position() == QtCore.QPoint(750, 31)
+
+    def test_shallow_diagonal_tracks_true_angle(self):
+        # Drive a shallow diagonal and sample positions along the way —
+        # every sample should sit within 1px of the start→target line. The
+        # old loop would keep y at 0 for most of the walk, blowing past
+        # this bound.
+        manager, window = _make_manager(origin=(0, 0))
+        manager.apply_target_move(800, 130)
+        target = QtCore.QPointF(750, 31)  # matches the test above
+        start = QtCore.QPointF(0, 0)
+        # Line direction (normalised) and perpendicular distance helper.
+        dx, dy = target.x() - start.x(), target.y() - start.y()
+        line_len = math.hypot(dx, dy)
+        nx, ny = -dy / line_len, dx / line_len  # unit normal
+
+        max_perp = 0.0
+        for _ in range(2000):
+            if not manager.has_active_movement:
+                break
+            manager.process_active_movement(0.016)
+            pos = window.current_position()
+            perp = abs((pos.x() - start.x()) * nx + (pos.y() - start.y()) * ny)
+            max_perp = max(max_perp, perp)
+        assert max_perp <= 1.0, f"path drifted {max_perp:.2f}px off the straight line"
+
+    def test_axis_aligned_move_lands_exactly(self):
+        # Pure horizontal — should still hit the exact target (the old loop
+        # also got this right; this guards against regression in the
+        # rewrite's clamping/finalisation path).
+        manager, window = _make_manager(origin=(0, 0))
+        manager.apply_target_move(600, 99)  # foot y=99 → top-left y=0
+        self._drive_to_completion(manager)
+        assert window.current_position() == QtCore.QPoint(550, 0)
+
+    def test_target_clamped_to_edge_finishes_cleanly(self):
+        # Clamp rect ends at x=1920, so a target past it gets clamped to
+        # the right edge. Movement should reach the edge and stop, not
+        # spin forever trying to push past the wall.
+        manager, window = _make_manager(origin=(0, 0), clamp=(0, 0, 1920, 1080))
+        manager.apply_target_move(99999, 99)
+        self._drive_to_completion(manager)
+        end = window.current_position()
+        # QRect(0,0,1920,1080).right() == 1919 — the fake clamps to that.
+        assert end.x() == 1919
+        assert manager.has_active_movement is False
 
