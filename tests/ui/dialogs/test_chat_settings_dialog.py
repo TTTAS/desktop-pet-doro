@@ -64,18 +64,41 @@ class _StubConfigManager:
 
 
 class _StubCoreManager:
-    def __init__(self, orchestrator, config_manager, a11y_service=None):
+    def __init__(
+        self,
+        orchestrator,
+        config_manager,
+        a11y_service=None,
+        automation_manager=None,
+    ):
         self.chat_orchestrator = orchestrator
         self.config_manager = config_manager
         self.a11y_service = a11y_service
+        self.automation_manager = automation_manager
 
 
-def _make_dialog(qtbot, simulate_return="", a11y_enabled=False, a11y_service=None):
+def _make_dialog(
+    qtbot,
+    simulate_return="",
+    a11y_enabled=False,
+    a11y_service=None,
+    automation_manager=None,
+    mouse_enabled=False,
+):
     from doro_app.ui.dialogs.chat_settings_dialog import ChatSettingsDialog
 
     orch = _StubOrchestrator(simulate_return=simulate_return)
-    config = _StubConfigManager(a11y_enabled=a11y_enabled)
-    dialog = ChatSettingsDialog(_StubCoreManager(orch, config, a11y_service))
+    config = _StubConfigManager(
+        a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled
+    )
+    dialog = ChatSettingsDialog(
+        _StubCoreManager(
+            orch,
+            config,
+            a11y_service,
+            automation_manager=automation_manager,
+        )
+    )
     qtbot.addWidget(dialog)
     return dialog, orch, config
 
@@ -130,6 +153,35 @@ def test_save_persists_a11y_toggle(qtbot):
         mouse_enabled=False,
     )
     config.save.assert_called_once()
+
+
+def test_save_re_enabling_mouse_resets_kill_switch(qtbot):
+    """Re-ticking mouse_enabled must clear a previously engaged kill-switch.
+
+    Without this, three Esc presses + an unrelated re-save would leave
+    the manager silently dropping every click until the next app restart.
+    """
+    automation = Mock()
+    dialog, _, _ = _make_dialog(
+        qtbot, mouse_enabled=False, automation_manager=automation
+    )
+    dialog._mouse_enabled_checkbox.setChecked(True)
+
+    dialog._on_save()
+
+    automation.reset_kill_switch.assert_called_once()
+
+
+def test_save_keeping_mouse_enabled_does_not_reset_kill_switch(qtbot):
+    """Idempotent saves shouldn't re-arm — only the False→True edge does."""
+    automation = Mock()
+    dialog, _, _ = _make_dialog(
+        qtbot, mouse_enabled=True, automation_manager=automation
+    )
+    # No checkbox change; just save again.
+    dialog._on_save()
+
+    automation.reset_kill_switch.assert_not_called()
 
 
 def test_save_persists_share_input_values_when_a11y_on(qtbot):

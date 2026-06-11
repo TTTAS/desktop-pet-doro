@@ -359,6 +359,7 @@ class ChatSettingsDialog(FramelessDialog):
         cm.set_stop_tokens(tokens)
 
         config = self._core.config_manager
+        previous_mouse_enabled = config.automation.mouse_enabled
         a11y_enabled = self._a11y_checkbox.isChecked()
         a11y_share_input_values = (
             a11y_enabled and self._a11y_share_values_checkbox.isChecked()
@@ -373,5 +374,16 @@ class ChatSettingsDialog(FramelessDialog):
 
         if a11y_enabled and self._core.a11y_service is not None:
             self._core.a11y_service.clear_session_blacklist()
+
+        # Re-arm the kill-switch when the user deliberately re-enables
+        # the mouse path. Without this, three accidental Esc presses
+        # would silently disable clicking for the rest of the session
+        # even after the checkbox is re-ticked.
+        if (
+            mouse_enabled
+            and not previous_mouse_enabled
+            and self._core.automation_manager is not None
+        ):
+            self._core.automation_manager.reset_kill_switch()
 
         self.accept()

@@ -241,9 +241,16 @@ class AutomationManager:
         """
         # Order: kill-switch beats config check, since kill-switch flips
         # mouse_enabled=False as a side effect and we want the more specific
-        # outcome reported.
+        # outcome reported. Exception: if the user has flipped mouse_enabled
+        # back on (settings dialog persisted True) we treat that as a
+        # deliberate re-enable and silently clear the kill-switch — without
+        # this, re-ticking the checkbox would *look* effective in the UI
+        # while every click stayed silently dropped until restart.
         if self._kill_switch_engaged:
-            return self._record(ClickOutcome.KILL_SWITCH, "kill-switch engaged")
+            if self._config.automation.mouse_enabled:
+                self.reset_kill_switch()
+            else:
+                return self._record(ClickOutcome.KILL_SWITCH, "kill-switch engaged")
 
         if not self._config.automation.mouse_enabled:
             return self._record(ClickOutcome.DISABLED, "mouse_enabled=False")
@@ -540,6 +547,34 @@ class AutomationManager:
             logger.exception("Failed to persist kill-switch state to config")
         if self._pending is not None:
             self._abort_pending = True
+
+    def reset_kill_switch(self) -> None:
+        """Re-arm the manager after a kill-switch engagement.
+
+        Called by the settings dialog when the user re-ticks
+        ``mouse_enabled``; also called from inside ``execute_click`` as
+        a self-heal when config says enabled but the flag is still True
+        (race between the dialog save and the next click).
+        """
+        if self._kill_switch_engaged:
+            logger.info("Kill-switch reset by user re-enable")
+        self._kill_switch_engaged = False
+        self._esc_press_times = []
+
+    def cancel_pending_click(self, reason: str = "drag") -> bool:
+        """Abort an in-flight wind-up without triggering kill-switch logic.
+
+        Used by the drag handler in ``DoroApp`` so the click that was
+        already past the dispatcher (running in the manager's wind-up)
+        also unwinds — otherwise the timer would still fire and click
+        at the post-drag foot position. Returns True if a wind-up was
+        cancelled, False if there was nothing in flight.
+        """
+        if self._pending is None:
+            return False
+        self._abort_pending = True
+        logger.info(f"In-flight click cancelled (reason={reason})")
+        return True
 
     # ------------------------------------------------------------------ Helpers
 

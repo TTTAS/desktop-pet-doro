@@ -72,6 +72,7 @@ class CoreManager(QtCore.QObject):
         transition_player: TransitionPlayer,
         config_manager: ConfigManager,
         a11y_service=None,
+        automation_manager=None,
     ):
         """
         Initialize CoreManager with all business logic components.
@@ -100,6 +101,7 @@ class CoreManager(QtCore.QObject):
         self._transition_player = transition_player
         self._config_manager = config_manager
         self._a11y_service = a11y_service
+        self._automation_manager = automation_manager
 
         # Track previous state for transition detection
         self._previous_state_key: str | None = None
@@ -230,6 +232,15 @@ class CoreManager(QtCore.QObject):
     def a11y_service(self):
         """Get the A11yService (read-only access); may be None."""
         return self._a11y_service
+
+    @property
+    def automation_manager(self):
+        """Get the AutomationManager (read-only access); may be None.
+
+        Exposed so the settings dialog can reset the kill-switch when the
+        user re-enables ``mouse_enabled`` without restarting Doro.
+        """
+        return self._automation_manager
 
     @property
     def movement_manager(self) -> MovementManager:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from PySide6 import QtCore, QtWidgets
+
 from .bootstrap import BootstrappedDependencies, bootstrap_environment
 from .constants import (
     BUBBLE_AUTO_HIDE_MS,
@@ -185,6 +187,7 @@ class DoroApp:
             transition_player=self._transition_player,
             config_manager=self._config_manager,
             a11y_service=self._a11y,
+            automation_manager=self._automation,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -208,6 +211,14 @@ class DoroApp:
         saved_state_key = self._config_manager.app.current_state
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
+
+        # Quit-time teardown: stop the pynput listener thread, the
+        # a11y UIA worker pool, and the foreground-window poller before
+        # the Qt event loop unwinds. A hung UIA read would otherwise
+        # pin the process until the OS reaped it.
+        qt_app = QtWidgets.QApplication.instance()
+        if qt_app is not None:
+            qt_app.aboutToQuit.connect(self._on_about_to_quit)
 
     def _connect_business_to_ui(self):
         """Translate domain events to UI operations (Application Layer responsibility)."""
@@ -597,21 +608,61 @@ class DoroApp:
         return manager
 
     def _on_doro_dragged(self) -> None:
-        """User dragged Doro — kill any active movement + queued click.
+        """User dragged Doro — kill any in-flight click, active movement,
+        and queued click.
 
-        Order matters: cancelling the dispatcher's current action first
-        runs `MovementWaitPhase.cancel()`, which unsubscribes from the
-        MovementManager's completion listeners. The subsequent
-        `cancel_active_movement()` then fires its listener callbacks with
-        no subscribers attached, so it can't accidentally advance the
-        already-cancelled action chain. `cancel_current` also clears the
-        rest of the queue (the trailing `[mouse:click]`), preventing the
-        click from firing at the post-drag location.
+        Three layers can hold a "click is coming" promise; all three
+        must be torn down or the click ends up at the post-drag foot:
+
+        1. AutomationManager's wind-up timer (if a `[mouse:click]` was
+           already in flight when the drag started). `cancel_pending_click`
+           sets `_abort_pending=True` so the timer's expiry path finalises
+           as ESC_ABORT instead of firing.
+        2. The action dispatcher's current MovementAction
+           (`MovementWaitPhase`). `cancel_current` runs `phase.cancel()`,
+           which unsubscribes from MovementManager's completion listeners.
+        3. Any queued ClickAction tail. `cancel_current` clears the
+           queue, so the post-movement click doesn't get picked up.
+
+        Order matters for #2 vs the subsequent `cancel_active_movement`:
+        dispatcher cancel runs first so when MovementManager fires its
+        listeners during shutdown, no one is subscribed any more — that
+        prevents the cancelled action from being inadvertently advanced.
         """
+        if self._automation is not None:
+            self._automation.cancel_pending_click("drag")
         dispatcher = getattr(self, "_action_dispatcher", None)
         if dispatcher is not None:
             dispatcher.cancel_current("drag")
         self._movement.cancel_active_movement()
+
+    def _on_about_to_quit(self) -> None:
+        """Tear down background workers so the process can exit cleanly.
+
+        AutomationManager owns the pynput listener thread; A11yService
+        owns the UIA worker pool; ForegroundTracker owns its own poll
+        timer. Without these calls, a hung UIA read can pin the process
+        until the OS reaps it.
+        """
+        from .utils.logger import get_logger as _gl
+        logger = _gl(__name__)
+        # (subsystem, attribute-on-self, method-name-on-subsystem)
+        shutters = [
+            ("automation", "_automation", "shutdown"),
+            ("a11y", "_a11y", "shutdown"),
+            ("foreground_tracker", "_fg_tracker", "stop"),
+        ]
+        for label, attr, method in shutters:
+            obj = getattr(self, attr, None)
+            if obj is None:
+                continue
+            stop = getattr(obj, method, None)
+            if not callable(stop):
+                continue
+            try:
+                stop()
+            except Exception:  # pragma: no cover - shutdown is best-effort
+                logger.exception(f"{label} shutdown raised")
 
     def _cancel_dispatcher_on_esc(self) -> None:
         """Forward Esc to the ActionDispatcher so any queued click or

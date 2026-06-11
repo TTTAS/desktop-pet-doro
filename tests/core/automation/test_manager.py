@@ -337,6 +337,33 @@ class TestEscAbort:
         assert manager.outcomes[-1] == ClickOutcome.ABORTED_BY_ESC
         coord_stub.end.assert_called_once()
 
+    def test_drag_cancels_in_flight_click(
+        self, fake_clicker, manager, fake_backend, scheduler, coord_stub
+    ):
+        """User drags Doro while a click is in wind-up.
+
+        Without `cancel_pending_click`, the wind-up timer continues, the
+        manager falls back to the post-drag foot position, and the
+        click fires somewhere the user didn't intend. With it, the
+        in-flight click aborts the same way Esc would (just without
+        bumping the kill-switch press count).
+        """
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+
+        # Drag interrupts mid-wind-up.
+        cancelled = manager.cancel_pending_click("drag")
+        scheduler.flush()
+
+        assert cancelled is True
+        assert fake_clicker.invoke_calls == []
+        assert manager.outcomes[-1] == ClickOutcome.ABORTED_BY_ESC
+        # Drag must NOT have bumped the Esc-counter towards kill-switch.
+        assert manager._esc_press_times == []
+
+    def test_cancel_pending_click_returns_false_when_idle(self, manager):
+        assert manager.cancel_pending_click("drag") is False
+
 
 class TestKillSwitch:
     def test_three_esc_in_window_engages_kill_switch(
@@ -376,6 +403,46 @@ class TestKillSwitch:
         clock.advance(5.0)  # well beyond the rolling window
         fake_backend.press_esc()
 
+        assert manager.is_kill_switch_engaged is False
+
+    def test_reset_kill_switch_re_arms_manager(
+        self, manager, fake_backend, config_stub, clock
+    ):
+        """The settings dialog can re-arm clicking without an app restart."""
+        # Engage by triple-Esc.
+        fake_backend.press_esc()
+        clock.advance(0.1)
+        fake_backend.press_esc()
+        clock.advance(0.1)
+        fake_backend.press_esc()
+        assert manager.is_kill_switch_engaged is True
+
+        # Simulate the user re-ticking mouse_enabled in the settings dialog.
+        config_stub.update_automation(mouse_enabled=True)
+        manager.reset_kill_switch()
+
+        assert manager.is_kill_switch_engaged is False
+        # Next click goes through (provisionally accepted as FIRED).
+        assert manager.execute_click() == ClickOutcome.FIRED
+
+    def test_execute_click_self_heals_kill_switch_when_config_says_enabled(
+        self, manager, config_stub, clock
+    ):
+        """Race-protection self-heal.
+
+        If config got persisted as mouse_enabled=True (settings dialog
+        wrote it) but the manager's kill-switch flag was never cleared
+        (e.g. dialog couldn't reach the manager), the next click
+        observation should clear the flag instead of dropping silently.
+        """
+        # Engage kill-switch directly.
+        manager._kill_switch_engaged = True
+        # Make sure config says enabled (the dialog already persisted it).
+        config_stub.update_automation(mouse_enabled=True)
+
+        outcome = manager.execute_click()
+
+        assert outcome == ClickOutcome.FIRED
         assert manager.is_kill_switch_engaged is False
 
     def test_esc_marshal_runs_callback_on_marshalled_thread(
