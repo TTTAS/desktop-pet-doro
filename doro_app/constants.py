@@ -194,6 +194,13 @@ A11Y_READ_TIMEOUT_SECONDS = 0.8
 # chat path), so it can wait long enough to actually finish a large tree walk.
 A11Y_PREVIEW_TIMEOUT_SECONDS = 3.0
 
+# UIA `Invoke()` can block until the target action completes (e.g. the
+# clicked button opens a modal); without a timeout that would freeze
+# the Qt main thread. The invoke is dispatched to the same executor
+# the reads use, so an over-budget invoke is dropped as NOT_INVOCABLE
+# rather than hanging the UI.
+A11Y_INVOKE_TIMEOUT_SECONDS = 2.0
+
 # Consecutive read timeouts for one window class before it is added to the
 # session-local blacklist (so the LLM stops stalling every turn).
 A11Y_TIMEOUT_BLACKLIST_THRESHOLD = 3

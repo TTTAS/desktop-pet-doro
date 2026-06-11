@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from doro_app.constants import (
+    A11Y_INVOKE_TIMEOUT_SECONDS,
     A11Y_READ_TIMEOUT_SECONDS,
     A11Y_TIMEOUT_BLACKLIST_THRESHOLD,
 )
@@ -249,6 +250,35 @@ class TestTimeout:
         svc._timeout_counts["app"] = 2
         svc.read_foreground_tree()
         assert "app" not in svc._timeout_counts
+
+
+class TestInvokeTimeout:
+    """UIA `Invoke()` can hang waiting for a modal — the executor +
+    timeout ensures the chat thread doesn't freeze with it."""
+
+    def test_slow_invoke_times_out_to_false(self, audit_file):
+        backend = FakeA11yBackend(
+            [_button()],
+            invoke_delay=A11Y_INVOKE_TIMEOUT_SECONDS + 0.2,
+        )
+        svc = _make_service(backend, audit_path=audit_file)
+        assert svc.invoke_at_point(100, 100) is False
+
+    def test_fast_invoke_returns_backend_result(self, audit_file):
+        backend = FakeA11yBackend([_button()], invoke_succeeds=True)
+        svc = _make_service(backend, audit_path=audit_file)
+        assert svc.invoke_at_point(100, 100) is True
+
+    def test_invoke_self_gates_on_a11y_enabled(self, audit_file):
+        backend = FakeA11yBackend([_button()], invoke_succeeds=True)
+        svc = _make_service(
+            backend,
+            config=_config(enabled=False),
+            audit_path=audit_file,
+        )
+        assert svc.invoke_at_point(100, 100) is False
+        # Backend should not have been touched.
+        assert backend.invoke_calls == []
 
 
 class TestPreviewTimeout:

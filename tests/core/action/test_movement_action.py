@@ -151,6 +151,49 @@ class TestMovementWaitPhaseShortCircuit:
         assert dispatcher.is_idle
 
 
+class TestBracketReportForwarding:
+    """`make_movement_action(bracket_token=...)` must surface validation
+    reports via the `on_report` callback so the LLM sees its mistakes.
+    The dispatcher path used to drop them into a throwaway list."""
+
+    def test_reports_are_forwarded_to_on_report(self, dispatcher, scheduler):
+        class FakeMovementWithReports:
+            has_active_movement = False
+
+            def __init__(self):
+                self.listeners = []
+
+            def handle_move_bracket(self, token, reports):
+                reports.append("[移動錯誤] move:to 需要 x 與 y")
+                return True
+
+            def add_completion_listener(self, cb):  # pragma: no cover
+                self.listeners.append(cb)
+                return lambda: None
+
+        movement = FakeMovementWithReports()
+        captured: list[str] = []
+        action = make_movement_action(
+            movement,
+            scheduler,
+            bracket_token="move:to",
+            on_report=captured.append,
+        )
+        dispatcher.dispatch(action)
+        scheduler.flush()
+
+        assert captured == ["[移動錯誤] move:to 需要 x 與 y"]
+
+    def test_no_on_report_does_not_crash(self, dispatcher, scheduler):
+        """Backwards-compat: callers that don't pass on_report still work."""
+        movement = FakeMovementNoOp()
+        action = make_movement_action(
+            movement, scheduler, bracket_token="move:to;x=1;y=1"
+        )
+        dispatcher.dispatch(action)
+        scheduler.flush()  # should not raise
+
+
 class TestMovementThenClickOrdering:
     """End-to-end: movement that no-ops still releases a queued click
     promptly (the bug fix scenario)."""

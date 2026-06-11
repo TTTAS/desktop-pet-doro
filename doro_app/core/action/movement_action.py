@@ -118,12 +118,19 @@ def make_movement_action(
     target: Optional[tuple[int, int]] = None,
     bracket_token: Optional[str] = None,
     safety_timeout_ms: int = MOVEMENT_SAFETY_TIMEOUT_MS,
+    on_report: Optional[Callable[[str], None]] = None,
 ) -> Action:
     """Build an Action that drives one movement to completion.
 
     Exactly one of `direction`, `target`, or `bracket_token` should be
     provided — they correspond to the three existing entry points on
     `MovementManager`.
+
+    ``on_report``: optional callback the bracket path uses to surface
+    validation errors (e.g. ``[移動錯誤] move:to 需要 x 與 y``). The
+    orchestrator wires this to ``MovementManager.record_manual_report``
+    so the LLM still sees its mistakes — without it, errors would be
+    silently dropped into a throwaway list.
     """
     if sum(x is not None for x in (direction, target, bracket_token)) != 1:
         raise ValueError(
@@ -136,10 +143,18 @@ def make_movement_action(
         elif target is not None:
             movement.apply_target_move(target[0], target[1])
         else:
-            # Mirror the chat orchestrator's call: pass a fresh reports
-            # list — the manager's own history already captured them.
             assert bracket_token is not None
-            movement.handle_move_bracket(bracket_token, [])
+            # Collect bracket validation reports and forward them through
+            # `on_report`. The orchestrator's legacy synchronous path
+            # always did this; the dispatcher path used to drop them.
+            local_reports: list[str] = []
+            movement.handle_move_bracket(bracket_token, local_reports)
+            if on_report is not None:
+                for report in local_reports:
+                    try:
+                        on_report(report)
+                    except Exception:  # pragma: no cover - listener
+                        pass
 
     metadata: dict = {}
     if direction is not None:

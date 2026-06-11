@@ -32,6 +32,7 @@ from .port import A11yBackendPort
 from .serializer import serialize
 from ..automation import window_class
 from ...constants import (
+    A11Y_INVOKE_TIMEOUT_SECONDS,
     A11Y_PREVIEW_TIMEOUT_SECONDS,
     A11Y_READ_TIMEOUT_SECONDS,
     A11Y_TIMEOUT_BLACKLIST_THRESHOLD,
@@ -125,12 +126,26 @@ class A11yService:
         successful invoke; the manager treats False as NOT_INVOCABLE and
         does **not** fall back to a synthetic mouse event (which would
         move the user's cursor).
+
+        Runs on the executor with a hard timeout — UIA `Invoke()` can
+        block until the target action completes (e.g. a modal opens),
+        which would otherwise freeze the Qt event loop on the main
+        thread.
         """
         if not self._config.automation.a11y_enabled:
             return False
+        future = self._executor.submit(
+            self._backend.invoke_at_physical_point, int(x), int(y)
+        )
         try:
-            return self._backend.invoke_at_physical_point(int(x), int(y))
-        except Exception as exc:  # pragma: no cover - backend should not raise
+            return bool(future.result(timeout=A11Y_INVOKE_TIMEOUT_SECONDS))
+        except FuturesTimeout:
+            logger.warning(
+                "a11y invoke at (%d,%d) exceeded %.1fs timeout — dropping click",
+                int(x), int(y), A11Y_INVOKE_TIMEOUT_SECONDS,
+            )
+            return False
+        except Exception as exc:
             logger.debug(f"a11y backend invoke raised: {exc}")
             return False
 

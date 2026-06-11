@@ -374,7 +374,16 @@ class ChatOrchestrator(QtCore.QObject):
             return False
 
         self._action_dispatcher.dispatch(
-            make_movement_action(self._movement, self._schedule, bracket_token=token)
+            make_movement_action(
+                self._movement,
+                self._schedule,
+                bracket_token=token,
+                # Mirror the legacy synchronous path: forward bracket
+                # validation reports back into the manager's history so
+                # they show up in the LLM's next-turn context (otherwise
+                # the LLM keeps making the same parse mistake).
+                on_report=self._movement.record_manual_report,
+            )
         )
         return True
 
