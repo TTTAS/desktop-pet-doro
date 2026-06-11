@@ -56,6 +56,7 @@ around `QtCore.QTimer.singleShot`.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -63,6 +64,7 @@ from typing import Callable, Optional, TYPE_CHECKING
 
 from ...constants import (
     CLICK_DRAG_GRACE_MS,
+    CLICK_PROXIMITY_THRESHOLD_PX,
     CLICK_RATE_LIMIT_MS,
     CLICK_WIND_UP_MS,
     KILL_SWITCH_ESC_COUNT,
@@ -151,6 +153,7 @@ class AutomationManager:
         wind_up_ms: int = CLICK_WIND_UP_MS,
         rate_limit_ms: int = CLICK_RATE_LIMIT_MS,
         drag_grace_ms: int = CLICK_DRAG_GRACE_MS,
+        click_proximity_px: int = CLICK_PROXIMITY_THRESHOLD_PX,
     ) -> None:
         self._config = config_manager
         self._window = window
@@ -177,6 +180,7 @@ class AutomationManager:
         self._wind_up_ms = int(wind_up_ms)
         self._rate_limit_ms = int(rate_limit_ms)
         self._drag_grace_ms = int(drag_grace_ms)
+        self._click_proximity_px = int(click_proximity_px)
 
         self._pending: Optional[_PendingClick] = None
         self._last_click_at: float = 0.0
@@ -347,11 +351,27 @@ class AutomationManager:
         # browser bookmark bar / window controls land outside foot reach).
         # Falling back to the foot keeps clicks without a prior MOVE working.
         target = self._click_target_provider() if self._click_target_provider else None
+        fx, fy = self._window.foot_position_physical()
         if target is not None:
             cx, cy = target
             source = "target"
+            # Proximity guard: even with target-consumption upstream, an LLM
+            # may still emit a `[move:to]` to coordinates Doro couldn't reach
+            # (edge clamp, partial move) or hallucinate a target that's
+            # nowhere near the foot. If we'd click somewhere Doro visibly
+            # isn't, fall back to the foot — less surprising than a phantom
+            # click across the screen.
+            dist = math.hypot(cx - fx, cy - fy)
+            if dist > self._click_proximity_px:
+                logger.info(
+                    "click target (%d,%d) is %dpx from foot (%d,%d) — "
+                    "exceeds %dpx proximity, falling back to foot",
+                    cx, cy, int(dist), fx, fy, self._click_proximity_px,
+                )
+                cx, cy = fx, fy
+                source = "foot"
         else:
-            cx, cy = self._window.foot_position_physical()
+            cx, cy = fx, fy
             source = "foot"
 
         # Safety clamp to screen: a stale or LLM-miscomputed target may

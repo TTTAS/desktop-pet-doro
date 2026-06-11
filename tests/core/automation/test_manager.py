@@ -719,8 +719,11 @@ class TestClickTargetProvider:
 
     def _build(
         self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, target_provider,
+        scheduler, clock, target_provider, click_proximity_px=10_000,
     ):
+        # Default to a very permissive proximity so this fixture exercises
+        # target-vs-foot precedence without the proximity guard interfering.
+        # Tests that exercise the proximity guard itself pass a smaller value.
         from doro_app.core.automation.manager import AutomationManager
         return AutomationManager(
             config_manager=config_stub,
@@ -731,6 +734,7 @@ class TestClickTargetProvider:
             click_target_provider=target_provider,
             schedule=scheduler,
             clock=clock,
+            click_proximity_px=click_proximity_px,
         )
 
     def test_target_overrides_foot(
@@ -793,6 +797,40 @@ class TestClickTargetProvider:
         manager.execute_click()
         scheduler.flush()
         assert fake_clicker.invoke_calls == [(1919, 0)]
+
+    def test_far_target_falls_back_to_foot(
+        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """Target beyond `click_proximity_px` from foot → click foot."""
+        # foot at (500, 500), target at (1000, 1000) → ~707px away → over 300.
+        manager = self._build(
+            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock,
+            target_provider=lambda: (1000, 1000),
+            click_proximity_px=300,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_clicker.invoke_calls == [(500, 500)]
+
+    def test_near_target_used_within_proximity(
+        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """Target within `click_proximity_px` of foot → click target."""
+        # foot at (500, 500), target at (550, 530) → ~58px away → under 300.
+        manager = self._build(
+            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
+            scheduler, clock,
+            target_provider=lambda: (550, 530),
+            click_proximity_px=300,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_clicker.invoke_calls == [(550, 530)]
 
     def test_window_class_read_at_clicked_coord(
         self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,

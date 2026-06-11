@@ -63,6 +63,12 @@ SPRITE_PANEL_RESERVE_OFFSET = 48.0
 
 CLICK_DRAG_THRESHOLD_PX = 6  # Manhattan distance threshold for click vs drag
 
+# Max distance (physical px) between the cached `[move:to]` target and Doro's
+# foot at click-fire time. If exceeded, `_fire_now` falls back to the foot
+# rather than the stored target — guards against stale targets that survived
+# a directional move, a drag, or a hallucinated LLM coordinate.
+CLICK_PROXIMITY_THRESHOLD_PX = 300
+
 # ═══════════════════════════════════════════════════════════
 # Default Visual Colors (Fallback Sprite)
 # ═══════════════════════════════════════════════════════════

@@ -106,11 +106,29 @@ class MovementManager:
         Returns True iff a movement was actually running. Notifies all
         completion listeners so action queue waiters unwind cleanly.
         Idempotent — calling with no active movement is a no-op.
+
+        Always clears `last_target_physical`: cancellation represents the
+        user (or dispatcher) repudiating the in-flight plan, and any
+        cached `[move:to]` target that belonged to that plan would be
+        stale for the next click.
         """
+        self.last_target_physical = None
         if self._active_movement is None:
             return False
         self._finish_movement()
         return True
+
+    def take_last_target_physical(self) -> Optional[tuple[int, int]]:
+        """Consume and clear `last_target_physical`.
+
+        `AutomationManager._fire_now` uses this as `click_target_provider`
+        so each click consumes the cached target at most once — a later
+        bare `[mouse:click]` (with no preceding `[move:to]`) falls back to
+        the live foot instead of re-using a stale target.
+        """
+        target = self.last_target_physical
+        self.last_target_physical = None
+        return target
 
     def get_last_error(self) -> Optional[str]:
         """Get the last movement parsing error, if any."""
@@ -381,6 +399,10 @@ class MovementManager:
         dx, dy = direction
         if dx == 0 and dy == 0:
             return None
+        # Directional move expresses a new user intent; a click immediately
+        # afterwards should land at the new foot, not at the previous
+        # `[move:to]` target.
+        self.last_target_physical = None
         step = max(12, self._movement_step_px)
         current = self._window.current_position()
         target = QtCore.QPoint(round(current.x() + dx * step), round(current.y() + dy * step))

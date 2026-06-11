@@ -398,6 +398,7 @@ class DoroApp:
         # Wire mouse event handler signals
         # ─────────────────────────────────────────────────────────
         mouse_handler.window_drag_requested.connect(self.window.move)
+        mouse_handler.drag_started.connect(self._on_doro_dragged)
         mouse_handler.click_detected.connect(
             lambda: (
                 self.window.mark_user_activity(),
@@ -580,12 +581,29 @@ class DoroApp:
             wind_up_animator=animator,
             warning_overlay=overlay_adapter,
             bounds_provider=self._click_target_bounds,
-            click_target_provider=lambda: self._movement.last_target_physical,
+            click_target_provider=self._movement.take_last_target_physical,
             a11y_clicker=a11y_clicker,
             on_esc_extra=self._cancel_dispatcher_on_esc,
             schedule=_schedule,
         )
         return manager
+
+    def _on_doro_dragged(self) -> None:
+        """User dragged Doro — kill any active movement + queued click.
+
+        Order matters: cancelling the dispatcher's current action first
+        runs `MovementWaitPhase.cancel()`, which unsubscribes from the
+        MovementManager's completion listeners. The subsequent
+        `cancel_active_movement()` then fires its listener callbacks with
+        no subscribers attached, so it can't accidentally advance the
+        already-cancelled action chain. `cancel_current` also clears the
+        rest of the queue (the trailing `[mouse:click]`), preventing the
+        click from firing at the post-drag location.
+        """
+        dispatcher = getattr(self, "_action_dispatcher", None)
+        if dispatcher is not None:
+            dispatcher.cancel_current("drag")
+        self._movement.cancel_active_movement()
 
     def _cancel_dispatcher_on_esc(self) -> None:
         """Forward Esc to the ActionDispatcher so any queued click or
