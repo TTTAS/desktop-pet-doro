@@ -183,6 +183,8 @@ class ChatSettingsDialog(FramelessDialog):
             "點擊前會等 1.5 秒、紅色警示框會圈住即將被點的位置，期間"
             "可按 Esc 取消；Esc 連按 3 次會永久關閉本選項當作 kill switch。"
             "需要安裝 pynput；目前白名單預設只放 Firefox / Chrome / Chromium。"
+            "另外，點擊功能依賴上方的「讀取前景視窗」一併啟用，否則 Doro "
+            "找不到要點的元件。"
         )
         mouse_hint.setObjectName("instructionLabel")
         mouse_hint.setWordWrap(True)
@@ -365,6 +367,31 @@ class ChatSettingsDialog(FramelessDialog):
             a11y_enabled and self._a11y_share_values_checkbox.isChecked()
         )
         mouse_enabled = self._mouse_enabled_checkbox.isChecked()
+
+        # M6: enabling mouse_enabled without a11y_enabled silently fails
+        # at every click (UIA-invoke path self-gates on a11y). Offer to
+        # turn a11y on so the user isn't left wondering why nothing
+        # happens. We only ask on a *new* enable to avoid annoying
+        # users who saved settings for unrelated reasons.
+        if (
+            mouse_enabled
+            and not previous_mouse_enabled
+            and not a11y_enabled
+        ):
+            choice = QtWidgets.QMessageBox.question(
+                self,
+                "也要啟用前景視窗讀取？",
+                "點擊功能需要「讀取前景視窗的可點元素」一併開啟才能找到要點的元件。\n\n"
+                "要一併開啟嗎？",
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.Yes,
+            )
+            if choice == QtWidgets.QMessageBox.StandardButton.Yes:
+                a11y_enabled = True
+                self._a11y_checkbox.setChecked(True)
+                self._a11y_share_values_checkbox.setEnabled(True)
+
         config.update_automation(
             a11y_enabled=a11y_enabled,
             a11y_share_input_values=a11y_share_input_values,

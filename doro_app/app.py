@@ -483,29 +483,47 @@ class DoroApp:
         except Exception:
             return ""
 
-        sw, sh = 1920, 1080
+        # Match the click path: full screen geometry × dpr, not the
+        # work-area `availableGeometry`. The LLM's coordinate space must
+        # equal what `_fire_now` clamps against, otherwise a target near
+        # the taskbar can be rejected after passing LLM-side validation.
+        sw, sh = 0, 0
         try:
             screen = self.window.screen()
             if screen is not None:
-                size = screen.availableGeometry().size()
+                geo = screen.geometry()
                 dpr = screen.devicePixelRatio() or 1.0
-                sw = int(size.width() * dpr)
-                sh = int(size.height() * dpr)
+                sw = int(geo.width() * dpr)
+                sh = int(geo.height() * dpr)
         except Exception:
             pass
 
+        # `window_class.read_at` calls Win32 `WindowFromPoint`/
+        # `ChildWindowFromPointEx` — without setting Doro to mouse-
+        # transparent first, the topmost window at the foot is Doro
+        # itself, so the LLM sees "前景視窗 class: Doro" and can't
+        # plan a click on anything else.
         class_name = "unknown"
         try:
-            read = window_class.read_at(fx, fy)
+            adapter.set_mouse_transparent(True)
+            try:
+                read = window_class.read_at(fx, fy)
+            finally:
+                adapter.set_mouse_transparent(False)
             if read:
                 class_name = read
         except Exception:
             pass
 
+        if not sw or not sh:
+            screen_line = "螢幕: 未知"
+        else:
+            screen_line = f"螢幕: {sw}×{sh}"
+
         return (
             "[Doro 當下狀態]\n"
             f"腳底位置: x={fx}, y={fy}\n"
-            f"螢幕: {sw}×{sh}\n"
+            f"{screen_line}\n"
             f"前景視窗 class: {class_name}"
         )
 

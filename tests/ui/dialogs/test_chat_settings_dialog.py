@@ -162,14 +162,66 @@ def test_save_re_enabling_mouse_resets_kill_switch(qtbot):
     the manager silently dropping every click until the next app restart.
     """
     automation = Mock()
+    # Start with a11y already on so the mouse-without-a11y prompt
+    # (`QMessageBox.question`) doesn't fire and block the test.
     dialog, _, _ = _make_dialog(
-        qtbot, mouse_enabled=False, automation_manager=automation
+        qtbot,
+        mouse_enabled=False,
+        a11y_enabled=True,
+        automation_manager=automation,
     )
     dialog._mouse_enabled_checkbox.setChecked(True)
 
     dialog._on_save()
 
     automation.reset_kill_switch.assert_called_once()
+
+
+def test_enabling_mouse_without_a11y_prompts_and_can_auto_enable(
+    qtbot, monkeypatch
+):
+    """M6: tell the user mouse_enabled needs a11y_enabled, offer to fix it."""
+    from PySide6 import QtWidgets
+
+    dialog, _, config = _make_dialog(qtbot, a11y_enabled=False, mouse_enabled=False)
+    dialog._mouse_enabled_checkbox.setChecked(True)
+    # a11y still unchecked.
+
+    # Auto-accept the prompt.
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "question",
+        lambda *a, **kw: QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+
+    dialog._on_save()
+
+    config.update_automation.assert_called_once_with(
+        a11y_enabled=True,
+        a11y_share_input_values=False,
+        mouse_enabled=True,
+    )
+
+
+def test_enabling_mouse_without_a11y_declined_keeps_a11y_off(qtbot, monkeypatch):
+    from PySide6 import QtWidgets
+
+    dialog, _, config = _make_dialog(qtbot, a11y_enabled=False, mouse_enabled=False)
+    dialog._mouse_enabled_checkbox.setChecked(True)
+
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "question",
+        lambda *a, **kw: QtWidgets.QMessageBox.StandardButton.No,
+    )
+
+    dialog._on_save()
+
+    config.update_automation.assert_called_once_with(
+        a11y_enabled=False,
+        a11y_share_input_values=False,
+        mouse_enabled=True,
+    )
 
 
 def test_save_keeping_mouse_enabled_does_not_reset_kill_switch(qtbot):
