@@ -545,6 +545,13 @@ class DoroApp:
         def _schedule(ms: int, fn) -> None:
             _QtCore.QTimer.singleShot(int(ms), fn)
 
+        # Esc fires from pynput's listener thread; this bridge marshals
+        # the callback onto the Qt main thread before any Qt-bound work
+        # (state flips, QSettings writes, dispatcher cancellation) runs.
+        # Held on self so the QObject isn't GC'd while the manager keeps
+        # the emit method as its `marshal` callable.
+        self._esc_main_thread_bridge = _MainThreadBridge()
+
         # Reuse the existing transition lock — wrapping the StateService
         # begin/end calls so IdleBehaviorManager (which already respects
         # `state_service.is_transitioning()`) won't preempt the wind-up.
@@ -585,6 +592,7 @@ class DoroApp:
             a11y_clicker=a11y_clicker,
             on_esc_extra=self._cancel_dispatcher_on_esc,
             schedule=_schedule,
+            marshal=self._esc_main_thread_bridge.fired.emit,
         )
         return manager
 
@@ -690,6 +698,23 @@ class _QtWindUpAnimatorAdapter:
             return
         self._state_service.set_state(self._prev_state_key, force=True)
         self._prev_state_key = None
+
+
+class _MainThreadBridge(QtCore.QObject):
+    """Cross-thread trampoline for callbacks that must run on the main thread.
+
+    ``fired.emit(fn)`` from any thread; ``fn()`` then runs on the thread
+    this QObject lives on (the main thread, because the bridge is
+    constructed there). Qt's auto-connection delivers the signal queued
+    when the emitting thread differs from the receiving thread, which
+    is exactly the marshalling guarantee the Esc callback needs.
+    """
+
+    fired = QtCore.Signal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fired.connect(lambda fn: fn())
 
 
 class _QtClickWarningOverlayAdapter:

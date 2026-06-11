@@ -378,6 +378,52 @@ class TestKillSwitch:
 
         assert manager.is_kill_switch_engaged is False
 
+    def test_esc_marshal_runs_callback_on_marshalled_thread(
+        self,
+        config_stub,
+        fake_window,
+        fake_backend,
+        fake_clicker,
+        coord_stub,
+        scheduler,
+        clock,
+    ):
+        """Esc from the backend (off-thread in production) must NOT touch
+        manager state synchronously — it must be queued through `marshal`.
+
+        Without the trampoline, `_on_esc_pressed` would mutate state on
+        the pynput listener thread and step on Qt-bound work running on
+        the main thread.
+        """
+        deferred: list = []
+        mgr = AutomationManager(
+            config_manager=config_stub,
+            window=fake_window,
+            input_backend=fake_backend,
+            transition_coordinator=coord_stub,
+            a11y_clicker=fake_clicker,
+            schedule=scheduler,
+            clock=clock,
+            marshal=deferred.append,
+        )
+
+        # Wind a click up so the backend Esc has something to abort.
+        assert mgr.execute_click() == ClickOutcome.FIRED  # provisional
+        assert mgr._abort_pending is False
+
+        fake_backend.press_esc()
+        # Marshal received the callback but hasn't run it yet — state
+        # MUST still be untouched.
+        assert len(deferred) == 1
+        assert mgr._abort_pending is False
+        assert mgr._esc_press_times == []
+
+        # Running it on the (simulated) main thread is what actually
+        # applies the Esc.
+        deferred[0]()
+        assert mgr._abort_pending is True
+        assert len(mgr._esc_press_times) == 1
+
 
 # ────────────────────────────────────────────────────────────────────────
 # Cross-cutting invariants

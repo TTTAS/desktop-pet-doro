@@ -149,6 +149,7 @@ class AutomationManager:
         a11y_clicker: Optional["A11yClickerPort"] = None,
         on_esc_extra: Optional[Callable[[], None]] = None,
         schedule: ScheduleFn,
+        marshal: Optional[Callable[[Callable[[], None]], None]] = None,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
         rate_limit_ms: int = CLICK_RATE_LIMIT_MS,
@@ -201,9 +202,16 @@ class AutomationManager:
         # call to `_finalize`.
         self._outcome_listeners: list[Callable[["ClickOutcome", str], None]] = []
 
-        # Install the Esc listener. The backend MUST guarantee that the
-        # callback only fires on Esc and that no other key data is recorded.
-        self._backend.install_esc_listener(self._on_esc_pressed)
+        # Esc fires on the pynput keyboard-listener thread. Everything the
+        # callback does — cancelling the dispatcher, flipping state via
+        # QMovie, writing kill-switch state to QSettings — must run on the
+        # Qt main thread. `marshal` is the trampoline: production wires it
+        # to a queued signal that lives on the main thread; tests inject a
+        # synchronous default so existing behaviour is preserved.
+        self._marshal = marshal if marshal is not None else (lambda fn: fn())
+        # The backend MUST guarantee that the callback only fires on Esc
+        # and that no other key data is recorded.
+        self._backend.install_esc_listener(self._dispatch_esc_to_main)
 
         logger.info(
             "AutomationManager initialized "
@@ -484,6 +492,11 @@ class AutomationManager:
                 logger.exception("Click outcome listener raised")
 
     # ------------------------------------------------------------------ Esc / kill-switch
+
+    def _dispatch_esc_to_main(self) -> None:
+        """Backend (off-thread) entry — hop to the main thread before
+        touching Qt-bound state."""
+        self._marshal(self._on_esc_pressed)
 
     def _on_esc_pressed(self) -> None:
         """Called by the input backend each time the user presses Esc.
