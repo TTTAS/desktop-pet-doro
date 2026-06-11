@@ -34,21 +34,44 @@ def _read_window_class_x11(x: int, y: int) -> Optional[str]:  # pragma: no cover
         from Xlib import display, X  # type: ignore[import-not-found]
     except ImportError:
         return None
+    d = None
     try:
         d = display.Display()
         root = d.screen().root
-        target = root
+        # Walk down the X tree by *coordinate*, not by the user's cursor.
+        # The pre-rewrite version used `query_pointer()` (the window the
+        # mouse currently sits over) and threw away the (x, y) it was
+        # asked to inspect — meaning the allowlist sampled a different
+        # window from the click target. `translate_coords(root, x, y)`
+        # returns the immediate child of `win` containing (x, y), or
+        # X.NONE when `win` itself is the deepest container.
+        win = root
         while True:
-            data = target.query_pointer()
-            child = data.child
-            if child == X.NONE or not child:
+            res = win.translate_coords(root, int(x), int(y))
+            child = getattr(res, "child", None)
+            if not child or child == X.NONE:
                 break
-            target = child
-            target_data = target.translate_coords(root, x, y)  # noqa: F841
-        wm_class = target.get_wm_class()
-        return wm_class[1] if wm_class and len(wm_class) >= 2 else None
+            win = child
+        # WM_CLASS lives on the client top-level, which may sit above the
+        # deepest hit (decorations, subwindows). Climb until we find it
+        # or hit the root.
+        while win is not None and win != root:
+            wm_class = win.get_wm_class()
+            if wm_class and len(wm_class) >= 2:
+                return wm_class[1]
+            try:
+                win = win.query_tree().parent
+            except Exception:
+                return None
+        return None
     except Exception:
         return None
+    finally:
+        if d is not None:
+            try:
+                d.close()
+            except Exception:
+                pass
 
 
 def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs Windows
