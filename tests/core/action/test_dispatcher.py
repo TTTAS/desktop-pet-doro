@@ -321,6 +321,64 @@ class TestCancellation:
         assert click_fired["v"] is False  # queued click never runs
         assert dispatcher.is_idle
 
+    def test_stale_failure_hold_does_not_finish_next_action(
+        self, dispatcher, state_service, scheduler,
+    ):
+        """Generation token guard.
+
+        Action A enters its failure-GIF hold (1.5s timer scheduled). Esc
+        cancels A; the user immediately dispatches action B. When A's
+        stale failure-hold timer eventually fires, it must recognise
+        that the dispatcher has moved on and refuse to finish B's phase.
+        Without the generation check, the stale callback would call
+        `_restore_and_finish`, killing B mid-flight.
+        """
+        def boom():
+            raise RuntimeError("nope")
+
+        action_a = Action(
+            kind="click",
+            phases=[EffectPhase(boom)],
+            failure_state_key="click_failed",
+        )
+        dispatcher.dispatch(action_a)
+        # A's failure GIF is up; the hold timer is queued but not yet run.
+        assert state_service.calls == [("click_failed", True)]
+        assert not dispatcher.is_idle
+
+        # Esc during the hold window — A unwinds, queue clears.
+        dispatcher.cancel_current("esc")
+        assert dispatcher.is_idle
+        # idle restore happened
+        assert state_service.calls[-1] == ("idle", True)
+
+        # New action B uses a never-firing latch so we can observe it
+        # staying current after the stale timer fires.
+        class _Latch:
+            def __init__(self):
+                self.cancelled = False
+                self.done_cb = None
+
+            def start(self, on_done, on_fail):
+                self.done_cb = on_done
+
+            def cancel(self):
+                self.cancelled = True
+
+        latch = _Latch()
+        action_b = Action(kind="movement", phases=[latch])
+        dispatcher.dispatch(action_b)
+        assert dispatcher.current is action_b
+        calls_before = list(state_service.calls)
+
+        # A's stale failure-hold timer finally fires.
+        scheduler.run_next()
+
+        # B is untouched: still current, latch not cancelled, no state churn.
+        assert dispatcher.current is action_b
+        assert latch.cancelled is False
+        assert state_service.calls == calls_before
+
 
 # ─────────────────────────────────────────────────────────────────────
 # WaitPhase safety timeout

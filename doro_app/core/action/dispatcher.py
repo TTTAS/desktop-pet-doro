@@ -86,10 +86,11 @@ class ActionDispatcher:
         self._current: Optional[Action] = None
         self._phase_index: int = 0
         self._pre_action_state: Optional[str] = None
-        # When True we are in the "failure GIF is showing" tail of the
-        # current action — `cancel_current` during this window should
-        # still restore the pre-action state but skip the failure hold.
-        self._showing_failure: bool = False
+        # Monotonically increments every time an action starts. Captured
+        # by deferred callbacks (the failure-GIF hold timer) so a stale
+        # callback whose action was cancelled and replaced can detect it
+        # and bail out instead of finishing the next action mid-phase.
+        self._generation: int = 0
 
     # ------------------------------------------------------------------ Public API
 
@@ -132,7 +133,6 @@ class ActionDispatcher:
                 logger.exception("Phase cancel raised")
 
         self._queue.clear()
-        self._showing_failure = False
         self._restore_and_finish()
 
     def clear_queue(self) -> None:
@@ -146,7 +146,7 @@ class ActionDispatcher:
             return
         self._current = self._queue.pop(0)
         self._phase_index = 0
-        self._showing_failure = False
+        self._generation += 1
 
         # Capture the pre-action state once per action. This is the
         # "bridge endpoint" the dispatcher always returns to.
@@ -197,13 +197,23 @@ class ActionDispatcher:
         )
         failure_key = self._current.failure_state_key
         if failure_key:
-            self._showing_failure = True
             # Flip to the failure GIF, then hold before restoring. Use
             # force=True so a still-engaged transition lock can't refuse.
             self._state_service.set_state(failure_key, force=True)
-            self._schedule(self._failure_display_ms, self._restore_and_finish)
+            # Capture the generation so a `cancel_current` followed by a
+            # new dispatch during this hold doesn't let the stale timer
+            # finish the *next* action mid-phase.
+            gen = self._generation
+            self._schedule(self._failure_display_ms, lambda: self._finish_failure_hold(gen))
         else:
             self._restore_and_finish()
+
+    def _finish_failure_hold(self, generation: int) -> None:
+        if generation != self._generation:
+            # The action we were holding the failure GIF for has been
+            # cancelled (or cancelled and replaced). Stale timer — ignore.
+            return
+        self._restore_and_finish()
 
     def _restore_and_finish(self) -> None:
         if self._current is None:
@@ -223,7 +233,6 @@ class ActionDispatcher:
         self._current = None
         self._phase_index = 0
         self._pre_action_state = None
-        self._showing_failure = False
 
         # Pump the queue.
         if self._queue:
