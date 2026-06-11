@@ -11,6 +11,7 @@ Untestable on the Linux dev/CI target; covered manually on Windows.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Optional
 
 from .models import A11yElement
@@ -55,17 +56,27 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
             logger.debug(f"uiautomation unavailable: {exc}")
             return None
 
+        # A11yService runs this on a ThreadPoolExecutor worker; comtypes'
+        # implicit COM init only fires on whichever thread imports it
+        # first, so other workers raise COMError on UIA calls. Wrap the
+        # whole walk in `UIAutomationInitializerInThread` to apply the
+        # correct CoInitializeEx / CoUninitialize per worker per call.
+        # Fallback to a no-op context for older `uiautomation` versions
+        # (then we accept the original implicit-init behaviour).
+        initializer = getattr(auto, "UIAutomationInitializerInThread", None)
+        ctx = initializer() if initializer is not None else contextlib.nullcontext()
         try:
-            root = auto.ControlFromHandle(int(handle))
-            if root is None:
-                self.last_error = f"ControlFromHandle 取不到視窗根節點（handle={handle}）"
-                return None
-            elements: list[A11yElement] = []
-            counter = [0]
-            self._walk(root, elements, counter)
-            self.last_visited = counter[0]
-            self.last_found = len(elements)
-            return elements
+            with ctx:
+                root = auto.ControlFromHandle(int(handle))
+                if root is None:
+                    self.last_error = f"ControlFromHandle 取不到視窗根節點（handle={handle}）"
+                    return None
+                elements: list[A11yElement] = []
+                counter = [0]
+                self._walk(root, elements, counter)
+                self.last_visited = counter[0]
+                self.last_found = len(elements)
+                return elements
         except Exception as exc:
             self.last_error = f"UIA 讀取例外：{type(exc).__name__}: {exc}"
             logger.debug(f"UIA read failed: {exc}")
