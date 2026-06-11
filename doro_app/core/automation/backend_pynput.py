@@ -57,6 +57,16 @@ class PynputBackend:
 
         return read_at(x, y)
 
+    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+        from .window_class import read_handle_at
+
+        return read_handle_at(x, y)
+
+    def read_foreground_window_handle(self) -> Optional[int]:
+        from .window_class import read_foreground_window_handle
+
+        return read_foreground_window_handle()
+
     def is_left_button_pressed(self) -> bool:
         return self._left_pressed
 

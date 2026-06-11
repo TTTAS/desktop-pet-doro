@@ -361,6 +361,13 @@ class AutomationManager:
         if self._pending is None:
             return
 
+        # M3: Recheck Esc immediately. Without this an Esc arriving
+        # between the wind-up timer expiry and this method's entry was
+        # silently dropped — the click would still fire.
+        if self._abort_pending:
+            self._finalize(ClickOutcome.ABORTED_BY_ESC, "esc during fire path")
+            return
+
         # Prefer the most recent [MOVE:to] target — the foot may not have
         # reached it (window clamps to screen, so edge targets like the
         # browser bookmark bar / window controls land outside foot reach).
@@ -389,12 +396,14 @@ class AutomationManager:
             cx, cy = fx, fy
             source = "foot"
 
-        # Safety clamp to screen: a stale or LLM-miscomputed target may
-        # land off-screen. Clamp so the synthetic event always points at a
-        # real pixel rather than relying on OS-level handling of OOB coords.
-        sw, sh = self._window.screen_size_physical()
-        cx = max(0, min(sw - 1, int(cx)))
-        cy = max(0, min(sh - 1, int(cy)))
+        # Safety clamp to Doro's current screen: a stale or LLM-
+        # miscomputed target may land off-screen. Use the live screen
+        # geometry (origin + size) so secondary monitors with non-zero
+        # origins are clamped to themselves rather than into the primary
+        # monitor's range.
+        sl, st, sw, sh = self._window.screen_geometry_physical()
+        cx = max(sl, min(sl + sw - 1, int(cx)))
+        cy = max(st, min(st + sh - 1, int(cy)))
 
         # Self-clicking trap: Doro's main window AND the red warning frame
         # both sit on top of the click target (sprite-foot anchor makes
@@ -431,6 +440,39 @@ class AutomationManager:
                     ClickOutcome.REJECTED_BY_ALLOWLIST,
                     f"window class {class_name!r} not in allowlist",
                 )
+                return
+
+            # M2: Foreground verification. The allowlist gates which
+            # window CLASSES are clickable; this extra check refuses to
+            # click an allowlisted class that happens to sit under the
+            # cursor but isn't actually the focused window — e.g. a
+            # background browser visible behind a different foreground
+            # app. Both backend methods return None on platforms that
+            # don't implement them; in that case we skip the gate
+            # (preserves current X11/macOS behaviour).
+            try:
+                target_hwnd = self._backend.read_handle_at(cx, cy)
+                fg_hwnd = self._backend.read_foreground_window_handle()
+            except Exception:  # pragma: no cover - defensive
+                target_hwnd = None
+                fg_hwnd = None
+            if (
+                target_hwnd is not None
+                and fg_hwnd is not None
+                and target_hwnd != fg_hwnd
+            ):
+                self._finalize(
+                    ClickOutcome.REJECTED_BY_ALLOWLIST,
+                    f"target window ({target_hwnd}) is not foreground ({fg_hwnd})",
+                )
+                return
+
+            # M3: Recheck Esc one more time — the class read can be
+            # slow on Windows and the foreground check adds another
+            # round-trip. Without this the click still fires if Esc
+            # arrived during the gates above.
+            if self._abort_pending:
+                self._finalize(ClickOutcome.ABORTED_BY_ESC, "esc before invoke")
                 return
 
             # Cursor-free click via UIA InvokePattern. The clicker returns

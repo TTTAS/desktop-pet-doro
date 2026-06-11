@@ -25,6 +25,13 @@ class FakeInputBackend:
         self.left_button_pressed: bool = False
         self.esc_callback: Optional[Callable[[], None]] = None
         self.shutdown_called: bool = False
+        # Foreground-verification hooks (M2). Defaults to None on both
+        # sides — the manager treats "any None" as "can't check" and
+        # skips the gate. Existing tests therefore see no behaviour
+        # change; tests that want to exercise the gate set both fields.
+        self.handle_at_default: Optional[int] = None
+        self.handle_at_map: dict[tuple[int, int], int] = {}
+        self.foreground_handle: Optional[int] = None
 
     # InputBackendPort ---------------------------------------------------
 
@@ -33,6 +40,15 @@ class FakeInputBackend:
         if key in self.window_class_at:
             return self.window_class_at[key]
         return self.window_class_default
+
+    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+        key = (int(x), int(y))
+        if key in self.handle_at_map:
+            return self.handle_at_map[key]
+        return self.handle_at_default
+
+    def read_foreground_window_handle(self) -> Optional[int]:
+        return self.foreground_handle
 
     def is_left_button_pressed(self) -> bool:
         return self.left_button_pressed
@@ -82,10 +98,12 @@ class FakeAutomationWindow:
         foot_logical: tuple[int, int] = (100, 100),
         foot_physical: Optional[tuple[int, int]] = None,
         screen_size: tuple[int, int] = (1920, 1080),
+        screen_origin: tuple[int, int] = (0, 0),
     ) -> None:
         self._foot_logical = foot_logical
         self._foot_physical = foot_physical or foot_logical
         self._screen_size = screen_size
+        self._screen_origin = screen_origin
         self.mouse_transparent: bool = False
         self.transparent_toggles: list[bool] = []
 
@@ -104,6 +122,14 @@ class FakeAutomationWindow:
 
     def screen_size_physical(self) -> tuple[int, int]:
         return self._screen_size
+
+    def screen_geometry_physical(self) -> tuple[int, int, int, int]:
+        return (
+            self._screen_origin[0],
+            self._screen_origin[1],
+            self._screen_size[0],
+            self._screen_size[1],
+        )
 
     # Test conveniences --------------------------------------------------
 

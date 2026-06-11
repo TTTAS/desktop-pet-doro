@@ -15,7 +15,7 @@ provide a stand-in.
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Callable, Optional, Protocol
 
 
 class InputBackendPort(Protocol):
@@ -33,10 +33,23 @@ class InputBackendPort(Protocol):
         Only the class (X11 `WM_CLASS` / Win32 `GetClassName`).
         """
 
+    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+        """Return the OS top-level window handle at the given point, or None.
+
+        Used in tandem with :meth:`read_foreground_window_handle` so the
+        manager can refuse clicks on background windows even when the
+        z-order leaves an allowlisted class under the cursor. Returning
+        ``None`` from either method skips the foreground check, which is
+        the safe fallback on platforms without a real implementation.
+        """
+
+    def read_foreground_window_handle(self) -> Optional[int]:
+        """Return the OS top-level handle of the focused window, or None."""
+
     def is_left_button_pressed(self) -> bool:
         """Return True if the OS reports the left mouse button currently held."""
 
-    def install_esc_listener(self, on_esc: "callable") -> None:
+    def install_esc_listener(self, on_esc: Callable[[], None]) -> None:
         """Install a global Esc-only key listener. Implementations MUST ignore every
         non-Esc key in the first line of their callback and never log, store,
         or forward any other key data.
@@ -71,6 +84,15 @@ class AutomationWindowPort(Protocol):
         comes from `click_target_provider` (which lives in physical space
         like the a11y tree). A stale or miscomputed target should not
         flow through to the UIA invoke path as an off-screen coord.
+        """
+
+    def screen_geometry_physical(self) -> tuple[int, int, int, int]:
+        """Return (left, top, width, height) of Doro's current screen.
+
+        Preferred over :meth:`screen_size_physical` for clamping because
+        secondary monitors don't sit at origin (0, 0). A target on a
+        legitimately positioned side monitor would otherwise be clamped
+        into the primary monitor's range.
         """
 
 

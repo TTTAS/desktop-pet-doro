@@ -163,6 +163,91 @@ class TestAllowlistMiss:
         assert manager.outcomes[-1] == ClickOutcome.REJECTED_BY_ALLOWLIST
 
 
+class TestForegroundVerification:
+    """The allowlist guards which class can be invoked, but the same
+    class can sit under the cursor on a background window. The
+    foreground-handle check refuses those — the user almost certainly
+    didn't intend Doro to act on a window they aren't focused on."""
+
+    def test_background_allowlisted_window_is_rejected(
+        self, fake_clicker, manager, fake_backend, scheduler, coord_stub,
+    ):
+        fake_backend.set_window_class("Firefox")
+        # Same class lives under the click point AND in foreground, but
+        # they are different windows (e.g. a background Firefox).
+        fake_backend.handle_at_default = 100
+        fake_backend.foreground_handle = 200
+
+        manager.execute_click()
+        scheduler.flush()
+
+        assert fake_clicker.invoke_calls == []
+        assert manager.outcomes[-1] == ClickOutcome.REJECTED_BY_ALLOWLIST
+        coord_stub.end.assert_called_once()
+
+    def test_matching_foreground_is_accepted(
+        self, fake_clicker, manager, fake_backend, scheduler,
+    ):
+        fake_backend.set_window_class("Firefox")
+        fake_backend.handle_at_default = 100
+        fake_backend.foreground_handle = 100
+
+        manager.execute_click()
+        scheduler.flush()
+
+        assert fake_clicker.invoke_calls != []
+        assert manager.outcomes[-1] == ClickOutcome.FIRED
+
+    def test_missing_handle_skips_check(
+        self, fake_clicker, manager, fake_backend, scheduler,
+    ):
+        """When the backend can't supply hwnds (X11/macOS), fall back to
+        the class-only gate — same as before this fix."""
+        fake_backend.set_window_class("Firefox")
+        fake_backend.handle_at_default = None
+        fake_backend.foreground_handle = None
+
+        manager.execute_click()
+        scheduler.flush()
+
+        assert manager.outcomes[-1] == ClickOutcome.FIRED
+
+
+class TestMultiMonitorClamp:
+    """`screen_geometry_physical` carries an origin; secondary monitors
+    with non-zero origin shouldn't have legitimate coords clamped into
+    the primary monitor."""
+
+    def test_target_inside_secondary_monitor_passes_through(
+        self, fake_clicker, fake_backend, coord_stub, config_stub, scheduler, clock,
+    ):
+        # Secondary monitor at x=1920..3839.
+        from doro_app.core.automation.fakes import FakeAutomationWindow
+
+        window = FakeAutomationWindow(
+            foot_logical=(2500, 500),
+            foot_physical=(2500, 500),
+            screen_size=(1920, 1080),
+            screen_origin=(1920, 0),
+        )
+        config = ConfigManagerStub(mouse_enabled=True, allowlist=("Firefox",))
+        manager = AutomationManager(
+            config_manager=config,
+            window=window,
+            input_backend=fake_backend,
+            a11y_clicker=fake_clicker,
+            transition_coordinator=coord_stub,
+            schedule=scheduler,
+            clock=clock,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+
+        # Coord must NOT have been clamped to 0..1919.
+        assert fake_clicker.invoke_calls == [(2500, 500)]
+
+
 class TestNotInvocable:
     """The cursor-free click path falls back to NOT_INVOCABLE (no
     synthetic mouse event) when the UIA InvokePattern is unavailable —
@@ -363,6 +448,23 @@ class TestEscAbort:
 
     def test_cancel_pending_click_returns_false_when_idle(self, manager):
         assert manager.cancel_pending_click("drag") is False
+
+    def test_esc_set_just_before_fire_aborts(
+        self, fake_clicker, manager, fake_backend, scheduler, coord_stub
+    ):
+        """M3: an Esc whose flag is observed at `_fire_now` entry must
+        abort even if the wind-up timer already left its own entry check.
+        """
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        # Wind-up timer expires; the bare wind-up path used to be the
+        # only Esc check. Simulate Esc that arrives between the timer
+        # firing and _fire_now reading the flag.
+        manager._abort_pending = True
+        manager._complete_wind_up_for_test()
+
+        assert fake_clicker.invoke_calls == []
+        assert manager.outcomes[-1] == ClickOutcome.ABORTED_BY_ESC
 
 
 class TestKillSwitch:

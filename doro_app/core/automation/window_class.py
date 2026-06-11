@@ -74,12 +74,20 @@ def _read_window_class_x11(x: int, y: int) -> Optional[str]:  # pragma: no cover
                 pass
 
 
-def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs Windows
+def _resolve_hwnd_at_win32(x: int, y: int):  # pragma: no cover - needs Windows
+    """Walk the desktop z-order to find the top-level hwnd at (x, y).
+
+    Skips invisible, disabled, and transparent windows so Doro itself
+    and Win11's Snap Layouts overlay don't shadow the real target.
+    Returns the raw ctypes HWND (or None) plus the bound `user32`
+    handle so callers can do follow-up calls without re-binding
+    argtypes.
+    """
     try:
         import ctypes
         from ctypes import wintypes
     except ImportError:
-        return None
+        return None, None
     try:
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 
@@ -104,33 +112,25 @@ def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cov
         CWP_SKIPTRANSPARENT = 0x0004
 
         pt = wintypes.POINT(int(x), int(y))
-
-        # `WindowFromPoint` honours neither WS_EX_TRANSPARENT nor invisible
-        # state — it returns the topmost window whose region contains the
-        # point, regardless of hit-test flags. That makes it land on
-        # transparent overlays the user can't even see: Doro itself (which
-        # we add WS_EX_TRANSPARENT to during sampling via
-        # `set_mouse_transparent`) and Win11's Snap Layouts overlay
-        # (`MultitaskingViewFrame`, owned by Explorer, sits on top of
-        # every window's maximize-button region).
-        #
-        # `ChildWindowFromPointEx(desktop, pt, CWP_SKIP*)` walks the
-        # desktop's z-order and skips windows matching the flags. With
-        # CWP_SKIPTRANSPARENT both Doro and Snap Layouts drop out and we
-        # land on the actual target top-level window (Chrome).
         flags = CWP_SKIPINVISIBLE | CWP_SKIPDISABLED | CWP_SKIPTRANSPARENT
         desktop = user32.GetDesktopWindow()
-        # Desktop client coords coincide with screen coords, so no
-        # ScreenToClient is required for the parent==desktop step.
         hwnd = user32.ChildWindowFromPointEx(desktop, pt, flags)
         if not hwnd:
-            # ChildWindowFromPointEx returned NULL — fall back to the
-            # legacy WindowFromPoint so we still produce *some* class
-            # for the allowlist to gate on. This path is most likely
-            # when the click coordinate is genuinely off-screen.
             hwnd = user32.WindowFromPoint(pt)
         if not hwnd:
-            return None
+            return None, user32
+        return hwnd, user32
+    except Exception:
+        return None, None
+
+
+def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs Windows
+    hwnd, user32 = _resolve_hwnd_at_win32(x, y)
+    if not hwnd or user32 is None:
+        return None
+    try:
+        import ctypes
+
         buf = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, buf, 256)
         return buf.value or None
@@ -138,8 +138,35 @@ def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cov
         return None
 
 
+def _read_handle_at_win32(x: int, y: int) -> Optional[int]:  # pragma: no cover - needs Windows
+    hwnd, _ = _resolve_hwnd_at_win32(x, y)
+    if not hwnd:
+        return None
+    try:
+        return int(hwnd)
+    except Exception:
+        return None
+    except Exception:
+        return None
+
+
 def _read_window_class_macos(x: int, y: int) -> Optional[str]:  # pragma: no cover - not on dev target
     # Out of scope for Phase 1c — return None so the allowlist check refuses.
+    return None
+
+
+def read_handle_at(x: int, y: int) -> Optional[int]:
+    """Return the OS top-level window handle at physical (x, y), or None.
+
+    Same z-order walk as :func:`read_at`; returns the hwnd integer so
+    callers can compare it with :func:`read_foreground_window_handle`
+    to refuse clicks on background windows (a stronger gate than the
+    class allowlist alone).
+    """
+    if sys.platform == "win32":
+        return _read_handle_at_win32(int(x), int(y))
+    # X11/macOS: no implementation yet — caller treats None as
+    # "can't check foreground" and skips the gate.
     return None
 
 

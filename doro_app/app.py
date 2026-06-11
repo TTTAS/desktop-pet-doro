@@ -901,12 +901,21 @@ class _QtAutomationWindowAdapter:
             return (1920, 1080)
 
     def screen_size_physical(self) -> tuple[int, int]:
+        l, t, w, h = self.screen_geometry_physical()
+        return (w, h)
+
+    def screen_geometry_physical(self) -> tuple[int, int, int, int]:
         try:
             screen = self._window.screen()
             if screen is None:
-                return (1920, 1080)
-            size = screen.geometry().size()
+                return (0, 0, 1920, 1080)
+            geo = screen.geometry()
             dpr = screen.devicePixelRatio() or 1.0
-            return (int(size.width() * dpr), int(size.height() * dpr))
+            return (
+                int(geo.x() * dpr),
+                int(geo.y() * dpr),
+                int(geo.width() * dpr),
+                int(geo.height() * dpr),
+            )
         except Exception:  # pragma: no cover - defensive
-            return (1920, 1080)
+            return (0, 0, 1920, 1080)
