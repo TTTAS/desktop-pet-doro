@@ -73,6 +73,8 @@ class IdleBehaviorManager(QtCore.QObject):
             logger.debug("Loaded %d companion lines", len(self._lines))
         except FileNotFoundError:
             pass
+        except UnicodeDecodeError as e:
+            logger.warning("companion.txt is not valid UTF-8: %s", e)
         except OSError as e:
             logger.warning("Failed to load companion lines: %s", e)
 
