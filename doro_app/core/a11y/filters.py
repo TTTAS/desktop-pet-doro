@@ -36,8 +36,20 @@ def is_blacklisted(window_class: str | None, blacklist: tuple[str, ...]) -> bool
     return any(entry.strip().lower() in lowered for entry in blacklist if entry.strip())
 
 
-def filter_elements(elements: list[A11yElement]) -> list[A11yElement]:
-    """Keep only interactable elements; mask password-field values."""
+def filter_elements(
+    elements: list[A11yElement],
+    *,
+    share_input_values: bool = False,
+) -> list[A11yElement]:
+    """Keep only interactable elements; mask password-field values.
+
+    When ``share_input_values`` is False (the default), drop the
+    ``value`` of every non-password input too. The LLM still sees that
+    an editable field exists, where it is, and what it's named — but
+    not what the user typed (URL bar contents, search query, half-
+    drafted message). Users who knowingly want the assistant to act on
+    input contents opt in via the settings dialog.
+    """
     result: list[A11yElement] = []
     for el in elements:
         if el.role not in INTERACTABLE_ROLES:
@@ -52,6 +64,17 @@ def filter_elements(elements: list[A11yElement]) -> list[A11yElement]:
                 height=el.height,
                 value=REDACTED_VALUE,
                 is_password=True,
+            )
+        elif el.value is not None and not share_input_values:
+            el = A11yElement(
+                role=el.role,
+                name=el.name,
+                x=el.x,
+                y=el.y,
+                width=el.width,
+                height=el.height,
+                value=None,
+                is_password=False,
             )
         result.append(el)
     return result

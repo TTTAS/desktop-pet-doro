@@ -15,9 +15,17 @@ from doro_app.core.a11y.models import A11yElement
 from doro_app.core.a11y.service import A11yService
 
 
-def _config(enabled=True, blacklist=()):
+def _config(enabled=True, blacklist=(), share_input_values=True):
+    # Default the new gate to True so existing tests — which were
+    # written before input-value redaction was opt-in — keep asserting
+    # against the same serialized output. New tests can pass
+    # share_input_values=False to exercise the redaction path.
     return SimpleNamespace(
-        automation=SimpleNamespace(a11y_enabled=enabled, a11y_app_blacklist=tuple(blacklist))
+        automation=SimpleNamespace(
+            a11y_enabled=enabled,
+            a11y_app_blacklist=tuple(blacklist),
+            a11y_share_input_values=share_input_values,
+        )
     )
 
 

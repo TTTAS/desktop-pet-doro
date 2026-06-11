@@ -98,7 +98,10 @@ class A11yService:
         # Successful read clears any prior timeout streak for this class.
         self._timeout_counts.pop(cls_key, None)
 
-        filtered = filter_elements(elements)
+        filtered = filter_elements(
+            elements,
+            share_input_values=self._config.automation.a11y_share_input_values,
+        )
         if not filtered:
             return ""
 
@@ -183,7 +186,10 @@ class A11yService:
             return False, self._backend_unavailable_reason()
 
         self._timeout_counts.pop(cls_key, None)
-        filtered = filter_elements(elements)
+        filtered = filter_elements(
+            elements,
+            share_input_values=self._config.automation.a11y_share_input_values,
+        )
         body = serialize(filtered) if filtered else ""
         if not body:
             visited = getattr(self._backend, "last_visited", 0)

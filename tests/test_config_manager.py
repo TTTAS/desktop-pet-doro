@@ -226,6 +226,23 @@ class TestConfigManagerPersistence:
         manager = ConfigManager(tmp_path / "test.ini")
         assert manager.automation.a11y_enabled is False
 
+    def test_a11y_share_input_values_defaults_to_false(self, tmp_path):
+        """Even when a11y is enabled, input-field contents are off by default."""
+        manager = ConfigManager(tmp_path / "test.ini")
+        assert manager.automation.a11y_share_input_values is False
+
+    def test_a11y_share_input_values_round_trips(self, tmp_path):
+        path = tmp_path / "test.ini"
+        manager = ConfigManager(path)
+        manager.update_automation(
+            a11y_enabled=True,
+            a11y_share_input_values=True,
+        )
+        manager.save()
+
+        manager2 = ConfigManager(path)
+        assert manager2.automation.a11y_share_input_values is True
+
     def test_load_handles_invalid_values(self, tmp_path):
         """Load gracefully handles invalid persisted values."""
         settings_path = tmp_path / "test.ini"

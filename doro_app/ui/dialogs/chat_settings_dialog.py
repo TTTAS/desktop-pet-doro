@@ -146,6 +146,16 @@ class ChatSettingsDialog(FramelessDialog):
         a11y_hint.setWordWrap(True)
         layout.addWidget(a11y_hint)
 
+        # Secondary opt-in: forward the *content* of input fields too.
+        # Off by default — Doro sees that an input exists at (x, y) named
+        # "網址列" without seeing what the user typed there.
+        self._a11y_share_values_checkbox = QtWidgets.QCheckBox(
+            "也把輸入框現在的內容傳給 AI（網址列、搜尋框、打到一半的文字；預設關閉）"
+        )
+        self._a11y_share_values_checkbox.setEnabled(False)
+        layout.addWidget(self._a11y_share_values_checkbox)
+        self._a11y_checkbox.toggled.connect(self._a11y_share_values_checkbox.setEnabled)
+
         preview_row = QtWidgets.QHBoxLayout()
         preview_row.addStretch(1)
         self._a11y_preview_btn = QtWidgets.QPushButton("預覽 Doro 現在看到什麼")
@@ -238,9 +248,12 @@ class ChatSettingsDialog(FramelessDialog):
         display = "\n".join(t.replace("\n", "\\n") for t in tokens)
         self._stop_tokens_edit.setPlainText(display)
 
-        self._a11y_checkbox.setChecked(
-            self._core.config_manager.automation.a11y_enabled
+        a11y_enabled = self._core.config_manager.automation.a11y_enabled
+        self._a11y_checkbox.setChecked(a11y_enabled)
+        self._a11y_share_values_checkbox.setChecked(
+            self._core.config_manager.automation.a11y_share_input_values
         )
+        self._a11y_share_values_checkbox.setEnabled(a11y_enabled)
         self._mouse_enabled_checkbox.setChecked(
             self._core.config_manager.automation.mouse_enabled
         )
@@ -347,9 +360,13 @@ class ChatSettingsDialog(FramelessDialog):
 
         config = self._core.config_manager
         a11y_enabled = self._a11y_checkbox.isChecked()
+        a11y_share_input_values = (
+            a11y_enabled and self._a11y_share_values_checkbox.isChecked()
+        )
         mouse_enabled = self._mouse_enabled_checkbox.isChecked()
         config.update_automation(
             a11y_enabled=a11y_enabled,
+            a11y_share_input_values=a11y_share_input_values,
             mouse_enabled=mouse_enabled,
         )
         config.save()

@@ -35,6 +35,7 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_A11Y_ENABLED,
+    DEFAULT_A11Y_SHARE_INPUT_VALUES,
 )
 
 
@@ -148,6 +149,10 @@ class AutomationConfig:
     # prompt. Independent opt-in from `mouse_enabled`.
     a11y_enabled: bool = DEFAULT_A11Y_ENABLED
     a11y_app_blacklist: tuple[str, ...] = DEFAULT_A11Y_APP_BLACKLIST
+    # Phase 1d follow-up: even when a11y is on, input-field values are
+    # redacted by default (URL bar, search box, half-typed text). The
+    # user can opt in via the settings dialog.
+    a11y_share_input_values: bool = DEFAULT_A11Y_SHARE_INPUT_VALUES
 
     def __post_init__(self):
         if not isinstance(self.mouse_enabled, bool):
@@ -161,6 +166,10 @@ class AutomationConfig:
         if not isinstance(self.a11y_app_blacklist, (tuple, list)):
             raise ValueError(
                 f"a11y_app_blacklist must be tuple/list, got {type(self.a11y_app_blacklist)}"
+            )
+        if not isinstance(self.a11y_share_input_values, bool):
+            raise ValueError(
+                f"a11y_share_input_values must be bool, got {type(self.a11y_share_input_values)}"
             )
         # Normalize to tuple of stripped non-empty strings
         normalized = tuple(

@@ -40,6 +40,7 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_A11Y_ENABLED,
+    DEFAULT_A11Y_SHARE_INPUT_VALUES,
 )
 from ..utils.logger import get_logger
 
@@ -277,6 +278,9 @@ class ConfigManager:
             "a11y_app_blacklist": kwargs.get(
                 "a11y_app_blacklist", current.a11y_app_blacklist
             ),
+            "a11y_share_input_values": kwargs.get(
+                "a11y_share_input_values", current.a11y_share_input_values
+            ),
         }
         new_config = AutomationConfig(**updated_values)
         self._config.automation = new_config
@@ -414,6 +418,10 @@ class ConfigManager:
                     DEFAULT_A11Y_ENABLED,
                 ),
                 a11y_app_blacklist=blacklist,
+                a11y_share_input_values=_safe_bool(
+                    self._settings.value("automation/a11y_share_input_values"),
+                    DEFAULT_A11Y_SHARE_INPUT_VALUES,
+                ),
             )
             self._config.automation = automation_config
         except ValueError as e:
@@ -421,6 +429,7 @@ class ConfigManager:
             self._config.automation = AutomationConfig(
                 mouse_enabled=DEFAULT_MOUSE_AUTOMATION_ENABLED,
                 a11y_enabled=DEFAULT_A11Y_ENABLED,
+                a11y_share_input_values=DEFAULT_A11Y_SHARE_INPUT_VALUES,
             )
 
         # Load app config
@@ -477,6 +486,10 @@ class ConfigManager:
         self._settings.setValue(
             "automation/a11y_app_blacklist",
             list(automation.a11y_app_blacklist),
+        )
+        self._settings.setValue(
+            "automation/a11y_share_input_values",
+            bool(automation.a11y_share_input_values),
         )
 
         # Save app config

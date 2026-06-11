@@ -35,10 +35,26 @@ class TestFilterElements:
         assert kept[0].value == REDACTED_VALUE
         assert kept[0].is_password is True
 
-    def test_preserves_non_password_value(self):
+    def test_default_redacts_non_password_value(self):
+        """Without opt-in, non-password input values are dropped.
+
+        The LLM still sees role/name/coords (so it can act on the field),
+        but not what the user typed there.
+        """
         el = _el("input", name="url", value="https://example.com")
         kept = filter_elements([el])
+        assert kept[0].value is None
+
+    def test_share_input_values_preserves_non_password_value(self):
+        el = _el("input", name="url", value="https://example.com")
+        kept = filter_elements([el], share_input_values=True)
         assert kept[0].value == "https://example.com"
+
+    def test_password_still_redacted_when_sharing_enabled(self):
+        from doro_app.core.a11y.filters import REDACTED_VALUE
+        el = _el("input", name="pwd", value="hunter2", is_password=True)
+        kept = filter_elements([el], share_input_values=True)
+        assert kept[0].value == REDACTED_VALUE
 
     def test_empty_input_gives_empty_output(self):
         assert filter_elements([]) == []

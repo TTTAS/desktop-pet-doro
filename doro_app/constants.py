@@ -174,6 +174,15 @@ DEFAULT_A11Y_APP_BLACKLIST: tuple[str, ...] = (
 # truncates and appends a "still N more" marker so the prompt can't blow up.
 A11Y_MAX_SERIALIZED_BYTES = 4096
 
+# Per-field caps applied during serialization. Foreground-window content
+# is untrusted (a malicious web page can put anything in an element name
+# or value); capping the per-field length keeps a single huge field from
+# either dominating the prompt budget or being used to dodge the byte
+# ceiling. Lengths are in *characters*, not bytes, so multi-byte text
+# (Chinese, emoji) gets the same room as ASCII.
+A11Y_NAME_MAX_CHARS = 80
+A11Y_VALUE_MAX_CHARS = 120
+
 # A single live tree read must return within this budget; UIA/AT-SPI can hang
 # on some app states, so the read runs on a worker and is abandoned past this.
 # This blocks the chat-send (main) thread, so it doubles as the max UI stall

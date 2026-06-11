@@ -13,16 +13,45 @@ balloon.
 from __future__ import annotations
 
 from .models import A11yElement
-from ...constants import A11Y_MAX_SERIALIZED_BYTES
+from ...constants import (
+    A11Y_MAX_SERIALIZED_BYTES,
+    A11Y_NAME_MAX_CHARS,
+    A11Y_VALUE_MAX_CHARS,
+)
 
 # Reserve room so the truncation marker itself always fits under the cap.
 _MARKER_RESERVE_BYTES = 80
 
+# Control characters (C0 + DEL): U+0000–U+001F and U+007F. We strip
+# these from element text so a malicious page can't smuggle newlines or
+# escape sequences into the prompt block. C1 (U+0080–U+009F) is left
+# alone — legitimate UTF-8 text never contains it as a control either.
+_CONTROL_CHARS_TABLE = {c: " " for c in list(range(0x20)) + [0x7F]}
+
+
+def _sanitize(text: str, max_chars: int) -> str:
+    """Strip control chars, neutralise quotes, and cap to ``max_chars``.
+
+    The serialized form puts text inside ``"…"`` for both ``name`` and
+    ``value``; an embedded ``"`` would otherwise let an attacker close
+    one field and inject a fake one. We replace it with the fullwidth
+    quote ``”`` (U+201D) so the text is still human-readable but cannot
+    terminate the syntactic quote pair.
+    """
+    if not text:
+        return ""
+    cleaned = text.translate(_CONTROL_CHARS_TABLE).replace('"', "”")
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[: max_chars - 1].rstrip() + "…"
+    return cleaned
+
 
 def _format_element(el: A11yElement) -> str:
-    line = f'{el.role} "{el.name}" ({el.x},{el.y} {el.width}x{el.height})'
+    name = _sanitize(el.name, A11Y_NAME_MAX_CHARS)
+    line = f'{el.role} "{name}" ({el.x},{el.y} {el.width}x{el.height})'
     if el.value:
-        line += f'  value="{el.value}"'
+        value = _sanitize(el.value, A11Y_VALUE_MAX_CHARS)
+        line += f'  value="{value}"'
     return line
 
 

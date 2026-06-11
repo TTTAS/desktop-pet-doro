@@ -48,10 +48,16 @@ class _StubOrchestrator(QtCore.QObject):
 
 
 class _StubConfigManager:
-    def __init__(self, a11y_enabled=False, mouse_enabled=False):
+    def __init__(
+        self,
+        a11y_enabled=False,
+        mouse_enabled=False,
+        a11y_share_input_values=False,
+    ):
         self.automation = SimpleNamespace(
             a11y_enabled=a11y_enabled,
             mouse_enabled=mouse_enabled,
+            a11y_share_input_values=a11y_share_input_values,
         )
         self.update_automation = Mock()
         self.save = Mock()
@@ -119,9 +125,43 @@ def test_save_persists_a11y_toggle(qtbot):
     dialog._on_save()
 
     config.update_automation.assert_called_once_with(
-        a11y_enabled=True, mouse_enabled=False
+        a11y_enabled=True,
+        a11y_share_input_values=False,
+        mouse_enabled=False,
     )
     config.save.assert_called_once()
+
+
+def test_save_persists_share_input_values_when_a11y_on(qtbot):
+    dialog, _, config = _make_dialog(qtbot, a11y_enabled=False)
+    dialog._a11y_checkbox.setChecked(True)
+    dialog._a11y_share_values_checkbox.setChecked(True)
+
+    dialog._on_save()
+
+    config.update_automation.assert_called_once_with(
+        a11y_enabled=True,
+        a11y_share_input_values=True,
+        mouse_enabled=False,
+    )
+
+
+def test_save_drops_share_input_values_when_a11y_off(qtbot):
+    dialog, _, config = _make_dialog(
+        qtbot, a11y_enabled=True
+    )
+    # User unchecks a11y but the share-values checkbox is still ticked:
+    # the persisted value must be False because the dependency is gone.
+    dialog._a11y_share_values_checkbox.setChecked(True)
+    dialog._a11y_checkbox.setChecked(False)
+
+    dialog._on_save()
+
+    config.update_automation.assert_called_once_with(
+        a11y_enabled=False,
+        a11y_share_input_values=False,
+        mouse_enabled=False,
+    )
 
 
 def test_save_enabling_a11y_clears_session_blacklist(qtbot):
