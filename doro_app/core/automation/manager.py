@@ -441,8 +441,9 @@ class AutomationManager:
         invoke_ok = False
         try:
             class_name = self._backend.read_window_class_at(cx, cy)
-            logger.info(
-                f"fire source={source} coord=({cx},{cy}) class={class_name!r}"
+            print(
+                f"[doro click] fire source={source} coord=({cx},{cy}) class={class_name!r}",
+                flush=True,
             )
 
             if not self._is_allowlisted(class_name):
@@ -649,6 +650,11 @@ class AutomationManager:
     def _record(self, outcome: ClickOutcome, detail: str) -> ClickOutcome:
         self.outcomes.append(outcome)
         logger.info(f"[automation] {outcome.value}: {detail}")
+        # Mirror to stdout so users diagnosing "why didn't my click fire?"
+        # don't need to dig through logger output. Every click attempt
+        # ends with exactly one _record() call, so this is one line per
+        # attempt — not noisy.
+        print(f"[doro click] outcome={outcome.value} {detail}", flush=True)
         return outcome
 
     # ------------------------------------------------------------------ Test hooks

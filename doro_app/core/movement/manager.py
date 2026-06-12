@@ -484,7 +484,13 @@ class MovementManager:
         self._movement_reports.append(report)
         if len(self._movement_reports) > MAX_MOVE_REPORTS:
             self._movement_reports = self._movement_reports[-MAX_MOVE_REPORTS:]
-        logger.info(f"[move] {report}")
+        try:
+            print(f"[doro move] {report}")
+        except (OSError, UnicodeEncodeError):
+            # OSError: stdout not available (redirected to closed file, etc.)
+            # UnicodeEncodeError: Cannot encode output (rare in Python 3)
+            # This is debug output, safe to ignore if it fails
+            pass
 
     def _start_movement(
         self,
