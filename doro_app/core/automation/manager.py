@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Optional, TYPE_CHECKING
@@ -193,7 +194,9 @@ class AutomationManager:
         self._esc_press_times: list[float] = []
 
         # Bookkeeping for tests / debug; production never reads these.
-        self.outcomes: list[ClickOutcome] = []
+        # Bounded — the manager lives for the whole app session and every
+        # click attempt appends one entry.
+        self.outcomes: deque[ClickOutcome] = deque(maxlen=256)
 
         # Terminal-outcome listeners — `ClickAction` (via the
         # ActionDispatcher) subscribes here to know when one click is

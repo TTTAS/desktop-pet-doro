@@ -478,14 +478,18 @@ class ConfigManager:
         # Save automation config
         automation = self._config.automation
         self._settings.setValue("automation/mouse_enabled", bool(automation.mouse_enabled))
+        # Stored as a comma string, not a list: QSettings serializes an
+        # empty list as an invalid variant that reads back None, which
+        # _parse_class_list would resurrect as the default — making the
+        # list impossible to clear. An empty string round-trips intact.
         self._settings.setValue(
             "automation/mouse_target_allowlist",
-            list(automation.mouse_target_allowlist),
+            ",".join(automation.mouse_target_allowlist),
         )
         self._settings.setValue("automation/a11y_enabled", bool(automation.a11y_enabled))
         self._settings.setValue(
             "automation/a11y_app_blacklist",
-            list(automation.a11y_app_blacklist),
+            ",".join(automation.a11y_app_blacklist),
         )
         self._settings.setValue(
             "automation/a11y_share_input_values",

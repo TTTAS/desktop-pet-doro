@@ -209,10 +209,14 @@ def window_class_for_handle(handle: int) -> Optional[str]:
 def _get_foreground_window_handle_win32() -> Optional[int]:  # pragma: no cover - needs Windows
     try:
         import ctypes
+        from ctypes import wintypes
     except ImportError:
         return None
     try:
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # Without an explicit restype ctypes defaults to c_int, which
+        # truncates 64-bit HWND values.
+        user32.GetForegroundWindow.restype = wintypes.HWND
         hwnd = user32.GetForegroundWindow()
         return int(hwnd) if hwnd else None
     except Exception:
@@ -227,8 +231,14 @@ def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - n
         return None
     try:
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # Explicit HWND argtype — the default c_int conversion truncates
+        # 64-bit handle values.
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND, ctypes.POINTER(wintypes.DWORD),
+        ]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
         pid = wintypes.DWORD(0)
-        user32.GetWindowThreadProcessId(int(handle), ctypes.byref(pid))
+        user32.GetWindowThreadProcessId(wintypes.HWND(handle), ctypes.byref(pid))
         return int(pid.value) or None
     except Exception:
         return None
@@ -237,12 +247,20 @@ def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - n
 def _window_class_for_handle_win32(handle: int) -> Optional[str]:  # pragma: no cover - needs Windows
     try:
         import ctypes
+        from ctypes import wintypes
     except ImportError:
         return None
     try:
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # Declared here as well as in _resolve_hwnd_at_win32 — windll
+        # caches the function object, but this helper must not depend on
+        # the other path having run first.
+        user32.GetClassNameW.argtypes = [
+            wintypes.HWND, wintypes.LPWSTR, ctypes.c_int,
+        ]
+        user32.GetClassNameW.restype = ctypes.c_int
         buf = ctypes.create_unicode_buffer(256)
-        user32.GetClassNameW(int(handle), buf, 256)
+        user32.GetClassNameW(wintypes.HWND(handle), buf, 256)
         return buf.value or None
     except Exception:
         return None

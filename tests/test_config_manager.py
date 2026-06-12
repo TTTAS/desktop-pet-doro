@@ -373,3 +373,27 @@ class TestConfigManagerEdgeCases:
         # Second manager should see updated value
         manager2 = ConfigManager(settings_path)
         assert manager2.chat.temperature == 0.9
+
+
+class TestAutomationClassListPersistence:
+    """Class lists must round-trip through QSettings — including empty,
+    which a plain list value cannot do (empty list reads back None and
+    would resurrect the default, making the list impossible to clear)."""
+
+    def test_allowlist_roundtrip(self, tmp_path):
+        settings_path = tmp_path / "test.ini"
+        manager1 = ConfigManager(settings_path)
+        manager1.update_automation(mouse_target_allowlist=("Firefox", "Chrome_WidgetWin_1"))
+        manager1.save()
+
+        manager2 = ConfigManager(settings_path)
+        assert manager2.automation.mouse_target_allowlist == ("Firefox", "Chrome_WidgetWin_1")
+
+    def test_cleared_allowlist_stays_empty(self, tmp_path):
+        settings_path = tmp_path / "test.ini"
+        manager1 = ConfigManager(settings_path)
+        manager1.update_automation(mouse_target_allowlist=())
+        manager1.save()
+
+        manager2 = ConfigManager(settings_path)
+        assert manager2.automation.mouse_target_allowlist == ()

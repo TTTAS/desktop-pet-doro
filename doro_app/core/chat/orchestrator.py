@@ -252,7 +252,16 @@ class ChatOrchestrator(QtCore.QObject):
             if kind == "bracket":
                 # Phase 1c automation: `[mouse:click]` is the only accepted form.
                 if parse_mouse_bracket(token) is not None:
-                    pending_mouse_tokens.append(token)
+                    # One click per response: the wind-up/Esc safety flow is
+                    # designed around a single pending click, so extra
+                    # `[mouse:click]` brackets in the same reply are dropped
+                    # rather than queued back-to-back.
+                    if pending_mouse_tokens:
+                        logger.info(
+                            "[automation] extra [mouse:click] in same response dropped"
+                        )
+                    else:
+                        pending_mouse_tokens.append(token)
                     continue
                 if self._dispatch_move_bracket(token, move_reports):
                     continue

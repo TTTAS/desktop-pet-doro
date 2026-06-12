@@ -106,6 +106,27 @@ def test_mouse_click_bracket_routes_to_automation_manager(
     assert automation_setup["manager"].outcomes[-1] == ClickOutcome.FIRED
 
 
+def test_only_first_click_per_response_is_dispatched(
+    stub_controller, stub_movement, stub_state_service, automation_setup
+):
+    """Two `[mouse:click]` brackets in one reply → one click, no BUSY churn."""
+    orchestrator = ChatOrchestrator(
+        stub_controller,
+        stub_movement,
+        stub_state_service,
+        automation=automation_setup["manager"],
+    )
+
+    response = "點兩下！[mouse:click] [mouse:click]"
+    orchestrator._handle_actions_in_text(response)
+    automation_setup["scheduler"].flush()
+
+    assert automation_setup["clicker"].invoke_calls == [(640, 480)]
+    # The second bracket was dropped before reaching the manager — exactly
+    # one click attempt was recorded (no BUSY entry from a double dispatch).
+    assert list(automation_setup["manager"].outcomes) == [ClickOutcome.FIRED]
+
+
 def test_coordinate_form_is_rejected_silently(
     stub_controller, stub_movement, stub_state_service, automation_setup
 ):
