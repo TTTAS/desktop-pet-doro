@@ -96,7 +96,7 @@ class ClickOutcome(Enum):
     RATE_LIMITED = "rate-limited"         # too soon after previous click
     KILL_SWITCH = "kill-switch"           # three-Esc kill-switch is engaged
     BUSY = "busy"                         # already mid-wind-up
-    REJECTED_BY_ALLOWLIST = "redirect-blocked"
+    REJECTED_BY_ALLOWLIST = "rejected-by-allowlist"
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
     NOT_INVOCABLE = "not-invocable"        # UIA found no InvokePattern at target
@@ -383,12 +383,20 @@ class AutomationManager:
             # nowhere near the foot. If we'd click somewhere Doro visibly
             # isn't, fall back to the foot — less surprising than a phantom
             # click across the screen.
+            # The threshold constant is in logical pixels but distances
+            # here are physical — scale by DPR so high-DPI screens don't
+            # shrink the allowed range.
+            try:
+                dpr = self._window.device_pixel_ratio() or 1.0
+            except Exception:  # pragma: no cover - defensive
+                dpr = 1.0
+            proximity_px = self._click_proximity_px * dpr
             dist = math.hypot(cx - fx, cy - fy)
-            if dist > self._click_proximity_px:
+            if dist > proximity_px:
                 logger.info(
                     "click target (%d,%d) is %dpx from foot (%d,%d) — "
                     "exceeds %dpx proximity, falling back to foot",
-                    cx, cy, int(dist), fx, fy, self._click_proximity_px,
+                    cx, cy, int(dist), fx, fy, int(proximity_px),
                 )
                 cx, cy = fx, fy
                 source = "foot"

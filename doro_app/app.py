@@ -934,3 +934,12 @@ class _QtAutomationWindowAdapter:
             )
         except Exception:  # pragma: no cover - defensive
             return (0, 0, 1920, 1080)
+
+    def device_pixel_ratio(self) -> float:
+        try:
+            screen = self._window.screen()
+            if screen is None:
+                return 1.0
+            return float(screen.devicePixelRatio() or 1.0)
+        except Exception:  # pragma: no cover - defensive
+            return 1.0

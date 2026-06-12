@@ -1047,6 +1047,28 @@ class TestClickTargetProvider:
         scheduler.flush()
         assert fake_clicker.invoke_calls == [(550, 530)]
 
+    def test_proximity_threshold_scales_with_dpr(
+        self, fake_clicker, config_stub, fake_backend, coord_stub,
+        scheduler, clock,
+    ):
+        """The logical-px threshold is scaled by DPR before comparing
+        against the physical-px distance: 450px from foot exceeds 300
+        at dpr=1.0 but fits within 300×2.0 at dpr=2.0."""
+        from doro_app.core.automation.fakes import FakeAutomationWindow
+        window = FakeAutomationWindow(
+            foot_logical=(500, 500), foot_physical=(500, 500), dpr=2.0,
+        )
+        manager = self._build(
+            fake_clicker, config_stub, window, fake_backend, coord_stub,
+            scheduler, clock,
+            target_provider=lambda: (950, 500),  # 450px from foot
+            click_proximity_px=300,
+        )
+        fake_backend.set_window_class("Firefox")
+        manager.execute_click()
+        scheduler.flush()
+        assert fake_clicker.invoke_calls == [(950, 500)]
+
     def test_window_class_read_at_clicked_coord(
         self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
         scheduler, clock,

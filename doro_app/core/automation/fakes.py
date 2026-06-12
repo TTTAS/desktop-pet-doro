@@ -99,11 +99,13 @@ class FakeAutomationWindow:
         foot_physical: Optional[tuple[int, int]] = None,
         screen_size: tuple[int, int] = (1920, 1080),
         screen_origin: tuple[int, int] = (0, 0),
+        dpr: float = 1.0,
     ) -> None:
         self._foot_logical = foot_logical
         self._foot_physical = foot_physical or foot_logical
         self._screen_size = screen_size
         self._screen_origin = screen_origin
+        self._dpr = dpr
         self.mouse_transparent: bool = False
         self.transparent_toggles: list[bool] = []
 
@@ -130,6 +132,9 @@ class FakeAutomationWindow:
             self._screen_size[0],
             self._screen_size[1],
         )
+
+    def device_pixel_ratio(self) -> float:
+        return self._dpr
 
     # Test conveniences --------------------------------------------------
 

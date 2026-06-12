@@ -95,6 +95,14 @@ class AutomationWindowPort(Protocol):
         into the primary monitor's range.
         """
 
+    def device_pixel_ratio(self) -> float:
+        """Return the DPR of Doro's current screen (1.0 when unknown).
+
+        Lets the manager scale logical-pixel thresholds (e.g. the click
+        proximity guard) before comparing against physical-pixel
+        distances, so high-DPI screens don't halve the allowed range.
+        """
+
 
 class WindUpAnimatorPort(Protocol):
     """Drives the visual wind-up animation during a click.
