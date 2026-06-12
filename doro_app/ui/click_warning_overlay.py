@@ -17,6 +17,9 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.automation.coordinates import compute_logical_point_from_physical
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 _BORDER_COLOR = QtGui.QColor(220, 30, 30)
@@ -53,7 +56,7 @@ class ClickWarningOverlay(QtWidgets.QWidget):
         """
         screen = host_window.screen() or QtGui.QGuiApplication.primaryScreen()
         if screen is None:
-            print("[doro warning-frame] no screen available, skipping", flush=True)
+            logger.warning("warning-frame: no screen available, skipping")
             return
         geom = screen.geometry()
         dpr = screen.devicePixelRatio() or 1.0
@@ -71,9 +74,8 @@ class ClickWarningOverlay(QtWidgets.QWidget):
             lw = max(1, round(w_phys / dpr))
             lh = max(1, round(h_phys / dpr))
 
-        print(
-            f"[doro warning-frame] phys{bounds_physical} → logical=({lx},{ly} {lw}x{lh}) dpr={dpr}",
-            flush=True,
+        logger.debug(
+            f"warning-frame phys{bounds_physical} → logical=({lx},{ly} {lw}x{lh}) dpr={dpr}"
         )
 
         # Order matters on Windows: show first so a native handle gets

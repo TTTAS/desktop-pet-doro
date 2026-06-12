@@ -31,7 +31,10 @@ from .ui.controllers import ClickActionController, DialogManager, SpriteControll
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
+from .utils.logger import get_logger
 from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
+
+logger = get_logger(__name__)
 
 
 class DoroApp:
@@ -546,24 +549,18 @@ class DoroApp:
         try:
             from .core.automation.backend_pynput import PynputBackend
         except Exception as exc:  # pragma: no cover - import-time path
-            from .utils.logger import get_logger as _gl
-            _gl(__name__).warning(f"Automation requested but pynput unavailable: {exc}")
-            print(
-                f"[doro click] pynput not installed; mouse-click automation "
-                f"unavailable — install with `pip install pynput` ({exc})",
-                flush=True,
+            logger.warning(
+                f"pynput not installed; mouse-click automation unavailable — "
+                f"install with `pip install pynput` ({exc})"
             )
             return None
 
         try:
             backend = PynputBackend()
         except Exception as exc:  # pragma: no cover - runtime path
-            from .utils.logger import get_logger as _gl
-            _gl(__name__).warning(f"Automation backend init failed: {exc}")
-            print(
-                f"[doro click] pynput backend init failed; mouse-click "
-                f"automation unavailable ({exc})",
-                flush=True,
+            logger.warning(
+                f"pynput backend init failed; mouse-click automation "
+                f"unavailable ({exc})"
             )
             return None
 
@@ -800,13 +797,13 @@ class _QtClickWarningOverlayAdapter:
 
     def begin(self, bounds_physical) -> None:
         if bounds_physical is None:
-            print("[doro warning-frame] begin: no a11y bounds, frame hidden", flush=True)
+            logger.debug("warning-frame begin: no a11y bounds, frame hidden")
             return
-        print(f"[doro warning-frame] begin: {bounds_physical}", flush=True)
+        logger.debug(f"warning-frame begin: {bounds_physical}")
         self._overlay.set_bounds_and_show(bounds_physical, self._host)
 
     def end(self) -> None:
-        print("[doro warning-frame] end", flush=True)
+        logger.debug("warning-frame end")
         self._overlay.hide_and_clear()
 
 

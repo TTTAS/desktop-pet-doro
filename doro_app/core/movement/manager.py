@@ -22,11 +22,14 @@ from .parser import (
     parse_move_bracket,
 )
 from .repository import MovementRepository
+from ...utils.logger import get_logger
 
 if TYPE_CHECKING:
     from .port import MovementWindowPort
     from ..state import StateService
 
+
+logger = get_logger(__name__)
 
 # Movement history size limit
 MAX_MOVE_REPORTS = 50
@@ -460,8 +463,7 @@ class MovementManager:
             try:
                 listener()
             except Exception:  # pragma: no cover - listeners should not raise
-                from ...utils.logger import get_logger as _gl
-                _gl(__name__).exception("Movement completion listener raised")
+                logger.exception("Movement completion listener raised")
 
     def _direction_slug(self, direction: tuple[float, float]) -> Optional[str]:
         key = direction_key(direction)
@@ -482,13 +484,7 @@ class MovementManager:
         self._movement_reports.append(report)
         if len(self._movement_reports) > MAX_MOVE_REPORTS:
             self._movement_reports = self._movement_reports[-MAX_MOVE_REPORTS:]
-        try:
-            print(f"[doro move] {report}")
-        except (OSError, UnicodeEncodeError):
-            # OSError: stdout not available (redirected to closed file, etc.)
-            # UnicodeEncodeError: Cannot encode output (rare in Python 3)
-            # This is debug output, safe to ignore if it fails
-            pass
+        logger.info(f"[move] {report}")
 
     def _start_movement(
         self,

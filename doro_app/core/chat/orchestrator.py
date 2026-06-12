@@ -324,17 +324,13 @@ class ChatOrchestrator(QtCore.QObject):
 
         if not parse.accepted:
             logger.warning(f"[automation] rejected mouse bracket: {parse.reason}")
-            print(f"[doro click] parser rejected: {parse.reason}", flush=True)
             return True
 
         if self._automation is None:
-            logger.info("[automation] [mouse:click] received but automation not wired; ignoring")
-            print(
-                "[doro click] AutomationManager not built — pynput likely "
-                "missing (see startup `[doro click] pynput not installed` "
-                "line if any). Install with `pip install pynput` then "
-                "restart Doro.",
-                flush=True,
+            logger.warning(
+                "[automation] [mouse:click] received but AutomationManager not "
+                "built — pynput likely missing. Install with `pip install "
+                "pynput` then restart Doro."
             )
             return True
 
