@@ -98,6 +98,7 @@ class ClickOutcome(Enum):
     KILL_SWITCH = "kill-switch"           # three-Esc kill-switch is engaged
     BUSY = "busy"                         # already mid-wind-up
     REJECTED_BY_ALLOWLIST = "rejected-by-allowlist"
+    REJECTED_NOT_FOREGROUND = "rejected-not-foreground"  # allowlisted class but not the focused window
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
     NOT_INVOCABLE = "not-invocable"        # UIA found no InvokePattern at target
@@ -473,7 +474,7 @@ class AutomationManager:
                 and target_hwnd != fg_hwnd
             ):
                 self._finalize(
-                    ClickOutcome.REJECTED_BY_ALLOWLIST,
+                    ClickOutcome.REJECTED_NOT_FOREGROUND,
                     f"target window ({target_hwnd}) is not foreground ({fg_hwnd})",
                 )
                 return

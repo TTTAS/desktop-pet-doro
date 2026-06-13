@@ -182,7 +182,7 @@ class TestForegroundVerification:
         scheduler.flush()
 
         assert fake_clicker.invoke_calls == []
-        assert manager.outcomes[-1] == ClickOutcome.REJECTED_BY_ALLOWLIST
+        assert manager.outcomes[-1] == ClickOutcome.REJECTED_NOT_FOREGROUND
         coord_stub.end.assert_called_once()
 
     def test_matching_foreground_is_accepted(
@@ -772,7 +772,8 @@ class TestClickWarningOverlay:
     """The warning_overlay port frames the click target during wind-up.
 
     Same exit-path guarantee as wind_up_animator: every terminal path
-    (FIRED / ABORTED_BY_ESC / REJECTED_BY_ALLOWLIST / DRAG_GRACE_EXCEEDED)
+    (FIRED / ABORTED_BY_ESC / REJECTED_BY_ALLOWLIST /
+    REJECTED_NOT_FOREGROUND / DRAG_GRACE_EXCEEDED)
     must call ``end()`` exactly once so the red frame never gets stuck on
     screen.
     """
