@@ -9,7 +9,7 @@ from typing import Optional
 def setup_logger(
     name: str = "doro",
     log_file: Optional[Path] = None,
-    level: int = logging.INFO,
+    level: int = logging.DEBUG,
     console: bool = True,
 ) -> logging.Logger:
     """
