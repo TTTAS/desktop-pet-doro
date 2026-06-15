@@ -694,13 +694,26 @@ class DoroApp:
         """Bounds (physical px) of the a11y element under the latest
         ``[move:to;x=;y=]`` target — what the click warning overlay frames
         during the 1.5s wind-up. ``None`` if no a11y read or no recent
-        target."""
+        target.
+
+        The three "no bounds" branches each print a distinct reason so
+        a missing red frame is diagnosable from stdout without rebuilding.
+        """
         if self._a11y is None:
+            print("[doro click] warning-frame: a11y service unavailable", flush=True)
             return None
         target = self._movement.last_target_physical
         if target is None:
+            print("[doro click] warning-frame: no recent [MOVE:to] target", flush=True)
             return None
-        return self._a11y.bounds_at_physical_point(*target)
+        bounds = self._a11y.bounds_at_physical_point(*target)
+        if bounds is None:
+            print(
+                f"[doro click] warning-frame: no a11y element at "
+                f"target={target} in _last_elements",
+                flush=True,
+            )
+        return bounds
 
     # ═════════════════════════════════════════════════════════════════
     # A11y tree reader (Phase 1d) construction
@@ -797,13 +810,25 @@ class _QtClickWarningOverlayAdapter:
 
     def begin(self, bounds_physical) -> None:
         if bounds_physical is None:
-            logger.debug("warning-frame begin: no a11y bounds, frame hidden")
+            # Surface this to stdout (not just logger.debug, which is
+            # silent under the default INFO level) so a missing red
+            # frame doesn't look like the overlay was removed when
+            # bounds_at_physical_point actually just returned None.
+            print(
+                "[doro click] warning-frame skipped: bounds=None "
+                "(no a11y element at the move target — _last_elements "
+                "may be stale or from a different window)",
+                flush=True,
+            )
             return
-        logger.debug(f"warning-frame begin: {bounds_physical}")
+        print(
+            f"[doro click] warning-frame begin: bounds={bounds_physical}",
+            flush=True,
+        )
         self._overlay.set_bounds_and_show(bounds_physical, self._host)
 
     def end(self) -> None:
-        logger.debug("warning-frame end")
+        print("[doro click] warning-frame end", flush=True)
         self._overlay.hide_and_clear()
 
 
