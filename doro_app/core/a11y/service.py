@@ -140,6 +140,14 @@ class A11yService:
         thread.
         """
         if not self._config.automation.a11y_enabled:
+            # Trace this early-exit so a misconfigured "a11y_enabled=False"
+            # surfaces in the same stream as the rest of the diagnostics
+            # rather than getting silently absorbed.
+            print(
+                f"[doro click] uia-trace ({int(x)},{int(y)}) hwnd={hwnd} "
+                f"reason=skipped_a11y_disabled",
+                flush=True,
+            )
             return False
         future = self._executor.submit(
             self._backend.invoke_at_physical_point, int(x), int(y), hwnd
@@ -150,6 +158,13 @@ class A11yService:
             logger.warning(
                 "a11y invoke at (%d,%d) exceeded %.1fs timeout — dropping click",
                 int(x), int(y), A11Y_INVOKE_TIMEOUT_SECONDS,
+            )
+            # Mirror to stdout so the failure shows up alongside the
+            # backend's uia-trace block when reading the log.
+            print(
+                f"[doro click] uia-trace ({int(x)},{int(y)}) hwnd={hwnd} "
+                f"reason=timeout_{A11Y_INVOKE_TIMEOUT_SECONDS:.1f}s",
+                flush=True,
             )
             return False
         except Exception as exc:
