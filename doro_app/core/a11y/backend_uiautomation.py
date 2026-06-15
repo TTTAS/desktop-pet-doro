@@ -28,6 +28,12 @@ _MAX_NODES_VISITED = 2000
 # bounded so a buggy provider can't burn the 2s invoke budget on its own.
 _HIT_TEST_MAX_DEPTH = 30
 
+# Visit cap on the invoke-target DFS. Matches the read_elements walker's
+# 2000-node ceiling — empirically enough to cover a maximized Chrome window
+# (top chrome + tabs + bookmark bar + page DOM) without running out the
+# 2s invoke budget on a pathological tree.
+_INVOCABLE_VISIT_LIMIT = 2000
+
 # Env-var gate for the UIA failure trace. Default ON during the current
 # debugging window — flip to "0" / "false" to silence. The trace fires
 # only when the invoke ultimately returns False, so production success
@@ -121,6 +127,29 @@ def _supported_patterns(control) -> str:
             found.append(name)
     return "[" + ", ".join(found) + "]"
 
+
+def _has_invoke_action(node) -> bool:
+    """True iff ``node`` exposes InvokePattern or LegacyIAccessiblePattern.
+
+    Both count as "clickable": Chrome's bookmark-bar items expose
+    LegacyIAccessiblePattern.DoDefaultAction() but not Invoke; native
+    Win32 buttons expose Invoke; UIA-aware Electron/WPF apps usually
+    expose Invoke. We need either to consider an element a valid invoke
+    target — which lets the DFS skip 1920×1040 overlay Panes that have
+    bounds covering (x, y) but no action.
+    """
+    for getter_name in ("GetInvokePattern", "GetLegacyIAccessiblePattern"):
+        getter = getattr(node, getter_name, None)
+        if getter is None:
+            continue
+        try:
+            p = getter()
+        except Exception:
+            continue
+        if p is not None:
+            return True
+    return False
+
 # UIA ControlTypeName -> our normalized role vocabulary.
 _ROLE_MAP = {
     "ButtonControl": "button",
@@ -212,18 +241,20 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         OS cursor.
 
         Scoping: when ``hwnd`` is supplied, the lookup is anchored at
-        ``ControlFromHandle(hwnd)`` and walks that subtree. The manager
-        passes the hwnd it already resolved with ``CWP_SKIPTRANSPARENT``,
-        so Doro's sprite — visible in the unscoped UIA tree because UIA
-        ignores ``WS_EX_TRANSPARENT`` — is excluded. Without scoping,
-        ``ControlFromPoint`` walks the global tree from the desktop root
-        and Doro on top of the target wins the hit-test, then we burn
-        the invoke budget climbing a useless subtree.
+        ``ControlFromHandle(hwnd)`` and the subtree is searched for the
+        smallest-area descendant that contains (x, y) AND exposes an
+        invoke-style pattern (InvokePattern or LegacyIAccessiblePattern).
+        Area as tie-breaker is what fixes Chrome: ``BrowserRootView``
+        has multiple sibling widgets whose ``BoundingRectangle`` covers
+        the full viewport (e.g. ``TopContainerOverlayView``), and the
+        old "deepest-containing-leaf" walk would pick whichever one was
+        last iterated even though the real button (e.g. a 89×28
+        bookmark) sits in another sibling — the size comparison now
+        favours the actual leaf.
 
-        ``GetInvokePattern`` is None for elements that don't expose
-        Invoke (canvas / custom widgets); we then climb a few ancestors
-        looking for one (toolbar buttons are commonly wrapped). Still
-        nothing → return False so the manager surfaces NOT_INVOCABLE.
+        When the scoped DFS finds nothing invocable, falls back to
+        ``ControlFromPoint`` (with a self-pid guard so Doro's own
+        sprite on top can't be selected as the target).
         """
         try:
             import uiautomation as auto
@@ -263,8 +294,14 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
     def _resolve_invoke_target(
         self, auto, x: int, y: int, hwnd: Optional[int], trace: _Trace,
     ):
-        """Find the deepest UIA control containing (x, y), scoped to hwnd
-        when supplied. Returns None when nothing was hit."""
+        """Pick a UIA control to Invoke at (x, y).
+
+        With ``hwnd``: DFS the subtree rooted at ``ControlFromHandle(hwnd)``
+        and return the smallest-area descendant that contains (x, y) and
+        exposes an invoke-style pattern. Without ``hwnd``, or when the
+        DFS turns up nothing, fall back to global ``ControlFromPoint``
+        (with a self-pid guard so Doro's own sprite can't shadow).
+        """
         if hwnd is not None:
             try:
                 root = auto.ControlFromHandle(int(hwnd))
@@ -276,119 +313,129 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
                 trace.add(f"ControlFromHandle({hwnd}) returned None")
             else:
                 trace.add(f"ControlFromHandle({hwnd}) → {_describe_control(root)}")
-                hit = self._hit_test_subtree(root, x, y, _HIT_TEST_MAX_DEPTH, trace, 0)
-                if hit is not None and hit is not root:
-                    trace.add(f"subtree_hit → {_describe_control(hit)}")
-                    return hit
-                if hit is root:
-                    trace.add("subtree_hit was root itself — treating as dead-end")
-                else:
-                    trace.add("subtree_hit=None (no descendant matched)")
-                # hwnd resolved but no subtree element covers (x, y) —
-                # likely the cached UIA bounds lag behind a scroll. Fall
-                # through to the global lookup rather than dropping the
-                # click outright.
+                best = self._find_invocable_in_subtree(root, x, y, trace)
+                if best is not None:
+                    return best
+                trace.add(
+                    "no invocable descendant under scoped subtree; "
+                    "falling back to global ControlFromPoint"
+                )
         try:
             fallback = auto.ControlFromPoint(int(x), int(y))
         except Exception as exc:
             logger.debug(f"UIA ControlFromPoint({x},{y}) raised: {exc}")
             trace.add(f"ControlFromPoint({x},{y}) raised: {exc}")
             return None
+        if fallback is None:
+            trace.add(f"ControlFromPoint({x},{y}) returned None")
+            return None
+        try:
+            fb_pid = int(fallback.ProcessId)
+        except Exception:
+            fb_pid = -1
+        if fb_pid == os.getpid():
+            trace.add(
+                f"ControlFromPoint hit own pid={fb_pid} (sprite shadow); "
+                f"discarding to avoid invoking Doro's own UI"
+            )
+            return None
         trace.add(f"ControlFromPoint({x},{y}) → {_describe_control(fallback)}")
         return fallback
 
-    def _hit_test_subtree(
-        self, root, x: int, y: int, depth_left: int, trace: _Trace, depth: int,
+    def _find_invocable_in_subtree(
+        self, root, x: int, y: int, trace: _Trace,
     ):
-        """Return the deepest descendant of ``root`` whose bounding rect
-        contains (x, y), or None. Depth-bounded so a pathological tree
-        cannot exhaust the invoke budget."""
-        if depth_left <= 0:
-            trace.add(f"hit_test depth={depth} max_depth_reached — using root")
-            return root
-        try:
-            children = root.GetChildren()
-        except Exception as exc:
-            trace.add(f"hit_test depth={depth} GetChildren raised: {exc}")
-            children = []
-        if depth <= 2:
-            trace.add(
-                f"hit_test depth={depth} root={_safe_attr(root, 'ControlTypeName')} "
-                f"children={len(children)}"
-            )
-        best = None
-        for idx, child in enumerate(children):
+        """DFS ``root``'s subtree for the smallest-area descendant that
+        contains (x, y) and exposes an invoke-style pattern. None if no
+        candidate is found.
+
+        Smallest-area selection is the fix for Chrome: ``BrowserRootView``
+        has sibling widgets (e.g. ``TopContainerOverlayView`` vs the
+        toolbar/bookmark-bar/tab-strip tree) whose bounds both cover the
+        whole viewport and both contain (x, y) — picking by area lets
+        the real 89×28 bookmark button win over the 1920×1040 overlay
+        pane that exposes nothing actionable.
+        """
+        candidates: list[tuple[int, object, int]] = []
+        visited = [0]
+
+        def visit(node, depth: int) -> None:
+            if depth >= _HIT_TEST_MAX_DEPTH:
+                return
+            visited[0] += 1
+            if visited[0] > _INVOCABLE_VISIT_LIMIT:
+                return
             try:
-                rect = child.BoundingRectangle
-            except Exception as exc:
-                if depth == 0 and idx < _TRACE_CHILDREN_PER_LEVEL:
-                    trace.add(
-                        f"hit_test depth={depth} child#{idx} BoundingRectangle raised: {exc}"
-                    )
-                continue
+                rect = node.BoundingRectangle
+            except Exception:
+                return
             w = rect.right - rect.left
             h = rect.bottom - rect.top
             if w <= 0 or h <= 0:
-                continue
-            contains = rect.left <= x < rect.right and rect.top <= y < rect.bottom
-            if depth == 0 and idx < _TRACE_CHILDREN_PER_LEVEL:
-                trace.add(
-                    f"hit_test depth={depth} child#{idx} "
-                    f"type={_safe_attr(child, 'ControlTypeName')} "
-                    f"bounds=({int(rect.left)},{int(rect.top)})-({int(rect.right)},{int(rect.bottom)}) "
-                    f"contains={contains}"
-                )
-            if contains:
-                deeper = self._hit_test_subtree(
-                    child, x, y, depth_left - 1, trace, depth + 1,
-                )
-                # Prefer the deepest hit. Multiple children may overlap
-                # (e.g. overlapping panes in DPI-scaled layouts) — last
-                # match wins, matching ControlFromPoint's z-order pick.
-                best = deeper if deeper is not None else child
-        if depth == 0 and len(children) > _TRACE_CHILDREN_PER_LEVEL:
-            trace.add(
-                f"hit_test depth={depth} … (+{len(children) - _TRACE_CHILDREN_PER_LEVEL} more children not shown)"
-            )
-        return best if best is not None else root
+                return
+            if not (rect.left <= x < rect.right and rect.top <= y < rect.bottom):
+                return
+            if _has_invoke_action(node):
+                candidates.append((w * h, node, depth))
+            try:
+                children = node.GetChildren()
+            except Exception:
+                children = []
+            for child in children:
+                visit(child, depth + 1)
+
+        visit(root, 0)
+        trace.add(
+            f"DFS visited={visited[0]} invocable_candidates={len(candidates)}"
+        )
+        if not candidates:
+            return None
+        candidates.sort(key=lambda c: c[0])
+        area, ctrl, depth = candidates[0]
+        trace.add(
+            f"DFS picked area={area} depth={depth} → {_describe_control(ctrl)}"
+        )
+        return ctrl
 
     def _fire_invoke(self, target, trace: _Trace) -> bool:
-        """Try InvokePattern on ``target`` then on a few ancestors."""
-        node = target
-        for level in range(4):  # element + 3 ancestors covers toolbar-button wrappers
-            if node is None:
-                trace.add(f"fire_invoke level={level} node=None — stop")
-                return False
-            patterns = _supported_patterns(node)
+        """Try InvokePattern then LegacyIAccessiblePattern on ``target``.
+
+        The DFS already guarantees ``target`` exposes one of them
+        (``_has_invoke_action`` is its gate), so we don't climb
+        ancestors — doing so would risk firing the wrong control if
+        the leaf's Invoke happens to throw.
+        """
+        trace.add(
+            f"fire_invoke target={_describe_control(target)} "
+            f"patterns={_supported_patterns(target)}"
+        )
+        try:
+            invoke = target.GetInvokePattern()
+        except Exception as exc:
+            logger.debug(f"UIA GetInvokePattern raised: {exc}")
+            trace.add(f"GetInvokePattern raised: {exc}")
+            invoke = None
+        if invoke is not None:
             try:
-                pattern = node.GetInvokePattern()
+                invoke.Invoke()
+                return True
             except Exception as exc:
-                logger.debug(f"UIA GetInvokePattern raised: {exc}")
-                trace.add(
-                    f"fire_invoke level={level} "
-                    f"{_describe_control(node)} patterns={patterns} "
-                    f"GetInvokePattern raised: {exc}"
-                )
-                pattern = None
-            else:
-                trace.add(
-                    f"fire_invoke level={level} "
-                    f"{_describe_control(node)} patterns={patterns} "
-                    f"has_invoke={pattern is not None}"
-                )
-            if pattern is not None:
-                try:
-                    pattern.Invoke()
-                    return True
-                except Exception as exc:
-                    logger.debug(f"UIA Invoke() raised: {exc}")
-                    trace.add(f"fire_invoke level={level} Invoke() raised: {exc}")
-                    return False
+                logger.debug(f"UIA Invoke() raised: {exc}")
+                trace.add(f"Invoke() raised: {exc}")
+        try:
+            legacy = target.GetLegacyIAccessiblePattern()
+        except Exception as exc:
+            logger.debug(f"UIA GetLegacyIAccessiblePattern raised: {exc}")
+            trace.add(f"GetLegacyIAccessiblePattern raised: {exc}")
+            legacy = None
+        if legacy is not None:
             try:
-                node = node.GetParentControl()
+                legacy.DoDefaultAction()
+                trace.add("DoDefaultAction() succeeded")
+                return True
             except Exception as exc:
-                trace.add(f"fire_invoke level={level} GetParentControl raised: {exc}")
-                return False
+                logger.debug(f"UIA DoDefaultAction() raised: {exc}")
+                trace.add(f"DoDefaultAction() raised: {exc}")
         return False
 
     def _to_element(self, control, role: str) -> Optional[A11yElement]:
