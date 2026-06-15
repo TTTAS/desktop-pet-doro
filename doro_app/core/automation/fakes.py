@@ -32,6 +32,16 @@ class FakeInputBackend:
         self.handle_at_default: Optional[int] = None
         self.handle_at_map: dict[tuple[int, int], int] = {}
         self.foreground_handle: Optional[int] = None
+        # PID owning each known handle; the manager's M2 gate looks up
+        # the foreground handle's PID and compares it against its own
+        # ``os.getpid()`` to recognise Doro's own top-level windows.
+        # ``pid_of_handle_default`` lets a test cover every handle with
+        # one value without enumerating each one.
+        self.pid_of_handle_map: dict[int, int] = {}
+        self.pid_of_handle_default: Optional[int] = None
+        # Diagnostic only: window class for a given handle, used in the
+        # reject-detail string.
+        self.class_of_handle_map: dict[int, str] = {}
 
     # InputBackendPort ---------------------------------------------------
 
@@ -49,6 +59,15 @@ class FakeInputBackend:
 
     def read_foreground_window_handle(self) -> Optional[int]:
         return self.foreground_handle
+
+    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+        key = int(handle)
+        if key in self.pid_of_handle_map:
+            return self.pid_of_handle_map[key]
+        return self.pid_of_handle_default
+
+    def read_class_of_handle(self, handle: int) -> Optional[str]:
+        return self.class_of_handle_map.get(int(handle))
 
     def is_left_button_pressed(self) -> bool:
         return self.left_button_pressed

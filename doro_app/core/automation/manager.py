@@ -57,6 +57,7 @@ around `QtCore.QTimer.singleShot`.
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -179,6 +180,11 @@ class AutomationManager:
         self._on_esc_extra = on_esc_extra
         self._schedule = schedule
         self._clock = clock
+        # M2 foreground gate: any Doro-owned top-level window (sprite,
+        # chat dialog, click-warning overlay, settings frame) shares this
+        # PID, so the gate can treat them all as "aligned" without
+        # enumerating Qt's window list.
+        self._self_pid: int = os.getpid()
 
         self._wind_up_ms = int(wind_up_ms)
         self._rate_limit_ms = int(rate_limit_ms)
@@ -459,23 +465,43 @@ class AutomationManager:
             # click an allowlisted class that happens to sit under the
             # cursor but isn't actually the focused window — e.g. a
             # background browser visible behind a different foreground
-            # app. Both backend methods return None on platforms that
-            # don't implement them; in that case we skip the gate
-            # (preserves current X11/macOS behaviour).
+            # app. Backend methods return None on platforms that don't
+            # implement them; in that case we skip the gate (preserves
+            # current X11/macOS behaviour).
+            #
+            # The PID check lets any Doro-owned top-level window (chat
+            # dialog, click-warning overlay, settings frame, …) count as
+            # aligned — UIA InvokePattern doesn't need the target to have
+            # OS focus, so Doro holding focus on its own UI is fine.
             try:
                 target_hwnd = self._backend.read_handle_at(cx, cy)
                 fg_hwnd = self._backend.read_foreground_window_handle()
             except Exception:  # pragma: no cover - defensive
                 target_hwnd = None
                 fg_hwnd = None
+            fg_pid: Optional[int] = None
+            if fg_hwnd is not None:
+                try:
+                    fg_pid = self._backend.read_pid_of_handle(fg_hwnd)
+                except Exception:  # pragma: no cover - defensive
+                    fg_pid = None
             if (
                 target_hwnd is not None
                 and fg_hwnd is not None
                 and target_hwnd != fg_hwnd
+                and fg_pid != self._self_pid
             ):
+                fg_class: Optional[str] = None
+                try:
+                    fg_class = self._backend.read_class_of_handle(fg_hwnd)
+                except Exception:  # pragma: no cover - defensive
+                    fg_class = None
+                fg_label = (
+                    f"{fg_hwnd} class={fg_class!r}" if fg_class else str(fg_hwnd)
+                )
                 self._finalize(
                     ClickOutcome.REJECTED_NOT_FOREGROUND,
-                    f"target window ({target_hwnd}) is not foreground ({fg_hwnd})",
+                    f"target window ({target_hwnd}) is not foreground ({fg_label})",
                 )
                 return
 

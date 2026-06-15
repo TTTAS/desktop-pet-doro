@@ -46,6 +46,23 @@ class InputBackendPort(Protocol):
     def read_foreground_window_handle(self) -> Optional[int]:
         """Return the OS top-level handle of the focused window, or None."""
 
+    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+        """Return the PID owning ``handle``, or None when unavailable.
+
+        Lets the manager treat any Doro-owned top-level window (sprite,
+        chat dialog, warning overlay, settings frame…) as aligned with
+        the click target — refusing only when a *different* process holds
+        the foreground.
+        """
+
+    def read_class_of_handle(self, handle: int) -> Optional[str]:
+        """Return the window class for ``handle``, or None.
+
+        Diagnostic-only: identifies which window blocked a
+        rejected-not-foreground click. Same privacy contract as
+        :meth:`read_window_class_at` — class only, never title or content.
+        """
+
     def is_left_button_pressed(self) -> bool:
         """Return True if the OS reports the left mouse button currently held."""
 

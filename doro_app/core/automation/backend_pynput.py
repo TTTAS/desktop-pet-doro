@@ -67,6 +67,22 @@ class PynputBackend:
 
         return read_foreground_window_handle()
 
+    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+        from .window_class import pid_for_handle
+
+        try:
+            return pid_for_handle(int(handle))
+        except Exception:
+            return None
+
+    def read_class_of_handle(self, handle: int) -> Optional[str]:
+        from .window_class import window_class_for_handle
+
+        try:
+            return window_class_for_handle(int(handle))
+        except Exception:
+            return None
+
     def is_left_button_pressed(self) -> bool:
         return self._left_pressed
 

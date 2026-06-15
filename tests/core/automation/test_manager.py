@@ -212,6 +212,51 @@ class TestForegroundVerification:
 
         assert manager.outcomes[-1] == ClickOutcome.FIRED
 
+    def test_doro_process_as_foreground_is_treated_as_aligned(
+        self, fake_clicker, manager, fake_backend, scheduler,
+    ):
+        """Doro spawns multiple top-level Qt windows (sprite, chat dialog,
+        warning overlay, settings frame). Whichever of them happens to
+        hold OS focus when the click fires shares Doro's PID; the gate
+        must treat that as aligned so the UIA invoke goes through."""
+        import os
+
+        fake_backend.set_window_class("Firefox")
+        fake_backend.handle_at_default = 100   # Chrome (or w/e) under the cursor
+        fake_backend.foreground_handle = 999   # a different hwnd…
+        fake_backend.pid_of_handle_map = {999: os.getpid()}  # …but it's Doro's
+
+        manager.execute_click()
+        scheduler.flush()
+
+        assert fake_clicker.invoke_calls != []
+        assert manager.outcomes[-1] == ClickOutcome.FIRED
+
+    def test_rejection_detail_includes_foreground_class(
+        self, fake_clicker, manager, fake_backend, scheduler,
+    ):
+        """When the gate rejects, the audit detail must name the class of
+        the foreground window so the operator can tell *who* stole focus
+        (PowerShell, VS Code, an IME, an OS toast …)."""
+        fake_backend.set_window_class("Firefox")
+        fake_backend.handle_at_default = 100
+        fake_backend.foreground_handle = 200
+        fake_backend.pid_of_handle_map = {200: 12345}  # ≠ os.getpid()
+        fake_backend.class_of_handle_map = {200: "ConsoleWindowClass"}
+
+        captured: list[tuple[ClickOutcome, str]] = []
+        manager.add_outcome_listener(lambda outcome, detail: captured.append((outcome, detail)))
+
+        manager.execute_click()
+        scheduler.flush()
+
+        assert fake_clicker.invoke_calls == []
+        assert manager.outcomes[-1] == ClickOutcome.REJECTED_NOT_FOREGROUND
+        assert captured, "outcome listener was not invoked"
+        last_outcome, last_detail = captured[-1]
+        assert last_outcome == ClickOutcome.REJECTED_NOT_FOREGROUND
+        assert "class='ConsoleWindowClass'" in last_detail
+
 
 class TestMultiMonitorClamp:
     """`screen_geometry_physical` carries an origin; secondary monitors
