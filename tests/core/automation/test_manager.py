@@ -197,6 +197,11 @@ class TestForegroundVerification:
 
         assert fake_clicker.invoke_calls != []
         assert manager.outcomes[-1] == ClickOutcome.FIRED
+        # The target hwnd resolved by the Win32 hit-test must flow into
+        # the UIA clicker so the backend can scope the subtree walk and
+        # not get shadowed by Doro's sprite (which sits on top in
+        # z-order but is skipped by CWP_SKIPTRANSPARENT).
+        assert fake_clicker.invoke_hwnds == [100]
 
     def test_missing_handle_skips_check(
         self, fake_clicker, manager, fake_backend, scheduler,

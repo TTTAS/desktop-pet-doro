@@ -18,5 +18,7 @@ class NullA11yBackend:
     def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
         return None
 
-    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+    def invoke_at_physical_point(
+        self, x: int, y: int, hwnd: Optional[int] = None,
+    ) -> bool:
         return False

@@ -27,7 +27,9 @@ class A11yBackendPort(Protocol):
         never window title or arbitrary content.
         """
 
-    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+    def invoke_at_physical_point(
+        self, x: int, y: int, hwnd: Optional[int] = None,
+    ) -> bool:
         """Fire the UIA InvokePattern on the element under (x, y).
 
         Returns True iff an element was found, exposed InvokePattern, and
@@ -36,4 +38,12 @@ class A11yBackendPort(Protocol):
         the caller can route the click to a NOT_INVOCABLE outcome without
         falling back to a synthetic mouse event that would move the
         user's cursor.
+
+        ``hwnd`` (optional) scopes the UIA lookup to a known top-level
+        window's subtree. The Win32 hit-test in the manager already
+        resolves this hwnd while skipping transparent Doro windows; by
+        anchoring the UIA walk at the same root, Doro's sprite — which
+        is on top in z-order but skipped by ``CWP_SKIPTRANSPARENT`` —
+        cannot shadow the real target in the unscoped UIA tree. ``None``
+        falls back to ``ControlFromPoint`` (current behaviour).
         """

@@ -32,6 +32,10 @@ class FakeA11yBackend:
         self.invoke_succeeds = invoke_succeeds
         self.read_calls: list[int] = []
         self.invoke_calls: list[tuple[int, int]] = []
+        # Parallel list — the hwnd the service forwarded for each call so
+        # tests can assert UIA subtree scoping happened, without
+        # disturbing the (x, y) tuple shape older assertions rely on.
+        self.invoke_hwnds: list[Optional[int]] = []
 
     def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
         self.read_calls.append(int(handle))
@@ -41,8 +45,11 @@ class FakeA11yBackend:
             return None
         return list(self.elements)
 
-    def invoke_at_physical_point(self, x: int, y: int) -> bool:
+    def invoke_at_physical_point(
+        self, x: int, y: int, hwnd: Optional[int] = None,
+    ) -> bool:
         self.invoke_calls.append((int(x), int(y)))
+        self.invoke_hwnds.append(hwnd)
         if self.invoke_delay:
             time.sleep(self.invoke_delay)
         return bool(self.invoke_succeeds)

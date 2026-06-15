@@ -280,6 +280,26 @@ class TestInvokeTimeout:
         # Backend should not have been touched.
         assert backend.invoke_calls == []
 
+    def test_invoke_forwards_hwnd_to_backend(self, audit_file):
+        """The manager passes the Win32-resolved target hwnd so the UIA
+        backend can scope its hit-test to that subtree — otherwise the
+        Doro sprite on top of the click point shadows the real target."""
+        backend = FakeA11yBackend([_button()], invoke_succeeds=True)
+        svc = _make_service(backend, audit_path=audit_file)
+
+        assert svc.invoke_at_point(860, 100, hwnd=4242) is True
+        assert backend.invoke_calls == [(860, 100)]
+        assert backend.invoke_hwnds == [4242]
+
+    def test_invoke_without_hwnd_passes_none(self, audit_file):
+        """X11/macOS path: no hwnd available → backend receives None and
+        falls back to its unscoped ControlFromPoint lookup."""
+        backend = FakeA11yBackend([_button()], invoke_succeeds=True)
+        svc = _make_service(backend, audit_path=audit_file)
+
+        assert svc.invoke_at_point(860, 100) is True
+        assert backend.invoke_hwnds == [None]
+
 
 class TestPreviewTimeout:
     def test_preview_uses_longer_budget_than_live(self, audit_file):

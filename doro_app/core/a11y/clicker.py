@@ -13,15 +13,24 @@ Invoke() call succeeds; the manager surfaces False as
 
 from __future__ import annotations
 
-from typing import Protocol, TYPE_CHECKING
+from typing import Optional, Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .service import A11yService
 
 
 class A11yClickerPort(Protocol):
-    def try_invoke_at(self, x: int, y: int) -> bool:
-        """Return True iff the UIA element under (x, y) was successfully invoked."""
+    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+        """Return True iff the UIA element under (x, y) was successfully invoked.
+
+        ``hwnd`` is the OS top-level window handle the manager already
+        resolved at the click coordinate (via the Win32 ``CWP_SKIP*``
+        hit-test). When supplied, the backend uses it as the UIA search
+        root so the Doro sprite — which is on top in z-order but skipped
+        by Win32 hit-tests as transparent — cannot shadow the real target.
+        ``None`` means "no scoping available" (X11/macOS, or hwnd read
+        failed) → fall back to an unscoped point lookup.
+        """
 
 
 class A11yClickerAdapter:
@@ -38,10 +47,10 @@ class A11yClickerAdapter:
     def __init__(self, a11y_service: "A11yService | None") -> None:
         self._a11y = a11y_service
 
-    def try_invoke_at(self, x: int, y: int) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
         if self._a11y is None:
             return False
-        return self._a11y.invoke_at_point(int(x), int(y))
+        return self._a11y.invoke_at_point(int(x), int(y), hwnd=hwnd)
 
 
 class NullA11yClicker:
@@ -49,5 +58,5 @@ class NullA11yClicker:
     backend; the manager records NOT_INVOCABLE and the click is dropped
     instead of moving the cursor."""
 
-    def try_invoke_at(self, x: int, y: int) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
         return False

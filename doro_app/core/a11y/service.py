@@ -117,7 +117,7 @@ class A11yService:
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
 
-    def invoke_at_point(self, x: int, y: int) -> bool:
+    def invoke_at_point(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
         """Fire the UIA InvokePattern on the element under physical (x, y).
 
         Self-gated by ``automation.a11y_enabled``: when a11y reads are
@@ -127,6 +127,13 @@ class A11yService:
         does **not** fall back to a synthetic mouse event (which would
         move the user's cursor).
 
+        ``hwnd`` (optional) is the OS top-level window the manager
+        already resolved at the click coordinate via the Win32
+        ``CWP_SKIPTRANSPARENT`` hit-test. The backend uses it as the UIA
+        search root so the Doro sprite (visually on top, but skipped by
+        the Win32 hit-test) cannot shadow the real target in the UIA
+        tree. ``None`` falls back to an unscoped ``ControlFromPoint``.
+
         Runs on the executor with a hard timeout — UIA `Invoke()` can
         block until the target action completes (e.g. a modal opens),
         which would otherwise freeze the Qt event loop on the main
@@ -135,7 +142,7 @@ class A11yService:
         if not self._config.automation.a11y_enabled:
             return False
         future = self._executor.submit(
-            self._backend.invoke_at_physical_point, int(x), int(y)
+            self._backend.invoke_at_physical_point, int(x), int(y), hwnd
         )
         try:
             return bool(future.result(timeout=A11Y_INVOKE_TIMEOUT_SECONDS))

@@ -101,10 +101,15 @@ class FakeA11yClicker:
 
     def __init__(self, *, should_succeed: bool = True) -> None:
         self.invoke_calls: list[tuple[int, int]] = []
+        # Parallel list — the hwnd the manager passed for each call so
+        # tests can assert the UIA subtree scoping happened, without
+        # changing the (x, y) tuple shape that older assertions rely on.
+        self.invoke_hwnds: list[Optional[int]] = []
         self.should_succeed = bool(should_succeed)
 
-    def try_invoke_at(self, x: int, y: int) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
         self.invoke_calls.append((int(x), int(y)))
+        self.invoke_hwnds.append(hwnd)
         return self.should_succeed
 
 

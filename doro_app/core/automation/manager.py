@@ -525,8 +525,17 @@ class AutomationManager:
                     f"no a11y clicker wired ({cx},{cy}) class={class_name!r}",
                 )
                 return
+            # Scope the UIA hit-test to ``target_hwnd`` so Doro's sprite
+            # (visible to UIA even with ``WS_EX_TRANSPARENT`` set, because
+            # ``ControlFromPoint`` walks bounding rects, not Win32 hit
+            # flags) cannot shadow the real target. ``target_hwnd`` was
+            # resolved with ``CWP_SKIPTRANSPARENT`` so it already points
+            # at the actual target window (Chrome / Edge / ...). ``None``
+            # on platforms without Win32 falls back to unscoped lookup.
             try:
-                invoke_ok = self._a11y_clicker.try_invoke_at(cx, cy)
+                invoke_ok = self._a11y_clicker.try_invoke_at(
+                    cx, cy, hwnd=target_hwnd,
+                )
             except Exception:  # pragma: no cover - clicker should not raise
                 logger.exception("a11y clicker.try_invoke_at raised")
                 invoke_ok = False
