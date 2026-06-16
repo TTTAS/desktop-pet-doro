@@ -66,3 +66,79 @@ def begin(self, bounds_physical) -> None:
 若日後 bounds=None 真的常觸發，再決定要動 `_a11y` setup 或 `ForegroundTracker` / `_last_elements` 更新時機。目前先以 observability 為止。
 
 ---
+
+### 2. ✅ Ask Doro 對話框開啟卡頓
+
+**症狀：**
+
+使用者回報每次打開「Ask Doro」都會卡一下。
+
+**調查：**
+
+「Ask Doro」選單 → `ChatUIHelper.prompt_chat()`（`doro_app/ui/helpers/chat_ui_helper.py:59`）→ `show_chat_dialog()`（`doro_app/ui/dialogs/chat_dialog.py:294`）。git 歷史顯示這不是刻意設計，而是把原本 `QInputDialog.getText()`（一次性靜態 helper）換成自製對話框時，沿用了「每次 new 一個」的形狀。
+
+**根因：**
+
+`show_chat_dialog()` 每次都重建一個 `DoroChatDialog`——無邊框 + 半透明（`WA_TranslucentBackground`）+ 約 120 行 Qt stylesheet 解析，第一個畫面渲染時就卡。同專案 `ChatSettingsDialog` 早已用快取解決（`chat_ui_helper.py:48-51` 有註解），但這個輸入框漏掉。
+
+**修法：**
+
+- `ChatUIHelper` 新增 `_chat_dialog` 快取欄位，`prompt_chat()` 改用快取實例（比照 `_settings_dialog`）。
+- `DoroChatDialog` 新增 `run()`：每次開啟前重設 `_message`、清空輸入、設定焦點，再 `exec()`。
+- `show_chat_dialog()` 簡化為 `DoroChatDialog(parent).run()` 維持相容。
+- 順修既有 bug：`_drag_position` 原本未在 `__init__` 初始化，快取重用後若先拖曳會 `AttributeError`；`__init__` 設為 `None` 並在 `mouseMoveEvent` 加 None 防護。
+
+**修改檔案：**
+
+- `doro_app/ui/dialogs/chat_dialog.py`
+- `doro_app/ui/helpers/chat_ui_helper.py`
+
+**Commit：**
+
+- `dc932a7` — `perf(chat): cache Ask Doro input dialog to remove open lag`
+
+**驗證：**
+
+UI 測試 91 passed、全套測試 714 passed（offscreen）。
+
+---
+
+### 3. ✅ 對話內容寫入本機 log 的隱私外洩
+
+**症狀：**
+
+使用者問「對話紀錄會不會留在本機？」。對話 history（`controller.py:134` 的 `_history`）本身只在記憶體、關掉即清，也不會被 `_persist_chat_settings` 寫入磁碟；但調查發現 log 會留下對話內容。
+
+**根因：**
+
+預設 logger 寫入 `~/.doro/doro.log`（`doro_app/utils/logger.py:42-51`，DEBUG level、無上限）。其中：
+
+- `orchestrator.py:67` 記錄每則使用者訊息前 50 字。
+- `controller.py` build payload / start request 兩處記 `cleaned[:50]`。
+- `controller._handle_worker_result` 有一段 debug 區塊把**伺服器完整回覆原文**同時 `print` 到終端並 `logger.debug` 寫入 log 檔——最大的內容外洩。
+
+**修法（移除對話內容、保留結構性資訊）：**
+
+- `orchestrator.send_message`：拿掉 `user_message[:50]`，只記 `(auto=..., silent=...)`。
+- `controller`：build/start 兩處拿掉 `cleaned[:50]`。
+- `controller._handle_worker_result`：整段移除 `print` 原始回傳 + `logger.debug` raw reply。
+- 不含內容的 `response length: N` 等結構性 log 保留，方便除錯。
+
+**修改檔案：**
+
+- `doro_app/core/chat/controller.py`
+- `doro_app/core/chat/orchestrator.py`
+
+**Commit：**
+
+- `0eace61` — `fix(chat): stop writing conversation content to local logs`
+
+**驗證：**
+
+chat 測試 68 passed、全套測試 714 passed（offscreen）。
+
+**Follow-up（暫不動，已記入 `docs/BACKLOG.md`）：**
+
+既有舊 `~/.doro/doro.log` 仍可能含 `0eace61` 之前的內容片段；日誌輪替/清理、預設等級改 INFO、api_key 改 keyring 均列入 backlog。
+
+---
