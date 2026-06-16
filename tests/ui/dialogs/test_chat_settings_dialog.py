@@ -1,20 +1,18 @@
-"""Tests for ChatSettingsDialog — simulate-response panel and a11y toggle."""
+"""Tests for ChatSettingsDialog — a11y toggle, settings persistence."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
 from PySide6 import QtCore
 
 
 class _StubOrchestrator(QtCore.QObject):
     """Minimal chat_orchestrator stand-in exposing what the dialog uses."""
 
-    def __init__(self, simulate_return=""):
+    def __init__(self):
         super().__init__()
-        self.simulate_response = Mock(return_value=simulate_return)
         # Setters exercised by _on_save.
         for name in (
             "set_server_url", "set_model_name", "set_endpoint", "set_api_key",
@@ -79,7 +77,6 @@ class _StubCoreManager:
 
 def _make_dialog(
     qtbot,
-    simulate_return="",
     a11y_enabled=False,
     a11y_service=None,
     automation_manager=None,
@@ -87,7 +84,7 @@ def _make_dialog(
 ):
     from doro_app.ui.dialogs.chat_settings_dialog import ChatSettingsDialog
 
-    orch = _StubOrchestrator(simulate_return=simulate_return)
+    orch = _StubOrchestrator()
     config = _StubConfigManager(
         a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled
     )
@@ -101,36 +98,6 @@ def _make_dialog(
     )
     qtbot.addWidget(dialog)
     return dialog, orch, config
-
-
-def test_simulate_injects_typed_text(qtbot):
-    dialog, orch, _ = _make_dialog(qtbot, simulate_return="你好呀")
-    dialog._test_input.setPlainText("你好呀！[MOVE:dir=right]")
-
-    dialog._on_simulate()
-
-    orch.simulate_response.assert_called_once_with("你好呀！[MOVE:dir=right]")
-    assert "你好呀" in dialog._test_output.text()
-
-
-def test_empty_input_does_not_call_simulate(qtbot):
-    dialog, orch, _ = _make_dialog(qtbot)
-    dialog._test_input.setPlainText("   ")
-
-    dialog._on_simulate()
-
-    orch.simulate_response.assert_not_called()
-    assert "請先輸入" in dialog._test_output.text()
-
-
-def test_actions_only_reply_reports_no_dialogue(qtbot):
-    dialog, orch, _ = _make_dialog(qtbot, simulate_return="")
-    dialog._test_input.setPlainText("[MOVE:dir=right]")
-
-    dialog._on_simulate()
-
-    orch.simulate_response.assert_called_once_with("[MOVE:dir=right]")
-    assert "沒有對話" in dialog._test_output.text()
 
 
 def test_a11y_checkbox_reflects_config(qtbot):
@@ -150,90 +117,8 @@ def test_save_persists_a11y_toggle(qtbot):
     config.update_automation.assert_called_once_with(
         a11y_enabled=True,
         a11y_share_input_values=False,
-        mouse_enabled=False,
     )
     config.save.assert_called_once()
-
-
-def test_save_re_enabling_mouse_resets_kill_switch(qtbot):
-    """Re-ticking mouse_enabled must clear a previously engaged kill-switch.
-
-    Without this, three Esc presses + an unrelated re-save would leave
-    the manager silently dropping every click until the next app restart.
-    """
-    automation = Mock()
-    # Start with a11y already on so the mouse-without-a11y prompt
-    # (`QMessageBox.question`) doesn't fire and block the test.
-    dialog, _, _ = _make_dialog(
-        qtbot,
-        mouse_enabled=False,
-        a11y_enabled=True,
-        automation_manager=automation,
-    )
-    dialog._mouse_enabled_checkbox.setChecked(True)
-
-    dialog._on_save()
-
-    automation.reset_kill_switch.assert_called_once()
-
-
-def test_enabling_mouse_without_a11y_prompts_and_can_auto_enable(
-    qtbot, monkeypatch
-):
-    """M6: tell the user mouse_enabled needs a11y_enabled, offer to fix it."""
-    from PySide6 import QtWidgets
-
-    dialog, _, config = _make_dialog(qtbot, a11y_enabled=False, mouse_enabled=False)
-    dialog._mouse_enabled_checkbox.setChecked(True)
-    # a11y still unchecked.
-
-    # Auto-accept the prompt.
-    monkeypatch.setattr(
-        QtWidgets.QMessageBox,
-        "question",
-        lambda *a, **kw: QtWidgets.QMessageBox.StandardButton.Yes,
-    )
-
-    dialog._on_save()
-
-    config.update_automation.assert_called_once_with(
-        a11y_enabled=True,
-        a11y_share_input_values=False,
-        mouse_enabled=True,
-    )
-
-
-def test_enabling_mouse_without_a11y_declined_keeps_a11y_off(qtbot, monkeypatch):
-    from PySide6 import QtWidgets
-
-    dialog, _, config = _make_dialog(qtbot, a11y_enabled=False, mouse_enabled=False)
-    dialog._mouse_enabled_checkbox.setChecked(True)
-
-    monkeypatch.setattr(
-        QtWidgets.QMessageBox,
-        "question",
-        lambda *a, **kw: QtWidgets.QMessageBox.StandardButton.No,
-    )
-
-    dialog._on_save()
-
-    config.update_automation.assert_called_once_with(
-        a11y_enabled=False,
-        a11y_share_input_values=False,
-        mouse_enabled=True,
-    )
-
-
-def test_save_keeping_mouse_enabled_does_not_reset_kill_switch(qtbot):
-    """Idempotent saves shouldn't re-arm — only the False→True edge does."""
-    automation = Mock()
-    dialog, _, _ = _make_dialog(
-        qtbot, mouse_enabled=True, automation_manager=automation
-    )
-    # No checkbox change; just save again.
-    dialog._on_save()
-
-    automation.reset_kill_switch.assert_not_called()
 
 
 def test_save_persists_share_input_values_when_a11y_on(qtbot):
@@ -246,7 +131,6 @@ def test_save_persists_share_input_values_when_a11y_on(qtbot):
     config.update_automation.assert_called_once_with(
         a11y_enabled=True,
         a11y_share_input_values=True,
-        mouse_enabled=False,
     )
 
 
@@ -264,7 +148,6 @@ def test_save_drops_share_input_values_when_a11y_off(qtbot):
     config.update_automation.assert_called_once_with(
         a11y_enabled=False,
         a11y_share_input_values=False,
-        mouse_enabled=False,
     )
 
 
@@ -286,31 +169,3 @@ def test_save_without_a11y_does_not_clear_blacklist(qtbot):
     dialog._on_save()
 
     service.clear_session_blacklist.assert_not_called()
-
-
-def test_preview_shows_tree_on_success(qtbot):
-    service = Mock()
-    service.diagnose_foreground_tree.return_value = (True, 'button "OK" (10,20 30x40)')
-    dialog, _, _ = _make_dialog(qtbot, a11y_service=service)
-
-    dialog._run_a11y_preview()
-
-    assert 'button "OK"' in dialog._a11y_output.toPlainText()
-
-
-def test_preview_shows_reason_on_failure(qtbot):
-    service = Mock()
-    service.diagnose_foreground_tree.return_value = (False, "a11y 未啟用（請在設定勾選）")
-    dialog, _, _ = _make_dialog(qtbot, a11y_service=service)
-
-    dialog._run_a11y_preview()
-
-    assert "未啟用" in dialog._a11y_output.toPlainText()
-
-
-def test_preview_handles_missing_service(qtbot):
-    dialog, _, _ = _make_dialog(qtbot, a11y_service=None)
-
-    dialog._run_a11y_preview()
-
-    assert "未建立" in dialog._a11y_output.toPlainText()

@@ -43,14 +43,6 @@ QPushButton#eyeButton {
     background: transparent; border: none; font-size: 14pt; padding: 0 4px;
 }
 QPushButton#eyeButton:hover { background: #FFC4F0; border-radius: 4px; }
-QPushButton#testButton {
-    background: white; color: #4a2040; font-weight: bold;
-    border: 2px solid #FFC4F0; border-radius: 8px;
-    padding: 6px 18px; font-size: 10pt;
-}
-QPushButton#testButton:hover { border: 2px solid #FF9BE3; background: #FFF0FB; }
-QPushButton#testButton:disabled { color: #B79AAE; border-color: #EED9E8; }
-QLabel#testHeader { color: #4a2040; font-weight: bold; font-size: 10pt; }
 """
 
 class ChatSettingsDialog(FramelessDialog):
@@ -156,66 +148,6 @@ class ChatSettingsDialog(FramelessDialog):
         layout.addWidget(self._a11y_share_values_checkbox)
         self._a11y_checkbox.toggled.connect(self._a11y_share_values_checkbox.setEnabled)
 
-        preview_row = QtWidgets.QHBoxLayout()
-        preview_row.addStretch(1)
-        self._a11y_preview_btn = QtWidgets.QPushButton("預覽 Doro 現在看到什麼")
-        self._a11y_preview_btn.setObjectName("testButton")
-        self._a11y_preview_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        preview_row.addWidget(self._a11y_preview_btn)
-        layout.addLayout(preview_row)
-
-        self._a11y_output = QtWidgets.QPlainTextEdit()
-        self._a11y_output.setReadOnly(True)
-        self._a11y_output.setFixedHeight(110)
-        self._a11y_output.setPlaceholderText(
-            "按上面的按鈕後倒數 3 秒，切到你要讓 Doro 看的視窗，"
-            "就會顯示 Doro 此刻讀到的元件清單（或讀不到的原因）。"
-        )
-        layout.addWidget(self._a11y_output)
-
-        # ── Mouse-click automation (Phase 1c) ──────────────────
-        self._mouse_enabled_checkbox = QtWidgets.QCheckBox(
-            "讓 Doro 幫忙點滑鼠"
-        )
-        layout.addWidget(self._mouse_enabled_checkbox)
-        mouse_hint = QtWidgets.QLabel(
-            "開啟後，Doro 收到「點某某按鈕」之類指令會發合成滑鼠點擊。"
-            "點擊前會等 1.5 秒、紅色警示框會圈住即將被點的位置，期間"
-            "可按 Esc 取消；Esc 連按 3 次會永久關閉本選項當作 kill switch。"
-            "需要安裝 pynput；目前白名單預設只放 Firefox / Chrome / Chromium。"
-            "另外，點擊功能依賴上方的「讀取前景視窗」一併啟用，否則 Doro "
-            "找不到要點的元件。"
-        )
-        mouse_hint.setObjectName("instructionLabel")
-        mouse_hint.setWordWrap(True)
-        layout.addWidget(mouse_hint)
-
-        # ── Simulate a server reply (test Doro) ────────────────
-        test_header = QtWidgets.QLabel("模擬回應（測試 Doro）")
-        test_header.setObjectName("testHeader")
-        layout.addWidget(test_header)
-
-        self._test_input = QtWidgets.QPlainTextEdit()
-        self._test_input.setFixedHeight(72)
-        self._test_input.setPlaceholderText(
-            "輸入要假裝成伺服器回應的內容，Doro 會照著反應。\n"
-            "例如：你好呀！[MOVE:dir=right]"
-        )
-        layout.addWidget(self._test_input)
-
-        test_row = QtWidgets.QHBoxLayout()
-        test_row.addStretch(1)
-        self._test_btn = QtWidgets.QPushButton("送給 Doro")
-        self._test_btn.setObjectName("testButton")
-        self._test_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        test_row.addWidget(self._test_btn)
-        layout.addLayout(test_row)
-
-        self._test_output = QtWidgets.QLabel("")
-        self._test_output.setWordWrap(True)
-        self._test_output.setObjectName("instructionLabel")
-        layout.addWidget(self._test_output)
-
         # Save button
         save_btn = QtWidgets.QPushButton("儲存")
         save_btn.setObjectName("saveButton")
@@ -225,8 +157,6 @@ class ChatSettingsDialog(FramelessDialog):
         # Connections
         self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._eye_btn.clicked.connect(self._toggle_api_key_visibility)
-        self._a11y_preview_btn.clicked.connect(self._on_preview_a11y)
-        self._test_btn.clicked.connect(self._on_simulate)
         save_btn.clicked.connect(self._on_save)
 
     # ── populate ───────────────────────────────────────────
@@ -256,9 +186,6 @@ class ChatSettingsDialog(FramelessDialog):
             self._core.config_manager.automation.a11y_share_input_values
         )
         self._a11y_share_values_checkbox.setEnabled(a11y_enabled)
-        self._mouse_enabled_checkbox.setChecked(
-            self._core.config_manager.automation.mouse_enabled
-        )
 
         # Detect which provider matches
         matched = "Custom"
@@ -297,52 +224,6 @@ class ChatSettingsDialog(FramelessDialog):
         else:
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
-    def _on_preview_a11y(self):
-        """Count down a few seconds (so the user can focus the target window),
-        then run the diagnostic read and show the result."""
-        self._a11y_preview_btn.setEnabled(False)
-        self._a11y_countdown = 3
-        self._a11y_output.setPlainText(
-            f"{self._a11y_countdown} 秒後擷取…（請切到你要讓 Doro 看的視窗）"
-        )
-        self._a11y_timer = QtCore.QTimer(self)
-        self._a11y_timer.setInterval(1000)
-        self._a11y_timer.timeout.connect(self._a11y_tick)
-        self._a11y_timer.start()
-
-    def _a11y_tick(self):
-        self._a11y_countdown -= 1
-        if self._a11y_countdown > 0:
-            self._a11y_output.setPlainText(
-                f"{self._a11y_countdown} 秒後擷取…（請切到你要讓 Doro 看的視窗）"
-            )
-            return
-        self._a11y_timer.stop()
-        self._run_a11y_preview()
-        self._a11y_preview_btn.setEnabled(True)
-
-    def _run_a11y_preview(self):
-        service = self._core.a11y_service
-        if service is None:
-            self._a11y_output.setPlainText("a11y 服務未建立（初始化可能失敗）。")
-            return
-        ok, message = service.diagnose_foreground_tree()
-        if ok:
-            self._a11y_output.setPlainText(f"Doro 現在看到：\n{message}")
-        else:
-            self._a11y_output.setPlainText(f"目前讀不到內容：\n{message}")
-
-    def _on_simulate(self):
-        text = self._test_input.toPlainText().strip()
-        if not text:
-            self._test_output.setText("請先輸入要模擬的回應內容。")
-            return
-        dialogue = self._cm.simulate_response(text)
-        if dialogue:
-            self._test_output.setText(f"Doro 說：{dialogue}")
-        else:
-            self._test_output.setText("（這段回應只有動作／狀態指令，沒有對話）")
-
     def _on_save(self):
         cm = self._cm
         cm.set_server_url(self._server_url_edit.text().strip())
@@ -361,56 +242,18 @@ class ChatSettingsDialog(FramelessDialog):
         cm.set_stop_tokens(tokens)
 
         config = self._core.config_manager
-        previous_mouse_enabled = config.automation.mouse_enabled
         a11y_enabled = self._a11y_checkbox.isChecked()
         a11y_share_input_values = (
             a11y_enabled and self._a11y_share_values_checkbox.isChecked()
         )
-        mouse_enabled = self._mouse_enabled_checkbox.isChecked()
-
-        # M6: enabling mouse_enabled without a11y_enabled silently fails
-        # at every click (UIA-invoke path self-gates on a11y). Offer to
-        # turn a11y on so the user isn't left wondering why nothing
-        # happens. We only ask on a *new* enable to avoid annoying
-        # users who saved settings for unrelated reasons.
-        if (
-            mouse_enabled
-            and not previous_mouse_enabled
-            and not a11y_enabled
-        ):
-            choice = QtWidgets.QMessageBox.question(
-                self,
-                "也要啟用前景視窗讀取？",
-                "點擊功能需要「讀取前景視窗的可點元素」一併開啟才能找到要點的元件。\n\n"
-                "要一併開啟嗎？",
-                QtWidgets.QMessageBox.StandardButton.Yes
-                | QtWidgets.QMessageBox.StandardButton.No,
-                QtWidgets.QMessageBox.StandardButton.Yes,
-            )
-            if choice == QtWidgets.QMessageBox.StandardButton.Yes:
-                a11y_enabled = True
-                self._a11y_checkbox.setChecked(True)
-                self._a11y_share_values_checkbox.setEnabled(True)
 
         config.update_automation(
             a11y_enabled=a11y_enabled,
             a11y_share_input_values=a11y_share_input_values,
-            mouse_enabled=mouse_enabled,
         )
         config.save()
 
         if a11y_enabled and self._core.a11y_service is not None:
             self._core.a11y_service.clear_session_blacklist()
-
-        # Re-arm the kill-switch when the user deliberately re-enables
-        # the mouse path. Without this, three accidental Esc presses
-        # would silently disable clicking for the rest of the session
-        # even after the checkbox is re-ticked.
-        if (
-            mouse_enabled
-            and not previous_mouse_enabled
-            and self._core.automation_manager is not None
-        ):
-            self._core.automation_manager.reset_kill_switch()
 
         self.accept()
