@@ -64,7 +64,7 @@ class ChatOrchestrator(QtCore.QObject):
         return self._controller.is_inflight
 
     def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
-        logger.info(f"Sending chat message (auto={is_auto}, silent={silent}): {user_message[:50]}...")
+        logger.info(f"Sending chat message (auto={is_auto}, silent={silent})")
 
         if self._controller.is_inflight:
             logger.warning("Chat request rejected: previous request still in flight")
