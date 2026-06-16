@@ -104,6 +104,12 @@ class ContextMenuController:
                 current_state and current_state.live2d_model_path
             ),
             live2d_available=_LIVE2D_AVAILABLE,
+            a11y_enabled=bool(
+                self._core_manager.config_manager.automation.a11y_enabled
+            ),
+            mouse_enabled=bool(
+                self._core_manager.config_manager.automation.mouse_enabled
+            ),
         )
 
     def _build_callbacks(self) -> MenuCallbacks:
@@ -127,8 +133,123 @@ class ContextMenuController:
             edit_chat_prompt=self._chat_ui.edit_chat_prompt,
             clear_chat_history=self._chat_ui.clear_chat_history,
             open_settings_dialog=self._chat_ui.open_settings_dialog,
+            toggle_a11y=self._toggle_a11y,
+            preview_a11y=self._preview_a11y,
+            toggle_mouse_enabled=self._toggle_mouse_enabled,
+            simulate_response=self._simulate_response,
+            inspect_position=self._inspect_position,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
+
+    def _toggle_a11y(self, checked: bool) -> None:
+        """Flip accessibility tree reading on/off and persist it.
+
+        The A11yService reads this flag live on every read, so no restart is
+        needed.
+        """
+        cm = self._core_manager.config_manager
+        cm.update_automation(a11y_enabled=bool(checked))
+        cm.save()
+        if checked and self._core_manager.a11y_service is not None:
+            self._core_manager.a11y_service.clear_session_blacklist()
+
+    def _toggle_mouse_enabled(self, checked: bool) -> None:
+        """Flip mouse-click automation on/off and persist.
+
+        AutomationManager self-gates on this flag at execute_click time,
+        so no restart is needed — once pynput is available, toggling
+        lights it up immediately.
+        """
+        cm = self._core_manager.config_manager
+        cm.update_automation(mouse_enabled=bool(checked))
+        cm.save()
+
+    def _preview_a11y(self) -> None:
+        """Run the diagnostic read and show the result in a popup.
+
+        No countdown is needed: the foreground tracker already points at the
+        last external window the user was using, so the preview reads that
+        directly instead of Doro's own (just-clicked) window.
+        """
+        service = self._core_manager.a11y_service
+        if service is None:
+            QtWidgets.QMessageBox.information(
+                self._window, "Doro", "a11y 服務未建立（初始化可能失敗）。"
+            )
+            return
+        self._show_a11y_result(service)
+
+    def _show_a11y_result(self, service) -> None:
+        ok, message = service.diagnose_foreground_tree()
+        title = "Doro 現在看到" if ok else "目前讀不到內容"
+        QtWidgets.QMessageBox.information(self._window, title, message)
+
+    def _inspect_position(self) -> None:
+        """Show window/sprite-foot/last-target coordinates for debugging
+        `[move:to;x;y]` landing precision. Result is also copied to clipboard
+        so the user can paste it back to verify foot-vs-target drift."""
+        win = self._window
+        mm = self._core_manager.movement_manager
+        top_left = win.current_position()
+        foot_offset = win.sprite_foot_offset_logical()
+        foot_logical = QtCore.QPoint(
+            top_left.x() + foot_offset.x(),
+            top_left.y() + foot_offset.y(),
+        )
+        screen = win.screen()
+        if screen is not None:
+            from ...core.automation.coordinates import compute_physical_pixel_at
+
+            geom = screen.geometry()
+            foot_phys = compute_physical_pixel_at(
+                (foot_logical.x(), foot_logical.y()),
+                screen_origin_logical=(geom.x(), geom.y()),
+                device_pixel_ratio=screen.devicePixelRatio(),
+            )
+        else:
+            foot_phys = (foot_logical.x(), foot_logical.y())
+
+        last_target = mm.last_target_physical
+        if last_target is not None:
+            dx = foot_phys[0] - last_target[0]
+            dy = foot_phys[1] - last_target[1]
+            delta_str = f"({dx:+d}, {dy:+d})"
+            target_str = f"{last_target[0]}, {last_target[1]}"
+        else:
+            delta_str = "—"
+            target_str = "—"
+
+        msg = (
+            f"window top-left (logical): {top_left.x()}, {top_left.y()}\n"
+            f"sprite foot offset (logical): {foot_offset.x()}, {foot_offset.y()}\n"
+            f"sprite foot (logical): {foot_logical.x()}, {foot_logical.y()}\n"
+            f"sprite foot (physical): {foot_phys[0]}, {foot_phys[1]}\n"
+            f"last [move:to] target (physical): {target_str}\n"
+            f"foot − target: {delta_str}"
+        )
+        clipboard = QtWidgets.QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(msg)
+        QtWidgets.QMessageBox.information(
+            win, "Doro 位置（已複製到剪貼簿）", msg
+        )
+
+    def _simulate_response(self) -> None:
+        """Prompt for a fake assistant reply and run it through the exact same
+        handling a real server reply gets (movement/state/mouse parsing), so the
+        user can test Doro without hitting the server."""
+        text, ok = QtWidgets.QInputDialog.getMultiLineText(
+            self._window,
+            "假傳伺服器回應",
+            "輸入要模擬的回應（例：(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]）：",
+        )
+        if not ok or not text.strip():
+            return
+        dialogue = self._core_manager.chat_orchestrator.simulate_response(text.strip())
+        if not dialogue:
+            QtWidgets.QMessageBox.information(
+                self._window, "Doro", "（這段回應只有動作／狀態指令，沒有對話）"
+            )
 
     def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
         """Toggle Live2D mode globally (applies to all states)."""

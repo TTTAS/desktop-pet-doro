@@ -39,6 +39,7 @@ def mock_config_manager():
     manager.chat.endpoint_path = "/v1/chat/completions"
     manager.chat.timeout_seconds = 30
     manager.chat.temperature = 0.7
+    manager.chat.api_key = ""
     manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     return manager
@@ -66,6 +67,7 @@ def controller_with_qsettings(tmp_prompt_file, mock_state_service, mock_config_m
     default_manager.chat.endpoint_path = "/v1/chat/completions"
     default_manager.chat.timeout_seconds = 30
     default_manager.chat.temperature = 0.7
+    default_manager.chat.api_key = ""
     default_manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     default_manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     default_manager.update_chat = Mock()
@@ -284,6 +286,113 @@ class TestPayloadBuilding:
         # Should include state information from provider
         assert "idle" in prompt or "happy" in prompt
 
+    def test_compose_system_prompt_appends_doro_state(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """_compose_system_prompt appends the [Doro 當下狀態] block after movement hint."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "[Doro 當下狀態]\n位置: x=200, y=400\n螢幕: 1920×1080\n前景視窗 class: chrome",
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "MOVE_HINT_MARKER" in prompt
+        assert "[Doro 當下狀態]" in prompt
+        assert "x=200, y=400" in prompt
+        assert "1920×1080" in prompt
+        assert "chrome" in prompt
+        # Doro state must appear AFTER the movement hint, not before.
+        assert prompt.index("MOVE_HINT_MARKER") < prompt.index("[Doro 當下狀態]")
+
+    def test_compose_system_prompt_omits_doro_state_when_provider_empty(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Empty doro_state_provider must not introduce blank trailing sections."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "",
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "[Doro 當下狀態]" not in prompt
+        # No trailing whitespace burp from the absent section.
+        assert not prompt.endswith("\n\n\n")
+
+    def test_compose_system_prompt_default_provider_is_noop(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Omitting doro_state_provider behaves like the empty provider (back-compat)."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+        )
+        # No doro_state_provider passed — default lambda returns "".
+        prompt = controller._compose_system_prompt()
+        assert "[Doro 當下狀態]" not in prompt
+
+    def test_compose_system_prompt_appends_a11y_tree_after_doro_state(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """The [前景視窗元件樹] block is injected after the [Doro 當下狀態] block."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "MOVE_HINT_MARKER",
+            config_manager=mock_config_manager,
+            doro_state_provider=lambda: "[Doro 當下狀態]\n位置: x=200, y=400",
+            a11y_tree_provider=lambda: '[前景視窗元件樹]\nbutton "書籤" (1850,80 24x24)',
+        )
+
+        prompt = controller._compose_system_prompt()
+
+        assert "[前景視窗元件樹]" in prompt
+        assert '書籤' in prompt
+        assert prompt.index("[Doro 當下狀態]") < prompt.index("[前景視窗元件樹]")
+
+    def test_compose_system_prompt_omits_a11y_tree_when_provider_empty(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Empty a11y provider must not add a blank section or trailing burp."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+            a11y_tree_provider=lambda: "",
+        )
+        prompt = controller._compose_system_prompt()
+        assert "[前景視窗元件樹]" not in prompt
+        assert not prompt.endswith("\n\n\n")
+
+    def test_compose_system_prompt_a11y_default_provider_is_noop(
+        self, tmp_prompt_file, mock_state_service, mock_config_manager
+    ):
+        """Omitting a11y_tree_provider behaves like the empty provider (back-compat)."""
+        controller = ChatController(
+            prompt_path=tmp_prompt_file,
+            state_service=mock_state_service,
+            state_text_provider=lambda: "idle",
+            movement_hint_provider=lambda: "none",
+            config_manager=mock_config_manager,
+        )
+        prompt = controller._compose_system_prompt()
+        assert "[前景視窗元件樹]" not in prompt
+
 
 # ═══════════════════════════════════════════════════════════
 # Signal Emission Tests
@@ -385,6 +494,7 @@ class TestEdgeCases:
         manager.chat.endpoint_path = "/custom/endpoint"
         manager.chat.timeout_seconds = 60
         manager.chat.temperature = 0.9
+        manager.chat.api_key = ""
         manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
         manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
         manager.update_chat = Mock()

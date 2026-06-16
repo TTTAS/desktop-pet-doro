@@ -14,12 +14,17 @@ class MouseEventHandler(QtCore.QObject):
 
     Signals:
         window_drag_requested: Emitted when window should be moved (with delta position)
+        drag_started: Emitted once per gesture when movement first exceeds
+            the click/drag threshold — wired by the app to cancel any
+            in-flight movement + queued click so dragging Doro mid-walk
+            doesn't fire an unwanted click at the end.
         click_detected: Emitted when a click (not drag) is detected
         user_activity_detected: Emitted when any user interaction occurs
     """
 
     # Signals
     window_drag_requested = QtCore.Signal(QtCore.QPoint)  # global position for window
+    drag_started = QtCore.Signal()
     click_detected = QtCore.Signal()
     user_activity_detected = QtCore.Signal()
 
@@ -83,6 +88,9 @@ class MouseEventHandler(QtCore.QObject):
                 and (event.position() - self._click_press_pos).manhattanLength() > self._click_threshold
             ):
                 self._click_was_dragging = True
+                # One-shot: fires only on the false→true transition so
+                # downstream cancel handlers run once per drag gesture.
+                self.drag_started.emit()
 
             # Emit drag request
             self.window_drag_requested.emit(event.globalPosition().toPoint() - self._drag_pos)

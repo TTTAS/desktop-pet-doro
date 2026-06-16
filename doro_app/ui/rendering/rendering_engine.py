@@ -53,6 +53,7 @@ class RenderingEngine:
         self,
         window_size: QtCore.QSize,
         sprite_anchor_top: float | None,
+        panel_height_hint: float | None = None,
     ) -> tuple[QtCore.QPointF, float | None]:
         """
         Calculate sprite center position within the window.
@@ -67,6 +68,17 @@ class RenderingEngine:
         base_x = window_size.width() / 2.0 + self._view_model.sprite_offset_x
         half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
         half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
+
+        # Compact mode: window has been resized to match the sprite exactly
+        # (bubble hidden — see WindowLayoutManager.compute_preferred_window_size
+        # with compact=True). Skip SPRITE_OFFSET_X and the margin clamps so
+        # the sprite fills the window edge-to-edge; otherwise SPRITE_OFFSET_X
+        # would push the sprite halfway off the small window's left edge.
+        sprite_w = self._view_model.sprite_size.width()
+        sprite_h = self._view_model.sprite_size.height()
+        if window_size.width() <= sprite_w + 1 and window_size.height() <= sprite_h + 1:
+            center = QtCore.QPointF(window_size.width() / 2.0, window_size.height() / 2.0)
+            return center, max(0.0, center.y() - half_h)
 
         # Horizontal constraints
         margin_x = SPRITE_MARGIN_X
@@ -85,7 +97,11 @@ class RenderingEngine:
 
         # Calculate or use existing anchor
         if sprite_anchor_top is None:
-            panel_reserve = PANEL_DEFAULT_HEIGHT_HINT + SPRITE_PANEL_RESERVE_OFFSET
+            # Reserve room below the sprite for the bubble. Use the actual panel
+            # height hint when known so a tall (multi-line) bubble starts with
+            # enough space underneath and isn't forced to clip.
+            reserve_height = max(PANEL_DEFAULT_HEIGHT_HINT, float(panel_height_hint or 0.0))
+            panel_reserve = reserve_height + SPRITE_PANEL_RESERVE_OFFSET
             initial_base_y = (window_size.height() - panel_reserve) / 2.0
             initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
             sprite_anchor_top = max(0.0, initial_base_y - half_h)
@@ -183,27 +199,23 @@ class RenderingEngine:
         above_bottom = sprite_center.y() - sprite_half_h - gap
         available_above = max(0.0, above_bottom - margin_top)
 
-        place_below = True
-        adjusted_panel_height = panel_height
+        # Grow-to-fit: show the full panel height. Only the extreme case — text
+        # taller than the entire usable window — forces a clamp. Otherwise we
+        # shift the bubble to stay on-screen instead of clipping the text.
+        max_panel_height = max(0.0, window_size.height() - margin_top - margin_bottom)
+        adjusted_panel_height = min(panel_height, max_panel_height)
 
-        # Determine placement (below or above sprite)
-        if available_below < adjusted_panel_height and available_above > available_below:
-            adjusted_panel_height = min(adjusted_panel_height, available_above)
-            place_below = False
-        else:
-            adjusted_panel_height = min(adjusted_panel_height, max(available_below, 0.0))
-            if adjusted_panel_height <= 0.0 and available_above > 0.0:
-                adjusted_panel_height = min(panel_height, available_above)
-                place_below = False
+        # Prefer below the sprite; fall back to above only when below cannot fit
+        # the full height but above has more room.
+        place_below = not (
+            available_below < adjusted_panel_height and available_above > available_below
+        )
 
-        if adjusted_panel_height <= 0.0:
-            adjusted_panel_height = min(panel_height, window_size.height() - margin_top - margin_bottom)
-
-        # Calculate top position
         if place_below:
             top = max(margin_top, below_top)
-            if top + adjusted_panel_height + margin_bottom > window_size.height():
-                adjusted_panel_height = max(0.0, window_size.height() - margin_bottom - top)
+            # Shift up (don't shrink/clip) if it would spill past the bottom margin.
+            max_top = max(margin_top, window_size.height() - margin_bottom - adjusted_panel_height)
+            top = min(top, max_top)
             self._view_model.set_bubble_side("below")
         else:
             bottom_edge = min(above_bottom, window_size.height() - margin_bottom)

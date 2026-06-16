@@ -22,6 +22,8 @@ from ..constants import (
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
     BUBBLE_DEFAULT_SCALE,
+    DEFAULT_MOUSE_TARGET_ALLOWLIST,
+    DEFAULT_A11Y_APP_BLACKLIST,
 )
 from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
@@ -31,6 +33,9 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_MOUSE_AUTOMATION_ENABLED,
+    DEFAULT_A11Y_ENABLED,
+    DEFAULT_A11Y_SHARE_INPUT_VALUES,
 )
 
 
@@ -129,6 +134,59 @@ class UIConfig:
 
 
 @dataclass
+class AutomationConfig:
+    """Phase 1c automation configuration (restricted synthetic mouse clicks).
+
+    Defaults are conservative: `mouse_enabled=False` means no synthetic
+    events will ever fire even if the LLM emits `[mouse:click]`. The
+    allowlist gates which foreground-window classes are considered
+    valid click targets at the moment of firing.
+    """
+
+    mouse_enabled: bool = False
+    mouse_target_allowlist: tuple[str, ...] = DEFAULT_MOUSE_TARGET_ALLOWLIST
+    # Phase 1d: read the foreground window's accessibility tree into the
+    # prompt. Independent opt-in from `mouse_enabled`.
+    a11y_enabled: bool = DEFAULT_A11Y_ENABLED
+    a11y_app_blacklist: tuple[str, ...] = DEFAULT_A11Y_APP_BLACKLIST
+    # Phase 1d follow-up: even when a11y is on, input-field values are
+    # redacted by default (URL bar, search box, half-typed text). The
+    # user can opt in via the settings dialog.
+    a11y_share_input_values: bool = DEFAULT_A11Y_SHARE_INPUT_VALUES
+
+    def __post_init__(self):
+        if not isinstance(self.mouse_enabled, bool):
+            raise ValueError(f"mouse_enabled must be bool, got {type(self.mouse_enabled)}")
+        if not isinstance(self.mouse_target_allowlist, (tuple, list)):
+            raise ValueError(
+                f"mouse_target_allowlist must be tuple/list, got {type(self.mouse_target_allowlist)}"
+            )
+        if not isinstance(self.a11y_enabled, bool):
+            raise ValueError(f"a11y_enabled must be bool, got {type(self.a11y_enabled)}")
+        if not isinstance(self.a11y_app_blacklist, (tuple, list)):
+            raise ValueError(
+                f"a11y_app_blacklist must be tuple/list, got {type(self.a11y_app_blacklist)}"
+            )
+        if not isinstance(self.a11y_share_input_values, bool):
+            raise ValueError(
+                f"a11y_share_input_values must be bool, got {type(self.a11y_share_input_values)}"
+            )
+        # Normalize to tuple of stripped non-empty strings
+        normalized = tuple(
+            str(item).strip() for item in self.mouse_target_allowlist if str(item).strip()
+        )
+        object.__setattr__(self, "mouse_target_allowlist", normalized)
+        normalized_blacklist = tuple(
+            str(item).strip() for item in self.a11y_app_blacklist if str(item).strip()
+        )
+        object.__setattr__(self, "a11y_app_blacklist", normalized_blacklist)
+
+    @property
+    def config_key_prefix(self) -> str:
+        return "automation"
+
+
+@dataclass
 class AppConfig:
     """
     Application-level configuration.
@@ -169,6 +227,7 @@ class DoroConfig:
     chat: ChatConfig = field(default_factory=ChatConfig)
     ui: UIConfig = field(default_factory=UIConfig)
     app: AppConfig = field(default_factory=AppConfig)
+    automation: AutomationConfig = field(default_factory=AutomationConfig)
 
     def __repr__(self) -> str:
         """Readable representation of configuration."""

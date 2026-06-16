@@ -14,6 +14,8 @@ from ..utils.actions import MOVE_DIRECTIONS
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from .action import ActionDispatcher
+    from .action.phases import ScheduleFn
     from .chat.orchestrator import ChatOrchestrator
     from .movement.manager import MovementManager
     from .state import StateService
@@ -44,6 +46,8 @@ class IdleBehaviorManager(QtCore.QObject):
         state_service: StateService,
         idle_seconds_provider: Callable[[], float],
         mark_activity: Callable[[], None],
+        action_dispatcher: "ActionDispatcher | None" = None,
+        schedule: "ScheduleFn | None" = None,
     ):
         super().__init__()
         self._chat_orchestrator = chat_orchestrator
@@ -51,6 +55,8 @@ class IdleBehaviorManager(QtCore.QObject):
         self._state_service = state_service
         self._idle_seconds = idle_seconds_provider
         self._mark_activity = mark_activity
+        self._action_dispatcher = action_dispatcher
+        self._schedule = schedule
 
         self._lines: list[str] = []
         self._load_lines(companion_file)
@@ -94,6 +100,13 @@ class IdleBehaviorManager(QtCore.QObject):
             self._schedule_next()
             return
 
+        # When the dispatcher is wired, defer idle behavior whenever a
+        # user-initiated or LLM-initiated action is in flight. Idle is
+        # background fluff — it must not preempt deliberate work.
+        if self._action_dispatcher is not None and not self._action_dispatcher.is_idle:
+            self._schedule_next()
+            return
+
         if self._state_service.is_transitioning():
             self._schedule_next()
             return
@@ -120,7 +133,13 @@ class IdleBehaviorManager(QtCore.QObject):
 
     def _do_move(self) -> None:
         direction = random.choice(_DIRECTIONS)
-        self._movement.apply_directional_move(direction)
+        if self._action_dispatcher is not None and self._schedule is not None:
+            from .action import make_movement_action
+            self._action_dispatcher.dispatch(
+                make_movement_action(self._movement, self._schedule, direction=direction)
+            )
+        else:
+            self._movement.apply_directional_move(direction)
 
     def _do_transition(self) -> None:
         keys = [

@@ -15,6 +15,9 @@ from ...utils.logger import get_logger
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from ..action import ActionDispatcher
+    from ..action.phases import ScheduleFn
+    from ..automation.manager import AutomationManager
     from ..movement.manager import MovementManager
     from ..state import StateService
 
@@ -28,11 +31,27 @@ class ChatOrchestrator(QtCore.QObject):
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
     notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
 
-    def __init__(self, controller: ChatController, movement: MovementManager, state_service: StateService):
+    def __init__(
+        self,
+        controller: ChatController,
+        movement: MovementManager,
+        state_service: StateService,
+        *,
+        automation: "AutomationManager | None" = None,
+        action_dispatcher: "ActionDispatcher | None" = None,
+        schedule: "ScheduleFn | None" = None,
+    ):
         super().__init__()  # No parent
         self._controller = controller
         self._movement = movement
         self._state_service = state_service
+        self._automation = automation
+        self._action_dispatcher = action_dispatcher
+        # Schedule is only used when building actions; tests that wire
+        # `action_dispatcher` are expected to pass one too. When the
+        # dispatcher is absent (legacy / unit-test path) movement and
+        # click run synchronously through their managers as before.
+        self._schedule = schedule
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -141,6 +160,17 @@ class ChatOrchestrator(QtCore.QObject):
         """Clear the conversation history."""
         self._controller.clear_history()
 
+    def simulate_response(self, assistant_text: str) -> str:
+        """Inject text as if the chat server had returned it, for testing Doro.
+
+        Runs the exact same handling a real reply gets — movement/state/mouse
+        tags are parsed and executed and the cleaned dialogue is shown in the
+        bubble — without contacting the server or touching history. Returns the
+        dialogue Doro will display (empty when the reply is actions-only).
+        """
+        logger.info("Simulating chat response for testing")
+        return self._on_request_succeeded(assistant_text or "", False)
+
     # ------------------------------------------------------------------ Controller callbacks
 
     def _on_request_started(self, _user_message: str, _is_auto: bool):
@@ -148,18 +178,25 @@ class ChatOrchestrator(QtCore.QObject):
         self.bubble_text_requested.emit("Thinking...", {"auto_hide": False})
         self.busy_cursor_requested.emit(True)
 
-    def _on_request_succeeded(self, assistant_text: str, _was_auto: bool):
+    def _on_request_succeeded(self, assistant_text: str, _was_auto: bool) -> str:
         logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
         display_text = self._handle_actions_in_text(assistant_text)
         if display_text:
             self.bubble_text_requested.emit(display_text, {})
+            shown = display_text
         else:
-            fallback = assistant_text.strip()
+            # No dialogue survived action processing. Strip any control tokens
+            # so a command-only reply (e.g. "[MOVE:dir=right]") never leaks its
+            # raw tags into the bubble; if nothing readable remains, hide it.
+            fallback = self._strip_control_tokens(assistant_text)
             if fallback:
                 self.bubble_text_requested.emit(fallback, {"override_visibility": True})
+                shown = fallback
             else:
                 self.bubble_clear_requested.emit()
+                shown = ""
         self.busy_cursor_requested.emit(False)
+        return shown
 
     def _get_random_network_fail_message(self) -> str:
         """
@@ -202,10 +239,31 @@ class ChatOrchestrator(QtCore.QObject):
     def _handle_actions_in_text(self, assistant_text: str) -> str:
         cleaned_text, actions = parse_actions_from_text(assistant_text)
         move_reports: list[str] = []
+        # Mouse brackets are queued behind movement brackets in the dispatcher,
+        # so the click can only fire after Doro arrives. But if the LLM emits
+        # `[mouse:click]` BEFORE `[move:to;...]` in the same response, naïve
+        # text-order dispatch would put click first and skip the wait entirely.
+        # Defer all mouse brackets until after the loop so movement brackets
+        # always reach the dispatcher first.
+        from ..automation.parser import parse_mouse_bracket
+        pending_mouse_tokens: list[str] = []
 
         for kind, token in actions:
             if kind == "bracket":
-                if self._movement.handle_move_bracket(token, move_reports):
+                # Phase 1c automation: `[mouse:click]` is the only accepted form.
+                if parse_mouse_bracket(token) is not None:
+                    # One click per response: the wind-up/Esc safety flow is
+                    # designed around a single pending click, so extra
+                    # `[mouse:click]` brackets in the same reply are dropped
+                    # rather than queued back-to-back.
+                    if pending_mouse_tokens:
+                        logger.info(
+                            "[automation] extra [mouse:click] in same response dropped"
+                        )
+                    else:
+                        pending_mouse_tokens.append(token)
+                    continue
+                if self._dispatch_move_bracket(token, move_reports):
                     continue
             elif kind == "paren":
                 state_key = self._state_service.parse_state_from_action(token)
@@ -225,7 +283,7 @@ class ChatOrchestrator(QtCore.QObject):
 
             direction = self._movement.parse_movement_token(token)
             if direction:
-                report = self._movement.apply_directional_move(direction)
+                report = self._dispatch_directional_move(direction)
                 if report:
                     move_reports.append(report)
 
@@ -241,15 +299,115 @@ class ChatOrchestrator(QtCore.QObject):
                 # Try with a "move" prefix so MOVE_TOKEN_PATTERN can match
                 direction = self._movement.parse_movement_token(f"move {dir_str}")
             if direction:
-                report = self._movement.apply_directional_move(direction)
+                report = self._dispatch_directional_move(direction)
                 if report:
                     move_reports.append(report)
+
+        # All movement brackets (and bare directional commands) are now in
+        # the dispatcher queue; finally enqueue the clicks behind them.
+        for token in pending_mouse_tokens:
+            self._handle_mouse_bracket(token)
 
         if move_reports:
             for report in move_reports:
                 self._movement.record_manual_report(report)
 
         return self._clean_assistant_dialogue(cleaned_text)
+
+    def _handle_mouse_bracket(self, token: str) -> bool:
+        """Handle `[mouse:...]` brackets. Returns True if the token was claimed
+        (the parser recognized it as a mouse bracket), regardless of whether
+        the action was permitted. Returning True prevents downstream parsers
+        from re-interpreting the same token.
+
+        When an `ActionDispatcher` is wired (production path), the click
+        is enqueued behind any in-flight movement so it cannot fire until
+        Doro has arrived. Without a dispatcher (legacy / unit-test path)
+        the click is started immediately — same behaviour as before.
+        """
+        from ..automation.parser import parse_mouse_bracket
+
+        parse = parse_mouse_bracket(token)
+        if parse is None:
+            return False  # not a mouse bracket — let other parsers try
+
+        if not parse.accepted:
+            logger.warning(f"[automation] rejected mouse bracket: {parse.reason}")
+            return True
+
+        if self._automation is None:
+            logger.warning(
+                "[automation] [mouse:click] received but AutomationManager not "
+                "built — pynput likely missing. Install with `pip install "
+                "pynput` then restart Doro."
+            )
+            return True
+
+        if self._action_dispatcher is not None and self._schedule is not None:
+            from ..action import make_click_action
+            self._action_dispatcher.dispatch(
+                make_click_action(self._automation, self._schedule)
+            )
+        else:
+            self._automation.execute_click()
+        return True
+
+    def _dispatch_move_bracket(self, token: str, reports: list[str]) -> bool:
+        """Run a `[move:...]` bracket either through the dispatcher or directly.
+
+        Returns True iff the bracket was claimed (matches the legacy
+        `handle_move_bracket` contract). When dispatching, we parse the
+        bracket here and route a structured `MovementAction`; otherwise
+        we fall back to the manager's synchronous handler.
+        """
+        if self._action_dispatcher is None or self._schedule is None:
+            return self._movement.handle_move_bracket(token, reports)
+
+        # Defer parsing to the manager so the manager remains the single
+        # source of truth for `[move:...]` semantics. We run a dry parse
+        # path: send the bracket through the manager but capture the
+        # movement intent so we can re-issue it from inside a phase.
+        from ..action import make_movement_action
+
+        # Use the bracket form so the manager handles parsing + the kick-off.
+        # The dispatcher's EffectPhase will re-invoke the parser; that's a
+        # small double-parse cost but keeps movement parsing centralized.
+        # First check the token is actually a move bracket — if not,
+        # return False so the caller can try other parsers.
+        from ..movement.parser import parse_move_bracket
+        if parse_move_bracket(token) is None:
+            return False
+
+        self._action_dispatcher.dispatch(
+            make_movement_action(
+                self._movement,
+                self._schedule,
+                bracket_token=token,
+                # Mirror the legacy synchronous path: forward bracket
+                # validation reports back into the manager's history so
+                # they show up in the LLM's next-turn context (otherwise
+                # the LLM keeps making the same parse mistake).
+                on_report=self._movement.record_manual_report,
+            )
+        )
+        return True
+
+    def _dispatch_directional_move(self, direction: tuple[int, int]) -> str | None:
+        """Run a directional move either through the dispatcher or directly.
+
+        Returns the move-report string (also recorded in history) for
+        backwards compatibility with the existing caller logic; when
+        dispatching we return None because the move runs asynchronously
+        and its report is appended via the manager's own bookkeeping.
+        """
+        if self._action_dispatcher is None or self._schedule is None:
+            return self._movement.apply_directional_move(direction)
+
+        from ..action import make_movement_action
+        self._action_dispatcher.dispatch(
+            make_movement_action(self._movement, self._schedule, direction=direction)
+        )
+        return None
 
     def _strip_control_tokens(self, text: str) -> str:
         stripped = (text or "").strip()

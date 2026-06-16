@@ -147,6 +147,7 @@ class WindowLayoutManager:
         sprite_size: QtCore.QSize,
         panel_width_hint: float,
         panel_height_hint: float,
+        compact: bool = False,
     ) -> tuple[int, int]:
         """
         Compute preferred window size based on sprite and panel dimensions.
@@ -155,12 +156,20 @@ class WindowLayoutManager:
             sprite_size: Current sprite size
             panel_width_hint: Panel width hint
             panel_height_hint: Panel height hint
+            compact: When True, return sprite-only size (no panel reserve).
+                Used while the speech bubble is hidden so the window
+                matches the visible sprite exactly — keeps Doro's visual
+                position aligned with the foot anchor / window top-left
+                for clamp arithmetic.
 
         Returns:
             Tuple of (desired_width, desired_height) in pixels
         """
         sprite_w = max(120.0, float(sprite_size.width()))
         sprite_h = max(120.0, float(sprite_size.height()))
+
+        if compact:
+            return int(round(sprite_w)), int(round(sprite_h))
 
         desired_w = max(
             380,
@@ -179,6 +188,7 @@ class WindowLayoutManager:
         sprite_size: QtCore.QSize,
         panel_width_hint: float,
         panel_height_hint: float,
+        compact: bool = False,
     ) -> tuple[float, float]:
         """
         Apply preferred window size to a widget.
@@ -190,32 +200,32 @@ class WindowLayoutManager:
             sprite_size: Current sprite size
             panel_width_hint: Panel width hint
             panel_height_hint: Panel height hint
+            compact: Forward to :meth:`compute_preferred_window_size`.
 
         Returns:
             Tuple of (panel_width_hint, panel_height_hint) (same as input)
         """
         desired_w, desired_h = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint, panel_height_hint
+            sprite_size, panel_width_hint, panel_height_hint, compact=compact
         )
 
         current_size = window.size()
         min_size = window.minimumSize()
 
+        # Allow both growth and shrink so the window can collapse back to
+        # sprite-size when the bubble hides.
         min_changed = (
             min_size.width() != desired_w or min_size.height() != desired_h
         )
         needs_resize = (
-            current_size.width() < desired_w or current_size.height() < desired_h
+            current_size.width() != desired_w or current_size.height() != desired_h
         )
 
         if min_changed or needs_resize:
             if min_changed:
                 window.setMinimumSize(desired_w, desired_h)
             if needs_resize:
-                window.resize(
-                    max(current_size.width(), desired_w),
-                    max(current_size.height(), desired_h),
-                )
+                window.resize(desired_w, desired_h)
             window.update()
 
         return panel_width_hint, panel_height_hint

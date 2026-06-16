@@ -29,6 +29,7 @@ QComboBox {
 QComboBox:focus { border: 2px solid #FF9BE3; }
 QComboBox::drop-down { border: none; padding-right: 8px; }
 QLabel { color: #4a2040; font-size: 10pt; }
+QCheckBox { color: #4a2040; font-size: 10pt; spacing: 6px; }
 QPushButton#saveButton {
     background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #FFC4F0, stop:1 #FF9BE3);
     color: white; font-weight: bold;
@@ -49,11 +50,16 @@ class ChatSettingsDialog(FramelessDialog):
 
     def __init__(self, core_manager, parent=None):
         super().__init__("API Settings", parent)
+        self._core = core_manager
         self._cm = core_manager.chat_orchestrator
         self._applying_preset = False
         self.setFixedWidth(480)
         self._content_widget.setStyleSheet(_SETTINGS_STYLE)
         self._build_ui()
+        self._populate_from_settings()
+
+    def refresh(self) -> None:
+        """Re-read settings into the form (use when re-showing a cached dialog)."""
         self._populate_from_settings()
 
     # ── build ──────────────────────────────────────────────
@@ -118,6 +124,30 @@ class ChatSettingsDialog(FramelessDialog):
 
         layout.addLayout(form)
 
+        # ── Accessibility tree reading (Phase 1d) ──────────────
+        self._a11y_checkbox = QtWidgets.QCheckBox(
+            "讓 Doro 讀取前景視窗的可點元素（無障礙樹）"
+        )
+        layout.addWidget(self._a11y_checkbox)
+        a11y_hint = QtWidgets.QLabel(
+            "開啟後，目前前景視窗的按鈕／連結／輸入框與座標會加進提示詞，"
+            "讓 Doro 能「點某個按鈕」。預設關閉；目前僅 Windows 有真實後端；"
+            "密碼欄位會自動遮蔽；每次讀取會記到本機稽核檔 ~/.doro/share_audit.log。"
+        )
+        a11y_hint.setObjectName("instructionLabel")
+        a11y_hint.setWordWrap(True)
+        layout.addWidget(a11y_hint)
+
+        # Secondary opt-in: forward the *content* of input fields too.
+        # Off by default — Doro sees that an input exists at (x, y) named
+        # "網址列" without seeing what the user typed there.
+        self._a11y_share_values_checkbox = QtWidgets.QCheckBox(
+            "也把輸入框現在的內容傳給 AI（網址列、搜尋框、打到一半的文字；預設關閉）"
+        )
+        self._a11y_share_values_checkbox.setEnabled(False)
+        layout.addWidget(self._a11y_share_values_checkbox)
+        self._a11y_checkbox.toggled.connect(self._a11y_share_values_checkbox.setEnabled)
+
         # Save button
         save_btn = QtWidgets.QPushButton("儲存")
         save_btn.setObjectName("saveButton")
@@ -149,6 +179,13 @@ class ChatSettingsDialog(FramelessDialog):
         tokens = cm.get_stop_tokens()
         display = "\n".join(t.replace("\n", "\\n") for t in tokens)
         self._stop_tokens_edit.setPlainText(display)
+
+        a11y_enabled = self._core.config_manager.automation.a11y_enabled
+        self._a11y_checkbox.setChecked(a11y_enabled)
+        self._a11y_share_values_checkbox.setChecked(
+            self._core.config_manager.automation.a11y_share_input_values
+        )
+        self._a11y_share_values_checkbox.setEnabled(a11y_enabled)
 
         # Detect which provider matches
         matched = "Custom"
@@ -203,5 +240,20 @@ class ChatSettingsDialog(FramelessDialog):
             if line.strip()
         ]
         cm.set_stop_tokens(tokens)
+
+        config = self._core.config_manager
+        a11y_enabled = self._a11y_checkbox.isChecked()
+        a11y_share_input_values = (
+            a11y_enabled and self._a11y_share_values_checkbox.isChecked()
+        )
+
+        config.update_automation(
+            a11y_enabled=a11y_enabled,
+            a11y_share_input_values=a11y_share_input_values,
+        )
+        config.save()
+
+        if a11y_enabled and self._core.a11y_service is not None:
+            self._core.a11y_service.clear_session_blacklist()
 
         self.accept()

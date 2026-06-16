@@ -316,3 +316,133 @@ class TestEventHandlers:
 
         # Should not emit bubble text for auto requests
         mock_listener.assert_not_called()
+
+
+class TestControlTagLeak:
+    """Movement/control-only replies must never show raw tags in the bubble."""
+
+    def test_movement_only_response_clears_bubble_without_tag(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[MOVE:dir=right]", False)
+
+        clear_listener.assert_called_once()
+        # The raw tag must never reach the bubble via any emit.
+        for emitted in text_listener.call_args_list:
+            assert "MOVE" not in emitted[0][0]
+            assert "[" not in emitted[0][0]
+
+    def test_lowercase_move_only_response_clears_bubble(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[move:left]", False)
+
+        clear_listener.assert_called_once()
+        text_listener.assert_not_called()
+
+    def test_state_and_mouse_only_response_clears_bubble(self, orchestrator):
+        text_listener = Mock()
+        clear_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        orchestrator._on_request_succeeded("[STATE:walk_right][mouse:click]", False)
+
+        clear_listener.assert_called_once()
+        for emitted in text_listener.call_args_list:
+            assert "[" not in emitted[0][0]
+
+    def test_dialogue_with_trailing_move_tag_strips_tag(self, orchestrator):
+        text_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+
+        orchestrator._on_request_succeeded("早安！ [MOVE:dir=right]", False)
+
+        text_listener.assert_called()
+        emitted = text_listener.call_args[0][0]
+        assert "早安" in emitted
+        assert "[" not in emitted and "]" not in emitted
+
+
+class TestMouseBracketDeferred:
+    """Mouse brackets must be enqueued behind move brackets in the dispatcher
+    queue, regardless of text order — otherwise a click written before a
+    move bracket would fire immediately, bypassing the wait."""
+
+    def _make_orch_with_dispatcher(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        """Wire a fresh orchestrator with mock action_dispatcher/automation
+        so we can observe the order in which actions land on the queue."""
+        dispatcher = Mock()
+        dispatcher.dispatch = Mock()
+        automation = Mock()
+        schedule = Mock()
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            automation=automation,
+            action_dispatcher=dispatcher,
+            schedule=schedule,
+        )
+        return orch, dispatcher
+
+    def test_click_after_move_keeps_order(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        orch, dispatcher = self._make_orch_with_dispatcher(
+            mock_controller, mock_movement_manager, mock_state_service,
+        )
+        orch._on_request_succeeded(
+            "好！[MOVE:to;x=200;y=100] [mouse:click]", False,
+        )
+        kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
+        assert kinds == ["movement", "click"]
+
+    def test_click_before_move_in_text_still_dispatches_after_move(
+        self, mock_controller, mock_movement_manager, mock_state_service,
+    ):
+        """The defence in depth: even when the LLM puts `[mouse:click]`
+        textually before `[move:to;...]`, the orchestrator defers the click
+        so the dispatcher receives the movement action first. Without this,
+        the click would fire immediately (movement never starts because the
+        action queue head is the click action)."""
+        orch, dispatcher = self._make_orch_with_dispatcher(
+            mock_controller, mock_movement_manager, mock_state_service,
+        )
+        orch._on_request_succeeded(
+            "好！[mouse:click] [MOVE:to;x=200;y=100]", False,
+        )
+        kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
+        assert kinds == ["movement", "click"]
+
+
+class TestSimulateResponse:
+    """simulate_response injects text through the real reply pipeline."""
+
+    def test_simulate_shows_cleaned_dialogue_and_returns_it(self, orchestrator):
+        text_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
+
+        shown = orchestrator.simulate_response("早安！ [MOVE:dir=right]")
+
+        assert "早安" in shown
+        assert "[" not in shown
+        text_listener.assert_called()
+        assert "[" not in text_listener.call_args[0][0]
+
+    def test_simulate_actions_only_clears_bubble_returns_empty(self, orchestrator):
+        clear_listener = Mock()
+        orchestrator.bubble_clear_requested.connect(clear_listener)
+
+        shown = orchestrator.simulate_response("[MOVE:dir=right]")
+
+        assert shown == ""
+        clear_listener.assert_called_once()

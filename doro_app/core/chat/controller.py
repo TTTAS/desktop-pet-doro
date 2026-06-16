@@ -97,6 +97,8 @@ class ChatController(QtCore.QObject):
         state_text_provider: TextProvider,
         movement_hint_provider: TextProvider,
         config_manager: ConfigManager,
+        doro_state_provider: TextProvider | None = None,
+        a11y_tree_provider: TextProvider | None = None,
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
@@ -107,6 +109,8 @@ class ChatController(QtCore.QObject):
         self._state_service = state_service
         self._state_text_provider = state_text_provider
         self._movement_hint_provider = movement_hint_provider
+        self._doro_state_provider: TextProvider = doro_state_provider or (lambda: "")
+        self._a11y_tree_provider: TextProvider = a11y_tree_provider or (lambda: "")
 
         # Response validation
         self._validator = ResponseValidator(state_service)
@@ -305,6 +309,17 @@ class ChatController(QtCore.QObject):
             return
 
         assistant_text, error_message = result
+
+        # Debug: surface the raw server reply on the terminal (the console log
+        # handler only shows WARNING+, so DEBUG-level text never reaches it).
+        raw = f"(error) {error_message}" if error_message else assistant_text
+        print(
+            f"\n===== [Doro] 伺服器原始回傳 =====\n{raw}\n"
+            "================================\n",
+            flush=True,
+        )
+        logger.debug(f"raw server reply:\n{raw}")
+
         if error_message:
             self._handle_worker_error(error_message)
             return
@@ -467,6 +482,14 @@ class ChatController(QtCore.QObject):
         movement_hint = self._safe_call_provider(self._movement_hint_provider)
         if movement_hint:
             prompt = f"{prompt}\n\n{movement_hint}" if prompt else movement_hint
+
+        doro_state = self._safe_call_provider(self._doro_state_provider)
+        if doro_state:
+            prompt = f"{prompt}\n\n{doro_state}" if prompt else doro_state
+
+        a11y_tree = self._safe_call_provider(self._a11y_tree_provider)
+        if a11y_tree:
+            prompt = f"{prompt}\n\n{a11y_tree}" if prompt else a11y_tree
         return prompt
 
     def _safe_call_provider(self, provider: TextProvider) -> str:

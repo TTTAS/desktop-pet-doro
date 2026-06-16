@@ -134,7 +134,7 @@ grep "WARNING" ~/.doro/doro.log
 def setup_logger(
     name: str = "doro",
     log_file: Optional[Path] = None,
-    level: int = logging.INFO,  # ← 改這裡
+    level: int = logging.DEBUG,  # ← 改這裡
     console: bool = True,
 ):
 ```
@@ -143,8 +143,8 @@ def setup_logger(
 ```python
 import logging
 
-logging.DEBUG    # 10 - 最詳細
-logging.INFO     # 20 - 一般資訊（預設）
+logging.DEBUG    # 10 - 最詳細（預設，落地到 ~/.doro/doro.log；console 仍只收 WARNING+）
+logging.INFO     # 20 - 一般資訊
 logging.WARNING  # 30 - 警告
 logging.ERROR    # 40 - 錯誤
 logging.CRITICAL # 50 - 嚴重錯誤

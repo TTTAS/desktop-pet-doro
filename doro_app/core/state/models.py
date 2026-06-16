@@ -154,6 +154,10 @@ class StateCollection(BaseCollection[State]):
             self._items = states
         self._current_key: Optional[str] = None
         self._protected_keys: set[str] = {"idle"}  # Cannot be deleted
+        # States registered for internal (non-personality) use such as the
+        # Phase 1c click action — kept playable via set_state() but hidden
+        # from menus, idle picks, and the LLM-facing state list.
+        self._hidden_keys: set[str] = set()
 
     def remove(self, key: str) -> bool:
         """
@@ -191,7 +195,10 @@ class StateCollection(BaseCollection[State]):
 
     def visible_keys(self, movement_only_keys: set[str]) -> list[str]:
         """Get keys for states that should appear in UI menus."""
-        return [k for k in self._items.keys() if k not in movement_only_keys]
+        return [
+            k for k in self._items.keys()
+            if k not in movement_only_keys and k not in self._hidden_keys
+        ]
 
     def protect(self, key: str) -> None:
         """Mark a state as protected (cannot be deleted)."""
@@ -200,6 +207,14 @@ class StateCollection(BaseCollection[State]):
     def is_protected(self, key: str) -> bool:
         """Check if a state is protected."""
         return key in self._protected_keys
+
+    def hide(self, key: str) -> None:
+        """Mark a state as hidden from user-facing menus / state lists."""
+        self._hidden_keys.add(key)
+
+    def is_hidden(self, key: str) -> bool:
+        """Check if a state is hidden from the visible-keys filter."""
+        return key in self._hidden_keys
 
 
 class MoveStateCollection(BaseCollection[MoveState]):

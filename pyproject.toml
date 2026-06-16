@@ -9,6 +9,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+automation = [
+    "pynput>=1.7.6",
+]
+a11y = [
+    "uiautomation>=2.0; sys_platform == 'win32'",
+]
 test = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

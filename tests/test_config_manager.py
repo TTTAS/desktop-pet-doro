@@ -116,6 +116,20 @@ class TestConfigManagerUpdate:
         with pytest.raises(ValueError, match="timeout_seconds must be positive"):
             manager.update_chat(timeout_seconds=-1)
 
+    def test_update_automation_a11y_only_preserves_mouse(self, tmp_path):
+        """Toggling a11y_enabled alone must not disturb mouse settings.
+
+        The settings dialog saves only a11y_enabled; the merge in
+        update_automation must keep the other automation fields intact.
+        """
+        manager = ConfigManager(tmp_path / "test.ini")
+        manager.update_automation(mouse_enabled=True)
+
+        manager.update_automation(a11y_enabled=True)
+
+        assert manager.automation.a11y_enabled is True
+        assert manager.automation.mouse_enabled is True
+
     def test_update_ui_single_field(self, tmp_path):
         """Can update single UI config field."""
         manager = ConfigManager(tmp_path / "test.ini")
@@ -190,6 +204,44 @@ class TestConfigManagerPersistence:
         manager2 = ConfigManager(settings_path)
 
         assert manager2.app.current_state == "happy"
+
+    def test_save_persists_automation_a11y_config(self, tmp_path):
+        """Save round-trips the Phase 1d a11y fields through QSettings."""
+        settings_path = tmp_path / "test.ini"
+        manager = ConfigManager(settings_path)
+
+        manager.update_automation(
+            a11y_enabled=True,
+            a11y_app_blacklist=("KeePassXC", "Bitwarden"),
+        )
+        manager.save()
+
+        manager2 = ConfigManager(settings_path)
+
+        assert manager2.automation.a11y_enabled is True
+        assert manager2.automation.a11y_app_blacklist == ("KeePassXC", "Bitwarden")
+
+    def test_a11y_enabled_defaults_to_false(self, tmp_path):
+        """A fresh config keeps a11y disabled (privacy default)."""
+        manager = ConfigManager(tmp_path / "test.ini")
+        assert manager.automation.a11y_enabled is False
+
+    def test_a11y_share_input_values_defaults_to_false(self, tmp_path):
+        """Even when a11y is enabled, input-field contents are off by default."""
+        manager = ConfigManager(tmp_path / "test.ini")
+        assert manager.automation.a11y_share_input_values is False
+
+    def test_a11y_share_input_values_round_trips(self, tmp_path):
+        path = tmp_path / "test.ini"
+        manager = ConfigManager(path)
+        manager.update_automation(
+            a11y_enabled=True,
+            a11y_share_input_values=True,
+        )
+        manager.save()
+
+        manager2 = ConfigManager(path)
+        assert manager2.automation.a11y_share_input_values is True
 
     def test_load_handles_invalid_values(self, tmp_path):
         """Load gracefully handles invalid persisted values."""
@@ -321,3 +373,27 @@ class TestConfigManagerEdgeCases:
         # Second manager should see updated value
         manager2 = ConfigManager(settings_path)
         assert manager2.chat.temperature == 0.9
+
+
+class TestAutomationClassListPersistence:
+    """Class lists must round-trip through QSettings — including empty,
+    which a plain list value cannot do (empty list reads back None and
+    would resurrect the default, making the list impossible to clear)."""
+
+    def test_allowlist_roundtrip(self, tmp_path):
+        settings_path = tmp_path / "test.ini"
+        manager1 = ConfigManager(settings_path)
+        manager1.update_automation(mouse_target_allowlist=("Firefox", "Chrome_WidgetWin_1"))
+        manager1.save()
+
+        manager2 = ConfigManager(settings_path)
+        assert manager2.automation.mouse_target_allowlist == ("Firefox", "Chrome_WidgetWin_1")
+
+    def test_cleared_allowlist_stays_empty(self, tmp_path):
+        settings_path = tmp_path / "test.ini"
+        manager1 = ConfigManager(settings_path)
+        manager1.update_automation(mouse_target_allowlist=())
+        manager1.save()
+
+        manager2 = ConfigManager(settings_path)
+        assert manager2.automation.mouse_target_allowlist == ()
