@@ -43,6 +43,11 @@ class DoroChatDialog(QtWidgets.QDialog):
         # Result storage
         self._message = ""
 
+        # Drag state — initialized here so mouseMoveEvent never hits an
+        # AttributeError when the user drags before any mousePressEvent
+        # (matters now that the dialog is cached and reused across opens).
+        self._drag_position = None
+
         # Setup UI
         self._setup_ui()
         self._apply_doro_stylesheet()
@@ -277,6 +282,22 @@ class DoroChatDialog(QtWidgets.QDialog):
         """
         return self._message
 
+    def run(self) -> tuple[str, bool]:
+        """Reset transient state, show the dialog modally, and return the result.
+
+        Centralizes the per-open reset so the dialog can be cached and reused
+        without leaking the previous message or leaving the input unfocused.
+
+        Returns:
+            Tuple of (message_text, accepted)
+        """
+        self._message = ""
+        self.text_edit.clear()  # char count auto-resets via textChanged signal
+        self.text_edit.setFocus()
+        if self.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            return self._message, True
+        return "", False
+
     # Enable dragging the dialog
     def mousePressEvent(self, event: QtGui.QMouseEvent):
         """Handle mouse press for dragging."""
@@ -286,7 +307,7 @@ class DoroChatDialog(QtWidgets.QDialog):
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
         """Handle mouse move for dragging."""
-        if event.buttons() == QtCore.Qt.MouseButton.LeftButton:
+        if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self._drag_position is not None:
             self.move(event.globalPosition().toPoint() - self._drag_position)
             event.accept()
 
@@ -301,10 +322,4 @@ def show_chat_dialog(parent: QtWidgets.QWidget | None = None) -> tuple[str, bool
     Returns:
         Tuple of (message_text, accepted)
     """
-    dialog = DoroChatDialog(parent)
-    result = dialog.exec()
-
-    if result == QtWidgets.QDialog.DialogCode.Accepted:
-        return dialog.get_message(), True
-    else:
-        return "", False
+    return DoroChatDialog(parent).run()
