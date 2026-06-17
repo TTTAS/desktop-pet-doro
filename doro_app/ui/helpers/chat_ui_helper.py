@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 
-from ..dialogs.chat_dialog import show_chat_dialog
+from ..dialogs.chat_dialog import DoroChatDialog
 
 if TYPE_CHECKING:
     from ..components.bubble_controller import BubbleController
@@ -49,6 +49,10 @@ class ChatUIHelper:
         # + 6-layer antialiased shadow + Qt stylesheet parse). Cache it after
         # first construction so subsequent opens are instant.
         self._settings_dialog = None
+        # DoroChatDialog is likewise heavy to build (translucent frameless
+        # QDialog + large Qt stylesheet parse). Cache it after first
+        # construction so subsequent "Ask Doro" opens are instant.
+        self._chat_dialog = None
         self._bubble_controller = bubble_controller
 
     @property
@@ -58,7 +62,9 @@ class ChatUIHelper:
 
     def prompt_chat(self) -> None:
         """Show chat input dialog and send message."""
-        text, ok = show_chat_dialog(self.window)
+        if self._chat_dialog is None:
+            self._chat_dialog = DoroChatDialog(self.window)
+        text, ok = self._chat_dialog.run()
         if not ok or not text.strip():
             return
 

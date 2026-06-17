@@ -252,7 +252,7 @@ class ChatController(QtCore.QObject):
         if self._retry_count == 0:
             self._original_user_message = cleaned
 
-        logger.debug(f"Building chat payload for message: {cleaned[:50]}...")
+        logger.debug("Building chat payload")
         payload = self._build_chat_payload(cleaned)
 
         self._current_request_id = QtCore.QUuid.createUuid().toString()
@@ -279,7 +279,7 @@ class ChatController(QtCore.QObject):
         self._request_is_auto = is_auto
 
         retry_info = f" (retry {self._retry_count}/{self._max_retries})" if self._retry_count > 0 else ""
-        logger.info(f"Starting chat request{retry_info} (auto={is_auto}): {cleaned[:50]}...")
+        logger.info(f"Starting chat request{retry_info} (auto={is_auto})")
         self.request_started.emit(cleaned, is_auto)
         return True, None
 
@@ -309,16 +309,6 @@ class ChatController(QtCore.QObject):
             return
 
         assistant_text, error_message = result
-
-        # Debug: surface the raw server reply on the terminal (the console log
-        # handler only shows WARNING+, so DEBUG-level text never reaches it).
-        raw = f"(error) {error_message}" if error_message else assistant_text
-        print(
-            f"\n===== [Doro] 伺服器原始回傳 =====\n{raw}\n"
-            "================================\n",
-            flush=True,
-        )
-        logger.debug(f"raw server reply:\n{raw}")
 
         if error_message:
             self._handle_worker_error(error_message)

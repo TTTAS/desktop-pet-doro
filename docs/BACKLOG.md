@@ -94,6 +94,67 @@ Once dialog tests are implemented, extract common test utilities:
 
 ---
 
+## Security & Privacy
+
+### Store API key in system keyring (instead of plaintext)
+
+**Priority:** Medium
+**Category:** Security
+**Location:** `doro_app/utils/config_manager.py:463` (writes `chat/api_key` to QSettings); accessors in `doro_app/core/chat/controller.py` (`get_api_key`/`set_api_key`); UI entry `doro_app/ui/helpers/chat_ui_helper.py:200` (`configure_api_key()`)
+
+**Current Behavior:**
+- API key is stored in plaintext via QSettings (Windows registry / Linux `~/.config/doro-pet/doro.conf` / macOS plist).
+
+**Desired Behavior:**
+- Store the key in the OS keychain via the `keyring` package (Credential Manager / Keychain / Secret Service).
+- On first launch, migrate the existing plaintext key into keyring and clear it from QSettings.
+- When the user clears the API key field in the UI, also delete the keyring entry.
+
+**Implementation Notes:**
+- Adds a `keyring` dependency.
+- On Linux without a secret service (headless server / SSH / CI), fall back to the current plaintext behavior and warn.
+
+**Dependencies:** None
+
+---
+
+### Log rotation and old-log cleanup
+
+**Priority:** Low
+**Category:** Maintenance / Privacy
+**Location:** `doro_app/utils/logger.py:42-51` (`~/.doro/doro.log`, plain `FileHandler`, no size cap)
+
+**Current Behavior:**
+- The log file grows without bound and is never cleaned up.
+- Pre-existing logs may still contain conversation snippets written before commit `0eace61`.
+
+**Desired Behavior:**
+- Use `RotatingFileHandler` with a size/backup-count cap.
+- Optional: truncate or clean up the existing log on startup.
+
+**Implementation Notes:**
+- Follow the conventions in `docs/LOGGING_GUIDE.md`.
+
+**Dependencies:** None
+
+---
+
+### Default log level DEBUG -> INFO
+
+**Priority:** Low
+**Category:** Maintenance
+**Location:** `doro_app/utils/logger.py:12` (`setup_logger(level=logging.DEBUG)`)
+
+**Current Behavior:**
+- File handler defaults to DEBUG, producing high write volume.
+
+**Desired Behavior:**
+- Default to INFO; enable DEBUG via an environment variable / settings toggle.
+
+**Dependencies:** None
+
+---
+
 ## Cleanup Completed (2025-11-28)
 
 ✅ Removed legacy `set_primary_gif()` method
