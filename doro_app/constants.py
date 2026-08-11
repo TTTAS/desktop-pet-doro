@@ -11,6 +11,62 @@ BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
 IDLE_BEHAVIOR_MIN_INTERVAL = 60.0   # 1 minute minimum between idle actions
 IDLE_BEHAVIOR_MAX_INTERVAL = 180.0  # 3 minutes maximum between idle actions
 
+# When Doro speaks on her own, how often she improvises via the LLM instead
+# of using a pre-written line. Most idle chatter is free (canned lines shown
+# straight in the bubble); only this fraction spends an LLM call. Set to 0.0
+# to make idle speech entirely offline.
+IDLE_LLM_SPEAK_CHANCE = 0.25
+
+# ── Event-driven reactions (state mirror) ──────────────────────────
+# Instead of firing on a blind random timer, Doro reacts when something
+# actually happens: you switch apps, you've been glued to the chair, it's
+# late, it's morning. All reactions are free (canned bubble lines).
+
+# How often the reactor samples the world. Cheap: reads foreground class +
+# idle seconds. 15s is fine-grained enough for human-scale events.
+EVENT_POLL_INTERVAL_S = 15.0
+
+# A newly-focused app must stay foreground this long before it counts as a
+# real switch (not just alt-tabbing through). Doubles as the settle gate for
+# the optional screen-read (proposal 7).
+APP_SWITCH_SETTLE_S = 10.0
+
+# Minimum gap between two app-switch *reactions* so hopping around apps
+# doesn't make Doro chatter constantly.
+APP_SWITCH_REACT_COOLDOWN_S = 5 * 60
+
+# Idle longer than this counts as "took a break" — it resets the sitting
+# timer so long-sitting only fires for genuinely continuous sessions.
+SITTING_BREAK_S = 5 * 60
+
+# Continuous active time before Doro nudges you to stretch. Fires once per
+# sitting; resets after a break.
+LONG_SITTING_THRESHOLD_S = 45 * 60
+
+# Local-clock hour ranges (24h) for the time-of-day greetings. Each fires at
+# most once per calendar day, and only while you're actually around.
+LATE_NIGHT_HOURS = range(0, 5)   # 00:00–04:59
+MORNING_HOURS = range(6, 10)     # 06:00–09:59
+
+# ── Screen peek (proposal 7): the rare "comment on my screen" moment ──
+# When you settle into a new app, Doro *may* read the foreground window's
+# accessibility tree and improvise one LLM line about it. This is the only
+# routinely-LLM path, so it is gated hard:
+#   • opt-in — requires automation.a11y_enabled (off by default),
+#   • rate-capped to at most once per this interval,
+#   • paired with the app-switch settle (≥ APP_SWITCH_SETTLE_S) already done
+#     by the EventReactor.
+# The result: content-aware (vivid) but rare (cheap).
+SCREEN_PEEK_MIN_INTERVAL_S = 12 * 60
+
+# The (user-role) nudge sent when a peek fires. The a11y tree of the
+# foreground window is attached automatically by the chat prompt builder,
+# so this just tells Doro how to react to it.
+SCREEN_PEEK_PROMPT = (
+    "（人剛切換到新的畫面。偷看一下螢幕上有什麼，用你的語氣輕鬆講一句"
+    "短短的感想或吐槽就好，不要照唸畫面上的文字。）"
+)
+
 # ═══════════════════════════════════════════════════════════
 # Window Size Constants
 # ═══════════════════════════════════════════════════════════
@@ -204,6 +260,40 @@ A11Y_INVOKE_TIMEOUT_SECONDS = 2.0
 # Consecutive read timeouts for one window class before it is added to the
 # session-local blacklist (so the LLM stops stalling every turn).
 A11Y_TIMEOUT_BLACKLIST_THRESHOLD = 3
+
+# ═══════════════════════════════════════════════════════════
+# Mood / Affection (dual-axis emotion model)
+# ═══════════════════════════════════════════════════════════
+
+# Two persistent axes give Doro a sense of "being someone" rather than a
+# GIF that moves (see design notes):
+#   • mood       — how she feels *right now*; swings on events, drifts back
+#                  to neutral. Range [-1, 1], 0 = neutral.
+#   • affection  — the long-term bond; grows when the user interacts, fades
+#                  slowly when ignored. Range [0, 1], 0 = distant/lonely.
+MOOD_MIN = -1.0
+MOOD_MAX = 1.0
+AFFECTION_MIN = 0.0
+AFFECTION_MAX = 1.0
+
+# Exponential decay half-lives (seconds). Mood forgets a bad/good moment
+# fairly quickly (~20 min to halve toward neutral); affection is a slow
+# burn — a neglected Doro loses half her warmth over roughly a day, so
+# regular attention is what keeps the bond up.
+MOOD_DECAY_HALFLIFE_S = 20 * 60
+AFFECTION_DECAY_HALFLIFE_S = 24 * 60 * 60
+
+# Per-event nudges applied on top of decay. Deltas are deliberately small
+# so a single interaction shifts the needle a little and the state is the
+# accumulation of a relationship, not one click.
+MOOD_EVENT_DELTAS: dict[str, tuple[float, float]] = {
+    # event name        (mood_delta, affection_delta)
+    "chat": (0.15, 0.05),   # user talked to Doro
+    "pet": (0.12, 0.04),    # clicked / stroked
+    "play": (0.08, 0.02),   # dragged around, took her for a walk
+    "return": (0.10, 0.03),  # user came back after being away
+    "ignored": (-0.06, -0.02),  # explicit "still nobody here" beat
+}
 
 # ═══════════════════════════════════════════════════════════
 # Bubble Scale Limits

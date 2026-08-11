@@ -1,0 +1,58 @@
+{
+  "_comment": "Doro's pre-written lines, shown directly in her bubble WITHOUT calling the LLM. Grouped by situation (and by mood for idle chatter). Keep every line in Doro's voice: third-person 'doro', calls the user '人', cutesy and clingy. Edit freely — one line per string.",
+
+  "idle_happy": [
+    "人～doro今天心情超好的！",
+    "嘿嘿～有人在旁邊，doro好開心～",
+    "doro哼著歌，啦啦啦～♪",
+    "人人～doro覺得今天什麼都順順的！",
+    "doro的尾巴搖來搖去，開心開心～"
+  ],
+  "idle_neutral": [
+    "人～在做什麼呀？",
+    "doro就在這邊陪著人喔～",
+    "嗯……doro發呆中……",
+    "人～doro看著你工作喔！",
+    "doro動一動筋骨～"
+  ],
+  "idle_low": [
+    "人～doro有點沒精神……",
+    "唉……doro今天懶懶的……",
+    "doro想討抱抱……",
+    "人～陪陪doro嘛，doro有點悶……",
+    "doro小小聲地嘆了口氣……"
+  ],
+  "lonely": [
+    "人～doro好無聊喔……",
+    "嗚嗚，人都不理doro……",
+    "doro一個人好孤單……人快來陪doro嘛！",
+    "哼，人是不是把doro忘記了！",
+    "人～摸摸doro嘛～doro想要被摸摸～",
+    "嗯……人不在的時候，doro都在想人喔～"
+  ],
+  "long_sitting": [
+    "人～坐好久囉，起來動一動嘛！",
+    "doro提醒你～站起來伸個懶腰吧～",
+    "人的腰腰會痠痠喔，休息一下下嘛！",
+    "喝口水吧人～doro等你回來～",
+    "眼睛也要休息喔，看看遠方嘛～"
+  ],
+  "late_night": [
+    "人～很晚了耶，早點睡覺覺嘛……",
+    "夜深了喔……doro陪你，但你也要休息～",
+    "人～熬夜對身體不好啦，doro擔心你……",
+    "這麼晚還醒著呀？doro幫你蓋被被～"
+  ],
+  "morning": [
+    "早安人～新的一天開始囉！",
+    "人～doro睡飽飽，精神好好！早安～",
+    "早上好呀～今天也要加油喔！",
+    "人人早安～doro等你好久了～"
+  ],
+  "app_switch": [
+    "喔？人換了個地方玩耶～",
+    "人～這是要開始忙了嗎？",
+    "doro探頭看看人在弄什麼～",
+    "換畫面囉～doro跟著人一起看～"
+  ]
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
@@ -22,6 +23,11 @@ from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
 from .core.idle_behavior_manager import IdleBehaviorManager
+from .core.mood import MoodEvent
+from .core.mood.event_reactor import EventReactor
+from .core.mood.screen_peek import ScreenPeekGate
+from .core.mood.service import MoodService
+from .core.mood.speech import CompanionLines
 from .core.movement.manager import MovementManager
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
@@ -32,7 +38,7 @@ from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
 from .utils.logger import get_logger
-from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
+from .utils.paths import COMPANION_LINES_PATH, COMPANION_PROMPTS_PATH, STATE_DIR
 
 logger = get_logger(__name__)
 
@@ -120,6 +126,14 @@ class DoroApp:
             movement_repo=self._movement_repo,
         )
 
+        # ─── Mood (dual-axis emotion) ────────────────────────────
+        # Persistent character state (mood + affection) that colours her
+        # chat voice. Cheap: a couple of floats plus a debounced JSON write
+        # to ~/.doro/mood.json. See core/mood for the model.
+        self._mood_service = MoodService(Path.home() / ".doro" / "mood.json")
+        # Pre-written bubble lines (no LLM) for idle chatter and reactions.
+        self._companion_lines = CompanionLines(COMPANION_LINES_PATH)
+
         # ═════════════════════════════════════════════════════════════
         # Phase 4: Create ChatController (needs StateController + MovementManager)
         # ═════════════════════════════════════════════════════════════
@@ -132,6 +146,7 @@ class DoroApp:
             config_manager=self._config_manager,
             doro_state_provider=lambda: self._build_doro_state_text(),
             a11y_tree_provider=lambda: self._a11y.read_foreground_tree() if self._a11y else "",
+            mood_text_provider=lambda: self._mood_service.describe(),
         )
         # ─── Automation (Phase 1c) ───────────────────────────────
         # Optional: only constructed if mouse_enabled is True or the env var
@@ -176,6 +191,9 @@ class DoroApp:
             mark_activity=lambda: self.window.mark_user_activity(),
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
+            companion_lines=self._companion_lines,
+            mood_state_provider=lambda: self._mood_service.state,
+            say_line=self._say_line,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -191,6 +209,28 @@ class DoroApp:
             config_manager=self._config_manager,
             a11y_service=self._a11y,
             automation_manager=self._automation,
+        )
+
+        # ─── Event-driven reactions (state mirror) ───────────────
+        # Reacts to real events (app switch, long sitting, late night,
+        # morning) with free canned lines, instead of the blind random
+        # timer. Emits foreground_app_settled for the optional screen-read.
+        self._event_reactor = EventReactor(
+            foreground_class_provider=self._current_foreground_class,
+            idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
+            companion_lines=self._companion_lines,
+            say_line=self._say_line,
+            can_react=lambda: not self.core_manager.is_chat_inflight,
+        )
+        self._event_reactor.start()
+
+        # ─── Screen peek (proposal 7) ────────────────────────────
+        # On a settled app switch, *maybe* read the screen and improvise one
+        # LLM line about it. Opt-in (a11y) + rate-capped — the only routine
+        # LLM path, kept rare on purpose.
+        self._screen_peek_gate = ScreenPeekGate()
+        self._event_reactor.foreground_app_settled.connect(
+            self._on_foreground_app_settled
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -311,6 +351,71 @@ class DoroApp:
             hide_delay_ms=kwargs.get("hide_delay_ms", 6000),
         )
 
+    def _on_foreground_app_settled(self, _window_class: str) -> None:
+        """A new app settled — consider a screen peek (auto path)."""
+        self._trigger_screen_peek(manual=False)
+
+    def _trigger_screen_peek(self, *, manual: bool) -> None:
+        """Maybe read the foreground screen and have Doro comment on it once.
+
+        The foreground window's a11y tree is attached to the prompt
+        automatically (a11y_tree_provider), so this just fires the nudge when
+        the gate allows. Auto peeks are rate-capped; a manual request bypasses
+        the cap but still needs the a11y opt-in.
+        """
+        import time
+
+        enabled = bool(self._config_manager.automation.a11y_enabled)
+        if manual and not enabled:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                "Doro",
+                "要先開啟「讓 Doro 看畫面（無障礙樹）」，doro 才看得到螢幕內容喔！",
+            )
+            return
+        busy = self.core_manager.is_chat_inflight
+        if not self._screen_peek_gate.should_peek(
+            time.time(), enabled=enabled, busy=busy, manual=manual
+        ):
+            return
+        from .constants import SCREEN_PEEK_PROMPT
+
+        self._chat_orchestrator.send_message(
+            SCREEN_PEEK_PROMPT, silent=True, is_auto=True
+        )
+
+    def _current_foreground_class(self) -> "str | None":
+        """Class name of the last *external* foreground window (not Doro's).
+
+        Reuses ForegroundTracker's handle so it reflects the app you were
+        actually using even while you're clicking on Doro. None when
+        unknown/unreadable — the detector then simply skips this tick.
+        """
+        from .core.automation import window_class
+
+        handle = self._fg_tracker.handle()
+        if handle is None:
+            return None
+        try:
+            return window_class.window_class_for_handle(handle)
+        except Exception:
+            return None
+
+    def _say_line(self, text: str) -> None:
+        """Show a pre-written line straight in the bubble — no LLM call.
+
+        Used by idle chatter and the event-driven reactions so Doro can
+        have a life for free; the LLM stays reserved for real conversation.
+        """
+        if not text:
+            return
+        self._bubble_controller.set_text(
+            text,
+            override_visibility=True,
+            auto_hide=True,
+            hide_delay_ms=BUBBLE_AUTO_HIDE_MS,
+        )
+
     def _on_chat_operation_started(self):
         """Translate chat operation started domain event to UI busy cursor."""
         self.window.set_busy_cursor(True)
@@ -402,6 +507,8 @@ class DoroApp:
             core_manager=self.core_manager,
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
+            mood_service=self._mood_service,
+            screen_peek=lambda: self._trigger_screen_peek(manual=True),
             reload_sprite=self._load_gif_for_state,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
@@ -416,8 +523,15 @@ class DoroApp:
         mouse_handler.click_detected.connect(
             lambda: (
                 self.window.mark_user_activity(),
+                self._mood_service.record_event(MoodEvent.PET),
                 self._click_action_controller.trigger_random_action(),
             )
+        )
+        # A real user turn (not idle auto-speak) warms the bond.
+        self._chat_controller.request_started.connect(
+            lambda _msg, is_auto: None
+            if is_auto
+            else self._mood_service.record_event(MoodEvent.CHAT)
         )
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
@@ -650,6 +764,8 @@ class DoroApp:
         if dispatcher is not None:
             dispatcher.cancel_current("drag")
         self._movement.cancel_active_movement()
+        # Being carried around is play — fires once per drag gesture.
+        self._mood_service.record_event(MoodEvent.PLAY)
 
     def _on_about_to_quit(self) -> None:
         """Tear down background workers so the process can exit cleanly.
@@ -661,11 +777,20 @@ class DoroApp:
         """
         from .utils.logger import get_logger as _gl
         logger = _gl(__name__)
+        # Flush the bond to disk before workers spin down (debounced saves
+        # may still be pending).
+        mood = getattr(self, "_mood_service", None)
+        if mood is not None:
+            try:
+                mood.save()
+            except Exception:  # pragma: no cover - shutdown is best-effort
+                logger.exception("mood save on quit raised")
         # (subsystem, attribute-on-self, method-name-on-subsystem)
         shutters = [
             ("automation", "_automation", "shutdown"),
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),
+            ("event_reactor", "_event_reactor", "stop"),
         ]
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)

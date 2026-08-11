@@ -9,14 +9,21 @@ from typing import TYPE_CHECKING, Callable
 
 from PySide6 import QtCore
 
-from ..constants import IDLE_BEHAVIOR_MIN_INTERVAL, IDLE_BEHAVIOR_MAX_INTERVAL
+from ..constants import (
+    IDLE_BEHAVIOR_MIN_INTERVAL,
+    IDLE_BEHAVIOR_MAX_INTERVAL,
+    IDLE_LLM_SPEAK_CHANCE,
+)
 from ..utils.actions import MOVE_DIRECTIONS
 from ..utils.logger import get_logger
+from .mood.idle_speech import IdleAction, choose_idle_utterance
 
 if TYPE_CHECKING:
     from .action import ActionDispatcher
     from .action.phases import ScheduleFn
     from .chat.orchestrator import ChatOrchestrator
+    from .mood.models import MoodState
+    from .mood.speech import CompanionLines
     from .movement.manager import MovementManager
     from .state import StateService
 
@@ -48,6 +55,9 @@ class IdleBehaviorManager(QtCore.QObject):
         mark_activity: Callable[[], None],
         action_dispatcher: "ActionDispatcher | None" = None,
         schedule: "ScheduleFn | None" = None,
+        companion_lines: "CompanionLines | None" = None,
+        mood_state_provider: "Callable[[], MoodState] | None" = None,
+        say_line: "Callable[[str], None] | None" = None,
     ):
         super().__init__()
         self._chat_orchestrator = chat_orchestrator
@@ -57,6 +67,12 @@ class IdleBehaviorManager(QtCore.QObject):
         self._mark_activity = mark_activity
         self._action_dispatcher = action_dispatcher
         self._schedule = schedule
+        # Pre-written lines shown straight in the bubble (no LLM). When
+        # wired, idle chatter is mostly free; the LLM only improvises
+        # occasionally (IDLE_LLM_SPEAK_CHANCE).
+        self._companion_lines = companion_lines
+        self._mood_state_provider = mood_state_provider
+        self._say_line = say_line
 
         self._lines: list[str] = []
         self._load_lines(companion_file)
@@ -125,11 +141,28 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule_next()
 
     def _do_speak(self) -> None:
-        if not self._lines:
+        # Thin adapter over the tested pure decision (see mood.idle_speech):
+        # mostly a free pre-written line straight into the bubble, only
+        # occasionally an LLM improv. Gather inputs, then carry out the action.
+        canned_line = None
+        if self._say_line is not None and self._companion_lines is not None:
+            mood = self._mood_state_provider() if self._mood_state_provider else None
+            canned_line = self._companion_lines.pick_idle(mood)
+
+        decision = choose_idle_utterance(
+            roll=random.random(),
+            llm_chance=IDLE_LLM_SPEAK_CHANCE,
+            canned_line=canned_line,
+            has_llm_seed=bool(self._lines),
+        )
+
+        if decision.action is IdleAction.SAY_CANNED and decision.line and self._say_line:
+            self._say_line(decision.line)
+        elif decision.action is IdleAction.ASK_LLM and self._lines:
+            seed = random.choice(self._lines)
+            self._chat_orchestrator.send_message(seed, silent=True, is_auto=True)
+        else:
             self._do_move()
-            return
-        line = random.choice(self._lines)
-        self._chat_orchestrator.send_message(line, silent=True, is_auto=True)
 
     def _do_move(self) -> None:
         direction = random.choice(_DIRECTIONS)

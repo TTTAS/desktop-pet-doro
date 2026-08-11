@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ..helpers import ChatUIHelper
     from ..window import DoroWindow
     from ...core.core_manager import CoreManager
+    from ...core.mood.service import MoodService
     from ...core.state import StateService
     from ..controllers import DialogManager, StateController
 
@@ -44,6 +45,8 @@ class ContextMenuController:
         core_manager: CoreManager,
         chat_ui: ChatUIHelper,
         default_idle_gif: Path,
+        mood_service: "MoodService | None" = None,
+        screen_peek: Callable[[], None] | None = None,
         reload_sprite: Callable[[str], None] | None = None,
     ) -> None:
         self._window = window
@@ -54,6 +57,8 @@ class ContextMenuController:
         self._core_manager = core_manager
         self._chat_ui = chat_ui
         self._default_idle_gif = default_idle_gif
+        self._mood_service = mood_service
+        self._screen_peek = screen_peek
         self._reload_sprite = reload_sprite
 
     # ──────────────────────────────────────────────────────────
@@ -135,11 +140,35 @@ class ContextMenuController:
             open_settings_dialog=self._chat_ui.open_settings_dialog,
             toggle_a11y=self._toggle_a11y,
             preview_a11y=self._preview_a11y,
+            peek_screen=self._screen_peek or (lambda: None),
             toggle_mouse_enabled=self._toggle_mouse_enabled,
             simulate_response=self._simulate_response,
             inspect_position=self._inspect_position,
+            show_mood=self._show_mood,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
+
+    def _show_mood(self) -> None:
+        """Show Doro's current mood/affection — raw values, human labels, and
+        the exact ``[Doro 心情]`` block injected into the chat prompt — so the
+        state is inspectable and you can watch it react to interactions."""
+        if self._mood_service is None:
+            QtWidgets.QMessageBox.information(
+                self._window, "Doro", "心情服務未建立。"
+            )
+            return
+        # describe() decays to the present first, so the numbers read after
+        # it reflect *now*, matching the block shown below.
+        block = self._mood_service.describe()
+        state = self._mood_service.state
+        msg = (
+            f"心情 mood: {state.mood:+.2f}  →  {state.mood_label()}\n"
+            f"親密度 affection: {state.affection:.2f}  →  {state.affection_label()}\n"
+            "\n──────────────\n"
+            "（每次跟 Doro 聊天時，會把下面這段送進 LLM）\n\n"
+            f"{block}"
+        )
+        QtWidgets.QMessageBox.information(self._window, "Doro 心情（debug）", msg)
 
     def _toggle_a11y(self, checked: bool) -> None:
         """Flip accessibility tree reading on/off and persist it.

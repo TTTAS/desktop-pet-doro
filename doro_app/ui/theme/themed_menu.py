@@ -46,9 +46,11 @@ class MenuCallbacks:
     open_settings_dialog: Callable[[], None]
     toggle_a11y: Callable[[bool], None]
     preview_a11y: Callable[[], None]
+    peek_screen: Callable[[], None]
     toggle_mouse_enabled: Callable[[bool], None]
     simulate_response: Callable[[], None]
     inspect_position: Callable[[], None]
+    show_mood: Callable[[], None]
     quit_app: Callable[[], None]
 
 
@@ -408,6 +410,9 @@ def build_context_menu_content(
     a11y_preview_action = chat_menu.addAction("預覽 Doro 看到什麼")
     a11y_preview_action.triggered.connect(callbacks.preview_a11y)
 
+    peek_action = chat_menu.addAction("讓 Doro 看一下畫面並說說")
+    peek_action.triggered.connect(callbacks.peek_screen)
+
     mouse_toggle_action = chat_menu.addAction("讓 Doro 幫忙點滑鼠")
     mouse_toggle_action.setCheckable(True)
     mouse_toggle_action.setChecked(snapshot.mouse_enabled)
@@ -419,6 +424,9 @@ def build_context_menu_content(
 
     inspect_action = chat_menu.addAction("檢查 Doro 位置（debug）")
     inspect_action.triggered.connect(callbacks.inspect_position)
+
+    mood_action = chat_menu.addAction("查看 Doro 心情（debug）")
+    mood_action.triggered.connect(callbacks.show_mood)
 
     menu.addSeparator()
 
