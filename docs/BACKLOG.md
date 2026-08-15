@@ -81,6 +81,27 @@ Missing test coverage for UI dialogs:
 
 ## Refactoring Opportunities
 
+### Decide the future of the pluggable renderer architecture
+
+**Priority:** Low
+**Category:** Refactoring / Architecture
+**Location:** `doro_app/ui/controllers/sprite_controller.py` (`_renderers` registry, `switch_renderer`, `tick`), `doro_app/ui/rendering/sprite_renderer.py` (base class)
+
+**Context:**
+- Live2D rendering was removed on 2026-08-15 (see `docs/CHANGELOG_session_2026-08-15.md`). The pluggable renderer architecture — `SpriteRenderer` base, the `_renderers` registry, `switch_renderer()`, and the `tick()` advance hook — was intentionally kept as a seam, even though `GifSpriteRenderer` is now the only concrete renderer.
+
+**Open question:**
+- Either add another renderer to justify the abstraction (e.g. a Spine renderer), or collapse the registry/`switch_renderer` indirection back to GIF-only if no second renderer materializes. Keeping a single-implementation registry is cheap but is speculative generality until a second renderer exists.
+
+**Next Steps:**
+1. Confirm whether a second renderer (Spine or other) is actually planned.
+2. If yes: implement it against the existing `SpriteRenderer` seam.
+3. If no: consider flattening `SpriteController` to GIF-only and removing the registry indirection.
+
+**Dependencies:** None
+
+---
+
 ### Extract Dialog Test Utilities
 
 **Priority:** Low

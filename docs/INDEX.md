@@ -1,7 +1,7 @@
 # Doro 專案文檔索引
 
-> **最後更新：** 2026-06-16
-> **文檔總數：** 14
+> **最後更新：** 2026-08-15
+> **文檔總數：** 15
 
 ---
 
@@ -48,6 +48,11 @@
 
 14. **[變更日誌 2026-06-16](CHANGELOG_session_2026-06-16.md)**
     - 點擊紅框 silent-skip 診斷與 stdout 升級
+    - **適合：** 追蹤具體變更
+
+15. **[變更日誌 2026-08-15](CHANGELOG_session_2026-08-15.md)**
+    - 移除 Live2D 渲染支援（保留可插拔渲染器架構）
+    - 順修 Windows 路徑分隔符測試 bug
     - **適合：** 追蹤具體變更
 
 ---
@@ -122,12 +127,12 @@
 | 類別 | 文件數 | 文檔 |
 |------|--------|------|
 | **核心文檔** | 2 | BEST_PRACTICES, ARCHITECTURE |
-| **歷史記錄** | 4 | REFACTORING_SUMMARY, IMPROVEMENTS_SUMMARY, CHANGELOG (2025-11-27, 2026-06-16) |
+| **歷史記錄** | 5 | REFACTORING_SUMMARY, IMPROVEMENTS_SUMMARY, CHANGELOG (2025-11-27, 2026-06-16, 2026-08-15) |
 | **功能設計** | 2 | chat_dialog_design, network_fail_messages |
 | **開發指南** | 3 | TESTING, LOGGING_GUIDE, TEST_COVERAGE_REPORT |
 | **待辦計劃** | 2 | BACKLOG, review |
 | **本索引** | 1 | INDEX.md |
-| **總計** | **14** | |
+| **總計** | **15** | |
 
 ---
 
@@ -205,4 +210,4 @@
 
 **維護者：** Doro 開發團隊
 **更新頻率：** 每次新增/刪除文檔時更新
-**最後更新：** 2026-06-16
+**最後更新：** 2026-08-15
