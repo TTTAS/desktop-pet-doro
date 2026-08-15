@@ -128,7 +128,8 @@ class TestGifRepositoryAddGif:
         resource_id = repo.add_gif(source, "stand")
 
         assert (tmp_path / "stand").is_dir()
-        assert "stand/" in resource_id
+        # Normalize separators so the assertion holds on Windows (\) too.
+        assert "stand/" in resource_id.replace("\\", "/")
         assert resource_id.endswith(".gif")
 
     def test_add_gif_sequential_naming(self, tmp_path):

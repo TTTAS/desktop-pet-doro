@@ -330,9 +330,6 @@ class DoroApp:
     def _on_domain_state_changed(self, state_key: str):
         """Translate state changed domain event to UI GIF loading."""
         self.window.current_state_key = state_key
-        # Under Live2D mode the model is persistent — skip sprite reloading.
-        if self._sprite_controller.renderer_type == "live2d":
-            return
         self._load_gif_for_state(state_key)
 
     def _on_domain_transition_completed(self, target_state_key: str):
@@ -344,15 +341,6 @@ class DoroApp:
         gif_path = self._state_service.get_gif_path(state_key)
         if gif_path:
             self._sprite_controller.load_sprite(str(gif_path))
-
-    def _on_live2d_unavailable(self):
-        """Notify the user via bubble that live2d-py is not installed."""
-        self._bubble_controller.set_text(
-            "需要安裝 live2d-py 才能使用 Live2D 模型喔！\n"
-            "pip install live2d-py",
-            auto_hide=True,
-            hide_delay_ms=8000,
-        )
 
     def _on_bubble_toggle_requested(self, state_key: str, checked: bool):
         """Handle bubble toggle from UI — delegates to StateController + BubbleController."""
@@ -402,7 +390,6 @@ class DoroApp:
             core_manager=self.core_manager,
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
-            reload_sprite=self._load_gif_for_state,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -438,9 +425,6 @@ class DoroApp:
         )
         self._sprite_controller.sprite_size_changed.connect(
             lambda _: self.window.on_sprite_renderer_changed()
-        )
-        self._sprite_controller.live2d_unavailable.connect(
-            self._on_live2d_unavailable
         )
 
         # ─────────────────────────────────────────────────────────

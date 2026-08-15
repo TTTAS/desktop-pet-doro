@@ -45,7 +45,6 @@ class State:
 
     # Resource references (managed by Repository)
     gif_id: Optional[str] = None  # Reference to GIF, not path
-    live2d_model_path: Optional[str] = None  # Absolute path to .model3.json
 
     def with_changes(self, **changes: Any) -> State:
         """Return a new State with specified changes."""

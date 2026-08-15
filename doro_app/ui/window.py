@@ -242,7 +242,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Signal business layer to process movement
         self.tick_requested.emit(dt)
 
-        # Advance sprite renderer (needed for Live2D frame generation)
+        # Advance the active sprite renderer (per-frame hook for time-driven renderers)
         if self._sprite_controller:
             self._sprite_controller.tick(dt)
 
@@ -521,10 +521,6 @@ class DoroWindow(QtWidgets.QWidget):
     def on_transition_movie_loaded(self, movie: QtGui.QMovie, sprite_size: QtCore.QSize):
         """Handle transition movie loaded signal from TransitionPlayer."""
         if self._sprite_controller:
-            # Under Live2D mode, skip transition GIFs — model stays visible.
-            if self._sprite_controller.renderer_type == "live2d":
-                movie.stop()
-                return
             self._sprite_controller.set_movie_directly(movie, sprite_size)
 
     def set_busy_cursor(self, enabled: bool):
@@ -563,7 +559,7 @@ class DoroWindow(QtWidgets.QWidget):
             # Clear all GIF resources via SpriteController
             if self._sprite_controller:
                 self._sprite_controller.gif_player.clear()
-                # Dispose ALL renderers (Live2D GL context, FBOs, etc.)
+                # Dispose ALL renderers (release any renderer-held resources)
                 self._sprite_controller.dispose_all()
 
             if self._timer:

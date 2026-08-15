@@ -94,7 +94,6 @@ class StateService:
         Get a sprite path for a state.
 
         Resolution priority:
-        0. Live2D model path (if set)
         1. Multi-GIF subfolder (random pick)
         2. Single-file via gif_id
         3. Movement state fallback
@@ -105,23 +104,13 @@ class StateService:
         Returns:
             Absolute path to sprite file or None if not found
         """
-        # Priority 0: Live2D model path
-        state = self._states.get(state_key)
-        if state and state.live2d_model_path:
-            live2d_path = Path(state.live2d_model_path)
-            if live2d_path.is_file():
-                return live2d_path
-            else:
-                logger.warning("Live2D model not found: %s", state.live2d_model_path)
-
         # Priority 1: multi-GIF subfolder (random pick)
         random_path = self._gif_manager.pick_random_gif(state_key)
         if random_path:
             return random_path
 
         # Priority 2: single-file via gif_id
-        if not state:
-            state = self._states.get(state_key)
+        state = self._states.get(state_key)
         if state and state.gif_id:
             path = self._gif_manager.get_path_by_id(state.gif_id)
             if path:

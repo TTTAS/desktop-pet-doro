@@ -12,11 +12,6 @@ from ..components.gif_player import GifPlayer
 from ..rendering.gif_sprite_renderer import GifSpriteRenderer
 from ..rendering.sprite_renderer import SpriteRenderer
 
-try:
-    from ..rendering.live2d_sprite_renderer import Live2DSpriteRenderer, _LIVE2D_AVAILABLE
-except ImportError:
-    _LIVE2D_AVAILABLE = False
-
 if TYPE_CHECKING:
     from ..viewmodels.doro_viewmodel import DoroViewModel
 
@@ -36,7 +31,6 @@ class SpriteController(QtCore.QObject):
     sprite_size_changed = QtCore.Signal(QtCore.QSize)  # new_size
     frame_changed = QtCore.Signal(int)  # frame_number
     repaint_requested = QtCore.Signal()
-    live2d_unavailable = QtCore.Signal()  # emitted when Live2D model requested but library missing
 
     def __init__(self, view_model: DoroViewModel) -> None:
         super().__init__()
@@ -48,15 +42,6 @@ class SpriteController(QtCore.QObject):
         }
         self._renderer: SpriteRenderer = self._gif_renderer
         self._current_movie: QtGui.QMovie | None = None
-
-        # Live2D renderer (registered only when the library is available)
-        self._live2d_renderer: Live2DSpriteRenderer | None = None
-        if _LIVE2D_AVAILABLE:
-            self._live2d_renderer = Live2DSpriteRenderer(view_model)
-            self._renderers["live2d"] = self._live2d_renderer
-            logger.info("Live2D renderer registered")
-        else:
-            self._live2d_renderer = None
 
     @property
     def renderer(self) -> SpriteRenderer:
@@ -127,10 +112,6 @@ class SpriteController(QtCore.QObject):
             self._clear()
             return False
 
-        # Live2D model (.model3.json)
-        if path_obj.suffix == ".json" and "model3" in path_obj.stem:
-            return self._load_live2d(path_obj)
-
         # Default: GIF
         return self._load_gif(path_obj)
 
@@ -148,35 +129,15 @@ class SpriteController(QtCore.QObject):
     # ── Private helpers ────────────────────────────────────────
 
     def tick(self, dt: float) -> None:
-        """Advance the active renderer by *dt* seconds (needed for Live2D)."""
-        if self._live2d_renderer is not None and self._renderer is self._live2d_renderer:
-            self._live2d_renderer.update(dt)
+        """Advance the active renderer by *dt* seconds.
 
-    def _load_live2d(self, path: Path) -> bool:
-        if self._live2d_renderer is None:
-            logger.warning("live2d-py not installed — cannot load Live2D model")
-            self.live2d_unavailable.emit()
-            return False
-        try:
-            ok = self._live2d_renderer.load_model(path)
-            if not ok:
-                return False
-            self.switch_renderer("live2d")
-            # Keep current sprite size if already set (e.g. from a GIF),
-            # otherwise default to 200x200.
-            current = self._view_model.sprite_size
-            if not current.isValid() or current.isEmpty():
-                current = QtCore.QSize(200, 200)
-            size = current
-            self._view_model.set_sprite_size(size)
-            self.sprite_size_changed.emit(QtCore.QSize(size))
-            self.sprite_renderer_changed.emit()
-            self.repaint_requested.emit()
-            logger.info("Loaded Live2D model: %s", path)
-            return True
-        except Exception as e:
-            logger.error("Error loading Live2D model %s: %s", path, e)
-            return False
+        Generic per-frame hook for time-based renderers. GIF playback is
+        driven by QMovie and needs no manual advance, so this is a no-op for
+        it; kept as a seam for future time-driven renderers.
+        """
+        update = getattr(self._renderer, "update", None)
+        if callable(update):
+            update(dt)
 
     def _load_gif(self, path: Path) -> bool:
         try:
