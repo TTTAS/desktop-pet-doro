@@ -7,7 +7,6 @@ A desktop pet (shimeji-style) application built with PySide6. Doro is a cute chi
 ## Features
 
 - **Animated GIF sprites** with idle bobbing, state transitions, and walking animations
-- **Live2D model support** for richer expression rendering (experimental)
 - **LLM-powered chat** via configurable endpoint (LM Studio, OpenAI-compatible APIs, etc.)
 - **Idle behavior** - Doro speaks, moves, and changes poses autonomously when you're away
 - **State system** - multiple visual states with animated transitions between them

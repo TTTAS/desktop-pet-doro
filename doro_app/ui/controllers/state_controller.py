@@ -146,31 +146,6 @@ class StateController(QtCore.QObject):
         """Set GIF for a state (delegates to StateService)."""
         return self._state_service.set_gif(key, source_path)
 
-    def set_live2d_model(self, key: str, model_path: Path) -> bool:
-        """Set Live2D model path for a single state."""
-        if not model_path.is_file():
-            return False
-        return self._state_service.update_state(key, live2d_model_path=str(model_path))
-
-    def clear_live2d_model(self, key: str) -> bool:
-        """Clear Live2D model path for a single state (revert to GIF)."""
-        return self._state_service.update_state(key, live2d_model_path=None)
-
-    def set_live2d_model_all(self, model_path: Path) -> bool:
-        """Set Live2D model path for ALL states (global toggle)."""
-        if not model_path.is_file():
-            return False
-        path_str = str(model_path)
-        for key in self._state_service.all_state_keys():
-            self._state_service.update_state(key, live2d_model_path=path_str)
-        return True
-
-    def clear_live2d_model_all(self) -> bool:
-        """Clear Live2D model path from ALL states (revert to GIF globally)."""
-        for key in self._state_service.all_state_keys():
-            self._state_service.update_state(key, live2d_model_path=None)
-        return True
-
     def clear_state_gif(self, state_key: str | None = None) -> bool:
         """
         Clear all GIFs for a state (single file + subfolder).

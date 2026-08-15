@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
 
-from ...utils.paths import LIVE2D_MODEL_PATH
 from ..theme.themed_menu import (
     MenuCallbacks,
     MenuSnapshot,
     build_context_menu_content,
     create_doro_menu,
 )
-
-try:
-    from ..rendering.live2d_sprite_renderer import _LIVE2D_AVAILABLE
-except ImportError:
-    _LIVE2D_AVAILABLE = False
 
 if TYPE_CHECKING:
     from ..components.bubble_controller import BubbleController
@@ -44,7 +37,6 @@ class ContextMenuController:
         core_manager: CoreManager,
         chat_ui: ChatUIHelper,
         default_idle_gif: Path,
-        reload_sprite: Callable[[str], None] | None = None,
     ) -> None:
         self._window = window
         self._state_service = state_service
@@ -54,7 +46,6 @@ class ContextMenuController:
         self._core_manager = core_manager
         self._chat_ui = chat_ui
         self._default_idle_gif = default_idle_gif
-        self._reload_sprite = reload_sprite
 
     # ──────────────────────────────────────────────────────────
     # Public API
@@ -100,10 +91,6 @@ class ContextMenuController:
             has_default_idle_gif=self._default_idle_gif.is_file(),
             is_chat_inflight=self._core_manager.is_chat_inflight,
             has_chat_history=self._core_manager.has_chat_history,
-            using_live2d=bool(
-                current_state and current_state.live2d_model_path
-            ),
-            live2d_available=_LIVE2D_AVAILABLE,
             a11y_enabled=bool(
                 self._core_manager.config_manager.automation.a11y_enabled
             ),
@@ -122,7 +109,6 @@ class ContextMenuController:
             clear_state_gif=lambda: self._state_controller.clear_state_gif(
                 current_key
             ),
-            toggle_live2d=lambda checked: self._toggle_live2d(current_key, checked),
             show_rename_dialog=lambda: (
                 self._dialog_manager.show_rename_dialog(current_key)
                 and self._window.update()
@@ -250,15 +236,3 @@ class ContextMenuController:
             QtWidgets.QMessageBox.information(
                 self._window, "Doro", "（這段回應只有動作／狀態指令，沒有對話）"
             )
-
-    def _toggle_live2d(self, state_key: str | None, checked: bool) -> None:
-        """Toggle Live2D mode globally (applies to all states)."""
-        if not state_key:
-            return
-        if checked:
-            self._state_controller.set_live2d_model_all(LIVE2D_MODEL_PATH)
-        else:
-            self._state_controller.clear_live2d_model_all()
-        # Reload sprite for the current state
-        if self._reload_sprite:
-            self._reload_sprite(state_key)

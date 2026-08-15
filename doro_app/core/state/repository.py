@@ -489,10 +489,6 @@ class StateRepository:
         if state.gif_id:
             data["gif_id"] = state.gif_id
 
-        # Save Live2D model path
-        if state.live2d_model_path:
-            data["live2d_model_path"] = state.live2d_model_path
-
         return data
 
     def _from_dict(self, key: str, data: dict[str, Any]) -> State:
@@ -519,16 +515,12 @@ class StateRepository:
         # Load GIF reference (support both old and new format)
         gif_id = data.get("gif_id") or data.get("primary_gif_id")
 
-        # Load Live2D model path
-        live2d_model_path = data.get("live2d_model_path")
-
         return State(
             key=key,
             label=label,
             name_tag=name_tag,
             visual=visual,
             gif_id=gif_id,
-            live2d_model_path=live2d_model_path,
         )
 
 
