@@ -2,14 +2,12 @@
 
 from .click_action_controller import ClickActionController
 from .dialog_manager import DialogManager
-from .gif_controller import GifController
 from .sprite_controller import SpriteController
 from .state_controller import StateController
 
 __all__ = [
     "ClickActionController",
     "DialogManager",
-    "GifController",
     "SpriteController",
     "StateController",
 ]

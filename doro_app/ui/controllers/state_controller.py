@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui
 
-from ...core.state import StateChangeEvent, StateService
+from ...core.state import State, StateChangeEvent, StateService
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 
@@ -72,20 +72,7 @@ class StateController(QtCore.QObject):
         self._current_state_key = event.new_key
 
         # Apply visual config to ViewModel
-        visual = state.visual
-        self._view_model.set_bob_amplitude(visual.bob_amplitude)
-        self._view_model.set_scale_amplitude(visual.scale_amplitude)
-        self._view_model.set_fill_colors(
-            QtGui.QColor(visual.gradient_top),
-            QtGui.QColor(visual.gradient_mid),
-            QtGui.QColor(visual.gradient_bottom),
-        )
-        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
-        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
-        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
-        self._view_model.set_bubble_visible(visual.bubble_visible)
-        self._view_model.set_bubble_alpha(visual.bubble_alpha)
-        self._view_model.set_name_tag(state.name_tag)
+        self._apply_visual_config(state)
 
         # Persist to config
         if self._config_manager:
@@ -100,6 +87,23 @@ class StateController(QtCore.QObject):
         """Handle state list modifications (add/remove states)."""
         state_list_text = self._state_service.write_state_list()
         self.state_list_updated.emit(state_list_text)
+
+    def _apply_visual_config(self, state: State) -> None:
+        """Apply a state's visual configuration to the ViewModel."""
+        visual = state.visual
+        self._view_model.set_bob_amplitude(visual.bob_amplitude)
+        self._view_model.set_scale_amplitude(visual.scale_amplitude)
+        self._view_model.set_fill_colors(
+            QtGui.QColor(visual.gradient_top),
+            QtGui.QColor(visual.gradient_mid),
+            QtGui.QColor(visual.gradient_bottom),
+        )
+        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
+        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
+        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
+        self._view_model.set_bubble_visible(visual.bubble_visible)
+        self._view_model.set_bubble_alpha(visual.bubble_alpha)
+        self._view_model.set_name_tag(state.name_tag)
 
     def apply_state_settings(self, state_key: str | None = None) -> None:
         """
@@ -117,20 +121,7 @@ class StateController(QtCore.QObject):
             return
 
         # Apply visual config to ViewModel
-        visual = state.visual
-        self._view_model.set_bob_amplitude(visual.bob_amplitude)
-        self._view_model.set_scale_amplitude(visual.scale_amplitude)
-        self._view_model.set_fill_colors(
-            QtGui.QColor(visual.gradient_top),
-            QtGui.QColor(visual.gradient_mid),
-            QtGui.QColor(visual.gradient_bottom),
-        )
-        self._view_model.set_cheek_alpha(visual.cheeks_alpha)
-        self._view_model.set_blush_color(QtGui.QColor(visual.blush_color))
-        self._view_model.set_eye_color(QtGui.QColor(visual.eye_color))
-        self._view_model.set_bubble_visible(visual.bubble_visible)
-        self._view_model.set_bubble_alpha(visual.bubble_alpha)
-        self._view_model.set_name_tag(state.name_tag)
+        self._apply_visual_config(state)
 
         self.repaint_requested.emit()
 
