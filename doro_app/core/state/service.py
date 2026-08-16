@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from ...utils.logger import get_logger
-from ..exceptions import ConfigSaveError
-from .gif_manager import GifManager
+from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
 from .state_parser import StateParser
 from .transition_coordinator import TransitionCoordinator
 from .models import (
@@ -61,19 +60,20 @@ class StateService:
         gif_repo: GifRepository,
         state_list_path: Path,
         transition_repo: Optional[TransitionRepository] = None,
-        transition_gif_repo: Optional[GifRepository] = None,
+        *,
+        transition_gif_repo: GifRepository,
         movement_repo: Optional[MovementRepository] = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
         self._move_repo = move_repo
         self._gif_repo = gif_repo
+        self._transition_gif_repo = transition_gif_repo
         self._transition_repo = transition_repo
         self._movement_repo = movement_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
         # Private - managers for specialized operations
-        self._gif_manager = GifManager(gif_repo, transition_gif_repo=transition_gif_repo)
         self._transition_coordinator = TransitionCoordinator(transition_repo)
         self._state_parser = StateParser()
 
@@ -84,6 +84,34 @@ class StateService:
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
+
+    # ═══════════════════════════════════════════════════════════
+    # Private - GIF storage error handling
+    # ═══════════════════════════════════════════════════════════
+
+    def _store_gif(self, source_path: Path, context_key: str) -> Optional[str]:
+        """Store a GIF into the state store, swallowing storage errors.
+
+        Returns the resource ID, or None if the source is missing or the
+        copy fails (the error is logged).
+        """
+        try:
+            return self._gif_repo.store_gif(source_path, context_key)
+        except (GifNotFoundError, GifStorageError) as e:
+            logger.error(f"Failed to store GIF for '{context_key}': {e}")
+            return None
+
+    def _add_gif(self, repo: GifRepository, source_path: Path, key: str) -> Optional[str]:
+        """Add a GIF to a repo's multi-GIF collection, swallowing storage errors.
+
+        Returns the resource ID, or None if the source is missing or the
+        copy fails (the error is logged).
+        """
+        try:
+            return repo.add_gif(source_path, key)
+        except (GifNotFoundError, GifStorageError) as e:
+            logger.error(f"Failed to add GIF for '{key}': {e}")
+            return None
 
     # ═══════════════════════════════════════════════════════════
     # Public API - GIF Operations (Encapsulated)
@@ -105,14 +133,14 @@ class StateService:
             Absolute path to sprite file or None if not found
         """
         # Priority 1: multi-GIF subfolder (random pick)
-        random_path = self._gif_manager.pick_random_gif(state_key)
+        random_path = self._gif_repo.pick_random_gif(state_key)
         if random_path:
             return random_path
 
         # Priority 2: single-file via gif_id
         state = self._states.get(state_key)
         if state and state.gif_id:
-            path = self._gif_manager.get_path_by_id(state.gif_id)
+            path = self._gif_repo.get_path(state.gif_id)
             if path:
                 return path
 
@@ -139,7 +167,7 @@ class StateService:
         Returns:
             Absolute path to GIF file or None if not found
         """
-        return self._gif_manager.get_path_by_id(gif_id)
+        return self._gif_repo.get_path(gif_id)
 
     def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
         """
@@ -152,7 +180,7 @@ class StateService:
         Returns:
             Resource ID or None if failed
         """
-        return self._gif_manager.store(source_path, state_key)
+        return self._store_gif(source_path, state_key)
 
     def delete_gif(self, gif_id: str) -> bool:
         """
@@ -164,7 +192,7 @@ class StateService:
         Returns:
             True if deleted, False otherwise
         """
-        return self._gif_manager.delete(gif_id)
+        return self._gif_repo.delete(gif_id)
 
     def get_state_storage_path(self, state_key: str) -> Path:
         """
@@ -176,7 +204,7 @@ class StateService:
         Returns:
             Path where the state's GIF should be stored
         """
-        return self._gif_manager.get_state_storage_path(state_key)
+        return self._gif_repo.get_state_storage_path(state_key)
 
     def get_move_storage_path(self, move_key: str) -> Path:
         """
@@ -188,7 +216,7 @@ class StateService:
         Returns:
             Path where the move GIF should be stored
         """
-        return self._gif_manager.get_move_storage_path(move_key)
+        return self._gif_repo.get_move_storage_path(move_key)
 
     def sanitize_state_key(self, key: str) -> str:
         """
@@ -292,20 +320,20 @@ class StateService:
 
     def get_transition_gif_path(self, transition_key: str) -> Optional[Path]:
         """Pick a random transition GIF (subfolder first, single file fallback)."""
-        return self._gif_manager.pick_random_transition_gif(transition_key)
+        return self._transition_gif_repo.pick_random_gif(transition_key)
 
     def list_transition_gif_paths(self, transition_key: str) -> list[Path]:
         """List all GIF paths for a transition."""
-        return self._gif_manager.list_transition_gifs(transition_key)
+        return self._transition_gif_repo.list_gifs(transition_key)
 
     def add_transition_gif(self, transition_key: str, gif_path: Path) -> bool:
         """Add a GIF to a transition's multi-GIF collection."""
-        resource_id = self._gif_manager.add_transition_gif(gif_path, transition_key)
+        resource_id = self._add_gif(self._transition_gif_repo, gif_path, transition_key)
         return resource_id is not None
 
     def remove_transition_gif(self, transition_key: str, filename: str) -> bool:
         """Remove a specific GIF from a transition's collection."""
-        return self._gif_manager.remove_transition_gif(transition_key, filename)
+        return self._transition_gif_repo.remove_gif(transition_key, filename)
 
     # ═══════════════════════════════════════════════════════════
     # Public API - Action State Registration (Phase 1c)
@@ -410,7 +438,7 @@ class StateService:
         # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
-            default_gif_id = self._gif_manager.store(default_gif_path, "idle")
+            default_gif_id = self._store_gif(default_gif_path, "idle")
 
         idle_state = State(
             key="idle",
@@ -671,7 +699,7 @@ class StateService:
         logger.info(f"Removed state '{key}'")
 
         # Delete all associated GIFs (single file + subfolder)
-        self._gif_manager.delete_all_gifs(key)
+        self._gif_repo.delete_all_gifs(key)
         logger.debug(f"Deleted GIFs for removed state '{key}'")
 
         self._state_repo.save_all(self._states._items, self._states._protected_keys)
@@ -719,7 +747,7 @@ class StateService:
         if not state:
             return False
 
-        resource_id = self._gif_manager.store(gif_path, state_key)
+        resource_id = self._store_gif(gif_path, state_key)
         if not resource_id:
             return False
 
@@ -759,7 +787,7 @@ class StateService:
         if not state:
             return False
 
-        resource_id = self._gif_manager.add_gif(gif_path, state_key)
+        resource_id = self._add_gif(self._gif_repo, gif_path, state_key)
         if not resource_id:
             return False
 
@@ -777,7 +805,7 @@ class StateService:
         Returns:
             List of absolute paths (empty if no subfolder)
         """
-        return self._gif_manager.list_gifs(state_key)
+        return self._gif_repo.list_gifs(state_key)
 
     def remove_gif(self, state_key: str, filename: str) -> bool:
         """
@@ -786,7 +814,7 @@ class StateService:
         Returns:
             True if removed
         """
-        return self._gif_manager.remove_gif(state_key, filename)
+        return self._gif_repo.remove_gif(state_key, filename)
 
     def delete_all_gifs(self, state_key: str) -> bool:
         """
@@ -795,7 +823,7 @@ class StateService:
         Returns:
             True if any files were deleted
         """
-        return self._gif_manager.delete_all_gifs(state_key)
+        return self._gif_repo.delete_all_gifs(state_key)
 
     # ═══════════════════════════════════════════════════════════
     # Movement State Operations
@@ -867,7 +895,7 @@ class StateService:
 
         # Clean up GIF files (best-effort)
         try:
-            self._gif_manager.delete_all_transition_gifs(key)
+            self._transition_gif_repo.delete_all_gifs(key)
         except Exception as e:
             logger.warning(f"Failed to clean up GIF files for transition '{key}': {e}")
 
@@ -904,7 +932,7 @@ class StateService:
         gif_counts: dict[str, int] = {}
         for key, state in self._states._items.items():
             # Check multi-GIF subfolder first
-            multi_gifs = self._gif_manager.list_gifs(key)
+            multi_gifs = self._gif_repo.list_gifs(key)
             if multi_gifs:
                 gif_paths[key] = multi_gifs[0]
                 gif_counts[key] = len(multi_gifs)

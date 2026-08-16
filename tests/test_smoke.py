@@ -42,7 +42,7 @@ class TestStateServiceSmoke:
         state_list_path = tmp_path / "state_list.txt"
 
         # Create service
-        return StateService(state_repo, move_repo, gif_repo, state_list_path)
+        return StateService(state_repo, move_repo, gif_repo, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions"))
 
     def test_state_service_can_be_created(self, state_service):
         """StateService can be initialized without crashing."""
@@ -86,7 +86,7 @@ class TestStateServiceSmoke:
         gif_repo = GifRepository(tmp_path / "resources")
         state_list_path = tmp_path / "state_list.txt"
 
-        service = StateService(state_repo, move_repo, gif_repo, state_list_path)
+        service = StateService(state_repo, move_repo, gif_repo, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions"))
         service.add_state("test", "Test State")
         service.save_states()
 
@@ -95,7 +95,7 @@ class TestStateServiceSmoke:
         move_repo2 = MoveStateRepository(tmp_path / "moves.json")
         gif_repo2 = GifRepository(tmp_path / "resources")
 
-        service2 = StateService(state_repo2, move_repo2, gif_repo2, state_list_path)
+        service2 = StateService(state_repo2, move_repo2, gif_repo2, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions2"))
         # Need to call initialize() to load states from disk
         service2.initialize()
 
@@ -130,7 +130,7 @@ class TestChatControllerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
 
         # This should not crash
         controller = ChatController(
@@ -163,7 +163,7 @@ class TestChatControllerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
 
         controller = ChatController(
             prompt_path=prompt_path,
@@ -236,7 +236,7 @@ class TestMovementManagerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
 
         # This should not crash
         from doro_app.core.movement.repository import MovementRepository
@@ -266,7 +266,7 @@ class TestMovementManagerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt")
+        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
 
         from doro_app.core.movement.repository import MovementRepository
         movement_repo = MovementRepository(tmp_path / "movements.json")
