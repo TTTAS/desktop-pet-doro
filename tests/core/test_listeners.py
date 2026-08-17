@@ -53,11 +53,21 @@ class TestUnsubscribe:
 
         assert fired == [None]
 
-    def test_unsubscribe_is_idempotent(self):
+    def test_double_unsubscribe_is_safe_and_leaves_others_intact(self):
+        """Unsubscribing the same listener twice must not raise, and must
+        not corrupt the registry — a still-subscribed listener keeps
+        receiving. (A naive `remove` without the guard would raise on the
+        second call; a buggy one could drop the wrong listener.)"""
         reg: ListenerRegistry = ListenerRegistry()
-        unsub = reg.subscribe(lambda: None)
-        unsub()
-        unsub()  # second call must not raise
+        b_fired: list[None] = []
+        unsub_a = reg.subscribe(lambda: None)
+        reg.subscribe(lambda: b_fired.append(None))
+
+        unsub_a()
+        unsub_a()  # second call must not raise
+
+        reg.emit()
+        assert b_fired == [None]  # B unaffected by A's double-unsub
 
     def test_listener_persists_across_emits_until_unsub(self):
         reg: ListenerRegistry = ListenerRegistry()
