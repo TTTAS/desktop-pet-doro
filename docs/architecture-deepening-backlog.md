@@ -33,26 +33,26 @@ a time and commit between them. Delete an entry once it's done.
 
 ---
 
-## #4 — Collapse the automation port/backend forwarding
+## #4 — Collapse the automation port/backend forwarding — ❌ SKIPPED (premise obsolete, 2026-08-17)
 
-**Strength:** Worth exploring · needs one seam check.
+**Seam check outcome:** the entry's premise no longer holds. `coordinates.py`
+is **not** dead — it has four production importers today:
+`app.py:849` (`compute_physical_pixel_at`), `ui/window.py:489`,
+`ui/click_warning_overlay.py:65`, and
+`ui/components/context_menu_controller.py:187` (all `compute_*` helpers).
+Deleting it would break the build. The claim that `manager.py:399-424`
+re-does the same math inline is also false — the manager reads ready-made
+physical coords from the window port; the logical↔physical conversion lives
+only in `coordinates.py` and its callers.
 
-**Files:** `doro_app/core/automation/port.py`, `backend_pynput.py`,
-`window_class.py`, `coordinates.py`
+The `PynputBackend` "forwarding" (5 window-class methods) is a genuine
+testability seam: `FakeInputBackend` substitutes for it, and it bridges the
+manager to the deliberately pynput-free `window_class.py`. Collapsing it would
+either break the port abstraction or need a larger restructure with unclear
+benefit.
 
-**Problem:** `PynputBackend` (`backend_pynput.py:55-84`) forwards ~5 methods
-one-line each to `window_class.py`; calls detour through two indirection layers to
-reach the actual ctypes. `coordinates.py` exposes two pure functions that nothing
-imports — `manager.py:399-424` re-does the same math inline (dead-shallow).
-
-**Direction:** Fold `backend_pynput`'s forwarding into the port implementation
-standing directly on `window_class`; delete the unused `coordinates.py`. Keep the
-test fake as the second adapter that justifies the seam.
-
-**Decision still open (the seam check):** confirm the only things behind this seam
-are the real pynput path plus the test fake. *One adapter = hypothetical seam; two
-= real.* If the fake is the only other adapter, decide whether the seam earns its
-keep or should collapse too.
+**Verdict:** a formerly-dead module grew real users — the healthy outcome.
+Nothing to collapse. Left in place.
 
 ---
 
@@ -103,6 +103,11 @@ second renderer (e.g. Spine) actually arrives.
 **Decision still open (the roadmap question):** is a second renderer (Spine or
 otherwise) genuinely planned for the near term? If yes, keep the seam and skip
 this. If no, collapse it.
+
+> **Status (2026-08-17):** roadmap intent is **undecided** — the owner was not
+> sure whether a second renderer is coming. Left untouched pending that call.
+> Do NOT collapse the registry until "no second renderer" is confirmed;
+> re-open this entry once the roadmap is settled.
 
 ---
 
