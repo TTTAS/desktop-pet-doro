@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable
 from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .retry import ChatRetryPolicy
 from .settings import ChatSettings
 from .validator import ResponseValidator
 from ...constants import (
@@ -114,13 +115,10 @@ class ChatController(QtCore.QObject):
             parent=self,
         )
 
-        # Retry / history knobs stay here — they belong to the request
-        # machine, not the settings surface, and aren't user-editable.
-        self._max_retries = config_manager.chat.max_retries
+        # Retry logic (counter, limit, original message, decision) lives in
+        # its own module so it has a single home (backlog #5 stage 2).
+        self._retry = ChatRetryPolicy(config_manager.chat.max_retries)
         self._history_turns = config_manager.chat.history_turns
-
-        self._retry_count = 0
-        self._original_user_message = ""
 
         self._history: list[dict[str, str]] = []
         self._pool = QtCore.QThreadPool.globalInstance()
@@ -174,9 +172,8 @@ class ChatController(QtCore.QObject):
             logger.error("Chat request rejected: server URL not configured")
             return False, "Chat server URL is not configured."
 
-        # Save original message for potential retries (only on first request, not retries)
-        if self._retry_count == 0:
-            self._original_user_message = cleaned
+        # Seed the retry policy with the original message (no-op on retries).
+        self._retry.remember_original(cleaned)
 
         logger.debug("Building chat payload")
         payload = self._build_chat_payload(cleaned)
@@ -210,7 +207,7 @@ class ChatController(QtCore.QObject):
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
 
-        retry_info = f" (retry {self._retry_count}/{self._max_retries})" if self._retry_count > 0 else ""
+        retry_info = f" (retry {self._retry.attempt}/{self._retry.max_retries})" if self._retry.attempt > 0 else ""
         logger.info(f"Starting chat request{retry_info} (auto={is_auto})")
         self.request_started.emit(cleaned, is_auto)
         return True, None
@@ -224,6 +221,7 @@ class ChatController(QtCore.QObject):
         # Note: QRunnable cannot be cancelled once started in QThreadPool
         # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
+        self._retry.reset()  # terminal — clear retry state for next request
         self.request_cancelled.emit(request_id)  # emit 保存的 ID
 
     # ------------------------------------------------------------------ Worker callbacks
@@ -254,23 +252,28 @@ class ChatController(QtCore.QObject):
         if not validation.valid:
             logger.warning(f"Response validation failed: {validation.error_message}")
 
-            # Check if we should retry
-            if self._validator.should_retry(validation) and self._retry_count < self._max_retries:
-                self._retry_count += 1
-                logger.info(f"Retrying request (attempt {self._retry_count}/{self._max_retries})")
+            # Ask the retry policy for the next attempt. It owns the counter,
+            # the limit, and the original-message preservation — so
+            # `_reset_worker_state()` below no longer needs to (and must not)
+            # touch retry state. Returns None when the failure isn't
+            # retryable or the max-retry gate has tripped.
+            retry_message = self._retry.next_retry(validation)
+            if retry_message is not None:
+                logger.info(f"Retrying request (attempt {self._retry.attempt}/{self._retry.max_retries})")
 
                 # Don't add failed response to history
                 was_auto = self._request_is_auto
                 self._reset_worker_state()
-
-                # Build retry prompt
-                retry_message = self._validator.build_retry_prompt(validation, self._original_user_message)
 
                 # IMPORTANT: Delay retry to let the current worker cleanup finish
                 def _delayed_retry():
                     success, error = self.start_request(retry_message, is_auto=was_auto)
                     if not success:
                         logger.error(f"Retry failed to start: {error}")
+                        # Terminal: the retry never launched. Clear retry state
+                        # so it doesn't leak into the next independent request
+                        # (a stale counter would skip original-message seeding).
+                        self._retry.reset()
                         self.request_failed.emit(
                             f"Response validation failed and retry failed: {validation.error_message}",
                             was_auto,
@@ -281,11 +284,10 @@ class ChatController(QtCore.QObject):
                 return
 
             # Max retries exceeded or shouldn't retry
-            logger.error(f"Response validation failed after {self._retry_count} retries: {validation.error_message}")
+            logger.error(f"Response validation failed after {self._retry.attempt} retries: {validation.error_message}")
             was_auto = self._request_is_auto
             self._reset_worker_state()
-            self._retry_count = 0  # Reset for next request
-            self._original_user_message = ""
+            self._retry.reset()  # terminal — clear retry state for next request
 
             self.request_failed.emit(
                 f"Response validation failed: {validation.error_message}",
@@ -303,8 +305,7 @@ class ChatController(QtCore.QObject):
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
-        self._retry_count = 0  # Reset for next request
-        self._original_user_message = ""
+        self._retry.reset()  # terminal — clear retry state for next request
 
         logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
         self.request_succeeded.emit(assistant_text, was_auto)
@@ -337,9 +338,10 @@ class ChatController(QtCore.QObject):
 
         # 保底：如果還在 inflight，代表沒收到 result 或 error 信號
         if self._inflight and request_id == self._current_request_id:
-            logger.warning(f"Worker finished but still inflight (no result/error received), forcing cleanup")
+            logger.warning("Worker finished but still inflight (no result/error received), forcing cleanup")
             was_auto = self._request_is_auto
             self._reset_worker_state()
+            self._retry.reset()  # terminal — clear retry state for next request
             self.request_failed.emit("Worker completed without result", was_auto)
 
     @QtCore.Slot(str)
@@ -348,21 +350,23 @@ class ChatController(QtCore.QObject):
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
-        self._retry_count = 0  # Reset for next request
-        self._original_user_message = ""
+        self._retry.reset()  # terminal — clear retry state for next request
 
         logger.debug(f"Emitting request_failed signal (auto={was_auto})")
         self.request_failed.emit(error_message, was_auto)
 
     def _reset_worker_state(self):
+        # Worker/inflight bookkeeping only. Retry state is deliberately NOT
+        # cleared here — that used to zero the counter mid-retry (before the
+        # next attempt was launched), which defeated the max-retry gate and
+        # dropped the original message. Terminal paths call
+        # `self._retry.reset()` explicitly instead.
         logger.debug("Resetting worker state")
         self._inflight = False
         self._last_user_message = ""
         self._request_is_auto = False
         self._current_request_id = None
         self._current_worker = None
-        self._retry_count = 0
-        self._original_user_message = ""
 
     # ------------------------------------------------------------------ Payload helpers
 

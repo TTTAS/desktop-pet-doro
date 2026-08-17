@@ -30,6 +30,16 @@ a time and commit between them. Delete an entry once it's done.
   `_MovementWaitPhase` deleted. The duplicated listener idiom in both managers
   now uses one shared `ListenerRegistry` (helper object, composition) in
   `doro_app/core/listeners.py`.
+- **#5 — Split the chat controller** — done in two stages. Stage 1:
+  `ChatSettings` (`core/chat/settings.py`) owns the settings store +
+  persistence; `ChatController` exposes it via `.settings`; the orchestrator's
+  14 pass-through config forwarders collapsed to one `settings` accessor.
+  Stage 2: `ChatRetryPolicy` (`core/chat/retry.py`) owns the retry counter,
+  limit, original-message, and decision (`should_retry`/`build_retry_prompt`
+  moved off `ResponseValidator`, which is now pure validation). This also
+  fixed a real bug the split had hidden: `_reset_worker_state()` used to zero
+  the counter mid-retry, so the max-retry gate never tripped (unbounded
+  retries) and the retry prompt dropped the user's original message.
 
 ---
 
@@ -53,32 +63,6 @@ benefit.
 
 **Verdict:** a formerly-dead module grew real users — the healthy outcome.
 Nothing to collapse. Left in place.
-
----
-
-## #5 — Split the chat controller: settings store vs. retry machine
-
-**Strength:** Worth exploring · needs a short grilling.
-
-**Files:** `doro_app/core/chat/controller.py` (536 lines), `orchestrator.py`
-(441), `validator.py`
-
-**Problem:** `controller.py` fuses two responsibilities: a wide, shallow settings
-store (~12 property/setter pairs, `controller.py:152-234`) and a genuinely deep
-worker/retry state machine (`controller.py:236-433`). The settings half inflates
-the interface without depth. Retry logic is split across a seam: `validator.py`
-owns `should_retry`/`build_retry_prompt` (`validator.py:123-156`) but the retry
-counter, max-retry gate, and delay live in `controller._handle_worker_result`
-(`controller.py:326-349`) — a retry bug could hide in either file. `orchestrator`
-adds 14 pass-through config methods (`orchestrator.py:91-161`).
-
-**Direction:** Extract a `ChatSettings` module; pull the retry counter/limit/delay
-together with `should_retry` into one deep request module so retry logic has
-locality.
-
-**Decisions still open (grill these):** where the settings live and who owns
-persistence; whether the orchestrator's 14 forwarders go away with it; the
-boundary between the request machine and the validator.
 
 ---
 

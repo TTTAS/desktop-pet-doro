@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ...utils.actions import BRACKET_PATTERN, MOVE_DIRECTIONS, parse_actions_from_text
+from ...utils.actions import MOVE_DIRECTIONS, parse_actions_from_text
 
 if TYPE_CHECKING:
     from ..state import StateService
@@ -120,37 +120,7 @@ class ResponseValidator:
             has_dialogue=has_dialogue,
         )
 
-    def should_retry(self, result: ValidationResult) -> bool:
-        """
-        Determine if a failed validation should trigger a retry.
-
-        Args:
-            result: ValidationResult from validate()
-
-        Returns:
-            True if should retry, False otherwise
-        """
-        # Retry on validation failures (invalid states/directions)
-        # Don't retry on empty responses (likely model error)
-        if not result.valid:
-            if result.error_message and "empty" not in result.error_message.lower():
-                return True
-        return False
-
-    def build_retry_prompt(self, result: ValidationResult, original_message: str) -> str:
-        """
-        Build a retry prompt that includes the validation error.
-
-        Args:
-            result: Failed ValidationResult
-            original_message: Original user message
-
-        Returns:
-            Retry prompt text
-        """
-        error_detail = result.error_message or "Unknown error"
-        return (
-            f"{original_message}\n\n"
-            f"[系統提示] 你上次的回應格式有誤: {error_detail}\n"
-            f"請重新回答，確保使用正確的狀態和格式。"
-        )
+    # Retry decision + retry-prompt construction moved to
+    # `core/chat/retry.py` (ChatRetryPolicy) so all retry logic — counter,
+    # limit, decision, prompt — has a single home. The validator now does
+    # nothing but validate.
