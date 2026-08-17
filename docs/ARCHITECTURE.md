@@ -543,7 +543,6 @@ doro_app/
 │   ├── repository.py (741行)            # 數據持久化 (含 TransitionRepository)
 │   ├── transition_player.py (257行)     # 轉換動畫播放器
 │   ├── transition_coordinator.py (180行) # 轉換協調器
-│   ├── gif_manager.py (189行)           # GIF 資源管理
 │   └── state_parser.py (131行)          # 狀態解析
 │
 ├── 【核心管理】 core/

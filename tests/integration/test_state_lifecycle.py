@@ -36,6 +36,7 @@ def state_service(temp_state_dir):
         gif_repo=gif_repo,
         state_list_path=state_list_path,
         transition_repo=transition_repo,
+        transition_gif_repo=GifRepository(temp_state_dir / "TRANSITION"),
     )
 
     # Initialize with default idle state
@@ -79,6 +80,7 @@ class TestStateLifecycle:
             gif_repo=new_gif_repo,
             state_list_path=temp_dir / "state_list.txt",
             transition_repo=new_transition_repo,
+            transition_gif_repo=GifRepository(temp_dir / "TRANSITION"),
         )
         new_service.initialize()
 

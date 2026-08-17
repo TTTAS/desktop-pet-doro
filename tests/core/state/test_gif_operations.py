@@ -2,9 +2,9 @@
 
 from pathlib import Path
 from unittest.mock import Mock
-import pytest
 
 from doro_app.core.state import StateService
+from doro_app.core.exceptions import GifNotFoundError, GifStorageError
 
 
 class TestGifOperations:
@@ -166,6 +166,46 @@ class TestSetGifOperations:
         gif_id = state_service_with_mocks.get_gif_id("no_gif")
 
         assert gif_id is None
+
+
+class TestGifStorageErrorHandling:
+    """Storage errors from the repo are swallowed and surfaced as None/False.
+
+    This behaviour moved into StateService when the GifManager forwarding
+    layer was collapsed — the service is now the single place that turns a
+    raised GifNotFoundError/GifStorageError into a logged None.
+    """
+
+    def test_store_gif_returns_none_on_not_found_error(
+        self, state_service_with_mocks: StateService, mock_gif_repo: Mock
+    ):
+        """store_gif returns None (not raises) when the source is missing."""
+        mock_gif_repo.store_gif.side_effect = GifNotFoundError("missing")
+
+        result = state_service_with_mocks.store_gif(Path("/nope.gif"), "idle")
+
+        assert result is None
+
+    def test_store_gif_returns_none_on_storage_error(
+        self, state_service_with_mocks: StateService, mock_gif_repo: Mock
+    ):
+        """store_gif returns None (not raises) when the copy fails."""
+        mock_gif_repo.store_gif.side_effect = GifStorageError("copy failed")
+
+        result = state_service_with_mocks.store_gif(Path("/src.gif"), "idle")
+
+        assert result is None
+
+    def test_add_gif_returns_false_on_storage_error(
+        self, state_service_with_mocks: StateService, mock_gif_repo: Mock
+    ):
+        """add_gif returns False when the repo raises during the copy."""
+        state_service_with_mocks.add_state("happy", "Happy")
+        mock_gif_repo.add_gif.side_effect = GifStorageError("copy failed")
+
+        result = state_service_with_mocks.add_gif("happy", Path("/src.gif"))
+
+        assert result is False
 
 
 class TestGifEncapsulation:

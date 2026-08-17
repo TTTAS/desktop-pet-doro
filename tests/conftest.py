@@ -1,7 +1,6 @@
 """Pytest configuration and shared fixtures."""
 
 from pathlib import Path
-from typing import Optional
 from unittest.mock import Mock
 
 import pytest
@@ -103,12 +102,24 @@ def mock_transition_repo() -> Mock:
 
 
 @pytest.fixture
+def mock_transition_gif_repo() -> Mock:
+    """Create a mock GifRepository for transition GIFs."""
+    repo = Mock(spec=GifRepository)
+    repo.get_path.return_value = None
+    repo.list_gifs.return_value = []
+    repo.pick_random_gif.return_value = None
+    repo.delete_all_gifs.return_value = False
+    return repo
+
+
+@pytest.fixture
 def state_service_with_mocks(
     mock_state_repo: Mock,
     mock_move_repo: Mock,
     mock_gif_repo: Mock,
     temp_state_list_file: Path,
     mock_transition_repo: Mock,
+    mock_transition_gif_repo: Mock,
 ) -> StateService:
     """
     Create a StateService instance with mocked dependencies.
@@ -121,6 +132,7 @@ def state_service_with_mocks(
         gif_repo=mock_gif_repo,
         state_list_path=temp_state_list_file,
         transition_repo=mock_transition_repo,
+        transition_gif_repo=mock_transition_gif_repo,
     )
     return service
 
@@ -141,6 +153,7 @@ def real_state_service(
     state_repo = StateRepository(temp_state_file)
     move_repo = MoveStateRepository(temp_move_state_file)
     gif_repo = GifRepository(temp_gif_storage)
+    transition_gif_repo = GifRepository(temp_gif_storage / "TRANSITION")
     transition_repo = TransitionRepository(temp_transition_file)
 
     service = StateService(
@@ -149,6 +162,7 @@ def real_state_service(
         gif_repo=gif_repo,
         state_list_path=temp_state_list_file,
         transition_repo=transition_repo,
+        transition_gif_repo=transition_gif_repo,
     )
     return service
 

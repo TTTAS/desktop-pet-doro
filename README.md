@@ -72,7 +72,6 @@ doro_app/
       repository.py       # Movement data loading
     state/
       service.py          # State machine logic
-      gif_manager.py      # GIF animation playback
       transition_coordinator.py  # State transition orchestration
       transition_player.py       # Transition animation player
   ui/
