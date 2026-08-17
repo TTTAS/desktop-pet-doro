@@ -24,31 +24,12 @@ a time and commit between them. Delete an entry once it's done.
 - **#2 — Delete dead code + de-duplicate StateController** — `refactor(ui):
   delete dead GifController, de-duplicate StateController`. `GifController`
   deleted; `StateController`'s duplicated visual-config block extracted.
-
----
-
-## #3 — Unify the triplicated wait-phase & listener plumbing
-
-**Strength:** Worth exploring · needs a short grilling.
-
-**Files:** `doro_app/core/action/phases.py`, `click_action.py`,
-`movement_action.py`, `doro_app/core/automation/manager.py`,
-`doro_app/core/movement/manager.py`
-
-**Problem:** The "subscribe → fire once → timeout → unsubscribe" wait pattern is
-copied three times (`WaitPhase` at `phases.py:120`, `_AwaitClickOutcomePhase` at
-`click_action.py:39`, `_MovementWaitPhase` at `movement_action.py:31`), ~40 lines
-each. The listener register/unsubscribe/snapshot-iterate idiom is duplicated
-again across `AutomationManager` and `MovementManager`. Changing the retry/timeout
-behaviour means editing three-to-five places.
-
-**Direction:** One parameterised `WaitPhase` (takes "what to listen for" and
-"timeout"); one shared listener-registry used by both managers. One interface, N
-call sites → leverage; timeout/cancel bugs get a single home → locality.
-
-**Decisions still open (grill these):** exact shape of the parameterised wait
-interface; whether the listener registry is a mixin, a helper object, or a base
-class; which existing tests survive vs. move.
+- **#3 — Unify the triplicated wait-phase & listener plumbing** — the three
+  wait phases collapsed into one parameterised `WaitPhase` (`resolve` /
+  `timeout_reason` / `precondition` hooks); `_AwaitClickOutcomePhase` and
+  `_MovementWaitPhase` deleted. The duplicated listener idiom in both managers
+  now uses one shared `ListenerRegistry` (helper object, composition) in
+  `doro_app/core/listeners.py`.
 
 ---
 

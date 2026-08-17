@@ -1,10 +1,12 @@
-"""Tests for `make_movement_action` and the `_MovementWaitPhase` short-circuit.
+"""Tests for `make_movement_action` and its `WaitPhase` short-circuit.
 
 The key invariant covered here:
 
 When `_kick_off` calls into the MovementManager but the manager
 declines to start an animation (target already at the foot, parse
 failure, etc.), the WaitPhase must not hang for `safety_timeout_ms`.
+The `precondition=lambda: movement.has_active_movement` hook is what
+makes it short-circuit instead.
 If it did, a click queued behind the movement would fire 30 s late —
 which is exactly the 'click without walking' symptom this fix
 addresses.

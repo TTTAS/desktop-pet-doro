@@ -73,6 +73,7 @@ from ...constants import (
     KILL_SWITCH_ESC_WINDOW_MS,
 )
 from ...utils.logger import get_logger
+from ..listeners import ListenerRegistry
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...utils.config_manager import ConfigManager
@@ -209,8 +210,11 @@ class AutomationManager:
         # ActionDispatcher) subscribes here to know when one click is
         # finished so it can release the action queue. Listeners are
         # callable as `cb(outcome, detail)` and fire exactly once per
-        # call to `_finalize`.
-        self._outcome_listeners: list[Callable[["ClickOutcome", str], None]] = []
+        # call to `_finalize`. The shared `ListenerRegistry` owns the
+        # subscribe / unsubscribe / snapshot-emit mechanics.
+        self._outcome_listeners: ListenerRegistry[
+            Callable[["ClickOutcome", str], None]
+        ] = ListenerRegistry("click-outcome")
 
         # Esc fires on the pynput keyboard-listener thread. Everything the
         # callback does — cancelling the dispatcher, flipping state via
@@ -313,15 +317,7 @@ class AutomationManager:
         `unsubscribe` callable; listeners persist across clicks until
         they unsubscribe.
         """
-        self._outcome_listeners.append(callback)
-
-        def _unsubscribe() -> None:
-            try:
-                self._outcome_listeners.remove(callback)
-            except ValueError:
-                pass
-
-        return _unsubscribe
+        return self._outcome_listeners.subscribe(callback)
 
     def shutdown(self) -> None:
         """Tear down the input backend's listener thread."""
@@ -581,11 +577,7 @@ class AutomationManager:
 
         # Notify outcome listeners after recording, so listeners can read
         # `outcomes[-1]` and see the same value they were just handed.
-        for listener in list(self._outcome_listeners):
-            try:
-                listener(outcome, detail)
-            except Exception:  # pragma: no cover - listeners should not raise
-                logger.exception("Click outcome listener raised")
+        self._outcome_listeners.emit(outcome, detail)
 
     # ------------------------------------------------------------------ Esc / kill-switch
 
