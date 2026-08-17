@@ -9,23 +9,14 @@ from typing import TYPE_CHECKING, Callable
 from PySide6 import QtCore
 
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .settings import ChatSettings
 from .validator import ResponseValidator
 from ...constants import (
     CHAT_DEFAULT_HISTORY_TURNS,
-    CHAT_DEFAULT_TIMEOUT_SECONDS,
-    CHAT_DEFAULT_TEMPERATURE,
-    CHAT_CONFIG_PERSIST_DELAY_MS,
     CHAT_THREAD_CLEANUP_DELAY_MS,
-)
-from ...utils.config_defaults import (
-    DEFAULT_CHAT_SERVER_URL,
-    DEFAULT_CHAT_MODEL,
-    DEFAULT_CHAT_ENDPOINT_PATH,
-    DEFAULT_CHAT_MAX_RETRIES,
 )
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
-from ...utils.prompts import load_prompt_text, write_prompt_text
 
 
 if TYPE_CHECKING:
@@ -105,7 +96,8 @@ class ChatController(QtCore.QObject):
         logger.debug("Initializing ChatController")
 
         self._config_manager = config_manager
-        self._prompt_path = prompt_path
+        # prompt_path is handed to ChatSettings (which owns the prompt file);
+        # the controller no longer persists it directly.
         self._state_service = state_service
         self._state_text_provider = state_text_provider
         self._movement_hint_provider = movement_hint_provider
@@ -115,22 +107,21 @@ class ChatController(QtCore.QObject):
         # Response validation
         self._validator = ResponseValidator(state_service)
 
-        # Load configuration from ConfigManager
+        # User-configurable settings live in their own module (backlog #5).
+        self._settings = ChatSettings(
+            config_manager=config_manager,
+            prompt_path=prompt_path,
+            parent=self,
+        )
+
+        # Retry / history knobs stay here — they belong to the request
+        # machine, not the settings surface, and aren't user-editable.
         self._max_retries = config_manager.chat.max_retries
         self._history_turns = config_manager.chat.history_turns
-        self._server_url = config_manager.chat.server_url
-        self._model = config_manager.chat.model
-        self._endpoint_path = config_manager.chat.endpoint_path
-        self._api_key = config_manager.chat.api_key
-        self._timeout_seconds = config_manager.chat.timeout_seconds
-        self._temperature = config_manager.chat.temperature
-        self._stop_tokens = list(config_manager.chat.stop_tokens)
-        self._max_stop_tokens = config_manager.chat.max_stop_tokens
 
         self._retry_count = 0
         self._original_user_message = ""
 
-        self._system_prompt = load_prompt_text(prompt_path)
         self._history: list[dict[str, str]] = []
         self._pool = QtCore.QThreadPool.globalInstance()
         self._current_worker: ChatWorker | None = None
@@ -140,86 +131,21 @@ class ChatController(QtCore.QObject):
         self._last_user_message = ""
         self._request_is_auto = False
 
-        self._persist_timer = QtCore.QTimer(self)
-        self._persist_timer.setSingleShot(True)
-        self._persist_timer.setInterval(CHAT_CONFIG_PERSIST_DELAY_MS)
-        self._persist_timer.timeout.connect(self._persist_chat_settings)
-
-        logger.info(f"ChatController initialized: server={self._server_url}, model={self._model}, timeout={self._timeout_seconds}s")
+        logger.info(
+            f"ChatController initialized: server={self._settings.server_url}, "
+            f"model={self._settings.model}, timeout={self._settings.timeout_seconds}s"
+        )
 
     # ------------------------------------------------------------------ Public API
 
     @property
-    def system_prompt(self) -> str:
-        return self._system_prompt
+    def settings(self) -> ChatSettings:
+        """The chat settings store (server URL, model, prompt, …).
 
-    def update_system_prompt(self, text: str):
-        write_prompt_text(self._prompt_path, text)
-        self._system_prompt = text.strip()
-
-    @property
-    def server_url(self) -> str:
-        return self._server_url
-
-    def set_server_url(self, url: str):
-        self._server_url = url.strip()
-        self._schedule_persist()
-
-    @property
-    def model(self) -> str:
-        return self._model
-
-    def set_model(self, model: str):
-        self._model = model.strip()
-        self._schedule_persist()
-
-    @property
-    def endpoint_path(self) -> str:
-        return self._endpoint_path
-
-    def set_endpoint_path(self, path: str):
-        self._endpoint_path = path.strip()
-        self._schedule_persist()
-
-    @property
-    def stop_tokens(self) -> list[str]:
-        return list(self._stop_tokens)
-
-    def set_stop_tokens(self, tokens: list[str]) -> None:
-        self._stop_tokens = list(tokens)
-        self._schedule_persist()
-
-    @property
-    def max_stop_tokens(self) -> int:
-        return self._max_stop_tokens
-
-    def set_max_stop_tokens(self, n: int) -> None:
-        self._max_stop_tokens = max(n, 0)
-        self._schedule_persist()
-
-    @property
-    def api_key(self) -> str:
-        return self._api_key
-
-    def set_api_key(self, key: str):
-        self._api_key = key.strip()
-        self._schedule_persist()
-
-    @property
-    def temperature(self) -> float:
-        return float(self._temperature)
-
-    def set_temperature(self, value: float):
-        self._temperature = float(value)
-        self._schedule_persist()
-
-    @property
-    def timeout_seconds(self) -> int:
-        return int(self._timeout_seconds)
-
-    def set_timeout_seconds(self, value: int):
-        self._timeout_seconds = int(value)
-        self._schedule_persist()
+        Callers reach settings through this object rather than through
+        pass-through getters on the controller/orchestrator.
+        """
+        return self._settings
 
     @property
     def is_inflight(self) -> bool:
@@ -259,7 +185,13 @@ class ChatController(QtCore.QObject):
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
         # Use QRunnable + QThreadPool (official PySide6 pattern)
-        worker = ChatWorker(self._current_request_id, endpoint, payload, int(self._timeout_seconds), self._api_key)
+        worker = ChatWorker(
+            self._current_request_id,
+            endpoint,
+            payload,
+            int(self._settings.timeout_seconds),
+            self._settings.api_key,
+        )
 
         # Connect worker signals to handlers (QueuedConnection for thread safety)
         worker.signals.result.connect(
@@ -437,9 +369,10 @@ class ChatController(QtCore.QObject):
     def _build_chat_payload(self, user_message: str) -> dict:
         messages: list[dict[str, str]] = []
         system_prompt = self._compose_system_prompt()
-        stop_tokens = self._stop_tokens
-        if self._max_stop_tokens > 0:
-            stop_tokens = stop_tokens[:self._max_stop_tokens]
+        stop_tokens = self._settings.stop_tokens
+        max_stop_tokens = self._settings.max_stop_tokens
+        if max_stop_tokens > 0:
+            stop_tokens = stop_tokens[:max_stop_tokens]
 
         if system_prompt:
             first_entry = build_messages_for_mistral_instruct(system_prompt, user_message)
@@ -453,15 +386,15 @@ class ChatController(QtCore.QObject):
         max_tokens = self._config_manager.chat.max_tokens
 
         return {
-            "model": self._model,
+            "model": self._settings.model,
             "messages": messages,
-            "temperature": self._temperature,
+            "temperature": self._settings.temperature,
             "max_tokens": max_tokens,
             "stop": stop_tokens,
         }
 
     def _compose_system_prompt(self) -> str:
-        prompt = (self._system_prompt or "").strip()
+        prompt = (self._settings.system_prompt or "").strip()
         state_list = self._safe_call_provider(self._state_text_provider)
         placeholder = "{{STATE_LIST}}"
         if placeholder in prompt:
@@ -509,28 +442,12 @@ class ChatController(QtCore.QObject):
         return value.strip()
 
     def _resolve_chat_endpoint(self) -> str:
-        return resolve_chat_endpoint(self._server_url, self._endpoint_path)
+        return resolve_chat_endpoint(
+            self._settings.server_url, self._settings.endpoint_path
+        )
 
     def _trim_history(self, max_turns: int = CHAT_DEFAULT_HISTORY_TURNS):
         max_turns = max(1, self._history_turns if max_turns == CHAT_DEFAULT_HISTORY_TURNS else max_turns)
         max_entries = max_turns * 2
         if len(self._history) > max_entries:
             self._history = self._history[-max_entries:]
-
-    def _persist_chat_settings(self):
-        """Save chat configuration to ConfigManager."""
-        self._config_manager.update_chat(
-            server_url=self._server_url,
-            model=self._model,
-            endpoint_path=self._endpoint_path,
-            api_key=self._api_key,
-            temperature=self._temperature,
-            timeout_seconds=self._timeout_seconds,
-            stop_tokens=self._stop_tokens,
-            max_stop_tokens=self._max_stop_tokens,
-        )
-        self._config_manager.save()
-
-    def _schedule_persist(self):
-        # Debounce config writes to avoid synchronous UI stalls
-        self._persist_timer.start()

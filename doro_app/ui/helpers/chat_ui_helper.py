@@ -85,7 +85,7 @@ class ChatUIHelper:
 
     def edit_chat_prompt(self) -> None:
         """Edit the chat system prompt."""
-        current_prompt = self._chat.get_system_prompt()
+        current_prompt = self._chat.settings.system_prompt
 
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self.window,
@@ -96,7 +96,7 @@ class ChatUIHelper:
         if not ok:
             return
 
-        self._chat.set_system_prompt(text)
+        self._chat.settings.update_system_prompt(text)
         QtWidgets.QMessageBox.information(
             self.window,
             "提示詞已更新",
@@ -105,7 +105,7 @@ class ChatUIHelper:
 
     def configure_chat_server(self) -> None:
         """Configure chat server URL."""
-        current = self._chat.get_server_url()
+        current = self._chat.settings.server_url
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定聊天伺服器",
@@ -114,11 +114,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            self._chat.set_server_url(text.strip())
+            self._chat.settings.set_server_url(text.strip())
 
     def configure_chat_model(self) -> None:
         """Configure chat model name."""
-        current = self._chat.get_model_name()
+        current = self._chat.settings.model
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定模型",
@@ -127,11 +127,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            self._chat.set_model_name(text.strip())
+            self._chat.settings.set_model(text.strip())
 
     def configure_chat_endpoint(self) -> None:
         """Configure chat API endpoint."""
-        current = self._chat.get_endpoint()
+        current = self._chat.settings.endpoint_path
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定 API 端點",
@@ -140,11 +140,11 @@ class ChatUIHelper:
             current,
         )
         if ok and text.strip():
-            self._chat.set_endpoint(text.strip())
+            self._chat.settings.set_endpoint_path(text.strip())
 
     def configure_chat_temperature(self) -> None:
         """Configure chat temperature parameter."""
-        current = self._chat.get_temperature()
+        current = self._chat.settings.temperature
         value, ok = QtWidgets.QInputDialog.getDouble(
             self.window,
             "設定 Temperature",
@@ -155,11 +155,11 @@ class ChatUIHelper:
             2,
         )
         if ok:
-            self._chat.set_temperature(value)
+            self._chat.settings.set_temperature(value)
 
     def configure_chat_timeout(self) -> None:
         """Configure chat request timeout."""
-        current = self._chat.get_timeout()
+        current = self._chat.settings.timeout_seconds
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
             "設定請求逾時",
@@ -169,11 +169,11 @@ class ChatUIHelper:
             300,
         )
         if ok:
-            self._chat.set_timeout(value)
+            self._chat.settings.set_timeout_seconds(value)
 
     def configure_stop_tokens(self) -> None:
         """Configure stop tokens (one per line)."""
-        current = self._chat.get_stop_tokens()
+        current = self._chat.settings.stop_tokens
         display = "\n".join(t.replace("\n", "\\n") for t in current)
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self.window,
@@ -187,11 +187,11 @@ class ChatUIHelper:
                 for line in text.splitlines()
                 if line.strip()
             ]
-            self._chat.set_stop_tokens(tokens)
+            self._chat.settings.set_stop_tokens(tokens)
 
     def configure_max_stop_tokens(self) -> None:
         """Configure maximum number of stop tokens sent to the API."""
-        current = self._chat.get_max_stop_tokens()
+        current = self._chat.settings.max_stop_tokens
         value, ok = QtWidgets.QInputDialog.getInt(
             self.window,
             "設定 Stop Tokens 上限",
@@ -201,11 +201,11 @@ class ChatUIHelper:
             100,
         )
         if ok:
-            self._chat.set_max_stop_tokens(value)
+            self._chat.settings.set_max_stop_tokens(value)
 
     def configure_api_key(self) -> None:
         """Configure chat API key."""
-        current = self._chat.get_api_key()
+        current = self._chat.settings.api_key
         text, ok = QtWidgets.QInputDialog.getText(
             self.window,
             "設定 API Key",
@@ -214,16 +214,16 @@ class ChatUIHelper:
             current,
         )
         if ok:
-            self._chat.set_api_key(text.strip())
+            self._chat.settings.set_api_key(text.strip())
 
     def apply_provider_preset(self, preset_name: str) -> None:
         """Apply a provider preset configuration (URL, model, endpoint only)."""
         preset = _PROVIDER_PRESETS[preset_name]
-        chat = self._chat
-        chat.set_server_url(preset["server_url"])
-        chat.set_model_name(preset["model"])
-        chat.set_endpoint(preset["endpoint_path"])
-        chat.set_max_stop_tokens(preset["max_stop_tokens"])
+        settings = self._chat.settings
+        settings.set_server_url(preset["server_url"])
+        settings.set_model(preset["model"])
+        settings.set_endpoint_path(preset["endpoint_path"])
+        settings.set_max_stop_tokens(preset["max_stop_tokens"])
 
     def open_settings_dialog(self) -> None:
         """Open the unified API settings dialog."""
