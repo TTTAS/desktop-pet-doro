@@ -162,21 +162,21 @@ class ChatSettingsDialog(FramelessDialog):
     # ── populate ───────────────────────────────────────────
 
     def _populate_from_settings(self):
-        cm = self._cm
-        url = cm.get_server_url()
-        model = cm.get_model_name()
-        endpoint = cm.get_endpoint()
-        max_stop = cm.get_max_stop_tokens()
+        st = self._cm.settings
+        url = st.server_url
+        model = st.model
+        endpoint = st.endpoint_path
+        max_stop = st.max_stop_tokens
 
         self._server_url_edit.setText(url)
         self._model_edit.setText(model)
         self._endpoint_edit.setText(endpoint)
-        self._api_key_edit.setText(cm.get_api_key())
-        self._temperature_spin.setValue(cm.get_temperature())
-        self._timeout_spin.setValue(cm.get_timeout())
+        self._api_key_edit.setText(st.api_key)
+        self._temperature_spin.setValue(st.temperature)
+        self._timeout_spin.setValue(st.timeout_seconds)
         self._max_stop_spin.setValue(max_stop)
 
-        tokens = cm.get_stop_tokens()
+        tokens = st.stop_tokens
         display = "\n".join(t.replace("\n", "\\n") for t in tokens)
         self._stop_tokens_edit.setPlainText(display)
 
@@ -225,21 +225,21 @@ class ChatSettingsDialog(FramelessDialog):
             self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
     def _on_save(self):
-        cm = self._cm
-        cm.set_server_url(self._server_url_edit.text().strip())
-        cm.set_model_name(self._model_edit.text().strip())
-        cm.set_endpoint(self._endpoint_edit.text().strip())
-        cm.set_api_key(self._api_key_edit.text().strip())
-        cm.set_temperature(self._temperature_spin.value())
-        cm.set_timeout(self._timeout_spin.value())
-        cm.set_max_stop_tokens(self._max_stop_spin.value())
+        st = self._cm.settings
+        st.set_server_url(self._server_url_edit.text().strip())
+        st.set_model(self._model_edit.text().strip())
+        st.set_endpoint_path(self._endpoint_edit.text().strip())
+        st.set_api_key(self._api_key_edit.text().strip())
+        st.set_temperature(self._temperature_spin.value())
+        st.set_timeout_seconds(self._timeout_spin.value())
+        st.set_max_stop_tokens(self._max_stop_spin.value())
 
         tokens = [
             line.replace("\\n", "\n")
             for line in self._stop_tokens_edit.toPlainText().splitlines()
             if line.strip()
         ]
-        cm.set_stop_tokens(tokens)
+        st.set_stop_tokens(tokens)
 
         config = self._core.config_manager
         a11y_enabled = self._a11y_checkbox.isChecked()

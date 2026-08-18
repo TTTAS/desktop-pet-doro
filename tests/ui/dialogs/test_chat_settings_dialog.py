@@ -8,41 +8,36 @@ from unittest.mock import Mock
 from PySide6 import QtCore
 
 
+def _make_stub_settings():
+    """Stand-in for ChatSettings — value attributes the dialog reads plus
+    Mock setters it calls on save (backlog #5: the dialog now reaches
+    settings via `orchestrator.settings.*`)."""
+    return SimpleNamespace(
+        server_url="http://localhost:1234",
+        model="mistral",
+        endpoint_path="/v1/chat/completions",
+        max_stop_tokens=0,
+        api_key="",
+        temperature=0.7,
+        timeout_seconds=30,
+        stop_tokens=[],
+        set_server_url=Mock(),
+        set_model=Mock(),
+        set_endpoint_path=Mock(),
+        set_api_key=Mock(),
+        set_temperature=Mock(),
+        set_timeout_seconds=Mock(),
+        set_max_stop_tokens=Mock(),
+        set_stop_tokens=Mock(),
+    )
+
+
 class _StubOrchestrator(QtCore.QObject):
     """Minimal chat_orchestrator stand-in exposing what the dialog uses."""
 
     def __init__(self):
         super().__init__()
-        # Setters exercised by _on_save.
-        for name in (
-            "set_server_url", "set_model_name", "set_endpoint", "set_api_key",
-            "set_temperature", "set_timeout", "set_max_stop_tokens", "set_stop_tokens",
-        ):
-            setattr(self, name, Mock())
-
-    def get_server_url(self):
-        return "http://localhost:1234"
-
-    def get_model_name(self):
-        return "mistral"
-
-    def get_endpoint(self):
-        return "/v1/chat/completions"
-
-    def get_max_stop_tokens(self):
-        return 0
-
-    def get_api_key(self):
-        return ""
-
-    def get_temperature(self):
-        return 0.7
-
-    def get_timeout(self):
-        return 30
-
-    def get_stop_tokens(self):
-        return []
+        self.settings = _make_stub_settings()
 
 
 class _StubConfigManager:

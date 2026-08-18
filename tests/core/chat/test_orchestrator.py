@@ -1,6 +1,6 @@
 """Tests for ChatOrchestrator - chat coordination layer."""
 
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock
 import pytest
 
 from doro_app.core.chat.orchestrator import ChatOrchestrator
@@ -20,21 +20,12 @@ def mock_controller():
 
     # Mock properties and methods
     controller.is_inflight = False
-    controller.system_prompt = "You are Doro."
-    controller.server_url = "http://localhost:1234"
-    controller.model = "mistral"
-    controller.endpoint_path = "/v1/chat/completions"
-    controller.temperature = 0.7
-    controller.timeout_seconds = 30
+    # Settings now live on a ChatSettings object the orchestrator exposes
+    # directly (orchestrator.settings) rather than via pass-through methods.
+    controller.settings = Mock()
 
     # Mock methods
     controller.start_request = Mock(return_value=(True, None))
-    controller.update_system_prompt = Mock()
-    controller.set_server_url = Mock()
-    controller.set_model = Mock()
-    controller.set_endpoint_path = Mock()
-    controller.set_temperature = Mock()
-    controller.set_timeout_seconds = Mock()
     controller.clear_history = Mock()
 
     return controller
@@ -172,67 +163,13 @@ class TestSendMessage:
 
 
 class TestConfigurationAPI:
-    """Test configuration getters and setters."""
+    """The 14 pass-through getters/setters were replaced by one `settings`
+    accessor exposing the controller's ChatSettings directly (backlog #5)."""
 
-    def test_get_system_prompt(self, orchestrator, mock_controller):
-        """get_system_prompt delegates to controller."""
-        result = orchestrator.get_system_prompt()
-        assert result == "You are Doro."
-
-    def test_set_system_prompt(self, orchestrator, mock_controller):
-        """set_system_prompt delegates to controller."""
-        orchestrator.set_system_prompt("New prompt")
-        mock_controller.update_system_prompt.assert_called_once_with("New prompt")
-
-    def test_get_server_url(self, orchestrator, mock_controller):
-        """get_server_url delegates to controller."""
-        result = orchestrator.get_server_url()
-        assert result == "http://localhost:1234"
-
-    def test_set_server_url(self, orchestrator, mock_controller):
-        """set_server_url delegates to controller."""
-        orchestrator.set_server_url("http://new-server:5000")
-        mock_controller.set_server_url.assert_called_once_with("http://new-server:5000")
-
-    def test_get_model_name(self, orchestrator, mock_controller):
-        """get_model_name delegates to controller."""
-        result = orchestrator.get_model_name()
-        assert result == "mistral"
-
-    def test_set_model_name(self, orchestrator, mock_controller):
-        """set_model_name delegates to controller."""
-        orchestrator.set_model_name("llama")
-        mock_controller.set_model.assert_called_once_with("llama")
-
-    def test_get_endpoint(self, orchestrator, mock_controller):
-        """get_endpoint delegates to controller."""
-        result = orchestrator.get_endpoint()
-        assert result == "/v1/chat/completions"
-
-    def test_set_endpoint(self, orchestrator, mock_controller):
-        """set_endpoint delegates to controller."""
-        orchestrator.set_endpoint("/api/chat")
-        mock_controller.set_endpoint_path.assert_called_once_with("/api/chat")
-
-    def test_get_temperature(self, orchestrator, mock_controller):
-        """get_temperature delegates to controller."""
-        result = orchestrator.get_temperature()
-        assert result == 0.7
-
-    def test_set_temperature(self, orchestrator, mock_controller):
-        """set_temperature delegates to controller."""
-        orchestrator.set_temperature(0.9)
-        mock_controller.set_temperature.assert_called_once_with(0.9)
-
-    def test_get_timeout(self, orchestrator, mock_controller):
-        """get_timeout delegates to controller."""
-        result = orchestrator.get_timeout()
-        assert result == 30
-
-    def test_set_timeout(self, orchestrator, mock_controller):
-        """set_timeout delegates to controller."""
-        orchestrator.set_timeout(60)
-        mock_controller.set_timeout_seconds.assert_called_once_with(60)
+    def test_settings_exposes_controller_settings(self, orchestrator, mock_controller):
+        """orchestrator.settings returns the controller's settings object,
+        so UI code reaches settings without a forwarding layer."""
+        assert orchestrator.settings is mock_controller.settings
 
     def test_clear_history(self, orchestrator, mock_controller):
         """clear_history delegates to controller."""

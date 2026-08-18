@@ -86,75 +86,17 @@ class ChatOrchestrator(QtCore.QObject):
         # Window handles user activity tracking before calling send_message()
         return True
 
-    # ------------------------------------------------------------------ Configuration API (delegate to controller)
+    # ------------------------------------------------------------------ Configuration API
 
-    def get_system_prompt(self) -> str:
-        """Get the current system prompt."""
-        return self._controller.system_prompt
+    @property
+    def settings(self):
+        """The chat settings store (:class:`ChatSettings`).
 
-    def set_system_prompt(self, text: str):
-        """Update the system prompt."""
-        self._controller.update_system_prompt(text)
-
-    def get_server_url(self) -> str:
-        """Get the chat server URL."""
-        return self._controller.server_url
-
-    def set_server_url(self, url: str):
-        """Set the chat server URL."""
-        self._controller.set_server_url(url)
-
-    def get_model_name(self) -> str:
-        """Get the model name."""
-        return self._controller.model
-
-    def set_model_name(self, model: str):
-        """Set the model name."""
-        self._controller.set_model(model)
-
-    def get_endpoint(self) -> str:
-        """Get the API endpoint path."""
-        return self._controller.endpoint_path
-
-    def set_endpoint(self, path: str):
-        """Set the API endpoint path."""
-        self._controller.set_endpoint_path(path)
-
-    def get_stop_tokens(self) -> list[str]:
-        return self._controller.stop_tokens
-
-    def set_stop_tokens(self, tokens: list[str]) -> None:
-        self._controller.set_stop_tokens(tokens)
-
-    def get_max_stop_tokens(self) -> int:
-        return self._controller.max_stop_tokens
-
-    def set_max_stop_tokens(self, n: int) -> None:
-        self._controller.set_max_stop_tokens(n)
-
-    def get_api_key(self) -> str:
-        """Get the API key."""
-        return self._controller.api_key
-
-    def set_api_key(self, key: str):
-        """Set the API key."""
-        self._controller.set_api_key(key)
-
-    def get_temperature(self) -> float:
-        """Get the temperature parameter."""
-        return self._controller.temperature
-
-    def set_temperature(self, value: float):
-        """Set the temperature parameter."""
-        self._controller.set_temperature(value)
-
-    def get_timeout(self) -> int:
-        """Get the request timeout in seconds."""
-        return self._controller.timeout_seconds
-
-    def set_timeout(self, seconds: int):
-        """Set the request timeout in seconds."""
-        self._controller.set_timeout_seconds(seconds)
+        Replaces the fourteen pass-through getters/setters this class used
+        to carry: callers now read/write ``orchestrator.settings.server_url``
+        etc. directly on the one deep object.
+        """
+        return self._controller.settings
 
     def clear_history(self):
         """Clear the conversation history."""

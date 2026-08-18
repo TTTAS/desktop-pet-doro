@@ -173,10 +173,11 @@ class TestChatControllerSmoke:
             config_manager=config_manager,
         )
 
-        # Basic properties should exist and have defaults
-        assert controller.server_url is not None
-        assert controller.model is not None
-        assert controller.temperature > 0
+        # Basic settings should exist and have defaults (settings now live
+        # on controller.settings — see ChatSettings).
+        assert controller.settings.server_url is not None
+        assert controller.settings.model is not None
+        assert controller.settings.temperature > 0
 
     def test_uses_qrunnable_not_qtconcurrent(self):
         """

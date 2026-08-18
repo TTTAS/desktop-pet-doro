@@ -22,6 +22,7 @@ from .parser import (
     parse_move_bracket,
 )
 from .repository import MovementRepository
+from ..listeners import ListenerRegistry
 from ...utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -75,8 +76,11 @@ class MovementManager:
         # Used by `MovementAction` (see core/action/movement_action.py) so the
         # dispatcher can sequence the next action without polling. Listeners
         # are also fired when `cancel_active_movement` ends a movement early
-        # so waiters don't strand.
-        self._completion_listeners: list[Callable[[], None]] = []
+        # so waiters don't strand. The shared `ListenerRegistry` owns the
+        # subscribe / unsubscribe / snapshot-emit mechanics.
+        self._completion_listeners: ListenerRegistry[Callable[[], None]] = (
+            ListenerRegistry("movement-completion")
+        )
 
     # ------------------------------------------------------------------ Public API
 
@@ -93,15 +97,7 @@ class MovementManager:
         unsubscribe — typical usage subscribes per-action and unsubs on the
         first fire.
         """
-        self._completion_listeners.append(callback)
-
-        def _unsubscribe() -> None:
-            try:
-                self._completion_listeners.remove(callback)
-            except ValueError:
-                pass
-
-        return _unsubscribe
+        return self._completion_listeners.subscribe(callback)
 
     def cancel_active_movement(self) -> bool:
         """Abort any in-flight movement, restoring the previous state.
@@ -456,14 +452,10 @@ class MovementManager:
                     window.move_window_to(snap_target)
         self._movement_previous_state = None
 
-        # Notify completion listeners. Iterate over a snapshot — listeners may
-        # unsubscribe themselves during the callback (the common case for
-        # MovementAction's one-shot wait).
-        for listener in list(self._completion_listeners):
-            try:
-                listener()
-            except Exception:  # pragma: no cover - listeners should not raise
-                logger.exception("Movement completion listener raised")
+        # Notify completion listeners. `emit` iterates over a snapshot —
+        # listeners may unsubscribe themselves during the callback (the
+        # common case for MovementAction's one-shot wait).
+        self._completion_listeners.emit()
 
     def _direction_slug(self, direction: tuple[float, float]) -> Optional[str]:
         key = direction_key(direction)

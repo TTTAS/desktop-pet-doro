@@ -124,19 +124,49 @@ class WaitPhase:
     `MovementManager.add_completion_listener` — register, get an
     unsubscribe handle, fire-once. If the signal does not arrive within
     `safety_timeout_ms` the phase reports failure with reason
-    "wait-timeout"; the dispatcher's failure path then drives the
+    `timeout_reason`; the dispatcher's failure path then drives the
     failure GIF / restore.
+
+    Three optional hooks let one class cover every wait in the codebase
+    (it previously spawned two near-identical copies — click's outcome
+    wait and movement's completion wait):
+
+    - ``resolve``: maps the signal *payload* to a failure reason, or
+      ``None`` for success. The signal callback is invoked with whatever
+      arguments ``subscribe``'s source delivers (``()`` for a bare
+      completion signal, ``(outcome, detail)`` for a click outcome), and
+      those arguments are forwarded to ``resolve``. Defaults to "any
+      signal means success".
+    - ``timeout_reason``: the string handed to ``on_fail`` when the
+      safety timeout wins.
+    - ``precondition``: checked once at ``start``. When it returns
+      ``False`` there is nothing to wait for, so the phase short-circuits
+      to success via ``schedule(0, on_done)`` rather than subscribing —
+      e.g. movement kick-off that never started an animation because the
+      target was already under the foot. Deferring through the scheduler
+      (instead of calling ``on_done`` inline) keeps us out of the
+      dispatcher's still-live phase-start frame. Note the short-circuit is
+      unconditional success and does **not** consult ``resolve`` (there is
+      no signal payload to map) — a "nothing happened" kick-off is a
+      completed no-op, not a failure. No current caller sets both hooks.
     """
 
     def __init__(
         self,
-        subscribe: Callable[[Callable[[], None]], Callable[[], None]],
+        subscribe: Callable[[Callable[..., None]], Callable[[], None]],
         schedule: ScheduleFn,
         safety_timeout_ms: int = 30_000,
+        *,
+        resolve: Optional[Callable[..., Optional[str]]] = None,
+        timeout_reason: str = "wait-timeout",
+        precondition: Optional[Callable[[], bool]] = None,
     ) -> None:
         self._subscribe = subscribe
         self._schedule = schedule
         self._safety_timeout_ms = int(safety_timeout_ms)
+        self._resolve = resolve
+        self._timeout_reason = timeout_reason
+        self._precondition = precondition
         self._unsubscribe: Optional[Callable[[], None]] = None
         self._cancelled = False
         self._fired = False
@@ -146,19 +176,34 @@ class WaitPhase:
         on_done: Callable[[], None],
         on_fail: Callable[[str], None],
     ) -> None:
-        def _signal() -> None:
+        if self._precondition is not None and not self._precondition():
+            # Nothing to wait for — complete on the next event-loop turn.
+            def _instant() -> None:
+                if self._cancelled or self._fired:
+                    return
+                self._fired = True
+                on_done()
+
+            self._schedule(0, _instant)
+            return
+
+        def _signal(*args: object) -> None:
             if self._cancelled or self._fired:
                 return
             self._fired = True
             self._do_unsubscribe()
-            on_done()
+            reason = self._resolve(*args) if self._resolve is not None else None
+            if reason is None:
+                on_done()
+            else:
+                on_fail(reason)
 
         def _timeout() -> None:
             if self._cancelled or self._fired:
                 return
             self._fired = True
             self._do_unsubscribe()
-            on_fail("wait-timeout")
+            on_fail(self._timeout_reason)
 
         self._unsubscribe = self._subscribe(_signal)
         self._schedule(self._safety_timeout_ms, _timeout)

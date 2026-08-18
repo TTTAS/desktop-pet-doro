@@ -1,8 +1,9 @@
 """Factory for `ClickAction` — wraps AutomationManager as an Action.
 
 ClickAction is currently a thin wrapper: an EffectPhase that kicks
-`AutomationManager.execute_click()` and a custom await-phase that
-resolves when the manager publishes its terminal `ClickOutcome`. The
+`AutomationManager.execute_click()` and a `WaitPhase` (configured with
+`_resolve_click_outcome`) that resolves when the manager publishes its
+terminal `ClickOutcome`. The
 manager continues to own the click pipeline internals (wind-up timer,
 warning overlay, Esc handling, drag grace, allowlist, kill switch). A
 future refactor can decompose those into discrete phases — see
@@ -18,10 +19,10 @@ matches `_pre_action_state`.
 
 from __future__ import annotations
 
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from .dispatcher import Action
-from .phases import EffectPhase, Phase, ScheduleFn
+from .phases import EffectPhase, Phase, ScheduleFn, WaitPhase
 from .service import CLICK_FAILED_STATE_KEY
 
 if TYPE_CHECKING:
@@ -36,69 +37,20 @@ __all__ = ["CLICK_FAILED_STATE_KEY", "make_click_action"]
 CLICK_SAFETY_TIMEOUT_MS = 30_000
 
 
-class _AwaitClickOutcomePhase:
-    """Phase that completes when AutomationManager publishes a terminal outcome.
+def _resolve_click_outcome(outcome: "ClickOutcome", detail: str) -> Optional[str]:
+    """Map a terminal `ClickOutcome` to a `WaitPhase` result.
 
-    Lives in this module (not phases.py) because the outcome→done/fail
-    mapping is click-specific: only `ClickOutcome.FIRED` counts as
-    completion; every other terminal outcome (kill-switch, allowlist
-    rejection, Esc abort, drag-grace exceeded) is a failure.
+    Click-specific and therefore local to this module: only
+    `ClickOutcome.FIRED` counts as completion (return ``None``); every
+    other terminal outcome (kill-switch, allowlist rejection, Esc abort,
+    drag-grace exceeded, not-invocable, …) is a failure whose reason
+    strings the outcome and detail together.
     """
+    from ..automation.manager import ClickOutcome
 
-    def __init__(
-        self,
-        automation: "AutomationManager",
-        schedule: ScheduleFn,
-        safety_timeout_ms: int = CLICK_SAFETY_TIMEOUT_MS,
-    ) -> None:
-        self._automation = automation
-        self._schedule = schedule
-        self._safety_timeout_ms = int(safety_timeout_ms)
-        self._unsubscribe: Optional[Callable[[], None]] = None
-        self._cancelled = False
-        self._fired = False
-
-    def start(
-        self,
-        on_done: Callable[[], None],
-        on_fail: Callable[[str], None],
-    ) -> None:
-        from ..automation.manager import ClickOutcome
-
-        def _on_outcome(outcome: "ClickOutcome", detail: str) -> None:
-            if self._cancelled or self._fired:
-                return
-            self._fired = True
-            self._do_unsubscribe()
-            if outcome == ClickOutcome.FIRED:
-                on_done()
-            else:
-                on_fail(f"{outcome.value}: {detail}")
-
-        def _timeout() -> None:
-            if self._cancelled or self._fired:
-                return
-            self._fired = True
-            self._do_unsubscribe()
-            on_fail("click-timeout")
-
-        self._unsubscribe = self._automation.add_outcome_listener(_on_outcome)
-        self._schedule(self._safety_timeout_ms, _timeout)
-
-    def cancel(self) -> None:
-        if self._cancelled:
-            return
-        self._cancelled = True
-        self._do_unsubscribe()
-
-    def _do_unsubscribe(self) -> None:
-        unsub = self._unsubscribe
-        self._unsubscribe = None
-        if unsub is not None:
-            try:
-                unsub()
-            except Exception:  # pragma: no cover - non-fatal
-                pass
+    if outcome == ClickOutcome.FIRED:
+        return None
+    return f"{outcome.value}: {detail}"
 
 
 def make_click_action(
@@ -113,7 +65,7 @@ def make_click_action(
     wind-up timer, warning overlay). If preflight rejects the click
     (kill-switch / mouse disabled / rate-limited / already busy) the
     phase raises so the dispatcher reaches its failure path. Otherwise
-    `_AwaitClickOutcomePhase` resolves when the manager finalizes.
+    the `WaitPhase` resolves when the manager finalizes.
     """
     from ..automation.manager import ClickOutcome
 
@@ -136,10 +88,16 @@ def make_click_action(
 
     phases: list[Phase] = [
         EffectPhase(_kick),
-        _AwaitClickOutcomePhase(
-            automation=automation,
+        # Await the manager's terminal outcome. `_resolve_click_outcome`
+        # keeps the click-specific FIRED→done / else→fail mapping local to
+        # this module while the generic wait/timeout/unsubscribe skeleton
+        # lives in `WaitPhase`.
+        WaitPhase(
+            subscribe=automation.add_outcome_listener,
             schedule=schedule,
             safety_timeout_ms=safety_timeout_ms,
+            resolve=_resolve_click_outcome,
+            timeout_reason="click-timeout",
         ),
     ]
 

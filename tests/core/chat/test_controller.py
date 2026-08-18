@@ -1,8 +1,7 @@
 """Tests for ChatController - chat settings and request handling."""
 
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock
 import pytest
-from pathlib import Path
 from PySide6 import QtCore
 
 from doro_app.core.chat.controller import ChatController
@@ -105,20 +104,20 @@ class TestChatControllerInitialization:
     def test_initialization_with_default_config(self, controller_with_qsettings):
         """ChatController can be initialized with default configuration."""
         assert controller_with_qsettings is not None
-        assert controller_with_qsettings.server_url == "http://127.0.0.1:1234"  # Default
-        assert controller_with_qsettings.model == "lmstudio"  # Default
+        assert controller_with_qsettings.settings.server_url == "http://127.0.0.1:1234"  # Default
+        assert controller_with_qsettings.settings.model == "lmstudio"  # Default
 
     def test_initialization_with_config_manager(self, controller_with_config_manager, mock_config_manager):
         """ChatController can be initialized with ConfigManager."""
         assert controller_with_config_manager is not None
         # Should use ConfigManager values, not defaults
-        assert controller_with_config_manager.server_url == "http://localhost:1234"
-        assert controller_with_config_manager.model == "mistral"
-        assert controller_with_config_manager.temperature == 0.7
+        assert controller_with_config_manager.settings.server_url == "http://localhost:1234"
+        assert controller_with_config_manager.settings.model == "mistral"
+        assert controller_with_config_manager.settings.temperature == 0.7
 
     def test_loads_system_prompt_from_file(self, controller_with_qsettings):
-        """ChatController loads system prompt from file."""
-        assert "Doro" in controller_with_qsettings.system_prompt
+        """ChatController loads system prompt from file (via its settings)."""
+        assert "Doro" in controller_with_qsettings.settings.system_prompt
 
     def test_initializes_empty_history(self, controller_with_qsettings):
         """ChatController initializes with empty history."""
@@ -129,51 +128,9 @@ class TestChatControllerInitialization:
         assert controller_with_qsettings.is_inflight is False
 
 
-# ═══════════════════════════════════════════════════════════
-# Configuration Property Tests
-# ═══════════════════════════════════════════════════════════
-
-
-class TestConfigurationProperties:
-    """Test configuration getters and setters."""
-
-    def test_get_system_prompt(self, controller_with_qsettings):
-        """system_prompt property returns loaded prompt."""
-        prompt = controller_with_qsettings.system_prompt
-        assert isinstance(prompt, str)
-        assert len(prompt) > 0
-
-    def test_update_system_prompt(self, controller_with_qsettings, tmp_prompt_file):
-        """update_system_prompt updates prompt and saves to file."""
-        controller_with_qsettings.update_system_prompt("New prompt")
-        assert controller_with_qsettings.system_prompt == "New prompt"
-        # Verify file was updated
-        assert tmp_prompt_file.read_text() == "New prompt"
-
-    def test_get_set_server_url(self, controller_with_qsettings):
-        """server_url can be get and set."""
-        controller_with_qsettings.set_server_url("http://new-server:5000")
-        assert controller_with_qsettings.server_url == "http://new-server:5000"
-
-    def test_get_set_model(self, controller_with_qsettings):
-        """model can be get and set."""
-        controller_with_qsettings.set_model("llama-2")
-        assert controller_with_qsettings.model == "llama-2"
-
-    def test_get_set_endpoint_path(self, controller_with_qsettings):
-        """endpoint_path can be get and set."""
-        controller_with_qsettings.set_endpoint_path("/api/chat")
-        assert controller_with_qsettings.endpoint_path == "/api/chat"
-
-    def test_get_set_temperature(self, controller_with_qsettings):
-        """temperature can be get and set."""
-        controller_with_qsettings.set_temperature(0.9)
-        assert controller_with_qsettings.temperature == 0.9
-
-    def test_get_set_timeout_seconds(self, controller_with_qsettings):
-        """timeout_seconds can be get and set."""
-        controller_with_qsettings.set_timeout_seconds(60)
-        assert controller_with_qsettings.timeout_seconds == 60
+# Configuration getters/setters + persistence now live on ChatSettings —
+# see tests/core/chat/test_settings.py. The controller only exposes them
+# through its `.settings` object (checked in the init tests above).
 
 
 # ═══════════════════════════════════════════════════════════
@@ -274,8 +231,8 @@ class TestPayloadBuilding:
         assert "model" in payload
         assert "temperature" in payload
         assert "max_tokens" in payload
-        assert payload["model"] == controller_with_qsettings.model
-        assert payload["temperature"] == controller_with_qsettings.temperature
+        assert payload["model"] == controller_with_qsettings.settings.model
+        assert payload["temperature"] == controller_with_qsettings.settings.temperature
 
     def test_compose_system_prompt_includes_state_info(self, controller_with_qsettings):
         """_compose_system_prompt includes state information."""
@@ -416,33 +373,8 @@ class TestSignalEmission:
 # ═══════════════════════════════════════════════════════════
 
 
-class TestConfigurationPersistence:
-    """Test configuration persistence to ConfigManager."""
-
-    def test_set_server_url_schedules_persist(self, controller_with_qsettings):
-        """Setting server_url schedules persistence."""
-        # Mock the persist timer
-        with patch.object(controller_with_qsettings._persist_timer, 'start') as mock_start:
-            controller_with_qsettings.set_server_url("http://new-server:5000")
-            mock_start.assert_called_once()
-
-    def test_set_model_schedules_persist(self, controller_with_qsettings):
-        """Setting model schedules persistence."""
-        with patch.object(controller_with_qsettings._persist_timer, 'start') as mock_start:
-            controller_with_qsettings.set_model("new-model")
-            mock_start.assert_called_once()
-
-    def test_persist_chat_settings_saves_to_config_manager(self, controller_with_qsettings):
-        """_persist_chat_settings saves configuration to ConfigManager."""
-        controller_with_qsettings.set_server_url("http://test:8000")
-        controller_with_qsettings.set_model("test-model")
-
-        # Trigger persist directly
-        controller_with_qsettings._persist_chat_settings()
-
-        # Verify ConfigManager methods were called
-        controller_with_qsettings._config_manager.update_chat.assert_called()
-        controller_with_qsettings._config_manager.save.assert_called()
+# Persistence (debounced ConfigManager writes) now lives on ChatSettings —
+# see tests/core/chat/test_settings.py::TestPersistence.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -509,6 +441,6 @@ class TestEdgeCases:
         )
 
         # Verify ConfigManager values are used
-        assert controller.timeout_seconds == 60
-        assert controller.temperature == 0.9
-        assert controller.server_url == "http://custom:9999"
+        assert controller.settings.timeout_seconds == 60
+        assert controller.settings.temperature == 0.9
+        assert controller.settings.server_url == "http://custom:9999"

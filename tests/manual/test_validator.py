@@ -191,7 +191,9 @@ def test_empty_response():
 
 
 def test_retry_prompt_building():
-    """Test retry prompt building."""
+    """Test retry prompt building (retry logic now lives in ChatRetryPolicy)."""
+    from doro_app.core.chat.retry import ChatRetryPolicy
+
     mock_service = MockStateService(["HAPPY", "SAD", "EXCITED", "idle", "walking"])
     validator = ResponseValidator(mock_service)
 
@@ -199,20 +201,20 @@ def test_retry_prompt_building():
     response = "(HAPPY) 我要往這裡走～ [MOVE:dir=diagonal;distance=50]"
     result = validator.validate(response)
 
-    # Should retry
-    should_retry = validator.should_retry(result)
-
-    # Build retry prompt
-    retry_prompt = validator.build_retry_prompt(result, "跟我打招呼")
+    # Retry policy owns the decision + prompt building.
+    policy = ChatRetryPolicy(max_retries=3)
+    policy.remember_original("跟我打招呼")
+    retry_prompt = policy.next_retry(result)  # None if not retryable
+    should_retry = retry_prompt is not None
 
     print(f"Test 7 - Retry prompt building")
     print(f"  Original message: 跟我打招呼")
     print(f"  Invalid response: {response}")
     print(f"  Should retry: {should_retry}")
-    if result.error_message:
+    if result.error_message and retry_prompt is not None:
         print(f"  Retry prompt includes error: {result.error_message in retry_prompt}")
         print(f"  Retry prompt includes original: {'跟我打招呼' in retry_prompt}")
-        print(f"  ✅ PASS" if should_retry and result.error_message in retry_prompt and "跟我打招呼" in retry_prompt else f"  ❌ FAIL")
+        print(f"  ✅ PASS" if result.error_message in retry_prompt and "跟我打招呼" in retry_prompt else f"  ❌ FAIL")
     else:
         print(f"  ❌ FAIL - No error message generated")
     print()

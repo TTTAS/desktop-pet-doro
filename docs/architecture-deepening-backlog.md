@@ -24,80 +24,45 @@ a time and commit between them. Delete an entry once it's done.
 - **#2 — Delete dead code + de-duplicate StateController** — `refactor(ui):
   delete dead GifController, de-duplicate StateController`. `GifController`
   deleted; `StateController`'s duplicated visual-config block extracted.
+- **#3 — Unify the triplicated wait-phase & listener plumbing** — the three
+  wait phases collapsed into one parameterised `WaitPhase` (`resolve` /
+  `timeout_reason` / `precondition` hooks); `_AwaitClickOutcomePhase` and
+  `_MovementWaitPhase` deleted. The duplicated listener idiom in both managers
+  now uses one shared `ListenerRegistry` (helper object, composition) in
+  `doro_app/core/listeners.py`.
+- **#5 — Split the chat controller** — done in two stages. Stage 1:
+  `ChatSettings` (`core/chat/settings.py`) owns the settings store +
+  persistence; `ChatController` exposes it via `.settings`; the orchestrator's
+  14 pass-through config forwarders collapsed to one `settings` accessor.
+  Stage 2: `ChatRetryPolicy` (`core/chat/retry.py`) owns the retry counter,
+  limit, original-message, and decision (`should_retry`/`build_retry_prompt`
+  moved off `ResponseValidator`, which is now pure validation). This also
+  fixed a real bug the split had hidden: `_reset_worker_state()` used to zero
+  the counter mid-retry, so the max-retry gate never tripped (unbounded
+  retries) and the retry prompt dropped the user's original message.
 
 ---
 
-## #3 — Unify the triplicated wait-phase & listener plumbing
+## #4 — Collapse the automation port/backend forwarding — ❌ SKIPPED (premise obsolete, 2026-08-17)
 
-**Strength:** Worth exploring · needs a short grilling.
+**Seam check outcome:** the entry's premise no longer holds. `coordinates.py`
+is **not** dead — it has four production importers today:
+`app.py:849` (`compute_physical_pixel_at`), `ui/window.py:489`,
+`ui/click_warning_overlay.py:65`, and
+`ui/components/context_menu_controller.py:187` (all `compute_*` helpers).
+Deleting it would break the build. The claim that `manager.py:399-424`
+re-does the same math inline is also false — the manager reads ready-made
+physical coords from the window port; the logical↔physical conversion lives
+only in `coordinates.py` and its callers.
 
-**Files:** `doro_app/core/action/phases.py`, `click_action.py`,
-`movement_action.py`, `doro_app/core/automation/manager.py`,
-`doro_app/core/movement/manager.py`
+The `PynputBackend` "forwarding" (5 window-class methods) is a genuine
+testability seam: `FakeInputBackend` substitutes for it, and it bridges the
+manager to the deliberately pynput-free `window_class.py`. Collapsing it would
+either break the port abstraction or need a larger restructure with unclear
+benefit.
 
-**Problem:** The "subscribe → fire once → timeout → unsubscribe" wait pattern is
-copied three times (`WaitPhase` at `phases.py:120`, `_AwaitClickOutcomePhase` at
-`click_action.py:39`, `_MovementWaitPhase` at `movement_action.py:31`), ~40 lines
-each. The listener register/unsubscribe/snapshot-iterate idiom is duplicated
-again across `AutomationManager` and `MovementManager`. Changing the retry/timeout
-behaviour means editing three-to-five places.
-
-**Direction:** One parameterised `WaitPhase` (takes "what to listen for" and
-"timeout"); one shared listener-registry used by both managers. One interface, N
-call sites → leverage; timeout/cancel bugs get a single home → locality.
-
-**Decisions still open (grill these):** exact shape of the parameterised wait
-interface; whether the listener registry is a mixin, a helper object, or a base
-class; which existing tests survive vs. move.
-
----
-
-## #4 — Collapse the automation port/backend forwarding
-
-**Strength:** Worth exploring · needs one seam check.
-
-**Files:** `doro_app/core/automation/port.py`, `backend_pynput.py`,
-`window_class.py`, `coordinates.py`
-
-**Problem:** `PynputBackend` (`backend_pynput.py:55-84`) forwards ~5 methods
-one-line each to `window_class.py`; calls detour through two indirection layers to
-reach the actual ctypes. `coordinates.py` exposes two pure functions that nothing
-imports — `manager.py:399-424` re-does the same math inline (dead-shallow).
-
-**Direction:** Fold `backend_pynput`'s forwarding into the port implementation
-standing directly on `window_class`; delete the unused `coordinates.py`. Keep the
-test fake as the second adapter that justifies the seam.
-
-**Decision still open (the seam check):** confirm the only things behind this seam
-are the real pynput path plus the test fake. *One adapter = hypothetical seam; two
-= real.* If the fake is the only other adapter, decide whether the seam earns its
-keep or should collapse too.
-
----
-
-## #5 — Split the chat controller: settings store vs. retry machine
-
-**Strength:** Worth exploring · needs a short grilling.
-
-**Files:** `doro_app/core/chat/controller.py` (536 lines), `orchestrator.py`
-(441), `validator.py`
-
-**Problem:** `controller.py` fuses two responsibilities: a wide, shallow settings
-store (~12 property/setter pairs, `controller.py:152-234`) and a genuinely deep
-worker/retry state machine (`controller.py:236-433`). The settings half inflates
-the interface without depth. Retry logic is split across a seam: `validator.py`
-owns `should_retry`/`build_retry_prompt` (`validator.py:123-156`) but the retry
-counter, max-retry gate, and delay live in `controller._handle_worker_result`
-(`controller.py:326-349`) — a retry bug could hide in either file. `orchestrator`
-adds 14 pass-through config methods (`orchestrator.py:91-161`).
-
-**Direction:** Extract a `ChatSettings` module; pull the retry counter/limit/delay
-together with `should_retry` into one deep request module so retry logic has
-locality.
-
-**Decisions still open (grill these):** where the settings live and who owns
-persistence; whether the orchestrator's 14 forwarders go away with it; the
-boundary between the request machine and the validator.
+**Verdict:** a formerly-dead module grew real users — the healthy outcome.
+Nothing to collapse. Left in place.
 
 ---
 
@@ -122,6 +87,11 @@ second renderer (e.g. Spine) actually arrives.
 **Decision still open (the roadmap question):** is a second renderer (Spine or
 otherwise) genuinely planned for the near term? If yes, keep the seam and skip
 this. If no, collapse it.
+
+> **Status (2026-08-17):** roadmap intent is **undecided** — the owner was not
+> sure whether a second renderer is coming. Left untouched pending that call.
+> Do NOT collapse the registry until "no second renderer" is confirmed;
+> re-open this entry once the roadmap is settled.
 
 ---
 
