@@ -56,3 +56,7 @@ doro_app/state/
 htmlcov/
 coverage.xml
 .coverage.*
+
+# Linters / type-checkers (auto-generated caches)
+.ruff_cache/
+.mypy_cache/
