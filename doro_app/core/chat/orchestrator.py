@@ -86,6 +86,21 @@ class ChatOrchestrator(QtCore.QObject):
         # Window handles user activity tracking before calling send_message()
         return True
 
+    def speak_line(self, text: str) -> None:
+        """Show *text* in Doro's bubble directly, without contacting the server.
+
+        This is the no-API speech path used by autonomous idle behavior:
+        the companion lines are already finished in-character dialogue, so
+        there is nothing for the LLM to add. It just displays the line
+        (same bubble + auto-hide the real replies get). A blank line is a
+        no-op so callers don't have to guard.
+        """
+        stripped = (text or "").strip()
+        if not stripped:
+            return
+        logger.info("Speaking canned line (no API)")
+        self.bubble_text_requested.emit(stripped, {})
+
     # ------------------------------------------------------------------ Configuration API
 
     @property

@@ -413,6 +413,66 @@ class MovementManager:
         direction_label_text = direction_label(direction_vector)
         return format_move_report(clamped, direction_label_text, actual_dx, actual_dy)
 
+    def apply_directional_walk(
+        self, direction: tuple[int, int], distance: float | None = None
+    ) -> str | None:
+        """Animated walk in *direction* by *distance* px (default: a visible stride).
+
+        Unlike :meth:`apply_directional_move` — which teleports one small step
+        instantly — this drives the same physics-based walking animation as
+        ``[move:to]``: it sets an active movement, plays the walking GIF, and
+        fires the completion listeners when Doro arrives. That makes it the
+        right primitive for autonomous idle wandering (which must be *seen*)
+        and lets an action's ``WaitPhase`` block until the walk truly finishes.
+
+        Returns the move report, or ``None`` when there is nothing to animate
+        (zero direction, or the clamped destination is already under the foot).
+        """
+        dx, dy = direction
+        if dx == 0 and dy == 0:
+            return None
+        length = math.hypot(dx, dy)
+        unit_x, unit_y = dx / length, dy / length
+        if distance is None:
+            # A stride long enough to read as walking, not a twitch.
+            distance = max(160.0, self._movement_step_px * 4)
+
+        self.last_target_physical = None
+        window = self._window
+        current = window.current_position()
+        target_guess = QtCore.QPoint(
+            round(current.x() + unit_x * distance),
+            round(current.y() + unit_y * distance),
+        )
+        target = window.clamp_window_position(target_guess)
+        actual_dx = target.x() - current.x()
+        actual_dy = target.y() - current.y()
+        actual_distance = math.hypot(actual_dx, actual_dy)
+        if actual_distance <= self._repo.defaults.completion_threshold:
+            return None
+
+        direction_vector = (actual_dx / actual_distance, actual_dy / actual_distance)
+        direction_label_text = direction_label(direction_vector)
+        report = format_move_report(
+            target,
+            direction_label_text,
+            int(round(actual_dx)),
+            int(round(actual_dy)),
+        )
+
+        move_state_key = self._state_service.get_default_movement_state()
+        _, move_state_settings = self._resolve_move_state_settings(move_state_key)
+        self._start_movement(
+            direction_vector,
+            actual_distance,
+            speed_name="med",
+            state_hint=None,
+            report=report,
+            move_state=move_state_settings,
+            move_state_name=move_state_key,
+        )
+        return report
+
     # ------------------------------------------------------------------ Internals
 
     def _finish_movement(self, final_position: QtCore.QPoint | None = None):

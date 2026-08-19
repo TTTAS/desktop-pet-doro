@@ -409,7 +409,9 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
         )
-        mouse_handler.user_activity_detected.connect(self._idle_behavior.reset)
+        # Idle behavior no longer resets on user activity: Doro acts on her
+        # own fixed 1-3 min rhythm regardless of whether you're using the
+        # computer, so this connection is intentionally omitted.
 
         # ─────────────────────────────────────────────────────────
         # Connect UI controller signals → Window
