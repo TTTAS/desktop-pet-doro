@@ -21,6 +21,7 @@ from .movement_action import make_movement_action
 from .phases import EffectPhase, Phase, VisualPhase, WaitPhase
 from .repository import ActionEntry, ActionRepository
 from .service import ActionService
+from .walk_and_speak_action import make_walk_and_speak_action
 
 __all__ = [
     "Action",
@@ -35,4 +36,5 @@ __all__ = [
     "WaitPhase",
     "make_click_action",
     "make_movement_action",
+    "make_walk_and_speak_action",
 ]

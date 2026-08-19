@@ -29,9 +29,16 @@ class IdleActionType(Enum):
     SPEAK = auto()
     MOVE = auto()
     TRANSITION = auto()
+    WALK_AND_SPEAK = auto()
 
 
 _IDLE_ACTIONS = list(IdleActionType)
+
+# How far each idle walk travels, in px. A random distance in this range is
+# picked per walk so the wandering varies instead of always the same hop.
+# Bump these to make Doro roam farther each time.
+IDLE_WALK_MIN_DISTANCE = 240.0
+IDLE_WALK_MAX_DISTANCE = 560.0
 
 
 class IdleBehaviorManager(QtCore.QObject):
@@ -87,11 +94,9 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule_next()
 
     def _on_timer(self) -> None:
-        idle = self._idle_seconds()
-        if idle < IDLE_BEHAVIOR_MIN_INTERVAL:
-            self._schedule_next()
-            return
-
+        # No user-activity gate: Doro acts on her own 1-3 min rhythm whether
+        # or not you're using the computer. The checks below only defer when
+        # *Doro herself* is busy (mid-request / mid-move / mid-transition).
         if self._chat_orchestrator.is_inflight:
             self._schedule_next()
             return
@@ -120,26 +125,63 @@ class IdleBehaviorManager(QtCore.QObject):
             self._do_move()
         elif action is IdleActionType.TRANSITION:
             self._do_transition()
+        elif action is IdleActionType.WALK_AND_SPEAK:
+            self._do_walk_and_speak()
 
         self._mark_activity()
         self._schedule_next()
 
     def _do_speak(self) -> None:
+        # No API: the companion lines are already finished dialogue, so we
+        # show one directly instead of round-tripping it through the LLM.
         if not self._lines:
             self._do_move()
             return
         line = random.choice(self._lines)
-        self._chat_orchestrator.send_message(line, silent=True, is_auto=True)
+        self._chat_orchestrator.speak_line(line)
 
-    def _do_move(self) -> None:
+    def _do_walk_and_speak(self) -> None:
+        # Walk somewhere, then say a line once she arrives. Falls back to a
+        # plain move when there's nothing to say.
+        if not self._lines:
+            self._do_move()
+            return
+        line = random.choice(self._lines)
         direction = random.choice(_DIRECTIONS)
+        distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
         if self._action_dispatcher is not None and self._schedule is not None:
-            from .action import make_movement_action
+            from .action import make_walk_and_speak_action
             self._action_dispatcher.dispatch(
-                make_movement_action(self._movement, self._schedule, direction=direction)
+                make_walk_and_speak_action(
+                    self._movement,
+                    self._schedule,
+                    direction=direction,
+                    distance=distance,
+                    speak=lambda: self._chat_orchestrator.speak_line(line),
+                )
             )
         else:
-            self._movement.apply_directional_move(direction)
+            # Legacy / unit-test path with no dispatcher: kick off the walk,
+            # then speak. (Without the dispatcher there's no completion wait,
+            # so the strict "arrive first" ordering only holds on the
+            # dispatcher path above — which is what production uses.)
+            self._movement.apply_directional_walk(direction, distance)
+            self._chat_orchestrator.speak_line(line)
+
+    def _do_move(self) -> None:
+        # Animated wander (a visible walk), not the instant one-step hop —
+        # idle movement only makes sense if you can see it happen.
+        direction = random.choice(_DIRECTIONS)
+        distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
+        if self._action_dispatcher is not None and self._schedule is not None:
+            from .action import make_walk_and_speak_action
+            self._action_dispatcher.dispatch(
+                make_walk_and_speak_action(
+                    self._movement, self._schedule, direction=direction, distance=distance
+                )
+            )
+        else:
+            self._movement.apply_directional_walk(direction, distance)
 
     def _do_transition(self) -> None:
         keys = [
