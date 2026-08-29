@@ -48,7 +48,8 @@ class State:
     name_tag: str = "doro"
     visual: VisualConfig = field(default_factory=VisualConfig)
 
-    gif_id: Optional[str] = None
+    # Resource references (managed by Repository)
+    gif_id: Optional[str] = None  # Reference to GIF, not path
 
     def with_changes(self, **changes: Any) -> State:
         """Return a new State with specified changes."""
@@ -79,6 +80,7 @@ class MoveState:
         return replace(self, **changes)
 
 
+# Protocol for items that can be stored in a collection
 class HasKey(Protocol):
     """Protocol for objects that have a key attribute."""
 
@@ -88,6 +90,7 @@ class HasKey(Protocol):
         ...
 
 
+# Generic type variable for collection items
 T = TypeVar("T", bound=HasKey)
 
 
@@ -105,6 +108,7 @@ class BaseCollection(Generic[T]):
     """
     Generic base class for managing collections of keyed items.
 
+    Provides common CRUD operations for any item type that has a 'key' attribute.
     Keys are stored in ``normalize_state_key`` form. Subclasses can add
     domain-specific behavior.
     """
@@ -171,7 +175,7 @@ class StateCollection(BaseCollection[State]):
             for state in states.values():
                 self.add(state)
         self._current_key: Optional[str] = None
-        self._protected_keys: set[str] = {"idle"}
+        self._protected_keys: set[str] = {"idle"}  # Cannot be deleted
         # States registered for internal (non-personality) use such as the
         # Phase 1c click action — kept playable via set_state() but hidden
         # from menus, idle picks, and the LLM-facing state list.
@@ -200,6 +204,7 @@ class StateCollection(BaseCollection[State]):
         if key in self._protected_keys:
             return False
 
+        # If removing current state, clear current
         if self._current_key == key:
             self._current_key = None
 
@@ -337,10 +342,10 @@ class Transition:
     Example: idle -> transition_gif -> happy
     """
 
-    key: str
-    from_state: str
-    to_state: str
-    transition_gif_id: Optional[str] = None
+    key: str  # Unique identifier for this transition
+    from_state: str  # Starting state key
+    to_state: str  # Target state key
+    transition_gif_id: Optional[str] = None  # Reference to transition GIF
 
     def with_changes(self, **changes: Any) -> Transition:
         """Return a new Transition with specified changes."""
@@ -363,6 +368,7 @@ class TransitionCollection(BaseCollection[Transition]):
 
     def __init__(self) -> None:
         super().__init__()
+        # Index for fast from->to lookup
         self._transition_map: dict[tuple[str, str], str] = {}
 
     def add(self, transition: Transition) -> None:
@@ -376,18 +382,21 @@ class TransitionCollection(BaseCollection[Transition]):
             to_state=to_state,
         )
 
+        # If overwriting an existing key, remove old index first
         old_transition = self.get(key)
         if old_transition:
             old_pair = (old_transition.from_state, old_transition.to_state)
             self._transition_map.pop(old_pair, None)
 
         self._items[key] = normalized
+        # Update index with new transition
         self._transition_map[(from_state, to_state)] = key
 
     def remove(self, key: str) -> bool:
         """Remove a transition."""
         transition = self.get(key)
         if transition:
+            # Remove from index
             pair = (transition.from_state, transition.to_state)
             self._transition_map.pop(pair, None)
         return super().remove(key)
@@ -397,29 +406,54 @@ class TransitionCollection(BaseCollection[Transition]):
         Find a transition between two states with priority-based matching.
 
         Matching priority (highest to lowest):
-        1. Exact match: from_state -> to_state
-        2. Partial wildcard (from -> * , then * -> to)
-        3. Full wildcard: * -> *
+        1. Exact match: from_state -> to_state (e.g., "idle" -> "happy")
+        2. Partial wildcard:
+           - from_state -> "*" (e.g., "idle" -> any state)
+           - "*" -> to_state (e.g., any state -> "happy")
+        3. Full wildcard: "*" -> "*" (universal transition)
+
+        Args:
+            from_state: Starting state key
+            to_state: Target state key
+
+        Returns:
+            Transition if found, None otherwise
+
+        Example:
+            # Priority 1: Exact match
+            find_transition("idle", "happy")  # Returns "idle" -> "happy" if exists
+
+            # Priority 2: Partial wildcard
+            find_transition("idle", "happy")  # Returns "idle" -> "*" if no exact match
+            find_transition("idle", "happy")  # Returns "*" -> "happy" if no "idle" -> "*"
+
+            # Priority 3: Universal
+            find_transition("idle", "happy")  # Returns "*" -> "*" if no other matches
         """
         from_state = _normalize_transition_endpoint(from_state)
         to_state = _normalize_transition_endpoint(to_state)
 
+        # Priority 1: Exact match
         key = self._transition_map.get((from_state, to_state))
         if key:
             return self.get(key)
 
+        # Priority 2a: from_state -> "*" (from specific state to any state)
         key = self._transition_map.get((from_state, TRANSITION_WILDCARD))
         if key:
             return self.get(key)
 
+        # Priority 2b: "*" -> to_state (from any state to specific state)
         key = self._transition_map.get((TRANSITION_WILDCARD, to_state))
         if key:
             return self.get(key)
 
+        # Priority 3: "*" -> "*" (universal transition)
         key = self._transition_map.get((TRANSITION_WILDCARD, TRANSITION_WILDCARD))
         if key:
             return self.get(key)
 
+        # No match found
         return None
 
 
@@ -427,6 +461,6 @@ class TransitionCollection(BaseCollection[Transition]):
 class GifResourceReference:
     """Reference to a GIF resource (not the file itself)."""
 
-    resource_id: str
-    display_name: str
+    resource_id: str  # Unique identifier
+    display_name: str  # User-facing name
     is_primary: bool = False
