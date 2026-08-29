@@ -35,12 +35,14 @@ docs call them "QMovie animated images".
 - Option A guard: skip stale `transition_completed` emit
 - Details: `docs/pr-b-request-commit.md`
 
-## PR C — reaction timelines (not started)
+## PR C — reaction timelines (slice 1 landed, not wired to UI)
 
 - `doro_app/core/reaction/` (`timeline`, `catalog`, `director`)
-- First steps: `state` / `wait` / `speak` / optional `move`
-- Click beats idle; chat maps onto short registered timelines
-- No Dialogic port, no visual editor, no LLM-authored freeform timelines
+- Steps: `state` / `wait` / `speak` / optional `move`
+- Click priority beats idle; stale waits are dropped on preemption
+- No Dialogic, no visual editor, no LLM-authored timelines
+- Not yet wired into `IdleBehaviorManager` or click handling
+- Details: `docs/pr-c-reaction-timelines.md`
 
 ---
 
