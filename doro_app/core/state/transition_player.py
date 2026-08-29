@@ -18,6 +18,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def should_emit_completed_target(
+    target_key: Optional[str],
+    committed_key: Optional[str],
+) -> bool:
+    """True when the finished clip's target is still the committed state.
+
+    If end_transition() applied a queued request, committed_key has moved
+    on and emitting the stale target would load the wrong sprite.
+    """
+    return bool(target_key) and committed_key == target_key
+
+
 class TransitionPlayer(QtCore.QObject):
     """
     Manages transition animations between states.
@@ -112,6 +124,21 @@ class TransitionPlayer(QtCore.QObject):
         self._load_and_play_transition_gif(gif_path)
 
         return True
+
+    def dispose(self) -> None:
+        """Stop playback and always release the transition lock.
+
+        Call from application teardown so a mid-clip close cannot leave
+        ``is_transitioning`` stuck. Safe to call more than once.
+        """
+        logger.debug("Disposing TransitionPlayer")
+        self._gif_player.clear()
+        self._transition_movie = None
+        self._is_playing = False
+        self._target_state_key = None
+        # Expire-and-apply first, then end() if the lock is still held.
+        self._state_service.is_transitioning()
+        self._state_service.end_transition()
 
     def _get_transition_gif_path(self, gif_id: str) -> Optional[Path]:
         """
@@ -210,28 +237,39 @@ class TransitionPlayer(QtCore.QObject):
         """
         Called when transition GIF playback completes.
 
-        Emits signal to notify Window to load target state, then releases transition lock.
+        Releases the lock first so a queued request can commit (and may
+        start a new transition). Only emit the original target when it is
+        still the committed state — otherwise the queued request already
+        owns the sprite.
         """
         logger.debug("Transition GIF playback completed")
 
-        # Clear all transition movies using GifPlayer
-        self._gif_player.clear()
-        self._transition_movie = None
-
-        # Store target for signal emission
         target_key = self._target_state_key
 
-        # Release transition lock BEFORE emitting signal
-        self._state_service.end_transition()
-
-        # Reset state
+        self._gif_player.clear()
+        self._transition_movie = None
+        # Drop the playing flag before end() so a queued request can start
+        # a new transition instead of being forced into a direct load.
         self._is_playing = False
         self._target_state_key = None
 
-        # Emit signal to notify Window to load target state
-        if target_key:
+        self._state_service.end_transition()
+
+        committed = None
+        getter = getattr(self._state_service, "get_committed_state_key", None)
+        if callable(getter):
+            committed = getter()
+        else:
+            committed = self._state_service.get_current_state_key()
+
+        if should_emit_completed_target(target_key, committed):
             logger.debug(f"Emitting transition_completed signal for: {target_key}")
             self.transition_completed.emit(target_key)
+        else:
+            logger.debug(
+                "Skipping stale transition_completed emit "
+                f"(target={target_key!r}, committed={committed!r})"
+            )
 
     def _cleanup_failed_transition(self):
         """
@@ -242,16 +280,11 @@ class TransitionPlayer(QtCore.QObject):
         """
         logger.warning("Cleaning up failed transition")
 
-        # Clear resources
         self._gif_player.clear()
         self._transition_movie = None
-
-        # Release transition lock
-        self._state_service.end_transition()
-
-        # Reset state
         self._is_playing = False
         self._target_state_key = None
+        self._state_service.end_transition()
 
     @property
     def is_playing(self) -> bool:
