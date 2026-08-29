@@ -11,23 +11,12 @@ from ...ui.components.gif_player import GifPlayer
 from ...utils.logger import get_logger
 from ...utils.paths import ACTION_TRANSITION_DIR  # kept for fallback
 from .repository import ANIMATED_EXTENSIONS
+from .transition_complete import should_emit_completed_target
 
 if TYPE_CHECKING:
     from .service import StateService
 
 logger = get_logger(__name__)
-
-
-def should_emit_completed_target(
-    target_key: Optional[str],
-    committed_key: Optional[str],
-) -> bool:
-    """True when the finished clip's target is still the committed state.
-
-    If end_transition() applied a queued request, committed_key has moved
-    on and emitting the stale target would load the wrong sprite.
-    """
-    return bool(target_key) and committed_key == target_key
 
 
 class TransitionPlayer(QtCore.QObject):
@@ -45,9 +34,8 @@ class TransitionPlayer(QtCore.QObject):
     - transition_completed: Emitted when transition animation completes (str: target_state_key)
     """
 
-    # Signals to decouple from Window
-    transition_movie_loaded = QtCore.Signal(object, QtCore.QSize)  # QMovie, sprite_size
-    transition_completed = QtCore.Signal(str)  # target_state_key
+    transition_movie_loaded = QtCore.Signal(object, QtCore.QSize)
+    transition_completed = QtCore.Signal(str)
 
     def __init__(self, state_service: StateService):
         """
@@ -84,23 +72,18 @@ class TransitionPlayer(QtCore.QObject):
             3. When GIF completes, load target state and release lock
             4. If no transition, directly load target state
         """
-        # Don't interrupt ongoing transition
         if self._is_playing:
             logger.warning(f"Transition already playing, cannot start {from_state} -> {to_state}")
             return False
 
-        # Find appropriate transition
         transition = self._state_service.find_transition(from_state, to_state)
 
-        # No transition defined - direct switch
         if not transition:
             logger.debug(f"No transition for {from_state} -> {to_state}, switching directly")
             return False
 
-        # Get transition GIF path (multi-GIF random selection via service)
         gif_path = self._state_service.get_transition_gif_path(transition.key)
 
-        # Fallback to legacy single-file lookup via transition_gif_id
         if (not gif_path or not gif_path.exists()) and transition.transition_gif_id:
             gif_path = self._get_transition_gif_path(transition.transition_gif_id)
 
@@ -108,12 +91,10 @@ class TransitionPlayer(QtCore.QObject):
             logger.debug(f"No transition GIF for {from_state} -> {to_state}, switching directly")
             return False
 
-        # Acquire transition lock
         if not self._state_service.begin_transition():
             logger.warning("Failed to acquire transition lock, switching directly")
             return False
 
-        # Play transition
         logger.info(
             f"Playing transition: {from_state} -> {to_state} ({transition.transition_gif_id})"
         )
@@ -136,7 +117,6 @@ class TransitionPlayer(QtCore.QObject):
         self._transition_movie = None
         self._is_playing = False
         self._target_state_key = None
-        # Expire-and-apply first, then end() if the lock is still held.
         self._state_service.is_transitioning()
         self._state_service.end_transition()
 
@@ -150,13 +130,11 @@ class TransitionPlayer(QtCore.QObject):
         Returns:
             Full path to GIF file, or None if not found
         """
-        # Transition GIFs are stored in res/ACTION/TRANSITION/
         gif_path = ACTION_TRANSITION_DIR / gif_id
 
         if gif_path.exists():
             return gif_path
 
-        # Try appending each supported animated extension
         if not any(gif_id.lower().endswith(ext) for ext in ANIMATED_EXTENSIONS):
             for ext in ANIMATED_EXTENSIONS:
                 candidate = ACTION_TRANSITION_DIR / f"{gif_id}{ext}"
@@ -172,25 +150,18 @@ class TransitionPlayer(QtCore.QObject):
         Args:
             gif_path: Path to transition GIF file
         """
-        # Clear all previous movies using GifPlayer
         self._gif_player.clear()
         self._transition_movie = None
 
-        # Load transition GIF using GifPlayer
         self._transition_movie = self._gif_player.load(gif_path)
 
         if not self._transition_movie:
             logger.error(f"Failed to load transition GIF: {gif_path}")
-            # CRITICAL: Release lock if loading failed
             self._cleanup_failed_transition()
             return
 
-        # CRITICAL: Monitor frame changes to detect when one loop completes
-        # QMovie doesn't have setLoopCount in PySide6, so we detect loop completion manually
-        # When frameNumber wraps back to 0, we know the loop completed
         self._transition_movie.frameChanged.connect(self._on_transition_frame_changed)
 
-        # Update sprite size from transition GIF
         frame_rect = self._transition_movie.frameRect()
         sprite_size = (
             frame_rect.size()
@@ -198,9 +169,7 @@ class TransitionPlayer(QtCore.QObject):
             else QtCore.QSize(200, 200)
         )
 
-        # Emit signal to notify Window (decouples TransitionPlayer from Window internals)
         self.transition_movie_loaded.emit(self._transition_movie, sprite_size)
-
         logger.debug(f"Started playing transition GIF: {gif_path.name}")
 
     def _on_transition_frame_changed(self, frame_number: int):
@@ -214,22 +183,16 @@ class TransitionPlayer(QtCore.QObject):
             if not self._is_playing or not self._transition_movie:
                 return
 
-            # Detect loop completion: frame number wraps back to 0 or -1 after we've played
             if self._last_frame_number > 0 and frame_number <= 0:
-                # One complete loop detected
                 logger.debug(
                     f"Transition loop completed (frame {self._last_frame_number} -> {frame_number})"
                 )
                 self._has_played_once = True
-                # Stop the movie and trigger completion
                 self._transition_movie.stop()
                 self._on_transition_complete()
             else:
                 self._last_frame_number = frame_number
         except (RuntimeError, AttributeError) as e:
-            # RuntimeError: Qt object deleted during playback
-            # AttributeError: Object state inconsistent (e.g., _transition_movie cleared)
-            # Critical: Must clean up to prevent transition lock leak
             logger.error(f"Error during transition playback: {e}", exc_info=True)
             self._cleanup_failed_transition()
 
@@ -248,19 +211,13 @@ class TransitionPlayer(QtCore.QObject):
 
         self._gif_player.clear()
         self._transition_movie = None
-        # Drop the playing flag before end() so a queued request can start
-        # a new transition instead of being forced into a direct load.
         self._is_playing = False
         self._target_state_key = None
 
         self._state_service.end_transition()
 
-        committed = None
         getter = getattr(self._state_service, "get_committed_state_key", None)
-        if callable(getter):
-            committed = getter()
-        else:
-            committed = self._state_service.get_current_state_key()
+        committed = getter() if callable(getter) else self._state_service.get_current_state_key()
 
         if should_emit_completed_target(target_key, committed):
             logger.debug(f"Emitting transition_completed signal for: {target_key}")
