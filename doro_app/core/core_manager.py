@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .chat.controller import ChatController
     from .chat.orchestrator import ChatOrchestrator
     from .movement.manager import MovementManager
+    from .reaction import ReactionRunner
     from .state import StateService
     from .state.transition_player import TransitionPlayer
     from ..utils.config_manager import ConfigManager
@@ -73,6 +74,7 @@ class CoreManager(QtCore.QObject):
         config_manager: ConfigManager,
         a11y_service=None,
         automation_manager=None,
+        reaction_runner: "ReactionRunner | None" = None,
     ):
         """
         Initialize CoreManager with all business logic components.
@@ -85,6 +87,7 @@ class CoreManager(QtCore.QObject):
             transition_player: State transition player
             config_manager: Configuration manager
             a11y_service: Optional A11yService for the settings preview (may be None)
+            reaction_runner: Optional catalog+director facade for click/idle flashes
         """
         super().__init__()
 
@@ -102,6 +105,7 @@ class CoreManager(QtCore.QObject):
         self._config_manager = config_manager
         self._a11y_service = a11y_service
         self._automation_manager = automation_manager
+        self._reaction_runner = reaction_runner
 
         # Track previous state for transition detection
         self._previous_state_key: str | None = None
@@ -181,10 +185,16 @@ class CoreManager(QtCore.QObject):
         """
         self._chat_orchestrator.send_message(message, silent=silent, is_auto=is_auto)
 
-    def on_user_clicked(self):
-        """Handle user click event (called by UI)."""
-        # Trigger random action if click action controller is available
+    def on_user_clicked(self) -> bool:
+        """Handle a pet click (not an AutomationManager desktop click).
+
+        Plays the registered ``click`` timeline when a runner is wired.
+        Returns True if the timeline started.
+        """
         logger.debug("User clicked")
+        if self._reaction_runner is None:
+            return False
+        return self._reaction_runner.play("click")
 
     def process_movement_tick(self, dt: float):
         """
@@ -246,6 +256,11 @@ class CoreManager(QtCore.QObject):
     def movement_manager(self) -> MovementManager:
         """Get MovementManager (read-only access)."""
         return self._movement
+
+    @property
+    def reaction_runner(self):
+        """Optional reaction runner; None in unit tests that skip wiring."""
+        return self._reaction_runner
 
     @property
     def is_chat_inflight(self) -> bool:

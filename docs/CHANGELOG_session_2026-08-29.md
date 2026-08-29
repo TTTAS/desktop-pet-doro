@@ -21,6 +21,15 @@ Branch: `refactor/state-collections-and-gif-renderer` (尚未合 `master`)
 - request/commit 已內聯進 `StateService`（刪掉 import 時 monkeypatch）
 - 測試：`test_request_commit_lock.py`、`test_transition_complete_guard.py`、`test_transition_player_guard.py`
 
+## PR C — reaction timelines
+
+- slice 1：Qt-free `Timeline` / `ReactionCatalog` / `ReactionDirector`
+- slice 2：`RestoreStep`、`ReactionRunner.play(name)`、`build_default_runner`
+- 預設 `click`：`click_action`（force）→ wait 0.4s → 回到 play 當下的 committed key
+- `CoreManager.on_user_clicked()` 有 runner 時播放 `"click"`
+- **沒有**改 `IdleBehaviorManager` / `ActionDispatcher` / `ClickActionController`
+- 測試：`tests/core/reaction/test_director.py`、`tests/core/test_core_manager_click.py`
+
 ## WebP / APNG
 
 不是第二套 renderer。跟 GIF 一樣走 `QMovie` + `ANIMATED_EXTENSIONS = (".gif", ".apng", ".webp")`。
@@ -28,5 +37,6 @@ Branch: `refactor/state-collections-and-gif-renderer` (尚未合 `master`)
 
 ## 尚未做
 
-- PR C：reaction timelines
+- 把 runner 接到 `DoroApp` 的滑鼠 click（slice 2 程式已準備，composition 下一刀）
+- 讓 idle 行為改走 catalog（現在仍由 `IdleBehaviorManager` 自己骰）
 - 收掉 `_renderers` / `switch_renderer`（已決策做，留給下一個小 commit）

@@ -8,6 +8,8 @@ from doro_app.core.reaction import (
     MoveStep,
     ReactionCatalog,
     ReactionDirector,
+    ReactionRunner,
+    RestoreStep,
     SpeakStep,
     StateStep,
     Timeline,
@@ -35,20 +37,30 @@ class ManualScheduler:
 
 
 class FakeState:
-    def __init__(self) -> None:
+    def __init__(self, current: str = "idle") -> None:
+        self.current = current
         self.calls: list[tuple[str, bool]] = []
 
     def request_state(self, key: str, *, force: bool = False) -> bool:
         self.calls.append((key, force))
+        self.current = key
         return True
 
 
-def _director(state: FakeState, spoken: list[str], schedule: ManualScheduler, moves=None):
+def _director(
+    state: FakeState,
+    spoken: list[str],
+    schedule: ManualScheduler,
+    moves=None,
+    *,
+    with_current_key: bool = False,
+):
     return ReactionDirector(
         request_state=state.request_state,
         speak=spoken.append,
         schedule=schedule,
         move=None if moves is None else (lambda d, dist: moves.append((d, dist))),
+        current_key=(lambda: state.current) if with_current_key else None,
     )
 
 
@@ -190,9 +202,77 @@ def test_catalog_defaults_include_click_above_idle():
     assert isinstance(click.steps[0], StateStep)
     assert click.steps[0].key == "click_action"
     assert click.steps[0].force is True
+    assert isinstance(click.steps[-1], RestoreStep)
 
 
 def test_speak_timeline_helper():
     tl = speak_timeline("chat_hi", "hello")
     assert tl.steps == (SpeakStep("hello"),)
     assert tl.priority > PRIORITY_IDLE
+
+
+def test_restore_step_returns_to_key_captured_at_play_start():
+    state = FakeState(current="happy")
+    spoken: list[str] = []
+    schedule = ManualScheduler()
+    director = _director(state, spoken, schedule, with_current_key=True)
+
+    director.play(
+        Timeline(
+            name="click",
+            priority=PRIORITY_CLICK,
+            steps=(
+                StateStep("click_action", force=True),
+                WaitStep(0.4),
+                RestoreStep(),
+            ),
+        )
+    )
+    assert state.calls == [("click_action", True)]
+    assert director.is_playing is True
+
+    schedule.run_next()
+    assert state.calls == [("click_action", True), ("happy", True)]
+    assert director.is_playing is False
+
+
+def test_restore_step_skipped_without_current_key_port():
+    state = FakeState(current="happy")
+    spoken: list[str] = []
+    schedule = ManualScheduler()
+    director = _director(state, spoken, schedule)
+
+    director.play(
+        Timeline(
+            name="click",
+            steps=(StateStep("click_action", force=True), RestoreStep()),
+        )
+    )
+    assert state.calls == [("click_action", True)]
+
+
+def test_runner_play_unknown_name_is_false():
+    catalog = ReactionCatalog()
+    catalog.register_defaults()
+    state = FakeState()
+    spoken: list[str] = []
+    schedule = ManualScheduler()
+    runner = ReactionRunner(catalog, _director(state, spoken, schedule))
+    assert runner.play("does_not_exist") is False
+    assert runner.is_playing is False
+
+
+def test_runner_play_named_click_uses_catalog():
+    catalog = ReactionCatalog()
+    catalog.register_defaults()
+    state = FakeState(current="idle")
+    spoken: list[str] = []
+    schedule = ManualScheduler()
+    runner = ReactionRunner(
+        catalog,
+        _director(state, spoken, schedule, with_current_key=True),
+    )
+    assert runner.play("click") is True
+    assert state.calls == [("click_action", True)]
+    schedule.run_next()
+    assert state.calls[-1] == ("idle", True)
