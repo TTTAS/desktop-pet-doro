@@ -27,11 +27,11 @@
 |---|---|
 | `doro_app/core/state/transition_coordinator.py` | done (timeout + clock) |
 | `doro_app/core/state/transition_complete.py` | done (Qt-free emit guard) |
-| `doro_app/core/state/transition_player.py` | done (dispose + guard + flag-before-end) |
+| `doro_app/core/state/transition_player.py` | done (dispose + guard + aboutToQuit hook) |
 | `tests/core/state/test_request_commit_lock.py` | done |
 | `tests/core/state/test_transition_complete_guard.py` | done |
-| `doro_app/core/state/service.py` | **must apply request/commit block** |
-| `doro_app/app.py` `_on_about_to_quit` | call `self._transition_player.dispose()` |
+| `doro_app/core/state/service.py` | done (`request_state` / `commit_state` / pending apply) |
+| `doro_app/app.py` `_on_about_to_quit` | optional; player also hooks `aboutToQuit` itself |
 
 ## Verify
 

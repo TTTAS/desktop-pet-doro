@@ -10,7 +10,7 @@ keeping the `_renderers` / `switch_renderer` registry.
 
 ---
 
-## PR A — collection encapsulation (this branch, in progress)
+## PR A — collection encapsulation (this branch, done)
 
 1. Restore the truncated `models.py` (collections were dropped on this branch).
 2. `normalize_state_key()` = strip + lowercase; collections store only that form.
@@ -24,14 +24,17 @@ keeping the `_renderers` / `switch_renderer` registry.
 Renderer flatten is **not** in A. Class names stay `Gif*` for now;
 docs call them "QMovie animated images".
 
-## PR B — request / commit + lock timeout
+## PR B — request / commit + lock timeout (this branch, landing)
 
-- `requested_key` vs `committed_key`
-- `set_state` remains a thin wrapper
-- Transition lock must expire (no stuck `is_transitioning`)
+- `requested_key` vs `committed_key` on `StateService`
+- `set_state` remains a thin wrapper around `request_state`
+- Transition lock expires after 5s (injectable clock)
+- `end_transition()` / lock expiry apply the last queued request
 - Player success / failure / dispose all call `end()`
+- Option A guard: skip stale `transition_completed` emit
+- Details: `docs/pr-b-request-commit.md`
 
-## PR C — reaction timelines
+## PR C — reaction timelines (not started)
 
 - `doro_app/core/reaction/` (`timeline`, `catalog`, `director`)
 - First steps: `state` / `wait` / `speak` / optional `move`

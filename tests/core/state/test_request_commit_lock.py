@@ -193,3 +193,25 @@ class TestRequestCommit:
 
         assert service.request_state("nope") is False
         assert service.get_requested_state_key() == "idle"
+
+    def test_lock_expiry_commits_pending_request(
+        self, state_service_with_mocks: StateService
+    ):
+        """is_transitioning() must apply the queue when the lock times out."""
+        clock = FakeClock()
+        service = state_service_with_mocks
+        service._transition_coordinator = TransitionCoordinator(
+            transition_repo=None,
+            lock_timeout_seconds=1.0,
+            clock=clock,
+        )
+        service.add_state("idle", "Idle")
+        service.add_state("happy", "Happy")
+        service.set_state("idle")
+        service.begin_transition()
+        service.request_state("happy")
+
+        clock.advance(1.0)
+        assert service.is_transitioning() is False
+        assert service.get_committed_state_key() == "happy"
+        assert service.get_requested_state_key() == "happy"

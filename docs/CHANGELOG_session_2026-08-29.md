@@ -11,6 +11,15 @@ Branch: `refactor/state-collections-and-gif-renderer` (尚未合 `master`)
 - 測試：`tests/core/state/test_collection_api.py`
 - 計畫：`docs/state-refactor-plan.md`
 
+## PR B — request / commit + lock timeout
+
+- `request_state` / `commit_state`：lock 期間 queue 最後一次請求，`set_state` 仍回傳 `False`
+- `force=True` 立刻 commit 並清掉 queue
+- `end_transition()` 與 lock 逾時（預設 5s）都會 `_apply_pending_request()`
+- `TransitionPlayer` Option A：queued commit 之後不再 emit 過期的 `transition_completed`
+- `TransitionPlayer.dispose()` 自己掛 `QApplication.aboutToQuit`，關閉時釋放 lock
+- 測試：`tests/core/state/test_request_commit_lock.py`、`test_transition_complete_guard.py`
+
 ## WebP / APNG
 
 不是第二套 renderer。跟 GIF 一樣走 `QMovie` + `ANIMATED_EXTENSIONS = (".gif", ".apng", ".webp")`。
@@ -18,6 +27,5 @@ Branch: `refactor/state-collections-and-gif-renderer` (尚未合 `master`)
 
 ## 尚未做
 
-- PR B：request / commit + transition lock timeout
 - PR C：reaction timelines
 - 收掉 `_renderers` / `switch_renderer`（已決策做，留給下一個小 commit）
