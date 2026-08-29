@@ -78,11 +78,22 @@ class ReactionDirector:
         """
         if self._current is not None and timeline.priority < self._current.priority:
             return False
+        # When preempting a running timeline, keep its restore target so a
+        # rapid re-trigger (e.g. a second click during the 0.4s beat) does
+        # not capture the transient pose the first one set (click_action).
+        # cancel() clears _restore_key, so snapshot it first.
+        preempting = self._current is not None
+        inherited_restore = self._restore_key
         self.cancel()
         self._current = timeline
         self._index = 0
         self._generation += 1
-        self._restore_key = self._current_key() if self._current_key is not None else None
+        if preempting:
+            self._restore_key = inherited_restore
+        else:
+            self._restore_key = (
+                self._current_key() if self._current_key is not None else None
+            )
         self._run_next(self._generation)
         return True
 

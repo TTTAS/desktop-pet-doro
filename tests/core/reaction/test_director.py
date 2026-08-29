@@ -276,3 +276,25 @@ def test_runner_play_named_click_uses_catalog():
     assert state.calls == [("click_action", True)]
     schedule.run_next()
     assert state.calls[-1] == ("idle", True)
+
+
+def test_double_click_still_restores_to_original_home():
+    state = FakeState(current="idle")
+    spoken: list[str] = []
+    schedule = ManualScheduler()
+    director = _director(state, spoken, schedule, with_current_key=True)
+
+    click = Timeline(
+        name="click",
+        priority=PRIORITY_CLICK,
+        steps=(StateStep("click_action", force=True), WaitStep(0.4), RestoreStep()),
+    )
+
+    director.play(click)  # home captured = idle
+    director.play(click)  # preempts mid-wait; home must stay idle, not click_action
+    assert director._restore_key == "idle"
+
+    schedule.flush()  # stale wait no-ops, live wait fires RestoreStep
+    assert state.current == "idle"
+    assert state.calls[-1] == ("idle", True)
+    assert director.is_playing is False
