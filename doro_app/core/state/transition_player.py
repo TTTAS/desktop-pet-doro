@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from PySide6 import QtCore, QtGui
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...ui.components.gif_player import GifPlayer
 from ...utils.logger import get_logger
@@ -52,6 +52,12 @@ class TransitionPlayer(QtCore.QObject):
         self._transition_movie: Optional[QtGui.QMovie] = None
         self._last_frame_number = -1
         self._has_played_once = False
+        self._quit_hooked = False
+
+        qt_app = QtWidgets.QApplication.instance()
+        if qt_app is not None:
+            qt_app.aboutToQuit.connect(self.dispose)
+            self._quit_hooked = True
 
     def play_transition(self, from_state: str, to_state: str) -> bool:
         """
@@ -117,6 +123,7 @@ class TransitionPlayer(QtCore.QObject):
         self._transition_movie = None
         self._is_playing = False
         self._target_state_key = None
+        # Expire first so a timed-out lock still drains the request queue.
         self._state_service.is_transitioning()
         self._state_service.end_transition()
 
