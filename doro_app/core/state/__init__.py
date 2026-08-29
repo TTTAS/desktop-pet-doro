@@ -9,6 +9,7 @@ from .models import (
     Transition,
     TransitionCollection,
     VisualConfig,
+    normalize_state_key,
 )
 from .repository import (
     GifRepository,
@@ -21,7 +22,6 @@ from .service import StateService
 from .state_parser import StateParser
 
 __all__ = [
-    # Models
     "State",
     "MoveState",
     "Transition",
@@ -30,13 +30,12 @@ __all__ = [
     "StateCollection",
     "MoveStateCollection",
     "TransitionCollection",
-    # Repositories
+    "normalize_state_key",
     "StateRepository",
     "MoveStateRepository",
     "GifRepository",
     "TransitionRepository",
     "StateListWriter",
-    # Service
     "StateService",
     "StateParser",
 ]
