@@ -82,6 +82,10 @@ class StateService:
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
 
+        # Last intended state key. Equals the committed key unless a
+        # request arrived while the transition lock was held (queued).
+        self._requested_key: Optional[str] = None
+
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
@@ -468,6 +472,7 @@ class StateService:
 
         # Set initial state
         self._states.set_current("idle")
+        self._requested_key = self._states.current_key()
 
         # Ensure movement states from movements.json exist
         self._ensure_movement_states()
@@ -527,44 +532,98 @@ class StateService:
                 self._states.protect(walking_key)
 
     # ═══════════════════════════════════════════════════════════
-    # State Operations
+    # State Operations - request / commit
+    #
+    # requested_key = last state we intended to reach.
+    # committed_key = state actually current (the sprite should match it).
+    # They differ only while the transition lock is held: a non-forced
+    # request is queued (last write wins) and applied when the lock is
+    # released or expires. force=True / commit_state() write through the
+    # lock immediately.
     # ═══════════════════════════════════════════════════════════
+
+    def get_committed_state_key(self) -> Optional[str]:
+        """Key that is actually current (the sprite should match this)."""
+        return self._states.current_key()
+
+    def get_requested_state_key(self) -> Optional[str]:
+        """Last intended key. Equals committed unless a request is queued."""
+        return self._requested_key
 
     def set_state(self, key: str, *, force: bool = False) -> bool:
         """
-        Set current state.
+        Set current state. Thin wrapper around :meth:`request_state`.
 
         Args:
             key: State key to switch to
             force: If True, bypass transition protection (used by MovementManager)
 
         Returns:
-            True if successful, False if state not found or rejected
+            True if committed now, False if state not found or queued
+        """
+        return self.request_state(key, force=force)
 
-        Protection:
-            - Rejects requests during transitions (unless force=True)
-            - Ensures state integrity during transition animations
+    def request_state(self, key: str, *, force: bool = False) -> bool:
+        """
+        Intend a state change.
+
+        Idle / expired lock -> commit now (returns True).
+        Active lock -> store as requested_key (last write wins), returns False.
+        force=True -> commit now through the lock, replacing any queued request.
+        Unknown key is never queued.
         """
         key = normalize_state_key(key)
-        # Check transition protection
-        if self._transition_coordinator.is_active() and not force:
-            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+        if self._states.get(key) is None:
+            logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
+        if force:
+            return self.commit_state(key, forced=True)
+
+        self._release_expired_lock()
+        if self._transition_coordinator.is_active():
+            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+            self._requested_key = key
+            return False
+
+        return self.commit_state(key)
+
+    def commit_state(self, key: str, *, forced: bool = False) -> bool:
+        """Write the committed key now, ignoring the transition lock."""
+        key = normalize_state_key(key)
         old_key = self._states.current_key()
         if not self._states.set_current(key):
             logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
-        logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if force else ""))
+        self._requested_key = key
+        logger.info(
+            f"State changed: {old_key} -> {key}" + (" [forced]" if forced else "")
+        )
 
-        # Emit event
         state = self._states.get(key)
         if self.on_state_changed and state:
             event = StateChangeEvent(old_key, key, state)
             self.on_state_changed(event)
 
         return True
+
+    def _apply_pending_request(self) -> None:
+        """Commit the queued request, if it differs from the committed key."""
+        pending = self._requested_key
+        committed = self._states.current_key()
+        if pending is None or pending == committed:
+            return
+        if self._states.get(pending) is None:
+            self._requested_key = committed
+            return
+        logger.debug(f"Applying queued state request: {committed} -> {pending}")
+        self.commit_state(pending)
+
+    def _release_expired_lock(self) -> None:
+        """Drain the queue when the transition lock has timed out."""
+        if self._transition_coordinator.expire_if_needed():
+            self._apply_pending_request()
 
     # ═══════════════════════════════════════════════════════════
     # Transition Lock Management
@@ -576,41 +635,40 @@ class StateService:
 
         Prevents non-forced state changes during transition playback.
         Only forced state changes (force=True) can bypass this lock.
+        An expired lock is released (and its queued request applied) first.
 
         Returns:
             True if lock acquired, False if already transitioning
-
-        Usage:
-            # Before playing transition GIF
-            if service.begin_transition():
-                play_transition_gif()
-                # ... wait for completion ...
-                service.end_transition()
         """
+        self._release_expired_lock()
         return self._transition_coordinator.begin()
 
     def end_transition(self) -> bool:
         """
         End a transition animation, unlocking state changes.
 
-        Allows normal state changes to proceed after transition playback.
+        Applies the last queued request (if any) once the lock is released.
 
         Returns:
             True if lock released, False if no transition was in progress
-
-        Usage:
-            # After transition GIF completes
-            service.end_transition()
         """
-        return self._transition_coordinator.end()
+        released = self._transition_coordinator.end()
+        if released:
+            self._apply_pending_request()
+        else:
+            self._release_expired_lock()
+        return released
 
     def is_transitioning(self) -> bool:
         """
         Check if a transition is currently in progress.
 
+        Expired locks are treated as inactive (and drain their queue).
+
         Returns:
             True if transition lock is active, False otherwise
         """
+        self._release_expired_lock()
         return self._transition_coordinator.is_active()
 
     def parse_state_from_action(self, action: str) -> Optional[str]:
