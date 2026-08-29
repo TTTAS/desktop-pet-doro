@@ -23,7 +23,6 @@ from .core.chat.orchestrator import ChatOrchestrator
 from .core.core_manager import CoreManager
 from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
-from .core.reaction import build_default_runner
 from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
@@ -179,18 +178,6 @@ class DoroApp:
             schedule=self._dispatcher_schedule,
         )
 
-        # Reaction runner: short registered timelines (click flash, etc.)
-        # driven through the same request/commit state door as everything else.
-        self._reaction_runner = build_default_runner(
-            request_state=self._state_service.request_state,
-            speak=self._chat_orchestrator.speak_line,
-            schedule=self._dispatcher_schedule,
-            move=lambda direction, distance: self._movement.apply_directional_walk(
-                direction, distance
-            ),
-            current_key=self._state_service.get_committed_state_key,
-        )
-
         # ═════════════════════════════════════════════════════════════
         # Phase 5: Create CoreManager (Business Logic Coordinator)
         # ═════════════════════════════════════════════════════════════
@@ -204,7 +191,6 @@ class DoroApp:
             config_manager=self._config_manager,
             a11y_service=self._a11y,
             automation_manager=self._automation,
-            reaction_runner=self._reaction_runner,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -417,7 +403,6 @@ class DoroApp:
         mouse_handler.click_detected.connect(
             lambda: (
                 self.window.mark_user_activity(),
-                self.core_manager.on_user_clicked(),
                 self._click_action_controller.trigger_random_action(),
             )
         )
@@ -650,9 +635,6 @@ class DoroApp:
         dispatcher = getattr(self, "_action_dispatcher", None)
         if dispatcher is not None:
             dispatcher.cancel_current("drag")
-        runner = getattr(self, "_reaction_runner", None)
-        if runner is not None:
-            runner.cancel()
         self._movement.cancel_active_movement()
 
     def _on_about_to_quit(self) -> None:
