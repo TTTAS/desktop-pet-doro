@@ -65,6 +65,7 @@ class StateService:
         transition_gif_repo: GifRepository,
         movement_repo: Optional[MovementRepository] = None,
     ):
+        # Private - encapsulated repositories
         self._state_repo = state_repo
         self._move_repo = move_repo
         self._gif_repo = gif_repo
@@ -73,16 +74,28 @@ class StateService:
         self._movement_repo = movement_repo
         self._state_list_writer = StateListWriter(state_list_path)
 
+        # Private - managers for specialized operations
         self._transition_coordinator = TransitionCoordinator(transition_repo)
         self._state_parser = StateParser()
 
+        # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
 
+        # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
         self.on_states_modified: Optional[Callable[[], None]] = None
 
+    # ═══════════════════════════════════════════════════════════
+    # Private - GIF storage error handling
+    # ═══════════════════════════════════════════════════════════
+
     def _store_gif(self, source_path: Path, context_key: str) -> Optional[str]:
+        """Store a GIF into the state store, swallowing storage errors.
+
+        Returns the resource ID, or None if the source is missing or the
+        copy fails (the error is logged).
+        """
         try:
             return self._gif_repo.store_gif(source_path, context_key)
         except (GifNotFoundError, GifStorageError) as e:
@@ -90,28 +103,55 @@ class StateService:
             return None
 
     def _add_gif(self, repo: GifRepository, source_path: Path, key: str) -> Optional[str]:
+        """Add a GIF to a repo's multi-GIF collection, swallowing storage errors.
+
+        Returns the resource ID, or None if the source is missing or the
+        copy fails (the error is logged).
+        """
         try:
             return repo.add_gif(source_path, key)
         except (GifNotFoundError, GifStorageError) as e:
             logger.error(f"Failed to add GIF for '{key}': {e}")
             return None
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - GIF Operations (Encapsulated)
+    # ═══════════════════════════════════════════════════════════
+
     def get_gif_path(self, state_key: str) -> Optional[Path]:
+        """
+        Get a sprite path for a state.
+
+        Resolution priority:
+        1. Multi-GIF subfolder (random pick)
+        2. Single-file via gif_id
+        3. Movement state fallback
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Absolute path to sprite file or None if not found
+        """
+        # Priority 1: multi-GIF subfolder (random pick)
         random_path = self._gif_repo.pick_random_gif(state_key)
         if random_path:
             return random_path
 
+        # Priority 2: single-file via gif_id
         state = self._states.get(state_key)
         if state and state.gif_id:
             path = self._gif_repo.get_path(state.gif_id)
             if path:
                 return path
 
+        # Priority 3: movement state fallback (animation from movements.json)
         if self._move_states.is_movement_only(state_key):
             if self._movement_repo:
                 anim_path = self._movement_repo.resolve_animation_path(state_key)
                 if anim_path:
                     return anim_path
+            # Fallback: scan ACTION/MOVE/ directory
             move_path = self._gif_repo.get_move_storage_path(state_key)
             if move_path.is_file():
                 return move_path
@@ -119,65 +159,139 @@ class StateService:
         return None
 
     def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
+        """
+        Get the file path for a GIF resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            Absolute path to GIF file or None if not found
+        """
         return self._gif_repo.get_path(gif_id)
 
     def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+        """
+        Store a GIF file for a state.
+
+        Args:
+            source_path: Source GIF file path
+            state_key: State key this GIF belongs to
+
+        Returns:
+            Resource ID or None if failed
+        """
         return self._store_gif(source_path, state_key)
 
     def delete_gif(self, gif_id: str) -> bool:
+        """
+        Delete a GIF by resource ID.
+
+        Args:
+            gif_id: GIF resource ID
+
+        Returns:
+            True if deleted, False otherwise
+        """
         return self._gif_repo.delete(gif_id)
 
     def get_state_storage_path(self, state_key: str) -> Path:
+        """
+        Get the expected storage path for a state's GIF.
+
+        Args:
+            state_key: State key
+
+        Returns:
+            Path where the state's GIF should be stored
+        """
         return self._gif_repo.get_state_storage_path(state_key)
 
     def get_move_storage_path(self, move_key: str) -> Path:
+        """
+        Get the expected storage path for a movement action's GIF.
+
+        Args:
+            move_key: Movement key (e.g., "walking")
+
+        Returns:
+            Path where the move GIF should be stored
+        """
         return self._gif_repo.get_move_storage_path(move_key)
 
     def sanitize_state_key(self, key: str) -> str:
+        """
+        Sanitize a key for safe use in filenames.
+
+        Args:
+            key: Raw key string
+
+        Returns:
+            Sanitized filename-safe string
+        """
         return self._gif_repo.sanitize_filename(key)
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Query Methods
+    # ═══════════════════════════════════════════════════════════
+
     def get_state(self, key: str) -> Optional[State]:
+        """Get a state by key."""
         return self._states.get(key)
 
     def has_state(self, key: str) -> bool:
+        """Check if a state exists."""
         return self._states.get(key) is not None
 
     def get_current_state(self) -> Optional[State]:
+        """Get the currently active state."""
         return self._states.current()
 
     def get_current_state_key(self) -> Optional[str]:
+        """Get the key of the currently active state."""
         return self._states.current_key()
 
     def visible_state_keys(self) -> list[str]:
+        """Get all state keys that should be visible in UI."""
         return self._states.visible_keys(set(self._move_states.movement_only_keys()))
 
     def all_state_keys(self) -> list[str]:
+        """Get all state keys."""
         return self._states.all_keys()
 
     def is_state_protected(self, key: str) -> bool:
+        """Check if a state is protected from deletion."""
         return self._states.is_protected(key)
 
     def is_movement_only_state(self, key: str) -> bool:
+        """Check if a state key is reserved for movement only."""
         return self._move_states.is_movement_only(key)
 
     def get_move_state(self, key: str) -> Optional[MoveState]:
+        """Get a movement state by key."""
         return self._move_states.get(key)
 
     def all_move_state_keys(self) -> list[str]:
+        """Get all movement state keys."""
         return self._move_states.all_keys()
 
     def find_move_states_by_direction(self, direction_slug: str) -> list[MoveState]:
+        """Find all movement states that support the given direction."""
         return self._move_states.find_by_direction(direction_slug)
 
     def get_default_movement_state(self) -> Optional[str]:
+        """Get the default movement state key (usually 'walking')."""
+        # Try to find 'walking' state
         if self.get_state("walking"):
             return "walking"
+        # Fall back to any move state with direction="any"
         for move_state in self._move_states.find_by_direction("any"):
             if self.get_state(move_state.state_key):
                 return move_state.state_key
         return None
 
     def find_state_by_label(self, label_query: str) -> Optional[str]:
+        """Find a state key by searching labels (case-insensitive)."""
         query_lower = label_query.lower().strip()
         for key in self._states.all_keys():
             state = self._states.get(key)
@@ -185,27 +299,46 @@ class StateService:
                 return key
         return None
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Transition Query Methods
+    # ═══════════════════════════════════════════════════════════
+
     def get_transition(self, key: str) -> Optional[Transition]:
+        """Get a transition by key."""
         return self._transition_coordinator.get(key)
 
     def all_transition_keys(self) -> list[str]:
+        """Get all transition keys."""
         return self._transition_coordinator.all_keys()
 
     def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
+        """Find a transition between two states."""
         return self._transition_coordinator.find(from_state, to_state)
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Transition GIF Operations
+    # ═══════════════════════════════════════════════════════════
+
     def get_transition_gif_path(self, transition_key: str) -> Optional[Path]:
+        """Pick a random transition GIF (subfolder first, single file fallback)."""
         return self._transition_gif_repo.pick_random_gif(transition_key)
 
     def list_transition_gif_paths(self, transition_key: str) -> list[Path]:
+        """List all GIF paths for a transition."""
         return self._transition_gif_repo.list_gifs(transition_key)
 
     def add_transition_gif(self, transition_key: str, gif_path: Path) -> bool:
+        """Add a GIF to a transition's multi-GIF collection."""
         resource_id = self._add_gif(self._transition_gif_repo, gif_path, transition_key)
         return resource_id is not None
 
     def remove_transition_gif(self, transition_key: str, filename: str) -> bool:
+        """Remove a specific GIF from a transition's collection."""
         return self._transition_gif_repo.remove_gif(transition_key, filename)
+
+    # ═══════════════════════════════════════════════════════════
+    # Public API - Action State Registration (Phase 1c)
+    # ═══════════════════════════════════════════════════════════
 
     def ensure_action_state(
         self,
@@ -213,6 +346,19 @@ class StateService:
         label: str,
         gif_id: Optional[str] = None,
     ) -> None:
+        """Idempotently register a protected, hidden internal state.
+
+        Used by :class:`ActionService` to put a display state behind a
+        named action (e.g. ``click_action``). The state is:
+
+        - **Protected** so it cannot be deleted by the user.
+        - **Hidden** so it is filtered out of ``visible_state_keys()`` —
+          it must not appear in personality menus, idle picks, or the
+          LLM-facing state list.
+
+        Safe to call after :meth:`initialize`. If the state already
+        exists its ``gif_id`` is synced when *gif_id* is provided.
+        """
         existing = self._states.get(key)
         if existing is None:
             new_state = State(key=key, label=label, name_tag="doro", gif_id=gif_id)
@@ -223,7 +369,17 @@ class StateService:
         self._states.protect(key)
         self._states.hide(key)
 
+    # ═══════════════════════════════════════════════════════════
+    # Public API - State Modification
+    # ═══════════════════════════════════════════════════════════
+
     def update_state(self, key: str, **changes: Any) -> bool:
+        """
+        Update any fields of a state.
+
+        Returns:
+            True if successful, False if state not found
+        """
         state = self._states.get(key)
         if not state:
             return False
@@ -235,6 +391,12 @@ class StateService:
         return True
 
     def update_visual_config(self, key: str, **visual_changes: Any) -> bool:
+        """
+        Update visual configuration for a state.
+
+        Returns:
+            True if successful, False if state not found
+        """
         state = self._states.get(key)
         if not state:
             return False
@@ -246,9 +408,11 @@ class StateService:
         return True
 
     def save_states(self) -> bool:
+        """Save all states to persistent storage."""
         return self._save_states()
 
     def _save_states(self) -> bool:
+        """Internal method to save states."""
         try:
             self._state_repo.save_all(
                 self._states.items(),
@@ -260,10 +424,22 @@ class StateService:
             return False
 
     def _emit_states_modified(self) -> None:
+        """Emit states modified event."""
         if self.on_states_modified:
             self.on_states_modified()
 
+    # ═══════════════════════════════════════════════════════════
+    # Initialization
+    # ═══════════════════════════════════════════════════════════
+
     def initialize(self, default_gif_path: Optional[Path] = None) -> None:
+        """
+        Initialize state system with defaults and load user customizations.
+
+        Args:
+            default_gif_path: Path to default idle GIF
+        """
+        # Create default idle state
         default_gif_id = None
         if default_gif_path and default_gif_path.is_file():
             default_gif_id = self._store_gif(default_gif_path, "idle")
@@ -277,22 +453,38 @@ class StateService:
         self._states.add(idle_state)
         self._states.protect("idle")
 
+        # Load custom states from JSON
         custom_states = self._state_repo.load_all()
         for state in custom_states.values():
             self._states.add(state)
 
+        # Load movement states
         move_states = self._move_repo.load_all()
         for move_state in move_states.values():
             self._move_states.add(move_state)
 
+        # Load transition states
         self._transition_coordinator.load_from_repo()
+
+        # Set initial state
         self._states.set_current("idle")
+
+        # Ensure movement states from movements.json exist
         self._ensure_movement_states()
+
+        # Write initial state list
         self.write_state_list()
 
     def _ensure_movement_states(self) -> None:
+        """Ensure movement states from movements.json exist.
+
+        Entries from MovementRepository are used as defaults — user-customized
+        states loaded from move_states.json take priority.
+        Falls back to hardcoded walking state when no MovementRepository is available.
+        """
         if self._movement_repo:
             for key, entry in self._movement_repo.entries.items():
+                # User customization (move_states.json) wins over movements.json defaults
                 if not self._move_states.get(key):
                     move = MoveState(
                         key=entry.key,
@@ -303,6 +495,7 @@ class StateService:
                     )
                     self._move_states.add(move)
 
+                # Ensure a corresponding display State exists
                 if not self._states.get(entry.state_key):
                     display_state = State(
                         key=entry.state_key,
@@ -312,6 +505,7 @@ class StateService:
                     self._states.add(display_state)
                     self._states.protect(entry.state_key)
         else:
+            # Fallback for tests or when movements.json is unavailable
             walking_key = "walking"
             if not self._move_states.get(walking_key):
                 walk_move = MoveState(
@@ -332,8 +526,27 @@ class StateService:
                 self._states.add(walk_state)
                 self._states.protect(walking_key)
 
+    # ═══════════════════════════════════════════════════════════
+    # State Operations
+    # ═══════════════════════════════════════════════════════════
+
     def set_state(self, key: str, *, force: bool = False) -> bool:
+        """
+        Set current state.
+
+        Args:
+            key: State key to switch to
+            force: If True, bypass transition protection (used by MovementManager)
+
+        Returns:
+            True if successful, False if state not found or rejected
+
+        Protection:
+            - Rejects requests during transitions (unless force=True)
+            - Ensures state integrity during transition animations
+        """
         key = normalize_state_key(key)
+        # Check transition protection
         if self._transition_coordinator.is_active() and not force:
             logger.warning(f"State change rejected: '{key}' (transition in progress)")
             return False
@@ -345,6 +558,7 @@ class StateService:
 
         logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if force else ""))
 
+        # Emit event
         state = self._states.get(key)
         if self.on_state_changed and state:
             event = StateChangeEvent(old_key, key, state)
@@ -352,27 +566,99 @@ class StateService:
 
         return True
 
+    # ═══════════════════════════════════════════════════════════
+    # Transition Lock Management
+    # ═══════════════════════════════════════════════════════════
+
     def begin_transition(self) -> bool:
+        """
+        Begin a transition animation, locking state changes.
+
+        Prevents non-forced state changes during transition playback.
+        Only forced state changes (force=True) can bypass this lock.
+
+        Returns:
+            True if lock acquired, False if already transitioning
+
+        Usage:
+            # Before playing transition GIF
+            if service.begin_transition():
+                play_transition_gif()
+                # ... wait for completion ...
+                service.end_transition()
+        """
         return self._transition_coordinator.begin()
 
     def end_transition(self) -> bool:
+        """
+        End a transition animation, unlocking state changes.
+
+        Allows normal state changes to proceed after transition playback.
+
+        Returns:
+            True if lock released, False if no transition was in progress
+
+        Usage:
+            # After transition GIF completes
+            service.end_transition()
+        """
         return self._transition_coordinator.end()
 
     def is_transitioning(self) -> bool:
+        """
+        Check if a transition is currently in progress.
+
+        Returns:
+            True if transition lock is active, False otherwise
+        """
         return self._transition_coordinator.is_active()
 
     def parse_state_from_action(self, action: str) -> Optional[str]:
+        """
+        Parse state key from action token in LLM responses.
+
+        Handles various formats:
+            (happy) -> "happy"
+            (STATE:stand) -> "stand"
+            (Mode: idle) -> "idle"
+            (狀態:walking) -> "walking"
+
+        Also handles:
+            - Action aliases (e.g., "sleep" -> "idle")
+            - Multiple normalized forms (spaces, underscores)
+            - Label matching
+            - Chinese prefixes (狀態, 模式)
+
+        Args:
+            action: Raw action token string from LLM response
+
+        Returns:
+            State key if valid non-movement state exists, None otherwise
+        """
         return self._state_parser.parse(action, self)
 
     def add_state(self, key: str, label: str, copy_from: Optional[str] = None) -> Optional[State]:
+        """
+        Create a new custom state.
+
+        Args:
+            key: Unique state key
+            label: Display label
+            copy_from: Optional state key to copy settings from
+
+        Returns:
+            The created State or None if key already exists
+        """
         if self._states.get(key):
             logger.warning(f"Cannot add state '{key}': already exists")
             return None
 
+        # Check if movement-only
         if self._move_states.is_movement_only(key):
             logger.warning(f"Cannot add state '{key}': reserved for movement")
             return None
 
+        # Create new state
         if copy_from:
             source = self._states.get(copy_from)
             if source:
@@ -405,12 +691,19 @@ class StateService:
         return self._states.get(key)
 
     def remove_state(self, key: str) -> bool:
+        """
+        Remove a custom state.
+
+        Returns:
+            True if removed, False if protected or not found
+        """
         if not self._states.remove(key):
             logger.warning(f"Cannot remove state '{key}': protected or not found")
             return False
 
         logger.info(f"Removed state '{key}'")
 
+        # Delete all associated GIFs (single file + subfolder)
         self._gif_repo.delete_all_gifs(key)
         logger.debug(f"Deleted GIFs for removed state '{key}'")
 
@@ -426,6 +719,12 @@ class StateService:
         return True
 
     def update_state_visual(self, key: str, **visual_changes: Any) -> Optional[State]:
+        """
+        Update visual config for a state.
+
+        Returns:
+            Updated state or None if not found
+        """
         state = self._states.get(key)
         if not state:
             return None
@@ -437,13 +736,24 @@ class StateService:
             set(self._states.protected_keys()),
         )
 
+        # If this is current state, emit change event
         if self._states.current_key() == normalize_state_key(key) and self.on_state_changed:
             event = StateChangeEvent(key, updated.key, updated)
             self.on_state_changed(event)
 
         return updated
 
+    # ═══════════════════════════════════════════════════════════
+    # GIF Management
+    # ═══════════════════════════════════════════════════════════
+
     def set_gif(self, state_key: str, gif_path: Path) -> bool:
+        """
+        Set GIF for a state.
+
+        Returns:
+            True if successful
+        """
         state = self._states.get(state_key)
         if not state:
             return False
@@ -455,11 +765,13 @@ class StateService:
         updated = state.with_changes(gif_id=resource_id)
         self._states.add(updated)
 
+        # Save to persistent storage
         self._state_repo.save_all(
             self._states.items(),
             set(self._states.protected_keys()),
         )
 
+        # Emit change if current
         if self._states.current_key() == normalize_state_key(state_key) and self.on_state_changed:
             event = StateChangeEvent(state_key, updated.key, updated)
             self.on_state_changed(event)
@@ -467,10 +779,24 @@ class StateService:
         return True
 
     def get_gif_id(self, state_key: str) -> Optional[str]:
+        """
+        Get GIF resource ID for a state.
+
+        Returns:
+            Resource ID or None
+        """
         state = self._states.get(state_key)
         return state.gif_id if state else None
 
     def add_gif(self, state_key: str, gif_path: Path) -> bool:
+        """
+        Add a GIF to a state's multi-GIF collection (subfolder).
+
+        Unlike set_gif(), this does not replace existing GIFs.
+
+        Returns:
+            True if successful
+        """
         state = self._states.get(state_key)
         if not state:
             return False
@@ -479,6 +805,7 @@ class StateService:
         if not resource_id:
             return False
 
+        # Always update gif_id — handles both initial set and stale ref after migration
         updated = state.with_changes(gif_id=resource_id)
         self._states.add(updated)
         self._state_repo.save_all(
@@ -489,13 +816,35 @@ class StateService:
         return True
 
     def list_gif_paths(self, state_key: str) -> list[Path]:
+        """
+        List all GIF paths for a state (subfolder contents).
+
+        Returns:
+            List of absolute paths (empty if no subfolder)
+        """
         return self._gif_repo.list_gifs(state_key)
 
     def remove_gif(self, state_key: str, filename: str) -> bool:
+        """
+        Remove a specific GIF from a state's multi-GIF collection.
+
+        Returns:
+            True if removed
+        """
         return self._gif_repo.remove_gif(state_key, filename)
 
     def delete_all_gifs(self, state_key: str) -> bool:
+        """
+        Delete all GIFs for a state (single file + subfolder).
+
+        Returns:
+            True if any files were deleted
+        """
         return self._gif_repo.delete_all_gifs(state_key)
+
+    # ═══════════════════════════════════════════════════════════
+    # Movement State Operations
+    # ═══════════════════════════════════════════════════════════
 
     def add_move_state(
         self,
@@ -505,6 +854,7 @@ class StateService:
         distance: Optional[float] = None,
         speed: str = "med",
     ) -> MoveState:
+        """Create or update a movement state."""
         move_state = MoveState(
             key=key,
             state_key=state_key,
@@ -522,6 +872,7 @@ class StateService:
         return stored if stored is not None else move_state
 
     def remove_move_state(self, key: str) -> bool:
+        """Remove a movement state."""
         if not self._move_states.remove(key):
             return False
 
@@ -536,6 +887,7 @@ class StateService:
         self,
         transition: Transition,
     ) -> bool:
+        """Create or update a transition."""
         self._transition_coordinator.add(transition)
         if self._transition_repo:
             try:
@@ -546,9 +898,12 @@ class StateService:
         return True
 
     def remove_transition(self, key: str) -> bool:
+        """Remove a transition state and its GIF files."""
         if not self._transition_coordinator.remove(key):
             return False
 
+        # Persist removal first so the transition stays deleted even if
+        # GIF cleanup fails (e.g. file-locked on Windows).
         if self._transition_repo:
             try:
                 self._transition_repo.save_all(self._transition_coordinator.get_all_items())
@@ -556,6 +911,7 @@ class StateService:
                 logger.error(f"Failed to save transitions: {e}")
                 return False
 
+        # Clean up GIF files (best-effort)
         try:
             self._transition_gif_repo.delete_all_gifs(key)
         except Exception as e:
@@ -564,21 +920,36 @@ class StateService:
         return True
 
     def find_move_state_by_direction(self, direction: str) -> Optional[str]:
+        """
+        Find a random movement state matching direction.
+
+        Returns:
+            State key to use for this movement
+        """
         matches = self._move_states.find_by_direction(direction)
         if not matches:
             return None
 
+        # Pick random match
         move_state = random.choice(matches)
 
+        # Verify display state exists
         if self._states.get(move_state.state_key):
             return move_state.state_key
 
         return None
 
+    # ═══════════════════════════════════════════════════════════
+    # Persistence
+    # ═══════════════════════════════════════════════════════════
+
     def write_state_list(self) -> str:
+        """Write state summary for LLM context."""
+        # Collect GIF path and count information
         gif_paths: dict[str, Optional[Path]] = {}
         gif_counts: dict[str, int] = {}
         for key, state in self._states.items().items():
+            # Check multi-GIF subfolder first
             multi_gifs = self._gif_repo.list_gifs(key)
             if multi_gifs:
                 gif_paths[key] = multi_gifs[0]
@@ -587,6 +958,7 @@ class StateService:
                 gif_paths[key] = self._gif_repo.get_path(state.gif_id)
                 gif_counts[key] = 1 if gif_paths[key] else 0
             else:
+                # Fallback: check movement animation paths
                 if self._move_states.is_movement_only(key):
                     anim_path = None
                     if self._movement_repo:
