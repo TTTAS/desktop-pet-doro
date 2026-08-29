@@ -41,6 +41,8 @@
   - `state_parser.py`：解析狀態設定檔
   - `transition_coordinator.py`、`transition_player.py`：換裝動畫的排程與播放
 - 換裝／GIF 管理視窗：`doro_app/ui/dialogs/state/`
+- 精靈檔是 QMovie 動態圖（`.gif` / `.apng` / `.webp`），不是第二套 renderer。
+- 狀態 key 統一 `normalize_state_key()`（strip + lowercase）。重構計畫：`docs/state-refactor-plan.md`。
 - 小提醒：`__init__.py` 對外公開了較多名字（service＋models＋repository）。真正的「門」是
   `StateService`；models（`State`、`Transition`…）是外面 UI 真的會用到的資料型別，repository
   則是 `bootstrap.py` 組裝時要用的——所以不是亂公開，只是入口沒被特別標出來。找功能時認準

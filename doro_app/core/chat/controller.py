@@ -244,6 +244,16 @@ class ChatController(QtCore.QObject):
             self._handle_worker_error(error_message)
             return
 
+        # A 200 response can still carry no usable text (empty content, or
+        # the parser found nothing) — perform_chat_request returns
+        # (None, None) then. Treat it as a failed request instead of calling
+        # len() on None, which would crash this slot and leave _inflight
+        # stuck until the finished-signal fallback fires.
+        if not assistant_text:
+            logger.warning("Worker returned empty assistant text; treating as no-response")
+            self._handle_worker_error("No assistant response returned.")
+            return
+
         logger.info(f"Worker finished successfully, response length: {len(assistant_text)}")
 
         # Validate response

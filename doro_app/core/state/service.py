@@ -22,6 +22,7 @@ from .models import (
     StateChangeEvent,
     StateCollection,
     Transition,
+    normalize_state_key,
 )
 from .repository import (
     GifRepository,
@@ -80,6 +81,10 @@ class StateService:
         # Private - encapsulated collections
         self._states = StateCollection()
         self._move_states = MoveStateCollection()
+
+        # Last intended state key. Equals the committed key unless a
+        # request arrived while the transition lock was held (queued).
+        self._requested_key: Optional[str] = None
 
         # Event callbacks (public - set by Window or controller)
         self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
@@ -248,11 +253,11 @@ class StateService:
 
     def get_current_state_key(self) -> Optional[str]:
         """Get the key of the currently active state."""
-        return self._states._current_key
+        return self._states.current_key()
 
     def visible_state_keys(self) -> list[str]:
         """Get all state keys that should be visible in UI."""
-        return self._states.visible_keys(self._move_states._movement_only_keys)
+        return self._states.visible_keys(set(self._move_states.movement_only_keys()))
 
     def all_state_keys(self) -> list[str]:
         """Get all state keys."""
@@ -413,7 +418,10 @@ class StateService:
     def _save_states(self) -> bool:
         """Internal method to save states."""
         try:
-            self._state_repo.save_all(self._states._items, self._states._protected_keys)
+            self._state_repo.save_all(
+                self._states.items(),
+                set(self._states.protected_keys()),
+            )
             return True
         except ConfigSaveError as e:
             logger.error(f"Failed to save states: {e}")
@@ -464,6 +472,7 @@ class StateService:
 
         # Set initial state
         self._states.set_current("idle")
+        self._requested_key = self._states.current_key()
 
         # Ensure movement states from movements.json exist
         self._ensure_movement_states()
@@ -523,43 +532,98 @@ class StateService:
                 self._states.protect(walking_key)
 
     # ═══════════════════════════════════════════════════════════
-    # State Operations
+    # State Operations - request / commit
+    #
+    # requested_key = last state we intended to reach.
+    # committed_key = state actually current (the sprite should match it).
+    # They differ only while the transition lock is held: a non-forced
+    # request is queued (last write wins) and applied when the lock is
+    # released or expires. force=True / commit_state() write through the
+    # lock immediately.
     # ═══════════════════════════════════════════════════════════
+
+    def get_committed_state_key(self) -> Optional[str]:
+        """Key that is actually current (the sprite should match this)."""
+        return self._states.current_key()
+
+    def get_requested_state_key(self) -> Optional[str]:
+        """Last intended key. Equals committed unless a request is queued."""
+        return self._requested_key
 
     def set_state(self, key: str, *, force: bool = False) -> bool:
         """
-        Set current state.
+        Set current state. Thin wrapper around :meth:`request_state`.
 
         Args:
             key: State key to switch to
             force: If True, bypass transition protection (used by MovementManager)
 
         Returns:
-            True if successful, False if state not found or rejected
-
-        Protection:
-            - Rejects requests during transitions (unless force=True)
-            - Ensures state integrity during transition animations
+            True if committed now, False if state not found or queued
         """
-        # Check transition protection
-        if self._transition_coordinator.is_active() and not force:
-            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+        return self.request_state(key, force=force)
+
+    def request_state(self, key: str, *, force: bool = False) -> bool:
+        """
+        Intend a state change.
+
+        Idle / expired lock -> commit now (returns True).
+        Active lock -> store as requested_key (last write wins), returns False.
+        force=True -> commit now through the lock, replacing any queued request.
+        Unknown key is never queued.
+        """
+        key = normalize_state_key(key)
+        if self._states.get(key) is None:
+            logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
-        old_key = self._states._current_key
+        if force:
+            return self.commit_state(key, forced=True)
+
+        self._release_expired_lock()
+        if self._transition_coordinator.is_active():
+            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+            self._requested_key = key
+            return False
+
+        return self.commit_state(key)
+
+    def commit_state(self, key: str, *, forced: bool = False) -> bool:
+        """Write the committed key now, ignoring the transition lock."""
+        key = normalize_state_key(key)
+        old_key = self._states.current_key()
         if not self._states.set_current(key):
             logger.warning(f"Failed to set state: '{key}' not found")
             return False
 
-        logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if force else ""))
+        self._requested_key = key
+        logger.info(
+            f"State changed: {old_key} -> {key}" + (" [forced]" if forced else "")
+        )
 
-        # Emit event
         state = self._states.get(key)
         if self.on_state_changed and state:
             event = StateChangeEvent(old_key, key, state)
             self.on_state_changed(event)
 
         return True
+
+    def _apply_pending_request(self) -> None:
+        """Commit the queued request, if it differs from the committed key."""
+        pending = self._requested_key
+        committed = self._states.current_key()
+        if pending is None or pending == committed:
+            return
+        if self._states.get(pending) is None:
+            self._requested_key = committed
+            return
+        logger.debug(f"Applying queued state request: {committed} -> {pending}")
+        self.commit_state(pending)
+
+    def _release_expired_lock(self) -> None:
+        """Drain the queue when the transition lock has timed out."""
+        if self._transition_coordinator.expire_if_needed():
+            self._apply_pending_request()
 
     # ═══════════════════════════════════════════════════════════
     # Transition Lock Management
@@ -571,41 +635,40 @@ class StateService:
 
         Prevents non-forced state changes during transition playback.
         Only forced state changes (force=True) can bypass this lock.
+        An expired lock is released (and its queued request applied) first.
 
         Returns:
             True if lock acquired, False if already transitioning
-
-        Usage:
-            # Before playing transition GIF
-            if service.begin_transition():
-                play_transition_gif()
-                # ... wait for completion ...
-                service.end_transition()
         """
+        self._release_expired_lock()
         return self._transition_coordinator.begin()
 
     def end_transition(self) -> bool:
         """
         End a transition animation, unlocking state changes.
 
-        Allows normal state changes to proceed after transition playback.
+        Applies the last queued request (if any) once the lock is released.
 
         Returns:
             True if lock released, False if no transition was in progress
-
-        Usage:
-            # After transition GIF completes
-            service.end_transition()
         """
-        return self._transition_coordinator.end()
+        released = self._transition_coordinator.end()
+        if released:
+            self._apply_pending_request()
+        else:
+            self._release_expired_lock()
+        return released
 
     def is_transitioning(self) -> bool:
         """
         Check if a transition is currently in progress.
 
+        Expired locks are treated as inactive (and drain their queue).
+
         Returns:
             True if transition lock is active, False otherwise
         """
+        self._release_expired_lock()
         return self._transition_coordinator.is_active()
 
     def parse_state_from_action(self, action: str) -> Optional[str]:
@@ -674,13 +737,16 @@ class StateService:
             logger.info(f"Added state '{key}'")
 
         self._states.add(new_state)
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self._state_repo.save_all(
+            self._states.items(),
+            set(self._states.protected_keys()),
+        )
         self.write_state_list()
 
         if self.on_states_modified:
             self.on_states_modified()
 
-        return new_state
+        return self._states.get(key)
 
     def remove_state(self, key: str) -> bool:
         """
@@ -689,9 +755,6 @@ class StateService:
         Returns:
             True if removed, False if protected or not found
         """
-        # Get state before removing
-        state = self._states.get(key)
-
         if not self._states.remove(key):
             logger.warning(f"Cannot remove state '{key}': protected or not found")
             return False
@@ -702,7 +765,10 @@ class StateService:
         self._gif_repo.delete_all_gifs(key)
         logger.debug(f"Deleted GIFs for removed state '{key}'")
 
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self._state_repo.save_all(
+            self._states.items(),
+            set(self._states.protected_keys()),
+        )
         self.write_state_list()
 
         if self.on_states_modified:
@@ -723,11 +789,14 @@ class StateService:
 
         updated = state.with_visual(**visual_changes)
         self._states.add(updated)
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self._state_repo.save_all(
+            self._states.items(),
+            set(self._states.protected_keys()),
+        )
 
         # If this is current state, emit change event
-        if self._states._current_key == key and self.on_state_changed:
-            event = StateChangeEvent(key, key, updated)
+        if self._states.current_key() == normalize_state_key(key) and self.on_state_changed:
+            event = StateChangeEvent(key, updated.key, updated)
             self.on_state_changed(event)
 
         return updated
@@ -755,11 +824,14 @@ class StateService:
         self._states.add(updated)
 
         # Save to persistent storage
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self._state_repo.save_all(
+            self._states.items(),
+            set(self._states.protected_keys()),
+        )
 
         # Emit change if current
-        if self._states._current_key == state_key and self.on_state_changed:
-            event = StateChangeEvent(state_key, state_key, updated)
+        if self._states.current_key() == normalize_state_key(state_key) and self.on_state_changed:
+            event = StateChangeEvent(state_key, updated.key, updated)
             self.on_state_changed(event)
 
         return True
@@ -794,7 +866,10 @@ class StateService:
         # Always update gif_id — handles both initial set and stale ref after migration
         updated = state.with_changes(gif_id=resource_id)
         self._states.add(updated)
-        self._state_repo.save_all(self._states._items, self._states._protected_keys)
+        self._state_repo.save_all(
+            self._states.items(),
+            set(self._states.protected_keys()),
+        )
 
         return True
 
@@ -847,11 +922,12 @@ class StateService:
         )
         self._move_states.add(move_state)
         try:
-            self._move_repo.save_all(self._move_states._items)
+            self._move_repo.save_all(self._move_states.items())
         except ConfigSaveError as e:
             logger.error(f"Failed to save move states: {e}")
         self.write_state_list()
-        return move_state
+        stored = self._move_states.get(key)
+        return stored if stored is not None else move_state
 
     def remove_move_state(self, key: str) -> bool:
         """Remove a movement state."""
@@ -859,7 +935,7 @@ class StateService:
             return False
 
         try:
-            self._move_repo.save_all(self._move_states._items)
+            self._move_repo.save_all(self._move_states.items())
         except ConfigSaveError as e:
             logger.error(f"Failed to save move states: {e}")
         self.write_state_list()
@@ -930,7 +1006,7 @@ class StateService:
         # Collect GIF path and count information
         gif_paths: dict[str, Optional[Path]] = {}
         gif_counts: dict[str, int] = {}
-        for key, state in self._states._items.items():
+        for key, state in self._states.items().items():
             # Check multi-GIF subfolder first
             multi_gifs = self._gif_repo.list_gifs(key)
             if multi_gifs:
@@ -957,9 +1033,9 @@ class StateService:
                 gif_counts[key] = 0
 
         return self._state_list_writer.write(
-            self._states._items,
-            self._move_states._items,
+            self._states.items(),
+            self._move_states.items(),
             gif_paths,
-            self._move_states._movement_only_keys,
+            set(self._move_states.movement_only_keys()),
             gif_counts=gif_counts,
         )
