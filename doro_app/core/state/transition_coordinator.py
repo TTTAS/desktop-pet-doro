@@ -7,13 +7,19 @@ This coordinator focuses solely on transition animations and locking.
 
 from __future__ import annotations
 
-from typing import Optional
+import time
+from typing import Callable, Optional
 
 from ...utils.logger import get_logger
 from .models import Transition, TransitionCollection
 from .repository import TransitionRepository
 
 logger = get_logger(__name__)
+
+# Fallback so a missed end() cannot pin is_transitioning forever.
+# Transition GIFs in this project are short; 5s is longer than one loop
+# plus a generous buffer. Callers may pass a tighter value.
+DEFAULT_LOCK_TIMEOUT_SECONDS = 5.0
 
 
 class TransitionCoordinator:
@@ -23,6 +29,7 @@ class TransitionCoordinator:
     Responsibilities:
     - Find appropriate transition animations
     - Manage transition lock (prevent concurrent state changes)
+    - Expire the lock if end() is never called
     - Track transition state
     - Load/store transitions from repository
 
@@ -32,16 +39,28 @@ class TransitionCoordinator:
     - Know about Qt or UI
     """
 
-    def __init__(self, transition_repo: Optional[TransitionRepository]):
+    def __init__(
+        self,
+        transition_repo: Optional[TransitionRepository],
+        *,
+        lock_timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         """
         Initialize TransitionCoordinator.
 
         Args:
             transition_repo: Repository for transition persistence (optional)
+            lock_timeout_seconds: Seconds after begin() before the lock
+                auto-releases. Prevents a missed end() from freezing the pet.
+            clock: Monotonic clock used for the timeout (injectable in tests)
         """
         self._transition_repo = transition_repo
         self._transitions = TransitionCollection()
         self._is_transitioning = False
+        self._lock_timeout_seconds = lock_timeout_seconds
+        self._clock = clock
+        self._lock_acquired_at: Optional[float] = None
 
     def find(self, from_state: str, to_state: str) -> Optional[Transition]:
         """
@@ -83,6 +102,8 @@ class TransitionCoordinator:
 
         Prevents non-forced state changes during transition playback.
         Only forced state changes (force=True) can bypass this lock.
+        An expired lock is released first so a missed end() cannot block
+        the next transition forever.
 
         Returns:
             True if lock acquired, False if already transitioning
@@ -94,11 +115,13 @@ class TransitionCoordinator:
                 # ... wait for completion ...
                 coordinator.end()
         """
+        self.expire_if_needed()
         if self._is_transitioning:
             logger.warning("Transition already in progress, cannot begin new transition")
             return False
 
         self._is_transitioning = True
+        self._lock_acquired_at = self._clock()
         logger.debug("Transition lock acquired")
         return True
 
@@ -119,18 +142,48 @@ class TransitionCoordinator:
             logger.warning("No transition in progress, cannot end")
             return False
 
-        self._is_transitioning = False
+        self._release_lock()
         logger.debug("Transition lock released")
+        return True
+
+    def expire_if_needed(self) -> bool:
+        """
+        Release the lock if it has been held longer than the timeout.
+
+        Returns:
+            True if the lock was expired and released, False otherwise
+        """
+        if not self._is_transitioning:
+            return False
+        if self._lock_acquired_at is None:
+            return False
+        elapsed = self._clock() - self._lock_acquired_at
+        if elapsed < self._lock_timeout_seconds:
+            return False
+
+        logger.warning(
+            "Transition lock expired after %.2fs (timeout=%.2fs)",
+            elapsed,
+            self._lock_timeout_seconds,
+        )
+        self._release_lock()
         return True
 
     def is_active(self) -> bool:
         """
         Check if transition is in progress.
 
+        Expired locks are treated as inactive.
+
         Returns:
             True if transition lock is active
         """
+        self.expire_if_needed()
         return self._is_transitioning
+
+    def _release_lock(self) -> None:
+        self._is_transitioning = False
+        self._lock_acquired_at = None
 
     def load_from_repo(self) -> None:
         """
