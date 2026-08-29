@@ -20,9 +20,6 @@ from .repository import (
 )
 from .service import StateService
 from .state_parser import StateParser
-from .request_commit import install_request_commit
-
-install_request_commit(StateService)
 
 __all__ = [
     "State",

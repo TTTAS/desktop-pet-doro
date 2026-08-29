@@ -1,8 +1,9 @@
 # State refactor plan (doro-exp-)
 
-**Branch:** `refactor/state-collections-and-gif-renderer`
-**Does not touch:** `master` until an explicit PR
-**Stack:** Python + PySide6. No Godot, no Live2D, no third-party pet modules.
+**Branch:** `refactor/state-collections-and-gif-renderer`  
+**Does not touch:** `master` until an explicit PR  
+**Desktop pet UI:** Python + PySide6. No Godot, no Live2D.
+a11y / pynput / chat APIs stay; this refactor does not remove them.
 
 Sprites are **QMovie animated images**: `.gif`, `.apng`, `.webp`.
 That is one renderer backend, not a second one. WebP does not justify
@@ -24,9 +25,9 @@ keeping the `_renderers` / `switch_renderer` registry.
 Renderer flatten is **not** in A. Class names stay `Gif*` for now;
 docs call them "QMovie animated images".
 
-## PR B — request / commit + lock timeout (this branch, landing)
+## PR B — request / commit + lock timeout (this branch, done)
 
-- `requested_key` vs `committed_key` on `StateService`
+- `requested_key` vs `committed_key` on `StateService` (inlined in `service.py`)
 - `set_state` remains a thin wrapper around `request_state`
 - Transition lock expires after 5s (injectable clock)
 - `end_transition()` / lock expiry apply the last queued request
