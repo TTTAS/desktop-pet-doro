@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .timeline import SpeakStep, StateStep, Timeline, WaitStep
+from .timeline import RestoreStep, SpeakStep, StateStep, Timeline, WaitStep
 
 # Idle must not cancel a click or an in-flight chat reaction.
 PRIORITY_IDLE = 0
@@ -30,8 +30,9 @@ class ReactionCatalog:
     def register_defaults(self) -> None:
         """Short built-ins used by tests and later wiring.
 
-        Not loaded from disk. Click is a state flash + wait; idle is a
-        placeholder speak so the catalog is never empty.
+        Not loaded from disk. Click flashes the protected ``click_action``
+        state, waits a beat, then restores the key captured at play start.
+        Idle is a no-op speak so the catalog is never empty.
         """
         self.register(
             Timeline(
@@ -40,6 +41,7 @@ class ReactionCatalog:
                 steps=(
                     StateStep("click_action", force=True),
                     WaitStep(0.4),
+                    RestoreStep(),
                 ),
             )
         )

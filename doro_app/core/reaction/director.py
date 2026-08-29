@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Callable, Optional, Protocol
 
-from .timeline import MoveStep, SpeakStep, StateStep, Step, Timeline, WaitStep
+from .timeline import (
+    MoveStep,
+    RestoreStep,
+    SpeakStep,
+    StateStep,
+    Step,
+    Timeline,
+    WaitStep,
+)
 
 
 class StatePort(Protocol):
@@ -23,11 +31,16 @@ class MovePort(Protocol):
     def __call__(self, direction: str, distance: float) -> None: ...
 
 
+class CurrentKeyPort(Protocol):
+    def __call__(self) -> Optional[str]: ...
+
+
 class ReactionDirector:
     """Plays a timeline through injected ports.
 
     ``schedule(delay_ms, callback)`` is how WaitStep yields. Production
     can pass ``QTimer.singleShot``; tests pass a manual queue.
+    ``current_key`` is optional and only used by :class:`RestoreStep`.
     """
 
     def __init__(
@@ -37,14 +50,17 @@ class ReactionDirector:
         speak: Callable[[str], None],
         schedule: SchedulePort,
         move: Optional[Callable[[str, float], None]] = None,
+        current_key: Optional[Callable[[], Optional[str]]] = None,
     ) -> None:
         self._request_state = request_state
         self._speak = speak
         self._schedule = schedule
         self._move = move
+        self._current_key = current_key
         self._current: Optional[Timeline] = None
         self._index: int = 0
         self._generation: int = 0
+        self._restore_key: Optional[str] = None
 
     @property
     def is_playing(self) -> bool:
@@ -66,6 +82,7 @@ class ReactionDirector:
         self._current = timeline
         self._index = 0
         self._generation += 1
+        self._restore_key = self._current_key() if self._current_key is not None else None
         self._run_next(self._generation)
         return True
 
@@ -76,6 +93,7 @@ class ReactionDirector:
         self._generation += 1
         self._current = None
         self._index = 0
+        self._restore_key = None
 
     def _run_next(self, generation: int) -> None:
         if generation != self._generation or self._current is None:
@@ -83,6 +101,7 @@ class ReactionDirector:
         if self._index >= len(self._current.steps):
             self._current = None
             self._index = 0
+            self._restore_key = None
             return
 
         step = self._current.steps[self._index]
@@ -102,6 +121,11 @@ class ReactionDirector:
         if isinstance(step, MoveStep):
             if self._move is not None:
                 self._move(step.direction, step.distance)
+            self._run_next(generation)
+            return
+        if isinstance(step, RestoreStep):
+            if self._restore_key:
+                self._request_state(self._restore_key, force=step.force)
             self._run_next(generation)
             return
         if isinstance(step, WaitStep):

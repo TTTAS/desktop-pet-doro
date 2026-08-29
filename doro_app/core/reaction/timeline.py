@@ -40,7 +40,18 @@ class MoveStep:
     distance: float = 0.0
 
 
-Step = Union[StateStep, WaitStep, SpeakStep, MoveStep]
+@dataclass(frozen=True)
+class RestoreStep:
+    """Return to the committed key captured when the timeline started.
+
+    Skipped if the director was built without a ``current_key`` port,
+    or if that port returned ``None`` at play start.
+    """
+
+    force: bool = True
+
+
+Step = Union[StateStep, WaitStep, SpeakStep, MoveStep, RestoreStep]
 
 
 @dataclass(frozen=True)
