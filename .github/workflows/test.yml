@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Save Actions minutes: PRs and claude/** pushes run the cheap
+        # Linux-only matrix (1x multiplier). The full cross-platform matrix
+        # (Windows 2x, macOS 10x) runs only on pushes to main/master.
+        os: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) && fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
