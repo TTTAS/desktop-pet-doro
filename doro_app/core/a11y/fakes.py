@@ -46,7 +46,10 @@ class FakeA11yBackend:
         return list(self.elements)
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: Optional[int] = None,
     ) -> bool:
         self.invoke_calls.append((int(x), int(y)))
         self.invoke_hwnds.append(hwnd)

@@ -12,8 +12,14 @@ from doro_app.core.a11y.models import A11yElement
 
 def _el(role, name="x", value=None, is_password=False):
     return A11yElement(
-        role=role, name=name, x=0, y=0, width=10, height=10,
-        value=value, is_password=is_password,
+        role=role,
+        name=name,
+        x=0,
+        y=0,
+        width=10,
+        height=10,
+        value=value,
+        is_password=is_password,
     )
 
 
@@ -24,7 +30,16 @@ class TestFilterElements:
         assert [e.role for e in kept] == ["button", "link"]
 
     def test_keeps_all_interactable_roles(self):
-        roles = ["button", "link", "input", "menuitem", "combobox", "checkbox", "radiobutton", "tab"]
+        roles = [
+            "button",
+            "link",
+            "input",
+            "menuitem",
+            "combobox",
+            "checkbox",
+            "radiobutton",
+            "tab",
+        ]
         kept = filter_elements([_el(r) for r in roles])
         assert {e.role for e in kept} == set(roles)
 
@@ -52,6 +67,7 @@ class TestFilterElements:
 
     def test_password_still_redacted_when_sharing_enabled(self):
         from doro_app.core.a11y.filters import REDACTED_VALUE
+
         el = _el("input", name="pwd", value="hunter2", is_password=True)
         kept = filter_elements([el], share_input_values=True)
         assert kept[0].value == REDACTED_VALUE

@@ -741,7 +741,12 @@ class StateListWriter:
 
         return output.strip()
 
-    def _gif_summary(self, state_key: str, gif_paths: dict[str, Optional[Path]], gif_counts: Optional[dict[str, int]] = None) -> str:
+    def _gif_summary(
+        self,
+        state_key: str,
+        gif_paths: dict[str, Optional[Path]],
+        gif_counts: Optional[dict[str, int]] = None,
+    ) -> str:
         """Generate GIF summary string."""
         count = (gif_counts or {}).get(state_key, 0)
         if count > 1:

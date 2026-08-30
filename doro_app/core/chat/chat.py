@@ -14,9 +14,7 @@ logger = get_logger(__name__)
 def build_messages_for_mistral_instruct(system_prompt: str, user_text: str) -> list[dict]:
     """Fold system content into first user message for Mistral instruct-compatible backends."""
     first_user = f"<<SYS>>\n{system_prompt.strip()}\n<</SYS>>\n\n{user_text.strip()}"
-    return [
-        {"role": "user", "content": first_user}
-    ]
+    return [{"role": "user", "content": first_user}]
 
 
 def resolve_chat_endpoint(server_url: str, endpoint_path: str) -> str:

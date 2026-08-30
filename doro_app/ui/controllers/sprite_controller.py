@@ -64,10 +64,7 @@ class SpriteController(QtCore.QObject):
         """
         if renderer_type not in self._renderers:
             available = ", ".join(sorted(self._renderers))
-            raise ValueError(
-                f"Unknown renderer type {renderer_type!r}. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"Unknown renderer type {renderer_type!r}. " f"Available: {available}")
         if self._renderer.renderer_type == renderer_type:
             return
         # Clean up outgoing GIF movie signals to prevent phantom repaints

@@ -28,7 +28,10 @@ class A11yBackendPort(Protocol):
         """
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: Optional[int] = None,
     ) -> bool:
         """Fire the UIA InvokePattern on the element under (x, y).
 

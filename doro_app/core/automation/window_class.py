@@ -97,13 +97,17 @@ def _resolve_hwnd_at_win32(x: int, y: int):  # pragma: no cover - needs Windows
         # declared so it's passed by value correctly.
         user32.GetDesktopWindow.restype = wintypes.HWND
         user32.ChildWindowFromPointEx.argtypes = [
-            wintypes.HWND, wintypes.POINT, wintypes.UINT,
+            wintypes.HWND,
+            wintypes.POINT,
+            wintypes.UINT,
         ]
         user32.ChildWindowFromPointEx.restype = wintypes.HWND
         user32.WindowFromPoint.argtypes = [wintypes.POINT]
         user32.WindowFromPoint.restype = wintypes.HWND
         user32.GetClassNameW.argtypes = [
-            wintypes.HWND, wintypes.LPWSTR, ctypes.c_int,
+            wintypes.HWND,
+            wintypes.LPWSTR,
+            ctypes.c_int,
         ]
         user32.GetClassNameW.restype = ctypes.c_int
 
@@ -150,7 +154,9 @@ def _read_handle_at_win32(x: int, y: int) -> Optional[int]:  # pragma: no cover 
         return None
 
 
-def _read_window_class_macos(x: int, y: int) -> Optional[str]:  # pragma: no cover - not on dev target
+def _read_window_class_macos(
+    x: int, y: int
+) -> Optional[str]:  # pragma: no cover - not on dev target
     # Out of scope for Phase 1c — return None so the allowlist check refuses.
     return None
 
@@ -234,7 +240,8 @@ def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - n
         # Explicit HWND argtype — the default c_int conversion truncates
         # 64-bit handle values.
         user32.GetWindowThreadProcessId.argtypes = [
-            wintypes.HWND, ctypes.POINTER(wintypes.DWORD),
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
         ]
         user32.GetWindowThreadProcessId.restype = wintypes.DWORD
         pid = wintypes.DWORD(0)
@@ -244,7 +251,9 @@ def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - n
         return None
 
 
-def _window_class_for_handle_win32(handle: int) -> Optional[str]:  # pragma: no cover - needs Windows
+def _window_class_for_handle_win32(
+    handle: int,
+) -> Optional[str]:  # pragma: no cover - needs Windows
     try:
         import ctypes
         from ctypes import wintypes
@@ -256,7 +265,9 @@ def _window_class_for_handle_win32(handle: int) -> Optional[str]:  # pragma: no 
         # caches the function object, but this helper must not depend on
         # the other path having run first.
         user32.GetClassNameW.argtypes = [
-            wintypes.HWND, wintypes.LPWSTR, ctypes.c_int,
+            wintypes.HWND,
+            wintypes.LPWSTR,
+            ctypes.c_int,
         ]
         user32.GetClassNameW.restype = ctypes.c_int
         buf = ctypes.create_unicode_buffer(256)

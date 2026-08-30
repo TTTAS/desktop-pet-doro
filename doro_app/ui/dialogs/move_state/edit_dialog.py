@@ -404,7 +404,8 @@ class EditMoveStateDialog(FramelessDialog):
         """
         if self._action_service is None:
             QtWidgets.QMessageBox.warning(
-                self, "Save",
+                self,
+                "Save",
                 "Action editor is not available in this dialog. "
                 "Wire the ActionService through and try again.",
             )
@@ -418,7 +419,9 @@ class EditMoveStateDialog(FramelessDialog):
 
         if not self._action_service.bind_click_gif(self.selected_gif_path):
             QtWidgets.QMessageBox.warning(
-                self, "Save", "Failed to bind the GIF to the click action.",
+                self,
+                "Save",
+                "Failed to bind the GIF to the click action.",
             )
             return
         self.accept()
@@ -496,9 +499,7 @@ class EditMoveStateDialog(FramelessDialog):
         if self.selected_gif_path:
             if self.service.add_transition_gif(key, self.selected_gif_path):
                 # Sanitize key for a gif_id marker
-                safe_key = "".join(
-                    ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key
-                )
+                safe_key = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in key)
                 transition_gif_id = f"{safe_key}.gif"
             else:
                 QtWidgets.QMessageBox.warning(

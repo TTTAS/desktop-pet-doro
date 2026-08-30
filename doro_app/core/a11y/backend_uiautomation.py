@@ -150,6 +150,7 @@ def _has_invoke_action(node) -> bool:
             return True
     return False
 
+
 # UIA ControlTypeName -> our normalized role vocabulary.
 _ROLE_MAP = {
     "ButtonControl": "button",
@@ -233,7 +234,10 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
             self._walk(child, out, counter)
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: Optional[int] = None,
     ) -> bool:
         """UIA InvokePattern fire-and-forget at the screen point.
 
@@ -276,7 +280,11 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         try:
             with ctx:
                 target = self._resolve_invoke_target(
-                    auto, int(x), int(y), hwnd, trace,
+                    auto,
+                    int(x),
+                    int(y),
+                    hwnd,
+                    trace,
                 )
                 if target is None:
                     trace.emit(int(x), int(y), hwnd, "no_target_resolved")
@@ -292,7 +300,12 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
             return False
 
     def _resolve_invoke_target(
-        self, auto, x: int, y: int, hwnd: Optional[int], trace: _Trace,
+        self,
+        auto,
+        x: int,
+        y: int,
+        hwnd: Optional[int],
+        trace: _Trace,
     ):
         """Pick a UIA control to Invoke at (x, y).
 
@@ -343,7 +356,11 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         return fallback
 
     def _find_invocable_in_subtree(
-        self, root, x: int, y: int, trace: _Trace,
+        self,
+        root,
+        x: int,
+        y: int,
+        trace: _Trace,
     ):
         """DFS ``root``'s subtree for the smallest-area descendant that
         contains (x, y) and exposes an invoke-style pattern. None if no
@@ -385,16 +402,12 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
                 visit(child, depth + 1)
 
         visit(root, 0)
-        trace.add(
-            f"DFS visited={visited[0]} invocable_candidates={len(candidates)}"
-        )
+        trace.add(f"DFS visited={visited[0]} invocable_candidates={len(candidates)}")
         if not candidates:
             return None
         candidates.sort(key=lambda c: c[0])
         area, ctrl, depth = candidates[0]
-        trace.add(
-            f"DFS picked area={area} depth={depth} → {_describe_control(ctrl)}"
-        )
+        trace.add(f"DFS picked area={area} depth={depth} → {_describe_control(ctrl)}")
         return ctrl
 
     def _fire_invoke(self, target, trace: _Trace) -> bool:

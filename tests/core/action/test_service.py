@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from doro_app.core.action.fakes import FakeActionRepository
 from doro_app.core.action.repository import ActionEntry, CLICK_ACTION_KEY
@@ -63,10 +62,13 @@ def test_bootstrap_registers_click_state_with_user_bound_gif(tmp_path):
     user_gif.parent.mkdir(parents=True)
     user_gif.write_bytes(b"gif data")
 
-    repo = FakeActionRepository([
-        ActionEntry(key=CLICK_ACTION_KEY, display_name="Click",
-                    gif_id="click/user.gif", is_builtin=True)
-    ])
+    repo = FakeActionRepository(
+        [
+            ActionEntry(
+                key=CLICK_ACTION_KEY, display_name="Click", gif_id="click/user.gif", is_builtin=True
+            )
+        ]
+    )
     gif_repo = FakeGifRepository(storage, files={"click/user.gif": user_gif})
     state_service = RecordingStateService()
 
@@ -80,6 +82,7 @@ def test_bootstrap_registers_click_state_with_user_bound_gif(tmp_path):
         CLICK_FAILED_STATE_KEY,
         CLICK_FAILED_STATE_LABEL,
     )
+
     assert state_service.ensure_calls == [
         (CLICK_ACTION_STATE_KEY, CLICK_ACTION_STATE_LABEL, "click/user.gif"),
         (CLICK_FAILED_STATE_KEY, CLICK_FAILED_STATE_LABEL, "click/user.gif"),
@@ -181,7 +184,10 @@ def test_bootstrap_uses_default_idle_gif_when_repo_lookup_misses(tmp_path):
     state_service = RecordingStateService()
 
     service = ActionService(
-        repo, state_service, gif_repo, default_idle_gif=out_of_repo_idle,
+        repo,
+        state_service,
+        gif_repo,
+        default_idle_gif=out_of_repo_idle,
     )
     service.bootstrap()
 
@@ -202,10 +208,13 @@ def test_resolve_returns_user_bound_path_when_available(tmp_path):
     user_gif.parent.mkdir(parents=True)
     user_gif.write_bytes(b"gif")
 
-    repo = FakeActionRepository([
-        ActionEntry(key=CLICK_ACTION_KEY, display_name="Click",
-                    gif_id="click/user.gif", is_builtin=True),
-    ])
+    repo = FakeActionRepository(
+        [
+            ActionEntry(
+                key=CLICK_ACTION_KEY, display_name="Click", gif_id="click/user.gif", is_builtin=True
+            ),
+        ]
+    )
     gif_repo = FakeGifRepository(storage, files={"click/user.gif": user_gif})
     state_service = RecordingStateService()
 
@@ -244,7 +253,10 @@ def test_resolve_falls_back_to_default_idle_when_nothing_else_works(tmp_path):
     state_service = RecordingStateService()
 
     service = ActionService(
-        repo, state_service, gif_repo, default_idle_gif=fallback_idle,
+        repo,
+        state_service,
+        gif_repo,
+        default_idle_gif=fallback_idle,
     )
 
     assert service.resolve_action_gif_path() == fallback_idle
@@ -284,8 +296,10 @@ def test_bind_click_gif_writes_to_repo_and_state(tmp_path):
     # ActionRepository has the new gif_id
     assert repo.get(CLICK_ACTION_KEY).gif_id == "click_action/new_click.gif"
     # State got updated as well so next set_state renders it.
-    assert (CLICK_ACTION_STATE_KEY, {"gif_id": "click_action/new_click.gif"}) \
-        in state_service.update_calls
+    assert (
+        CLICK_ACTION_STATE_KEY,
+        {"gif_id": "click_action/new_click.gif"},
+    ) in state_service.update_calls
 
 
 def test_bind_click_gif_returns_false_when_source_missing(tmp_path):
@@ -320,10 +334,13 @@ def test_bind_click_gif_aborts_when_state_store_fails(tmp_path):
 
 
 def test_unbind_click_gif_clears_both_repo_and_state(tmp_path):
-    repo = FakeActionRepository([
-        ActionEntry(key=CLICK_ACTION_KEY, display_name="Click",
-                    gif_id="x.gif", is_builtin=True),
-    ])
+    repo = FakeActionRepository(
+        [
+            ActionEntry(
+                key=CLICK_ACTION_KEY, display_name="Click", gif_id="x.gif", is_builtin=True
+            ),
+        ]
+    )
     gif_repo = FakeGifRepository(tmp_path)
     state_service = RecordingStateService()
 

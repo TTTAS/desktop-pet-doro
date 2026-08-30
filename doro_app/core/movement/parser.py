@@ -103,7 +103,9 @@ def direction_label(direction: tuple[float, float]) -> str:
     return mapping.get(key, "未知方向")
 
 
-def format_move_report(pos: QtCore.QPoint, direction_label_text: Optional[str], dx: int, dy: int) -> str:
+def format_move_report(
+    pos: QtCore.QPoint, direction_label_text: Optional[str], dx: int, dy: int
+) -> str:
     prefix = f"往{direction_label_text}" if direction_label_text else "移動"
     deltas = []
     if dx:

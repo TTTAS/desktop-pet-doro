@@ -427,7 +427,10 @@ class DoroWindow(QtWidgets.QWidget):
         # Render text panel using RenderingEngine
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
-            (self._view_model.bubble_visible or (self._bubble_controller and self._bubble_controller.text_show_override))
+            (
+                self._view_model.bubble_visible
+                or (self._bubble_controller and self._bubble_controller.text_show_override)
+            )
             and self._view_model.bubble_alpha > 0
             and bool(bubble_text.strip())
         )

@@ -1,7 +1,5 @@
 """Tests for MoveStateManagerDialog."""
 
-import pytest
-
 
 class TestMoveStateManagerDialog:
     """Tests for MoveStateManagerDialog class."""

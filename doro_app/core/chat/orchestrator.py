@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text, extract_inline_move_commands
+from ...utils.actions import (
+    ACTION_PATTERN,
+    BRACKET_PATTERN,
+    parse_actions_from_text,
+    extract_inline_move_commands,
+)
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from .controller import ChatController
 from ...utils.logger import get_logger
@@ -63,7 +68,9 @@ class ChatOrchestrator(QtCore.QObject):
     def is_inflight(self) -> bool:
         return self._controller.is_inflight
 
-    def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
+    def send_message(
+        self, user_message: str, *, silent: bool = False, is_auto: bool = False
+    ) -> bool:
         logger.info(f"Sending chat message (auto={is_auto}, silent={silent})")
 
         if self._controller.is_inflight:
@@ -187,8 +194,7 @@ class ChatOrchestrator(QtCore.QObject):
             # FIXED: Error messages should auto-hide after longer delay (12s instead of 6s)
             # Previously used auto_hide=False which broke the timer completely
             self.bubble_text_requested.emit(
-                fallback_text,
-                {"auto_hide": True, "hide_delay_ms": 12000}
+                fallback_text, {"auto_hide": True, "hide_delay_ms": 12000}
             )
 
     # ------------------------------------------------------------------ Response processing
@@ -203,6 +209,7 @@ class ChatOrchestrator(QtCore.QObject):
         # Defer all mouse brackets until after the loop so movement brackets
         # always reach the dispatcher first.
         from ..automation.parser import parse_mouse_bracket
+
         pending_mouse_tokens: list[str] = []
 
         for kind, token in actions:
@@ -214,9 +221,7 @@ class ChatOrchestrator(QtCore.QObject):
                     # `[mouse:click]` brackets in the same reply are dropped
                     # rather than queued back-to-back.
                     if pending_mouse_tokens:
-                        logger.info(
-                            "[automation] extra [mouse:click] in same response dropped"
-                        )
+                        logger.info("[automation] extra [mouse:click] in same response dropped")
                     else:
                         pending_mouse_tokens.append(token)
                     continue
@@ -302,9 +307,8 @@ class ChatOrchestrator(QtCore.QObject):
 
         if self._action_dispatcher is not None and self._schedule is not None:
             from ..action import make_click_action
-            self._action_dispatcher.dispatch(
-                make_click_action(self._automation, self._schedule)
-            )
+
+            self._action_dispatcher.dispatch(make_click_action(self._automation, self._schedule))
         else:
             self._automation.execute_click()
         return True
@@ -332,6 +336,7 @@ class ChatOrchestrator(QtCore.QObject):
         # First check the token is actually a move bracket — if not,
         # return False so the caller can try other parsers.
         from ..movement.parser import parse_move_bracket
+
         if parse_move_bracket(token) is None:
             return False
 
@@ -361,6 +366,7 @@ class ChatOrchestrator(QtCore.QObject):
             return self._movement.apply_directional_move(direction)
 
         from ..action import make_movement_action
+
         self._action_dispatcher.dispatch(
             make_movement_action(self._movement, self._schedule, direction=direction)
         )

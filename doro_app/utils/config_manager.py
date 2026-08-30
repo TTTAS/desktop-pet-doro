@@ -149,10 +149,7 @@ class ConfigManager:
         from PySide6 import QtCore
 
         if settings_path:
-            self._settings = QtCore.QSettings(
-                str(settings_path),
-                QtCore.QSettings.Format.IniFormat
-            )
+            self._settings = QtCore.QSettings(str(settings_path), QtCore.QSettings.Format.IniFormat)
         else:
             # Use default QSettings location (platform-specific)
             self._settings = QtCore.QSettings("doro-pet", "doro")
@@ -275,9 +272,7 @@ class ConfigManager:
                 "mouse_target_allowlist", current.mouse_target_allowlist
             ),
             "a11y_enabled": kwargs.get("a11y_enabled", current.a11y_enabled),
-            "a11y_app_blacklist": kwargs.get(
-                "a11y_app_blacklist", current.a11y_app_blacklist
-            ),
+            "a11y_app_blacklist": kwargs.get("a11y_app_blacklist", current.a11y_app_blacklist),
             "a11y_share_input_values": kwargs.get(
                 "a11y_share_input_values", current.a11y_share_input_values
             ),
@@ -326,48 +321,33 @@ class ConfigManager:
         try:
             chat_config = ChatConfig(
                 server_url=_safe_str(
-                    self._settings.value("chat/server_url"),
-                    DEFAULT_CHAT_SERVER_URL
+                    self._settings.value("chat/server_url"), DEFAULT_CHAT_SERVER_URL
                 ),
-                model=_safe_str(
-                    self._settings.value("chat/model"),
-                    DEFAULT_CHAT_MODEL
-                ),
+                model=_safe_str(self._settings.value("chat/model"), DEFAULT_CHAT_MODEL),
                 endpoint_path=_safe_str(
-                    self._settings.value("chat/endpoint_path"),
-                    DEFAULT_CHAT_ENDPOINT_PATH
+                    self._settings.value("chat/endpoint_path"), DEFAULT_CHAT_ENDPOINT_PATH
                 ),
-                api_key=_safe_str(
-                    self._settings.value("chat/api_key"),
-                    DEFAULT_CHAT_API_KEY
-                ),
+                api_key=_safe_str(self._settings.value("chat/api_key"), DEFAULT_CHAT_API_KEY),
                 timeout_seconds=_safe_int(
-                    self._settings.value("chat/timeout_seconds"),
-                    CHAT_DEFAULT_TIMEOUT_SECONDS
+                    self._settings.value("chat/timeout_seconds"), CHAT_DEFAULT_TIMEOUT_SECONDS
                 ),
                 temperature=_safe_float(
-                    self._settings.value("chat/temperature"),
-                    CHAT_DEFAULT_TEMPERATURE
+                    self._settings.value("chat/temperature"), CHAT_DEFAULT_TEMPERATURE
                 ),
                 max_tokens=_safe_int(
-                    self._settings.value("chat/max_tokens"),
-                    CHAT_DEFAULT_MAX_TOKENS
+                    self._settings.value("chat/max_tokens"), CHAT_DEFAULT_MAX_TOKENS
                 ),
                 max_retries=_safe_int(
-                    self._settings.value("chat/max_retries"),
-                    DEFAULT_CHAT_MAX_RETRIES
+                    self._settings.value("chat/max_retries"), DEFAULT_CHAT_MAX_RETRIES
                 ),
                 history_turns=_safe_int(
-                    self._settings.value("chat/history_turns"),
-                    CHAT_DEFAULT_HISTORY_TURNS
+                    self._settings.value("chat/history_turns"), CHAT_DEFAULT_HISTORY_TURNS
                 ),
                 stop_tokens=_safe_str_list(
-                    self._settings.value("chat/stop_tokens"),
-                    DEFAULT_CHAT_STOP_TOKENS
+                    self._settings.value("chat/stop_tokens"), DEFAULT_CHAT_STOP_TOKENS
                 ),
                 max_stop_tokens=_safe_int(
-                    self._settings.value("chat/max_stop_tokens"),
-                    DEFAULT_CHAT_MAX_STOP_TOKENS
+                    self._settings.value("chat/max_stop_tokens"), DEFAULT_CHAT_MAX_STOP_TOKENS
                 ),
             )
             self._config.chat = chat_config
@@ -379,16 +359,13 @@ class ConfigManager:
         try:
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
-                    self._settings.value("ui/bubble_offset_x"),
-                    BUBBLE_DEFAULT_OFFSET_X
+                    self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
                 ),
                 bubble_offset_y=_safe_float(
-                    self._settings.value("ui/bubble_offset_y"),
-                    BUBBLE_DEFAULT_OFFSET_Y
+                    self._settings.value("ui/bubble_offset_y"), BUBBLE_DEFAULT_OFFSET_Y
                 ),
                 bubble_scale=_safe_float(
-                    self._settings.value("ui/bubble_scale"),
-                    BUBBLE_DEFAULT_SCALE
+                    self._settings.value("ui/bubble_scale"), BUBBLE_DEFAULT_SCALE
                 ),
             )
             self._config.ui = ui_config
@@ -435,10 +412,7 @@ class ConfigManager:
         # Load app config
         try:
             app_config = AppConfig(
-                current_state=_safe_str(
-                    self._settings.value("current_state"),
-                    "idle"
-                ),
+                current_state=_safe_str(self._settings.value("current_state"), "idle"),
             )
             self._config.app = app_config
         except ValueError as e:

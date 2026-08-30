@@ -33,11 +33,9 @@ from .config_defaults import (
     DEFAULT_CHAT_MAX_RETRIES,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
-    DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_A11Y_ENABLED,
     DEFAULT_A11Y_SHARE_INPUT_VALUES,
 )
-
 
 # ═══════════════════════════════════════════════════════════
 # Configuration Dataclasses
@@ -75,7 +73,9 @@ class ChatConfig:
         """Validate configuration values."""
         # Validate timeout
         if not isinstance(self.timeout_seconds, int) or self.timeout_seconds <= 0:
-            raise ValueError(f"timeout_seconds must be positive integer, got {self.timeout_seconds}")
+            raise ValueError(
+                f"timeout_seconds must be positive integer, got {self.timeout_seconds}"
+            )
 
         # Validate temperature
         if not isinstance(self.temperature, (int, float)) or not (0.0 <= self.temperature <= 2.0):
@@ -91,7 +91,9 @@ class ChatConfig:
 
         # Validate history_turns
         if not isinstance(self.history_turns, int) or self.history_turns < 0:
-            raise ValueError(f"history_turns must be non-negative integer, got {self.history_turns}")
+            raise ValueError(
+                f"history_turns must be non-negative integer, got {self.history_turns}"
+            )
 
     @property
     def config_key_prefix(self) -> str:

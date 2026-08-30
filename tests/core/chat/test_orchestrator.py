@@ -313,7 +313,10 @@ class TestMouseBracketDeferred:
     move bracket would fire immediately, bypassing the wait."""
 
     def _make_orch_with_dispatcher(
-        self, mock_controller, mock_movement_manager, mock_state_service,
+        self,
+        mock_controller,
+        mock_movement_manager,
+        mock_state_service,
     ):
         """Wire a fresh orchestrator with mock action_dispatcher/automation
         so we can observe the order in which actions land on the queue."""
@@ -332,19 +335,28 @@ class TestMouseBracketDeferred:
         return orch, dispatcher
 
     def test_click_after_move_keeps_order(
-        self, mock_controller, mock_movement_manager, mock_state_service,
+        self,
+        mock_controller,
+        mock_movement_manager,
+        mock_state_service,
     ):
         orch, dispatcher = self._make_orch_with_dispatcher(
-            mock_controller, mock_movement_manager, mock_state_service,
+            mock_controller,
+            mock_movement_manager,
+            mock_state_service,
         )
         orch._on_request_succeeded(
-            "好！[MOVE:to;x=200;y=100] [mouse:click]", False,
+            "好！[MOVE:to;x=200;y=100] [mouse:click]",
+            False,
         )
         kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
         assert kinds == ["movement", "click"]
 
     def test_click_before_move_in_text_still_dispatches_after_move(
-        self, mock_controller, mock_movement_manager, mock_state_service,
+        self,
+        mock_controller,
+        mock_movement_manager,
+        mock_state_service,
     ):
         """The defence in depth: even when the LLM puts `[mouse:click]`
         textually before `[move:to;...]`, the orchestrator defers the click
@@ -352,10 +364,13 @@ class TestMouseBracketDeferred:
         the click would fire immediately (movement never starts because the
         action queue head is the click action)."""
         orch, dispatcher = self._make_orch_with_dispatcher(
-            mock_controller, mock_movement_manager, mock_state_service,
+            mock_controller,
+            mock_movement_manager,
+            mock_state_service,
         )
         orch._on_request_succeeded(
-            "好！[mouse:click] [MOVE:to;x=200;y=100]", False,
+            "好！[mouse:click] [MOVE:to;x=200;y=100]",
+            False,
         )
         kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
         assert kinds == ["movement", "click"]

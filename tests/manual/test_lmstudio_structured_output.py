@@ -15,6 +15,7 @@ import sys
 
 LM_STUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
 
+
 def test_json_mode():
     """測試基本 JSON mode"""
     print("=" * 60)
@@ -24,10 +25,13 @@ def test_json_mode():
     payload = {
         "model": "lmstudio",
         "messages": [
-            {"role": "user", "content": "輸出一個 JSON，包含 state (字串) 和 dialogue (字串) 兩個字段"}
+            {
+                "role": "user",
+                "content": "輸出一個 JSON，包含 state (字串) 和 dialogue (字串) 兩個字段",
+            }
         ],
         "response_format": {"type": "json_object"},
-        "temperature": 0.7
+        "temperature": 0.7,
     }
 
     try:
@@ -57,31 +61,21 @@ def test_json_schema():
         "properties": {
             "state": {
                 "type": "string",
-                "enum": ["HAPPY", "SAD", "EXCITED", "SHY", "SLEEPY", "IDLE"]
+                "enum": ["HAPPY", "SAD", "EXCITED", "SHY", "SLEEPY", "IDLE"],
             },
-            "dialogue": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 100
-            }
+            "dialogue": {"type": "string", "minLength": 1, "maxLength": 100},
         },
-        "required": ["state", "dialogue"]
+        "required": ["state", "dialogue"],
     }
 
     payload = {
         "model": "lmstudio",
-        "messages": [
-            {"role": "user", "content": "用開心的語氣打招呼"}
-        ],
+        "messages": [{"role": "user", "content": "用開心的語氣打招呼"}],
         "response_format": {
             "type": "json_schema",
-            "json_schema": {
-                "name": "doro_response",
-                "strict": True,
-                "schema": schema
-            }
+            "json_schema": {"name": "doro_response", "strict": True, "schema": schema},
         },
-        "temperature": 0.7
+        "temperature": 0.7,
     }
 
     try:
@@ -117,25 +111,21 @@ def test_function_calling():
                     "properties": {
                         "state": {
                             "type": "string",
-                            "enum": ["HAPPY", "SAD", "EXCITED", "SHY", "SLEEPY", "IDLE"]
+                            "enum": ["HAPPY", "SAD", "EXCITED", "SHY", "SLEEPY", "IDLE"],
                         },
-                        "dialogue": {
-                            "type": "string"
-                        }
+                        "dialogue": {"type": "string"},
                     },
-                    "required": ["state", "dialogue"]
-                }
-            }
+                    "required": ["state", "dialogue"],
+                },
+            },
         }
     ]
 
     payload = {
         "model": "lmstudio",
-        "messages": [
-            {"role": "user", "content": "用開心的語氣打招呼"}
-        ],
+        "messages": [{"role": "user", "content": "用開心的語氣打招呼"}],
         "tools": tools,
-        "tool_choice": "auto"
+        "tool_choice": "auto",
     }
 
     try:
@@ -166,7 +156,7 @@ def send_request(payload):
         LM_STUDIO_URL,
         data=request_bytes,
         headers={"Content-Type": "application/json"},
-        method="POST"
+        method="POST",
     )
 
     with urllib.request.urlopen(request, timeout=30) as response:

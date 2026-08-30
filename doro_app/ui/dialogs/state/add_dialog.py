@@ -43,7 +43,8 @@ class AddStateDialog(FramelessDialog):
         layout.addRow("GIF file(s):", gif_layout)
 
         buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
@@ -52,10 +53,7 @@ class AddStateDialog(FramelessDialog):
     def _on_select_gif(self):
         """Handle GIF file selection (supports multiple files)."""
         file_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self,
-            "Select GIF file(s)",
-            "",
-            "Animated Images (*.gif *.apng *.webp);;All Files (*.*)"
+            self, "Select GIF file(s)", "", "Animated Images (*.gif *.apng *.webp);;All Files (*.*)"
         )
 
         if file_paths:
@@ -74,11 +72,15 @@ class AddStateDialog(FramelessDialog):
             return
 
         if self.service.get_state(key):
-            QtWidgets.QMessageBox.warning(self, "Add state", "A state with this key already exists.")
+            QtWidgets.QMessageBox.warning(
+                self, "Add state", "A state with this key already exists."
+            )
             return
 
         if self.service.is_movement_only_state(key):
-            QtWidgets.QMessageBox.warning(self, "Add state", "This key is reserved for movement animations.")
+            QtWidgets.QMessageBox.warning(
+                self, "Add state", "This key is reserved for movement animations."
+            )
             return
 
         label = self.label_edit.text().strip() or key.capitalize()
@@ -93,7 +95,9 @@ class AddStateDialog(FramelessDialog):
         if self.selected_gif_paths:
             if len(self.selected_gif_paths) == 1:
                 if not self.service.set_gif(key, self.selected_gif_paths[0]):
-                    QtWidgets.QMessageBox.warning(self, "Add state", "State created but failed to set GIF.")
+                    QtWidgets.QMessageBox.warning(
+                        self, "Add state", "State created but failed to set GIF."
+                    )
                     self.accept()
                     return
             else:
@@ -103,7 +107,9 @@ class AddStateDialog(FramelessDialog):
         self.accept()
 
 
-def show_add_state_dialog(service: StateService, parent: Optional[QtWidgets.QWidget] = None) -> Optional[str]:
+def show_add_state_dialog(
+    service: StateService, parent: Optional[QtWidgets.QWidget] = None
+) -> Optional[str]:
     """
     Show add state dialog.
 

@@ -121,7 +121,6 @@ class TestFootPlacement:
         # Foot target physical (200,200); window 100x100 → foot offset (50,99),
         # so the window top-left must end up at (150, 101) to put the foot there.
         manager, window = _make_manager(origin=(1000, 1000))
-        reports: list[str] = []
 
         report = manager.apply_target_move(200, 200)
 
@@ -241,4 +240,3 @@ class TestMovementIntegrationPrecision:
         # QRect(0,0,1920,1080).right() == 1919 — the fake clamps to that.
         assert end.x() == 1919
         assert manager.has_active_movement is False
-

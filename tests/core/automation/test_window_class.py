@@ -20,30 +20,40 @@ def test_read_at_returns_none_on_unknown_platform():
 
 
 def test_read_at_dispatches_to_x11_on_linux():
-    with patch.object(window_class.sys, "platform", "linux"), \
-         patch.object(window_class, "_read_window_class_x11", return_value="Chrome") as mock_x11:
+    with (
+        patch.object(window_class.sys, "platform", "linux"),
+        patch.object(window_class, "_read_window_class_x11", return_value="Chrome") as mock_x11,
+    ):
         assert window_class.read_at(100, 200) == "Chrome"
         mock_x11.assert_called_once_with(100, 200)
 
 
 def test_read_at_dispatches_to_win32_on_windows():
-    with patch.object(window_class.sys, "platform", "win32"), \
-         patch.object(window_class, "_read_window_class_win32", return_value="ChromeWidgetWin") as mock_win:
+    with (
+        patch.object(window_class.sys, "platform", "win32"),
+        patch.object(
+            window_class, "_read_window_class_win32", return_value="ChromeWidgetWin"
+        ) as mock_win,
+    ):
         assert window_class.read_at(50, 75) == "ChromeWidgetWin"
         mock_win.assert_called_once_with(50, 75)
 
 
 def test_read_at_dispatches_to_macos_on_darwin():
-    with patch.object(window_class.sys, "platform", "darwin"), \
-         patch.object(window_class, "_read_window_class_macos", return_value=None) as mock_mac:
+    with (
+        patch.object(window_class.sys, "platform", "darwin"),
+        patch.object(window_class, "_read_window_class_macos", return_value=None) as mock_mac,
+    ):
         assert window_class.read_at(0, 0) is None
         mock_mac.assert_called_once_with(0, 0)
 
 
 def test_read_at_coerces_to_int():
     """Non-int inputs are still safe — the dispatch casts to int."""
-    with patch.object(window_class.sys, "platform", "linux"), \
-         patch.object(window_class, "_read_window_class_x11", return_value=None) as mock_x11:
+    with (
+        patch.object(window_class.sys, "platform", "linux"),
+        patch.object(window_class, "_read_window_class_x11", return_value=None) as mock_x11,
+    ):
         window_class.read_at(100.7, 200.3)  # type: ignore[arg-type]
         mock_x11.assert_called_once_with(100, 200)
 
@@ -55,6 +65,7 @@ def test_module_imports_without_pynput():
     when the optional ``automation`` extra is not installed.
     """
     import doro_app.core.automation.window_class as wc  # noqa: F401
+
     # If the import above succeeded, the test passes.
 
 
@@ -66,8 +77,10 @@ def test_foreground_handle_none_on_non_windows():
 
 
 def test_foreground_handle_dispatches_on_windows():
-    with patch.object(window_class.sys, "platform", "win32"), \
-         patch.object(window_class, "_get_foreground_window_handle_win32", return_value=4242) as m:
+    with (
+        patch.object(window_class.sys, "platform", "win32"),
+        patch.object(window_class, "_get_foreground_window_handle_win32", return_value=4242) as m,
+    ):
         assert window_class.read_foreground_window_handle() == 4242
         m.assert_called_once_with()
 
@@ -78,7 +91,9 @@ def test_window_class_for_handle_none_on_non_windows():
 
 
 def test_window_class_for_handle_dispatches_on_windows():
-    with patch.object(window_class.sys, "platform", "win32"), \
-         patch.object(window_class, "_window_class_for_handle_win32", return_value="Chrome") as m:
+    with (
+        patch.object(window_class.sys, "platform", "win32"),
+        patch.object(window_class, "_window_class_for_handle_win32", return_value="Chrome") as m,
+    ):
         assert window_class.window_class_for_handle(99) == "Chrome"
         m.assert_called_once_with(99)

@@ -12,17 +12,17 @@ from ....core.state import State, StateService
 from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
 
-
 # ───────────────────────────────────────────────────────────
 # State Card Widget
 # ───────────────────────────────────────────────────────────
 
+
 class _StateCard(QtWidgets.QFrame):
     """A card displaying a single state with GIF preview and actions."""
 
-    edit_gif_clicked = QtCore.Signal(str)   # state_key
-    edit_clicked = QtCore.Signal(str)       # state_key
-    remove_clicked = QtCore.Signal(str)     # state_key
+    edit_gif_clicked = QtCore.Signal(str)  # state_key
+    edit_clicked = QtCore.Signal(str)  # state_key
+    remove_clicked = QtCore.Signal(str)  # state_key
 
     CARD_WIDTH = 200
     PREVIEW_SIZE = 128
@@ -68,9 +68,7 @@ class _StateCard(QtWidgets.QFrame):
         self._preview = QtWidgets.QLabel()
         self._preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._preview.setFixedSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE)
-        self._preview.setStyleSheet(
-            "background: #fff5fa; border-radius: 8px;"
-        )
+        self._preview.setStyleSheet("background: #fff5fa; border-radius: 8px;")
         preview_row.addWidget(self._preview, 1, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self._right_btn = self._arrow_button("right")
@@ -81,9 +79,7 @@ class _StateCard(QtWidgets.QFrame):
 
         # Counter
         count = len(self._gif_paths)
-        self._counter = QtWidgets.QLabel(
-            f"1/{count}" if count > 0 else "No GIF"
-        )
+        self._counter = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         self._counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._counter.setStyleSheet("font-size: 12px; color: #e8609c; font-weight: 600;")
         layout.addWidget(self._counter)
@@ -201,6 +197,7 @@ class _StateCard(QtWidgets.QFrame):
 # State Manager Dialog
 # ───────────────────────────────────────────────────────────
 
+
 class StateManagerDialog(FramelessDialog):
     """Dialog for managing states — card grid layout."""
 
@@ -221,9 +218,7 @@ class StateManagerDialog(FramelessDialog):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            "QScrollArea { border: none; background: transparent; }"
-        )
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         self._grid_container = QtWidgets.QWidget()
         self._grid_container.setStyleSheet("background: transparent;")
@@ -298,6 +293,7 @@ class StateManagerDialog(FramelessDialog):
 
     def _on_add(self):
         from .add_dialog import AddStateDialog
+
         dialog = AddStateDialog(self.service, self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._populate()

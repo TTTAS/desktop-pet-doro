@@ -47,9 +47,7 @@ if _needs_dummy_packages:
 # Now load validator directly
 project_root = Path(__file__).parent.parent.parent
 validator_path = project_root / "doro_app" / "core" / "chat" / "validator.py"
-spec = importlib.util.spec_from_file_location(
-    "doro_app.core.chat.validator", validator_path
-)
+spec = importlib.util.spec_from_file_location("doro_app.core.chat.validator", validator_path)
 validator = importlib.util.module_from_spec(spec)
 validator.__package__ = "doro_app.core.chat"
 sys.modules["doro_app.core.chat.validator"] = validator
@@ -88,14 +86,14 @@ def cleanup_sys_modules():
     for module_name in _dummy_modules_created:
         if module_name in sys.modules:
             # Only remove if it's still the dummy module we created
-            if not hasattr(sys.modules[module_name], '__file__'):
+            if not hasattr(sys.modules[module_name], "__file__"):
                 del sys.modules[module_name]
 
     # Also clean up the validator module we manually loaded
     if "doro_app.core.chat.validator" in sys.modules:
         # Check if this is the manually loaded one (has __package__ but no __file__)
         validator_module = sys.modules["doro_app.core.chat.validator"]
-        if not hasattr(validator_module, '__file__') or validator_module.__file__ is None:
+        if not hasattr(validator_module, "__file__") or validator_module.__file__ is None:
             del sys.modules["doro_app.core.chat.validator"]
 
 
@@ -108,10 +106,12 @@ def test_valid_response():
     response = "(HAPPY) 你好呀～doro很開心見到你！"
     result = validator.validate(response)
 
-    print(f"Test 1 - Valid response with state and dialogue")
+    print("Test 1 - Valid response with state and dialogue")
     print(f"  Input: {response}")
-    print(f"  Result: valid={result.valid}, has_state={result.has_state}, has_dialogue={result.has_dialogue}")
-    print(f"  ✅ PASS" if result.valid and result.has_state and result.has_dialogue else f"  ❌ FAIL")
+    print(
+        f"  Result: valid={result.valid}, has_state={result.has_state}, has_dialogue={result.has_dialogue}"
+    )
+    print("  ✅ PASS" if result.valid and result.has_state and result.has_dialogue else "  ❌ FAIL")
     print()
 
 
@@ -123,10 +123,16 @@ def test_valid_response_with_movement():
     response = "(HAPPY) 來追我呀～ [MOVE:dir=right;distance=80]"
     result = validator.validate(response)
 
-    print(f"Test 2 - Valid response with state, dialogue, and movement")
+    print("Test 2 - Valid response with state, dialogue, and movement")
     print(f"  Input: {response}")
-    print(f"  Result: valid={result.valid}, has_state={result.has_state}, has_movement={result.has_movement}, has_dialogue={result.has_dialogue}")
-    print(f"  ✅ PASS" if result.valid and result.has_state and result.has_movement and result.has_dialogue else f"  ❌ FAIL")
+    print(
+        f"  Result: valid={result.valid}, has_state={result.has_state}, has_movement={result.has_movement}, has_dialogue={result.has_dialogue}"
+    )
+    print(
+        "  ✅ PASS"
+        if result.valid and result.has_state and result.has_movement and result.has_dialogue
+        else "  ❌ FAIL"
+    )
     print()
 
 
@@ -138,10 +144,14 @@ def test_invalid_state():
     response = "(CONFUSED) 我不知道該說什麼..."
     result = validator.validate(response)
 
-    print(f"Test 3 - Invalid state")
+    print("Test 3 - Invalid state")
     print(f"  Input: {response}")
     print(f"  Result: valid={result.valid}, error={result.error_message}")
-    print(f"  ✅ PASS" if not result.valid and "Invalid state" in (result.error_message or "") else f"  ❌ FAIL")
+    print(
+        "  ✅ PASS"
+        if not result.valid and "Invalid state" in (result.error_message or "")
+        else "  ❌ FAIL"
+    )
     print()
 
 
@@ -153,10 +163,14 @@ def test_invalid_direction():
     response = "(HAPPY) 要去哪裡呢？ [MOVE:dir=diagonal;distance=50]"
     result = validator.validate(response)
 
-    print(f"Test 4 - Invalid movement direction")
+    print("Test 4 - Invalid movement direction")
     print(f"  Input: {response}")
     print(f"  Result: valid={result.valid}, error={result.error_message}")
-    print(f"  ✅ PASS" if not result.valid and "Invalid movement direction" in (result.error_message or "") else f"  ❌ FAIL")
+    print(
+        "  ✅ PASS"
+        if not result.valid and "Invalid movement direction" in (result.error_message or "")
+        else "  ❌ FAIL"
+    )
     print()
 
 
@@ -168,10 +182,16 @@ def test_only_dialogue():
     response = "今天天氣真好呀～"
     result = validator.validate(response)
 
-    print(f"Test 5 - Only dialogue (no state or movement)")
+    print("Test 5 - Only dialogue (no state or movement)")
     print(f"  Input: {response}")
-    print(f"  Result: valid={result.valid}, has_state={result.has_state}, has_movement={result.has_movement}, has_dialogue={result.has_dialogue}")
-    print(f"  ✅ PASS" if result.valid and not result.has_state and not result.has_movement and result.has_dialogue else f"  ❌ FAIL")
+    print(
+        f"  Result: valid={result.valid}, has_state={result.has_state}, has_movement={result.has_movement}, has_dialogue={result.has_dialogue}"
+    )
+    print(
+        "  ✅ PASS"
+        if result.valid and not result.has_state and not result.has_movement and result.has_dialogue
+        else "  ❌ FAIL"
+    )
     print()
 
 
@@ -183,10 +203,14 @@ def test_empty_response():
     response = ""
     result = validator.validate(response)
 
-    print(f"Test 6 - Empty response")
-    print(f"  Input: (empty)")
+    print("Test 6 - Empty response")
+    print("  Input: (empty)")
     print(f"  Result: valid={result.valid}, error={result.error_message}")
-    print(f"  ✅ PASS" if not result.valid and "empty" in (result.error_message or "").lower() else f"  ❌ FAIL")
+    print(
+        "  ✅ PASS"
+        if not result.valid and "empty" in (result.error_message or "").lower()
+        else "  ❌ FAIL"
+    )
     print()
 
 
@@ -207,16 +231,20 @@ def test_retry_prompt_building():
     retry_prompt = policy.next_retry(result)  # None if not retryable
     should_retry = retry_prompt is not None
 
-    print(f"Test 7 - Retry prompt building")
-    print(f"  Original message: 跟我打招呼")
+    print("Test 7 - Retry prompt building")
+    print("  Original message: 跟我打招呼")
     print(f"  Invalid response: {response}")
     print(f"  Should retry: {should_retry}")
     if result.error_message and retry_prompt is not None:
         print(f"  Retry prompt includes error: {result.error_message in retry_prompt}")
         print(f"  Retry prompt includes original: {'跟我打招呼' in retry_prompt}")
-        print(f"  ✅ PASS" if result.error_message in retry_prompt and "跟我打招呼" in retry_prompt else f"  ❌ FAIL")
+        print(
+            "  ✅ PASS"
+            if result.error_message in retry_prompt and "跟我打招呼" in retry_prompt
+            else "  ❌ FAIL"
+        )
     else:
-        print(f"  ❌ FAIL - No error message generated")
+        print("  ❌ FAIL - No error message generated")
     print()
 
 
@@ -228,10 +256,10 @@ def test_chinese_directions():
     response = "(HAPPY) 向左邊走走吧～ [MOVE:dir=左;distance=60]"
     result = validator.validate(response)
 
-    print(f"Test 8 - Chinese direction (左)")
+    print("Test 8 - Chinese direction (左)")
     print(f"  Input: {response}")
     print(f"  Result: valid={result.valid}, has_movement={result.has_movement}")
-    print(f"  ✅ PASS" if result.valid and result.has_movement else f"  ❌ FAIL")
+    print("  ✅ PASS" if result.valid and result.has_movement else "  ❌ FAIL")
     print()
 
 

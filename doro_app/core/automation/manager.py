@@ -95,15 +95,17 @@ logger = get_logger("doro.automation")
 class ClickOutcome(Enum):
     """Terminal outcome of one `execute_click` invocation."""
 
-    DISABLED = "disabled"                 # mouse_enabled was False at execute time
-    RATE_LIMITED = "rate-limited"         # too soon after previous click
-    KILL_SWITCH = "kill-switch"           # three-Esc kill-switch is engaged
-    BUSY = "busy"                         # already mid-wind-up
+    DISABLED = "disabled"  # mouse_enabled was False at execute time
+    RATE_LIMITED = "rate-limited"  # too soon after previous click
+    KILL_SWITCH = "kill-switch"  # three-Esc kill-switch is engaged
+    BUSY = "busy"  # already mid-wind-up
     REJECTED_BY_ALLOWLIST = "rejected-by-allowlist"
-    REJECTED_NOT_FOREGROUND = "rejected-not-foreground"  # allowlisted class but not the focused window
+    REJECTED_NOT_FOREGROUND = (
+        "rejected-not-foreground"  # allowlisted class but not the focused window
+    )
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
-    NOT_INVOCABLE = "not-invocable"        # UIA found no InvokePattern at target
+    NOT_INVOCABLE = "not-invocable"  # UIA found no InvokePattern at target
     FIRED = "fired"
 
 
@@ -212,9 +214,9 @@ class AutomationManager:
         # callable as `cb(outcome, detail)` and fire exactly once per
         # call to `_finalize`. The shared `ListenerRegistry` owns the
         # subscribe / unsubscribe / snapshot-emit mechanics.
-        self._outcome_listeners: ListenerRegistry[
-            Callable[["ClickOutcome", str], None]
-        ] = ListenerRegistry("click-outcome")
+        self._outcome_listeners: ListenerRegistry[Callable[["ClickOutcome", str], None]] = (
+            ListenerRegistry("click-outcome")
+        )
 
         # Esc fires on the pynput keyboard-listener thread. Everything the
         # callback does — cancelling the dispatcher, flipping state via
@@ -402,7 +404,12 @@ class AutomationManager:
                 logger.info(
                     "click target (%d,%d) is %dpx from foot (%d,%d) — "
                     "exceeds %dpx proximity, falling back to foot",
-                    cx, cy, int(dist), fx, fy, int(proximity_px),
+                    cx,
+                    cy,
+                    int(dist),
+                    fx,
+                    fy,
+                    int(proximity_px),
                 )
                 cx, cy = fx, fy
                 source = "foot"
@@ -492,9 +499,7 @@ class AutomationManager:
                     fg_class = self._backend.read_class_of_handle(fg_hwnd)
                 except Exception:  # pragma: no cover - defensive
                     fg_class = None
-                fg_label = (
-                    f"{fg_hwnd} class={fg_class!r}" if fg_class else str(fg_hwnd)
-                )
+                fg_label = f"{fg_hwnd} class={fg_class!r}" if fg_class else str(fg_hwnd)
                 self._finalize(
                     ClickOutcome.REJECTED_NOT_FOREGROUND,
                     f"target window ({target_hwnd}) is not foreground ({fg_label})",
@@ -530,7 +535,9 @@ class AutomationManager:
             # on platforms without Win32 falls back to unscoped lookup.
             try:
                 invoke_ok = self._a11y_clicker.try_invoke_at(
-                    cx, cy, hwnd=target_hwnd,
+                    cx,
+                    cy,
+                    hwnd=target_hwnd,
                 )
             except Exception:  # pragma: no cover - clicker should not raise
                 logger.exception("a11y clicker.try_invoke_at raised")
@@ -670,9 +677,7 @@ class AutomationManager:
         allowlist = self._config.automation.mouse_target_allowlist
         lowered = class_name.strip().lower()
         return any(
-            lowered.startswith(item.strip().lower())
-            for item in allowlist
-            if item and item.strip()
+            lowered.startswith(item.strip().lower()) for item in allowlist if item and item.strip()
         )
 
     def _record(self, outcome: ClickOutcome, detail: str) -> ClickOutcome:

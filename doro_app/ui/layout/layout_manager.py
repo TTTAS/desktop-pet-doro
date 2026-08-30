@@ -126,9 +126,7 @@ class WindowLayoutManager:
         metrics = QtGui.QFontMetrics(font)
 
         if text:
-            flags = int(
-                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
-            )
+            flags = int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
             flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
             text_rect = metrics.boundingRect(
                 QtCore.QRect(0, 0, int(round(available_text_width)), int(PANEL_MAX_WIDTH)),
@@ -214,12 +212,8 @@ class WindowLayoutManager:
 
         # Allow both growth and shrink so the window can collapse back to
         # sprite-size when the bubble hides.
-        min_changed = (
-            min_size.width() != desired_w or min_size.height() != desired_h
-        )
-        needs_resize = (
-            current_size.width() != desired_w or current_size.height() != desired_h
-        )
+        min_changed = min_size.width() != desired_w or min_size.height() != desired_h
+        needs_resize = current_size.width() != desired_w or current_size.height() != desired_h
 
         if min_changed or needs_resize:
             if min_changed:

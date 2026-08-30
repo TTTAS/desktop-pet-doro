@@ -32,10 +32,7 @@ class DoroChatDialog(QtWidgets.QDialog):
         self.setMinimumHeight(200)
 
         # Remove window frame for custom styling
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.Dialog |
-            QtCore.Qt.WindowType.FramelessWindowHint
-        )
+        self.setWindowFlags(QtCore.Qt.WindowType.Dialog | QtCore.Qt.WindowType.FramelessWindowHint)
 
         # Make dialog semi-transparent background
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -263,11 +260,7 @@ class DoroChatDialog(QtWidgets.QDialog):
         text = self.text_edit.toPlainText().strip()
         if not text:
             # Show warning if empty
-            QtWidgets.QMessageBox.warning(
-                self,
-                "訊息為空",
-                "請輸入一些文字後再發送。"
-            )
+            QtWidgets.QMessageBox.warning(self, "訊息為空", "請輸入一些文字後再發送。")
             return
 
         self._message = text

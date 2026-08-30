@@ -155,7 +155,9 @@ class ActionDispatcher:
 
         logger.debug(
             "dispatcher: starting action=%s pre_state=%r phases=%d",
-            self._current.kind, self._pre_action_state, len(self._current.phases),
+            self._current.kind,
+            self._pre_action_state,
+            len(self._current.phases),
         )
         self._run_next_phase()
 
@@ -193,7 +195,9 @@ class ActionDispatcher:
             return
         logger.info(
             "dispatcher: action=%s failed at phase=%d reason=%s",
-            self._current.kind, self._phase_index, reason,
+            self._current.kind,
+            self._phase_index,
+            reason,
         )
         failure_key = self._current.failure_state_key
         if failure_key:

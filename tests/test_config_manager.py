@@ -1,10 +1,10 @@
 """Tests for ConfigManager."""
 
 import pytest
-from pathlib import Path
 
 try:
     from PySide6 import QtCore
+
     HAS_PYSIDE6 = True
 except ImportError:
     HAS_PYSIDE6 = False
@@ -94,11 +94,7 @@ class TestConfigManagerUpdate:
         """Can update multiple chat config fields."""
         manager = ConfigManager(tmp_path / "test.ini")
 
-        manager.update_chat(
-            temperature=0.9,
-            timeout_seconds=60,
-            model="gpt-4"
-        )
+        manager.update_chat(temperature=0.9, timeout_seconds=60, model="gpt-4")
 
         assert manager.chat.temperature == 0.9
         assert manager.chat.timeout_seconds == 60

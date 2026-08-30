@@ -182,11 +182,7 @@ class ChatUIHelper:
             display,
         )
         if ok:
-            tokens = [
-                line.replace("\\n", "\n")
-                for line in text.splitlines()
-                if line.strip()
-            ]
+            tokens = [line.replace("\\n", "\n") for line in text.splitlines() if line.strip()]
             self._chat.settings.set_stop_tokens(tokens)
 
     def configure_max_stop_tokens(self) -> None:

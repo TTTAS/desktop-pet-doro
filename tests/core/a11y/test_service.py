@@ -93,8 +93,14 @@ class TestHappyPath:
 
     def test_password_value_is_redacted_in_output(self, audit_file):
         secret = A11yElement(
-            role="input", name="pw", x=0, y=0, width=100, height=20,
-            value="hunter2", is_password=True,
+            role="input",
+            name="pw",
+            x=0,
+            y=0,
+            width=100,
+            height=20,
+            value="hunter2",
+            is_password=True,
         )
         svc = _make_service(FakeA11yBackend([secret]), audit_path=audit_file)
         out = svc.read_foreground_tree()
@@ -112,16 +118,12 @@ class TestBoundsAtPhysicalPoint:
 
     def test_returns_bounds_when_point_inside_element(self, audit_file):
         # _button() defaults to (100, 200) and 24x24 → covers x∈[100,124), y∈[200,224).
-        svc = _make_service(
-            FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
-        )
+        svc = _make_service(FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file)
         svc.read_foreground_tree()
         assert svc.bounds_at_physical_point(110, 210) == (100, 200, 24, 24)
 
     def test_returns_none_when_point_outside_any_element(self, audit_file):
-        svc = _make_service(
-            FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file
-        )
+        svc = _make_service(FakeA11yBackend([_button("ok", 100, 200)]), audit_path=audit_file)
         svc.read_foreground_tree()
         assert svc.bounds_at_physical_point(0, 0) is None
         # On the right/bottom edge is "outside" (half-open interval).
@@ -316,8 +318,7 @@ class TestPreviewTimeout:
         svc = _make_service(backend, window_cls="LaggyApp", audit_path=audit_file)
         for _ in range(A11Y_TIMEOUT_BLACKLIST_THRESHOLD + 1):
             assert (
-                svc._read_with_timeout(1234, "laggyapp", timeout=0.01, count_timeout=False)
-                is None
+                svc._read_with_timeout(1234, "laggyapp", timeout=0.01, count_timeout=False) is None
             )
         assert svc._session_blacklist == set()
         assert svc._timeout_counts == {}

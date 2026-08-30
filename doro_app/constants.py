@@ -8,7 +8,7 @@ TIMER_INTERVAL_MS = 16  # ~60 FPS (1000ms / 60 = 16.67ms)
 BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
 
 # Idle behavior timing (seconds)
-IDLE_BEHAVIOR_MIN_INTERVAL = 60.0   # 1 minute minimum between idle actions
+IDLE_BEHAVIOR_MIN_INTERVAL = 60.0  # 1 minute minimum between idle actions
 IDLE_BEHAVIOR_MAX_INTERVAL = 180.0  # 3 minutes maximum between idle actions
 
 # ═══════════════════════════════════════════════════════════
@@ -146,10 +146,10 @@ KILL_SWITCH_ESC_WINDOW_MS = 800
 # `Chrome` covers Windows-side `Chrome_WidgetWin_1`, `Chrome_RenderWidget
 # HostHWND`, etc. without one entry per variant.
 DEFAULT_MOUSE_TARGET_ALLOWLIST: tuple[str, ...] = (
-    "Firefox",             # Linux / older builds
+    "Firefox",  # Linux / older builds
     "MozillaWindowClass",  # Firefox on Windows
     "Chromium",
-    "Chrome",              # Windows Chrome / Edge / Brave family → Chrome_WidgetWin_*
+    "Chrome",  # Windows Chrome / Edge / Brave family → Chrome_WidgetWin_*
     "Navigator",
     "Google-chrome",
 )

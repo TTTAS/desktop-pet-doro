@@ -194,6 +194,7 @@ class TestSerialization:
             def unsub():
                 if cb in movement_listeners:
                     movement_listeners.remove(cb)
+
             return unsub
 
         click_fired = {"v": False}
@@ -231,7 +232,10 @@ class TestSerialization:
 
 class TestFailurePath:
     def test_failed_phase_shows_failure_state_then_restores(
-        self, dispatcher, state_service, scheduler,
+        self,
+        dispatcher,
+        state_service,
+        scheduler,
     ):
         def boom():
             raise RuntimeError("nope")
@@ -256,7 +260,9 @@ class TestFailurePath:
         assert dispatcher.is_idle
 
     def test_failed_with_no_failure_key_just_restores(
-        self, dispatcher, state_service,
+        self,
+        dispatcher,
+        state_service,
     ):
         def boom():
             raise RuntimeError("nope")
@@ -280,7 +286,10 @@ class TestFailurePath:
 
 class TestCancellation:
     def test_cancel_during_visual_phase_restores_without_failure(
-        self, dispatcher, state_service, scheduler,
+        self,
+        dispatcher,
+        state_service,
+        scheduler,
     ):
         action = Action(
             kind="click",
@@ -322,7 +331,10 @@ class TestCancellation:
         assert dispatcher.is_idle
 
     def test_stale_failure_hold_does_not_finish_next_action(
-        self, dispatcher, state_service, scheduler,
+        self,
+        dispatcher,
+        state_service,
+        scheduler,
     ):
         """Generation token guard.
 
@@ -333,6 +345,7 @@ class TestCancellation:
         Without the generation check, the stale callback would call
         `_restore_and_finish`, killing B mid-flight.
         """
+
         def boom():
             raise RuntimeError("nope")
 
@@ -387,7 +400,10 @@ class TestCancellation:
 
 class TestWaitPhaseTimeout:
     def test_safety_timeout_surfaces_as_failure(
-        self, dispatcher, state_service, scheduler,
+        self,
+        dispatcher,
+        state_service,
+        scheduler,
     ):
         def subscribe(cb):
             # Never fires the listener — simulates stuck movement.

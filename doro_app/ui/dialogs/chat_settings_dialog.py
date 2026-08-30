@@ -45,6 +45,7 @@ QPushButton#eyeButton {
 QPushButton#eyeButton:hover { background: #FFC4F0; border-radius: 4px; }
 """
 
+
 class ChatSettingsDialog(FramelessDialog):
     """All chat/LLM settings in a single panel."""
 
@@ -94,7 +95,7 @@ class ChatSettingsDialog(FramelessDialog):
         self._api_key_edit = QtWidgets.QLineEdit()
         self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         key_row.addWidget(self._api_key_edit, 1)
-        self._eye_btn = QtWidgets.QPushButton("\U0001F441")
+        self._eye_btn = QtWidgets.QPushButton("\U0001f441")
         self._eye_btn.setObjectName("eyeButton")
         self._eye_btn.setFixedWidth(32)
         self._eye_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -125,9 +126,7 @@ class ChatSettingsDialog(FramelessDialog):
         layout.addLayout(form)
 
         # ── Accessibility tree reading (Phase 1d) ──────────────
-        self._a11y_checkbox = QtWidgets.QCheckBox(
-            "讓 Doro 讀取前景視窗的可點元素（無障礙樹）"
-        )
+        self._a11y_checkbox = QtWidgets.QCheckBox("讓 Doro 讀取前景視窗的可點元素（無障礙樹）")
         layout.addWidget(self._a11y_checkbox)
         a11y_hint = QtWidgets.QLabel(
             "開啟後，目前前景視窗的按鈕／連結／輸入框與座標會加進提示詞，"
@@ -190,10 +189,12 @@ class ChatSettingsDialog(FramelessDialog):
         # Detect which provider matches
         matched = "Custom"
         for name, preset in _PROVIDER_PRESETS.items():
-            if (url == preset["server_url"]
-                    and model == preset["model"]
-                    and endpoint == preset["endpoint_path"]
-                    and max_stop == preset["max_stop_tokens"]):
+            if (
+                url == preset["server_url"]
+                and model == preset["model"]
+                and endpoint == preset["endpoint_path"]
+                and max_stop == preset["max_stop_tokens"]
+            ):
                 matched = name
                 break
 
@@ -243,9 +244,7 @@ class ChatSettingsDialog(FramelessDialog):
 
         config = self._core.config_manager
         a11y_enabled = self._a11y_checkbox.isChecked()
-        a11y_share_input_values = (
-            a11y_enabled and self._a11y_share_values_checkbox.isChecked()
-        )
+        a11y_share_input_values = a11y_enabled and self._a11y_share_values_checkbox.isChecked()
 
         config.update_automation(
             a11y_enabled=a11y_enabled,

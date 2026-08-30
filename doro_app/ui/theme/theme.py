@@ -5,14 +5,14 @@ from __future__ import annotations
 from PySide6 import QtWidgets
 
 APP_THEME_COLORS = {
-    "background": "#fff0f6",       # Light pink background
-    "surface": "#ffe4f0",          # Soft pink surface
-    "card": "#ffffff",             # White card
-    "card_alt": "#fff5fa",         # Very light pink alternate
-    "accent": "#e8609c",           # Doro pink accent
-    "accent_soft": "#f9a8d4",      # Soft pink accent
-    "text_primary": "#4a2040",     # Dark plum text
-    "text_muted": "#9c6b8a",       # Muted pink-gray text
+    "background": "#fff0f6",  # Light pink background
+    "surface": "#ffe4f0",  # Soft pink surface
+    "card": "#ffffff",  # White card
+    "card_alt": "#fff5fa",  # Very light pink alternate
+    "accent": "#e8609c",  # Doro pink accent
+    "accent_soft": "#f9a8d4",  # Soft pink accent
+    "text_primary": "#4a2040",  # Dark plum text
+    "text_muted": "#9c6b8a",  # Muted pink-gray text
     "border": "rgba(232, 96, 156, 0.30)",  # Pink border
 }
 

@@ -26,6 +26,7 @@ class DoroError(Exception):
 
 class StateError(DoroError):
     """Errors related to state operations."""
+
     pass
 
 
@@ -64,6 +65,7 @@ class DuplicateStateError(StateError):
 
 class GifError(DoroError):
     """Errors related to GIF operations."""
+
     pass
 
 
@@ -73,7 +75,7 @@ class GifNotFoundError(GifError):
     def __init__(self, gif_path: str):
         super().__init__(
             f"GIF file not found: {gif_path}",
-            f"找不到 GIF 檔案",
+            "找不到 GIF 檔案",
         )
         self.gif_path = gif_path
 
@@ -84,7 +86,7 @@ class InvalidGifError(GifError):
     def __init__(self, gif_path: str):
         super().__init__(
             f"Invalid GIF file: {gif_path}",
-            f"GIF 檔案無效或損壞",
+            "GIF 檔案無效或損壞",
         )
         self.gif_path = gif_path
 
@@ -101,6 +103,7 @@ class GifStorageError(GifError):
 
 class ChatError(DoroError):
     """Errors related to chat/LLM operations."""
+
     pass
 
 
@@ -110,7 +113,7 @@ class ChatConnectionError(ChatError):
     def __init__(self, url: str, reason: str):
         super().__init__(
             f"Connection failed to {url}: {reason}",
-            f"無法連接到聊天伺服器",
+            "無法連接到聊天伺服器",
         )
         self.url = url
 
@@ -132,12 +135,13 @@ class ChatInvalidResponseError(ChatError):
     def __init__(self, reason: str):
         super().__init__(
             f"Invalid response from chat server: {reason}",
-            f"聊天伺服器回應格式錯誤",
+            "聊天伺服器回應格式錯誤",
         )
 
 
 class ConfigError(DoroError):
     """Errors related to configuration."""
+
     pass
 
 
@@ -147,7 +151,7 @@ class ConfigLoadError(ConfigError):
     def __init__(self, config_file: str, reason: str):
         super().__init__(
             f"Failed to load config from {config_file}: {reason}",
-            f"無法載入設定檔",
+            "無法載入設定檔",
         )
         self.config_file = config_file
 
@@ -158,13 +162,14 @@ class ConfigSaveError(ConfigError):
     def __init__(self, config_file: str, reason: str):
         super().__init__(
             f"Failed to save config to {config_file}: {reason}",
-            f"無法儲存設定檔",
+            "無法儲存設定檔",
         )
         self.config_file = config_file
 
 
 class MovementError(DoroError):
     """Errors related to movement operations."""
+
     pass
 
 
@@ -181,6 +186,7 @@ class InvalidDirectionError(MovementError):
 
 class TransitionError(DoroError):
     """Errors related to state transitions."""
+
     pass
 
 

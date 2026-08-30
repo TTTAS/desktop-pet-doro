@@ -19,7 +19,6 @@ from ...constants import (
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 
-
 if TYPE_CHECKING:
     from ..state import StateService
 
@@ -35,6 +34,7 @@ class ChatWorkerSignals(QtCore.QObject):
     QRunnable cannot emit signals directly (not a QObject),
     so we use this helper QObject to hold the signals.
     """
+
     finished = QtCore.Signal(str)  # request_id
     result = QtCore.Signal(str, tuple)  # request_id, (assistant_text, error_message)
     error = QtCore.Signal(str, str)  # request_id, error_message
@@ -48,7 +48,9 @@ class ChatWorker(QtCore.QRunnable):
     Uses signals (via ChatWorkerSignals) to return results.
     """
 
-    def __init__(self, request_id: str, endpoint: str, payload: dict, timeout: int, api_key: str = ""):
+    def __init__(
+        self, request_id: str, endpoint: str, payload: dict, timeout: int, api_key: str = ""
+    ):
         super().__init__()
         self.request_id = request_id
         self.endpoint = endpoint
@@ -207,7 +209,11 @@ class ChatController(QtCore.QObject):
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
 
-        retry_info = f" (retry {self._retry.attempt}/{self._retry.max_retries})" if self._retry.attempt > 0 else ""
+        retry_info = (
+            f" (retry {self._retry.attempt}/{self._retry.max_retries})"
+            if self._retry.attempt > 0
+            else ""
+        )
         logger.info(f"Starting chat request{retry_info} (auto={is_auto})")
         self.request_started.emit(cleaned, is_auto)
         return True, None
@@ -269,7 +275,9 @@ class ChatController(QtCore.QObject):
             # retryable or the max-retry gate has tripped.
             retry_message = self._retry.next_retry(validation)
             if retry_message is not None:
-                logger.info(f"Retrying request (attempt {self._retry.attempt}/{self._retry.max_retries})")
+                logger.info(
+                    f"Retrying request (attempt {self._retry.attempt}/{self._retry.max_retries})"
+                )
 
                 # Don't add failed response to history
                 was_auto = self._request_is_auto
@@ -294,7 +302,9 @@ class ChatController(QtCore.QObject):
                 return
 
             # Max retries exceeded or shouldn't retry
-            logger.error(f"Response validation failed after {self._retry.attempt} retries: {validation.error_message}")
+            logger.error(
+                f"Response validation failed after {self._retry.attempt} retries: {validation.error_message}"
+            )
             was_auto = self._request_is_auto
             self._reset_worker_state()
             self._retry.reset()  # terminal — clear retry state for next request
@@ -306,7 +316,9 @@ class ChatController(QtCore.QObject):
             return
 
         # Validation passed
-        logger.info(f"Response validation passed (state={validation.has_state}, movement={validation.has_movement}, dialogue={validation.has_dialogue})")
+        logger.info(
+            f"Response validation passed (state={validation.has_state}, movement={validation.has_movement}, dialogue={validation.has_dialogue})"
+        )
 
         if self._last_user_message:
             self._history.append({"role": "user", "content": self._last_user_message})
@@ -348,7 +360,9 @@ class ChatController(QtCore.QObject):
 
         # 保底：如果還在 inflight，代表沒收到 result 或 error 信號
         if self._inflight and request_id == self._current_request_id:
-            logger.warning("Worker finished but still inflight (no result/error received), forcing cleanup")
+            logger.warning(
+                "Worker finished but still inflight (no result/error received), forcing cleanup"
+            )
             was_auto = self._request_is_auto
             self._reset_worker_state()
             self._retry.reset()  # terminal — clear retry state for next request
@@ -456,12 +470,12 @@ class ChatController(QtCore.QObject):
         return value.strip()
 
     def _resolve_chat_endpoint(self) -> str:
-        return resolve_chat_endpoint(
-            self._settings.server_url, self._settings.endpoint_path
-        )
+        return resolve_chat_endpoint(self._settings.server_url, self._settings.endpoint_path)
 
     def _trim_history(self, max_turns: int = CHAT_DEFAULT_HISTORY_TURNS):
-        max_turns = max(1, self._history_turns if max_turns == CHAT_DEFAULT_HISTORY_TURNS else max_turns)
+        max_turns = max(
+            1, self._history_turns if max_turns == CHAT_DEFAULT_HISTORY_TURNS else max_turns
+        )
         max_entries = max_turns * 2
         if len(self._history) > max_entries:
             self._history = self._history[-max_entries:]

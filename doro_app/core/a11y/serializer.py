@@ -73,4 +73,3 @@ def serialize(elements: list[A11yElement], max_bytes: int = A11Y_MAX_SERIALIZED_
         lines.append(line)
         used += cost
     return "\n".join(lines)
-

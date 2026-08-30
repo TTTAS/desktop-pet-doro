@@ -80,9 +80,7 @@ def _make_dialog(
     from doro_app.ui.dialogs.chat_settings_dialog import ChatSettingsDialog
 
     orch = _StubOrchestrator()
-    config = _StubConfigManager(
-        a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled
-    )
+    config = _StubConfigManager(a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled)
     dialog = ChatSettingsDialog(
         _StubCoreManager(
             orch,
@@ -130,9 +128,7 @@ def test_save_persists_share_input_values_when_a11y_on(qtbot):
 
 
 def test_save_drops_share_input_values_when_a11y_off(qtbot):
-    dialog, _, config = _make_dialog(
-        qtbot, a11y_enabled=True
-    )
+    dialog, _, config = _make_dialog(qtbot, a11y_enabled=True)
     # User unchecks a11y but the share-values checkbox is still ticked:
     # the persisted value must be False because the dependency is gone.
     dialog._a11y_share_values_checkbox.setChecked(True)
