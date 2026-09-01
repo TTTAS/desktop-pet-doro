@@ -1,10 +1,12 @@
 name: Tests
 
 on:
+  # Only run automatically when changes land on the main line. Feature
+  # branch pushes and pull requests no longer trigger CI on their own;
+  # use the "Run workflow" button (workflow_dispatch) to run one on demand.
   push:
-    branches: ["main", "master", "claude/**"]
-  pull_request:
     branches: ["main", "master"]
+  workflow_dispatch:
 
 jobs:
   test:
