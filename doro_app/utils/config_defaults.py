@@ -43,3 +43,7 @@ DEFAULT_A11Y_ENABLED = _env("DORO_A11Y", "false").strip().lower() in ("1", "true
 # checkbox so a user who knowingly wants the AI to act on field contents
 # can opt in.
 DEFAULT_A11Y_SHARE_INPUT_VALUES = False
+
+# 網頁操作（第 3 層）總開關，預設關。可用環境變數 `DORO_WEB_OPERATE=true` 覆寫，
+# 但主要靠 doro 設定裡的打勾開關（會記住）。
+DEFAULT_WEB_OPERATION_ENABLED = _env("DORO_WEB_OPERATE", "false").strip().lower() in ("1", "true", "yes", "on")

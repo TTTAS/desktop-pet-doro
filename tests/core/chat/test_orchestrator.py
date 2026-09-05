@@ -98,6 +98,197 @@ class TestSendMessage:
         assert result is True
         mock_controller.start_request.assert_called_once_with("Auto message", is_auto=True)
 
+
+# ═══════════════════════════════════════════════════════════
+# Bubble dialogue cleaning (單行 vs 多行)
+# ═══════════════════════════════════════════════════════════
+
+
+class TestCleanAssistantDialogue:
+    """`_clean_assistant_dialogue`：一般聊天取一行，讀網頁答覆保留多行。"""
+
+    def test_default_returns_first_line_only(self, orchestrator):
+        text = "(開心) 第一句\n第二句\n第三句"
+        # 一般寵物聊天：維持只顯示第一句的個性
+        assert orchestrator._clean_assistant_dialogue(text) == "(開心) 第一句"
+
+    def test_multiline_keeps_all_lines(self, orchestrator):
+        text = "(思考) 這頁在講 A\n重點一：B\n重點二：C"
+        out = orchestrator._clean_assistant_dialogue(text, multi_line=True)
+        assert out == "(思考) 這頁在講 A\n重點一：B\n重點二：C"
+
+    def test_multiline_still_filters_user_lines(self, orchestrator):
+        text = "(思考) doro的話\n使用者: 不該顯示\n第二句"
+        out = orchestrator._clean_assistant_dialogue(text, multi_line=True)
+        assert "不該顯示" not in out
+        assert "第二句" in out
+
+
+class TestOperateActionRouting:
+    """模型吐 [operate:目標] → 啟動網頁操作（受總開關管）。"""
+
+    def _make(self, mock_controller, mock_movement_manager, mock_state_service, *, enabled):
+        from types import SimpleNamespace
+        web_runtime = Mock()
+        cfg = SimpleNamespace(automation=SimpleNamespace(web_operation_enabled=enabled))
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            web_runtime=web_runtime,
+            config_manager=cfg,
+        )
+        return orch, web_runtime
+
+    def test_operate_action_starts_operation_when_enabled(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        orch, web_runtime = self._make(
+            mock_controller, mock_movement_manager, mock_state_service, enabled=True
+        )
+        orch._last_user_text = "幫我在購物網站買耳機"
+        shown = orch._on_request_succeeded("(思考) 好，doro上網幫你～ [operate:買耳機]", False)
+        assert shown == ""
+        assert orch._operating is True
+        web_runtime.submit_operation.assert_called_once()
+        assert "買耳機" in web_runtime.submit_operation.call_args.args[0]
+
+    def test_empty_goal_falls_back_to_user_text(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        orch, web_runtime = self._make(
+            mock_controller, mock_movement_manager, mock_state_service, enabled=True
+        )
+        orch._last_user_text = "幫我在 pchome 訂便當"
+        orch._on_request_succeeded("(思考) 好喔～ [operate:]", False)
+        assert "便當" in web_runtime.submit_operation.call_args.args[0]
+
+    def test_operate_action_blocked_when_disabled(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        orch, web_runtime = self._make(
+            mock_controller, mock_movement_manager, mock_state_service, enabled=False
+        )
+        bubble_spy = Mock()
+        orch.bubble_text_requested.connect(bubble_spy)
+        orch._on_request_succeeded("(思考) 好～ [operate:買耳機]", False)
+        assert orch._operating is False
+        web_runtime.submit_operation.assert_not_called()
+        assert "關" in bubble_spy.call_args.args[0]
+
+
+class TestVerifyActionRouting:
+    """模型吐 [verify:問題] → 啟動查證（read-only，不受操作總開關限制）。"""
+
+    def test_verify_action_starts_verify(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        web_runtime = Mock()
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            web_runtime=web_runtime,
+        )
+        shown = orch._on_request_succeeded("(高) 上網幫你查～ [verify:基本工資多少]", False)
+        assert shown == ""
+        assert orch._operating is False
+        web_runtime.submit_verify.assert_called_once()
+        assert "基本工資" in web_runtime.submit_verify.call_args.args[1]
+
+    def test_empty_query_falls_back_to_user_text(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        web_runtime = Mock()
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            web_runtime=web_runtime,
+        )
+        orch._last_user_text = "台積電股價是不是真的破千了"
+        orch._on_request_succeeded("(高) 我查查～ [verify:]", False)
+        assert "台積電" in web_runtime.submit_verify.call_args.args[1]
+
+
+class TestLoginActionRouting:
+    """模型吐 [login:網址] → 開站給使用者登入（不受總開關限制、也不啟動操作）。"""
+
+    def test_login_action_opens_site(
+        self, mock_controller, mock_movement_manager, mock_state_service
+    ):
+        web_runtime = Mock()
+        orch = ChatOrchestrator(
+            controller=mock_controller,
+            movement=mock_movement_manager,
+            state_service=mock_state_service,
+            web_runtime=web_runtime,
+        )
+        shown = orch._on_request_succeeded("(高) 幫你把蝦皮開好～ [login:https://shopee.tw]", False)
+        assert shown == ""
+        assert orch._operating is False           # 不是操作，是開站
+        web_runtime.submit_login.assert_called_once()
+        assert "shopee.tw" in web_runtime.submit_login.call_args.args[1]
+
+
+class TestStripMarkdown:
+    """讀網頁答覆的 Markdown 清理（純文字泡泡框用）。"""
+
+    def test_removes_bold_and_code(self, orchestrator):
+        assert orchestrator._strip_markdown("**重點**是 `這個`") == "重點是 這個"
+
+    def test_bullet_becomes_dot(self, orchestrator):
+        out = orchestrator._strip_markdown("- 第一點\n* 第二點")
+        assert out == "・第一點\n・第二點"
+
+    def test_drops_dangling_asterisk_line(self, orchestrator):
+        # 被截斷留下的一顆 * / ** 整行清掉
+        out = orchestrator._strip_markdown("doro看完囉～\n**")
+        assert out == "doro看完囉～"
+
+    def test_strips_heading(self, orchestrator):
+        assert orchestrator._strip_markdown("# 標題\n內文") == "標題\n內文"
+
+
+class TestWebAnswerFlag:
+    """讀完網頁後那一則答覆要被標記為「可多行」。"""
+
+    def test_web_read_result_sets_expect_web_answer(self, orchestrator, mock_controller):
+        from doro_app.core.web.reader import WebReadResult
+
+        orchestrator._current_web_request_id = "req-1"
+        orchestrator._pending_web_question = "這頁在說什麼"
+        result = WebReadResult(
+            url="https://example.com", title="標題", text="網頁內文", error=None
+        )
+
+        orchestrator._on_web_read_result("req-1", result)
+
+        assert orchestrator._expect_web_answer is True
+        # 有把加料訊息送去 LLM，且內容帶了網址
+        assert mock_controller.start_request.called
+        sent_text = mock_controller.start_request.call_args.args[0]
+        assert "https://example.com" in sent_text
+        # 讀網頁的答覆有給更大的 token 額度
+        assert mock_controller.start_request.call_args.kwargs.get("max_tokens")
+
+    def test_web_read_error_shows_bubble_and_no_request(self, orchestrator, mock_controller):
+        from doro_app.core.web.reader import WebReadResult
+
+        orchestrator._current_web_request_id = "req-2"
+        bubble_spy = Mock()
+        orchestrator.bubble_text_requested.connect(bubble_spy)
+        result = WebReadResult(
+            url="https://x.test", title="", text="", error="連不上啦"
+        )
+
+        orchestrator._on_web_read_result("req-2", result)
+
+        assert orchestrator._expect_web_answer is False
+        mock_controller.start_request.assert_not_called()
+        bubble_spy.assert_called_once()
+        assert "連不上啦" in bubble_spy.call_args.args[0]
+
     def test_send_message_rejects_when_inflight(self, orchestrator, mock_controller):
         """send_message rejects when previous request is inflight."""
         mock_controller.is_inflight = True

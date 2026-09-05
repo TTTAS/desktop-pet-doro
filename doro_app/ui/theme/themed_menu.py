@@ -25,6 +25,7 @@ class MenuSnapshot:
     has_chat_history: bool
     a11y_enabled: bool = False  # accessibility tree reading is on
     mouse_enabled: bool = False  # synthetic mouse-click automation is on
+    web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
 
 
 @dataclasses.dataclass(frozen=True)
@@ -44,6 +45,7 @@ class MenuCallbacks:
     toggle_a11y: Callable[[bool], None]
     preview_a11y: Callable[[], None]
     toggle_mouse_enabled: Callable[[bool], None]
+    toggle_web_operation: Callable[[bool], None]
     simulate_response: Callable[[], None]
     inspect_position: Callable[[], None]
     quit_app: Callable[[], None]
@@ -400,6 +402,11 @@ def build_context_menu_content(
     mouse_toggle_action.setCheckable(True)
     mouse_toggle_action.setChecked(snapshot.mouse_enabled)
     mouse_toggle_action.triggered.connect(callbacks.toggle_mouse_enabled)
+
+    web_op_toggle_action = chat_menu.addAction("讓 Doro 操作網頁（點/填/送出前會問你）")
+    web_op_toggle_action.setCheckable(True)
+    web_op_toggle_action.setChecked(snapshot.web_operation_enabled)
+    web_op_toggle_action.triggered.connect(callbacks.toggle_web_operation)
 
     simulate_action = chat_menu.addAction("假傳伺服器回應（測試）")
     simulate_action.setEnabled(not snapshot.is_chat_inflight)

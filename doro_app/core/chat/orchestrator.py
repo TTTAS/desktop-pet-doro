@@ -3,16 +3,58 @@
 from __future__ import annotations
 
 import random
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
 from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text, extract_inline_move_commands
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
+from ..web import (
+    WebReadResult,
+    is_affirmative,
+    is_stop,
+    parse_login_action,
+    parse_operate_action,
+    parse_read_action,
+    parse_read_current_command,
+    parse_verify_action,
+    parse_web_read_command,
+)
+from ..web.runtime import WebRuntime
+from .chat import (
+    build_messages_for_mistral_instruct,
+    perform_chat_request,
+    resolve_chat_endpoint,
+)
 from .controller import ChatController
 from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 讀網頁的正式答覆給比較大的字數額度（寵物一句話用不到這麼多），避免詳細摘要
+# 講到一半被 max_tokens 砍斷、結尾留下半截的 Markdown 符號。
+WEB_ANSWER_MAX_TOKENS = 900
+
+# 行首的項目符號（-、*、•…）。泡泡框是純文字，統一換成「・」比較乾淨。
+_BULLET_PREFIX_RE = re.compile(r"^\s*[\-\*•‣◦·]\s+")
+
+# 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
+# [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
+_OPERATION_SYSTEM_PROMPT = (
+    "你是桌面寵物 doro，正在幫使用者操作網頁瀏覽器。"
+    "每一步我會給你目前頁面的狀況，你就回覆『一個』下一步動作，格式是 [web:...]（例如 "
+    "[web:goto;url=...]、[web:click;n=編號]、[web:type;n=編號;text=文字]、[web:done]）。"
+    "可以用 doro 活潑可愛的口氣講一句話，但一定要照格式附上那個動作，不要只聊天不做事。"
+)
+
+# 查證專用系統提示（同樣不套角色白名單，允許多行、誠實的比對答覆）。
+_VERIFY_SYSTEM_PROMPT = (
+    "你是桌面寵物 doro，正在幫使用者『查證/查資料』。我會給你使用者的問題和幾個網路"
+    "來源的內容，你要比對這些來源、用繁體中文誠實回答：綜合各來源、指出它們一致或矛盾、"
+    "找不到就老實說不知道，絕不編造。用 doro 的口氣，但可以多行、講清楚，開頭加 (狀態)。"
+)
 
 if TYPE_CHECKING:
     from ..action import ActionDispatcher
@@ -40,6 +82,8 @@ class ChatOrchestrator(QtCore.QObject):
         automation: "AutomationManager | None" = None,
         action_dispatcher: "ActionDispatcher | None" = None,
         schedule: "ScheduleFn | None" = None,
+        web_runtime: "WebRuntime | None" = None,
+        config_manager=None,
     ):
         super().__init__()  # No parent
         self._controller = controller
@@ -53,6 +97,25 @@ class ChatOrchestrator(QtCore.QObject):
         # click run synchronously through their managers as before.
         self._schedule = schedule
 
+        # ── 網頁能力（讀 + 操作，共用一個瀏覽器）─────────────────────
+        # 讀與操作都走同一個 WebRuntime（一條專屬執行緒 + 一個共用瀏覽器），天生
+        # 「一次一個」。runtime 延遲建立（第一次用到才建），測試可從外面注入假的。
+        self._config_manager = config_manager
+        self._web_runtime = web_runtime
+        self._web_reading = False       # 正在讀網頁
+        self._operating = False         # 正在操作網頁
+        self._awaiting_confirm = False  # 操作中，正在等你回「好/不要」
+        self._current_web_request_id: str | None = None
+        self._pending_web_question = ""
+        # 「讓 LLM 自己判斷要不要讀」用的：記住這一輪使用者原本問什麼（讀完網頁
+        # 要拿它當問題），並限制每一輪最多自動讀一次網頁（避免模型一直吐
+        # [read:...] 無限迴圈）。
+        self._last_user_text = ""
+        self._auto_read_used = False
+        # 讀完網頁後那一則「正式作答」允許多行、比較長（一般寵物聊天仍維持一行）。
+        # 這個旗標讓 _on_request_succeeded 知道「這則要完整顯示，不要只取第一行」。
+        self._expect_web_answer = False
+
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
         controller.request_failed.connect(self._on_request_failed)
@@ -63,10 +126,21 @@ class ChatOrchestrator(QtCore.QObject):
     def is_inflight(self) -> bool:
         return self._controller.is_inflight
 
+    @property
+    def is_web_busy(self) -> bool:
+        """讀或操作網頁進行中？（給閒置行為判斷要不要安靜）"""
+        return self._web_reading or self._operating
+
     def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
         logger.info(f"Sending chat message (auto={is_auto}, silent={silent})")
 
-        if self._controller.is_inflight:
+        # 操作進行中：只收「好/不要」確認與「停/取消」中止，其它一律先擋（隔離規則 Q2）。
+        if self._operating:
+            if is_auto:
+                return False  # 自動/閒置訊息操作中一律忽略
+            return self._handle_message_while_operating(user_message)
+
+        if self._controller.is_inflight or self._web_reading:
             logger.warning("Chat request rejected: previous request still in flight")
             if not silent:
                 self.notification_requested.emit(
@@ -75,6 +149,21 @@ class ChatOrchestrator(QtCore.QObject):
                     "I am already replying, please wait a moment.",
                 )
             return False
+
+        # 網頁能力的觸發（每一輪重置「本輪已自動讀過」旗標，並記住原始問題）：
+        #  - 讀：明確路 `parse_web_read_command`（讀取動詞＋http 網址）＋ LLM 吐 [read:] 路。
+        #  - 操作：**交給 LLM 判斷**——模型在回覆吐 `[operate:目標]` 才啟動（見
+        #    `_on_request_succeeded`）。這裡不再用關鍵字硬觸發，避免「幫我點書籤」
+        #    這種桌面動作被誤判成網頁操作（桌面點擊走 a11y 的 [mouse:click]）。
+        if not is_auto:
+            self._last_user_text = (user_message or "").strip()
+            self._auto_read_used = False
+            web_request = parse_web_read_command(user_message)
+            if web_request is not None:
+                return self._begin_web_read(web_request.url, web_request.question)
+            read_current_q = parse_read_current_command(user_message)
+            if read_current_q is not None:
+                return self._begin_web_read_current(read_current_q)
 
         started, error_message = self._controller.start_request(user_message, is_auto=is_auto)
         if not started:
@@ -100,6 +189,308 @@ class ChatOrchestrator(QtCore.QObject):
             return
         logger.info("Speaking canned line (no API)")
         self.bubble_text_requested.emit(stripped, {})
+
+    # ------------------------------------------------------------------ Web runtime (讀 + 操作)
+
+    def _ensure_web_runtime(self) -> WebRuntime:
+        """第一次用到才建 WebRuntime（專屬執行緒 + 共用瀏覽器），並接好 signal。"""
+        if self._web_runtime is None:
+            self._web_runtime = WebRuntime(self._default_web_profile_dir())
+            self._web_runtime.read_finished.connect(
+                self._on_web_read_result, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.op_progress.connect(
+                self._on_op_progress, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.op_confirm.connect(
+                self._on_op_confirm, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.op_finished.connect(
+                self._on_op_finished, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.login_done.connect(
+                self._on_login_done, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.verify_progress.connect(
+                self._on_verify_progress, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.verify_finished.connect(
+                self._on_verify_finished, QtCore.Qt.ConnectionType.QueuedConnection
+            )
+            self._web_runtime.start()
+        return self._web_runtime
+
+    @staticmethod
+    def _default_web_profile_dir() -> Path:
+        """doro 專屬瀏覽器設定檔位置（登入狀態留這，跟你平常的 Chrome 分開）。"""
+        base = QtCore.QStandardPaths.writableLocation(
+            QtCore.QStandardPaths.StandardLocation.AppDataLocation
+        )
+        root = Path(base) if base else (Path.home() / ".doro")
+        return root / "web_profile"
+
+    def shutdown_web(self) -> None:
+        """app 關閉時呼叫：收掉共用瀏覽器與專屬執行緒。"""
+        if self._web_runtime is not None:
+            self._web_runtime.shutdown()
+
+    def _begin_web_read(self, url: str, question: str) -> bool:
+        """排一個讀網頁工作到 WebRuntime；讀完在 ``_on_web_read_result`` 接手。"""
+        logger.info(f"開始讀網頁流程：{url}")
+        runtime = self._ensure_web_runtime()
+        self._web_reading = True
+        # 本輪算「已自動讀過」，避免 LLM 路一直重複吐 [read:...] 造成無限迴圈。
+        self._auto_read_used = True
+        self._pending_web_question = question
+        self._current_web_request_id = QtCore.QUuid.createUuid().toString()
+
+        self.bubble_text_requested.emit("讓 doro 開瀏覽器讀一下這頁…📖", {"auto_hide": False})
+        self.busy_cursor_requested.emit(True)
+        runtime.submit_read(self._current_web_request_id, url)
+        return True
+
+    def _begin_login(self, url: str) -> bool:
+        """開一個網站、停著讓使用者本人登入（不操作），登入狀態存進專屬設定檔。"""
+        logger.info(f"開站給使用者登入：{url}")
+        runtime = self._ensure_web_runtime()
+        self._web_reading = True  # 借用忙碌鎖：開站期間擋掉其它網頁動作
+        self._current_web_request_id = QtCore.QUuid.createUuid().toString()
+        self.bubble_text_requested.emit("doro 幫你把網站開起來…🔑", {"auto_hide": False})
+        self.busy_cursor_requested.emit(True)
+        runtime.submit_login(self._current_web_request_id, url)
+        return True
+
+    @QtCore.Slot(str, bool, str)
+    def _on_login_done(self, request_id: str, ok: bool, message: str) -> None:
+        """開站結果：成功就提示使用者自己登入；失敗顯示錯誤。"""
+        if request_id != self._current_web_request_id:
+            return
+        self._web_reading = False
+        self._current_web_request_id = None
+        self.busy_cursor_requested.emit(False)
+        if ok:
+            self.bubble_text_requested.emit(
+                "開好囉～人自己在那個瀏覽器視窗登入一下（帳密你本人打，doro不會碰）。\n"
+                "登入狀態doro會記住，之後叫我操作就不會被擋了！登好想做什麼再跟我說～",
+                {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 30000},
+            )
+        else:
+            self.bubble_text_requested.emit(
+                message or "唔…doro開不起來這個網站…",
+                {"auto_hide": True, "hide_delay_ms": 12000},
+            )
+
+    def _begin_verify(self, query: str) -> bool:
+        """啟動查證：搜尋→讀多來源→比對（read-only，不受操作總開關限制）。"""
+        logger.info(f"開始查證：{query!r}")
+        runtime = self._ensure_web_runtime()
+        self._web_reading = True  # 借用忙碌鎖：查證期間擋其它網頁動作、idle 安靜
+        self._current_web_request_id = QtCore.QUuid.createUuid().toString()
+        self.busy_cursor_requested.emit(True)
+        runtime.submit_verify(self._current_web_request_id, query, self._verify_ask_llm)
+        return True
+
+    @QtCore.Slot(str)
+    def _on_verify_progress(self, text: str) -> None:
+        cleaned = (text or "").strip()
+        if cleaned:
+            self.bubble_text_requested.emit(
+                cleaned, {"override_visibility": True, "auto_hide": False}
+            )
+
+    @QtCore.Slot(str, str)
+    def _on_verify_finished(self, request_id: str, answer: str) -> None:
+        if request_id != self._current_web_request_id:
+            return
+        self._web_reading = False
+        self._current_web_request_id = None
+        self.busy_cursor_requested.emit(False)
+        final = self._strip_markdown((answer or "").strip())
+        self.bubble_text_requested.emit(
+            final or "doro查完了，但一時整理不出來…",
+            {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 40000},
+        )
+
+    def _begin_web_read_current(self, question: str) -> bool:
+        """讀 doro 目前開著的那頁（不重新導航）；讀完一樣走 ``_on_web_read_result``。"""
+        logger.info("讀目前開著的網頁")
+        runtime = self._ensure_web_runtime()
+        self._web_reading = True
+        self._auto_read_used = True
+        self._pending_web_question = question
+        self._current_web_request_id = QtCore.QUuid.createUuid().toString()
+
+        self.bubble_text_requested.emit("讓 doro 看一下目前這頁…📖", {"auto_hide": False})
+        self.busy_cursor_requested.emit(True)
+        runtime.submit_read_current(self._current_web_request_id)
+        return True
+
+    @QtCore.Slot(str, object)
+    def _on_web_read_result(self, request_id: str, result: WebReadResult) -> None:
+        """網頁讀完（成功或失敗）後在主執行緒接手。"""
+        if request_id != self._current_web_request_id:
+            logger.debug(f"忽略過期的讀網頁結果 id={request_id}")
+            return
+        self._web_reading = False
+        self._current_web_request_id = None
+
+        if not result.ok:
+            logger.warning(f"讀網頁失敗：{result.error}")
+            self.busy_cursor_requested.emit(False)
+            self.bubble_text_requested.emit(
+                result.error or "doro 讀不到這頁…",
+                {"auto_hide": True, "hide_delay_ms": 12000},
+            )
+            return
+
+        question = self._pending_web_question
+        self._pending_web_question = ""
+        augmented = self._build_web_read_prompt(result, question)
+
+        # 交回既有聊天流程：request_started 會顯示「Thinking…」、成功會走
+        # _on_request_succeeded（含動作解析、bubble 顯示）。這一則答覆允許多行。
+        self._expect_web_answer = True
+        started, error_message = self._controller.start_request(
+            augmented, is_auto=False, max_tokens=WEB_ANSWER_MAX_TOKENS
+        )
+        if not started:
+            logger.error(f"讀完網頁但送不出聊天請求：{error_message}")
+            self._expect_web_answer = False
+            self.busy_cursor_requested.emit(False)
+            if error_message:
+                self.notification_requested.emit("warning", "Chat", error_message)
+
+    @staticmethod
+    def _build_web_read_prompt(result: WebReadResult, question: str) -> str:
+        """把網頁內容 + 使用者問題組成一則餵給 LLM 的訊息。"""
+        q = (question or "").strip() or "請幫我摘要這個網頁的重點。"
+        title = result.title or "(未知標題)"
+        return (
+            "我剛剛用瀏覽器讀取了一個網頁，以下是內容，請你根據內容用繁體中文回答我。\n"
+            f"網址：{result.url}\n"
+            f"標題：{title}\n"
+            "---- 網頁內容開始 ----\n"
+            f"{result.text}\n"
+            "---- 網頁內容結束 ----\n"
+            f"我的問題／指令：{q}\n"
+            "回答要求：\n"
+            "1. 只根據上面的網頁內容回答；內容裡找不到就老實說在這頁找不到，不要亂編。\n"
+            "2. 這一則不受平常「只回一行」限制，可以用多行、把重點真的講出來（不要只說『我幫你看了』就結束）。\n"
+            "3. 開頭一樣要有 (狀態)，並保持 doro 的口氣。\n"
+            "4. 一定要用純文字，禁止使用任何 Markdown 符號（不要出現 *、**、#、`、- 開頭的項目符號）；"
+            "要分點就用「1. 2. 3.」或直接換行。"
+        )
+
+    # ------------------------------------------------------------------ Web operation (第 3 層)
+
+    def _web_operation_enabled(self) -> bool:
+        """總開關（設定裡，預設關）。拿不到設定就當關。"""
+        try:
+            return bool(self._config_manager.automation.web_operation_enabled)
+        except AttributeError:
+            return False
+
+    def _begin_operation(self, goal: str) -> bool:
+        """啟動一次網頁操作任務（若總開關打開）。"""
+        if not self._web_operation_enabled():
+            self.bubble_text_requested.emit(
+                "操作功能現在關著喔，去設定打開就能用～",
+                {"auto_hide": True, "hide_delay_ms": 8000},
+            )
+            return True
+
+        logger.info(f"開始網頁操作任務：{goal}")
+        runtime = self._ensure_web_runtime()
+        self._operating = True
+        self._awaiting_confirm = False
+        self.bubble_text_requested.emit(
+            "好，doro開始幫你操作囉～（想喊卡就打「停」）", {"auto_hide": False}
+        )
+        self.busy_cursor_requested.emit(True)
+        runtime.submit_operation(goal, self._operation_ask_llm)
+        return True
+
+    def _web_llm(self, system_prompt: str, prompt: str) -> str:
+        """網頁任務用的同步 LLM 呼叫（在 WebRuntime 執行緒上跑）。
+
+        隔離規則：用 doro 既有的聊天設定（模型/伺服器/金鑰），但帶各自的系統提示、
+        **不掛 a11y 前景視窗樹**，避免混淆。
+        """
+        settings = self._controller.settings
+        endpoint = resolve_chat_endpoint(settings.server_url, settings.endpoint_path)
+        if not endpoint:
+            return ""
+        messages = build_messages_for_mistral_instruct(system_prompt, prompt)
+        payload = {
+            "model": settings.model,
+            "messages": messages,
+            "temperature": settings.temperature,
+            "max_tokens": max(int(settings.max_tokens), WEB_ANSWER_MAX_TOKENS),
+        }
+        # LLM 原始回傳的除錯印出，已統一在 perform_chat_request（DORO_WEB_DEBUG）。
+        text, err = perform_chat_request(
+            endpoint, payload, int(settings.timeout_seconds), settings.api_key
+        )
+        if err:
+            logger.warning(f"網頁 LLM 呼叫失敗：{err}")
+        return text or ""
+
+    def _operation_ask_llm(self, prompt: str) -> str:
+        return self._web_llm(_OPERATION_SYSTEM_PROMPT, prompt)
+
+    def _verify_ask_llm(self, prompt: str) -> str:
+        return self._web_llm(_VERIFY_SYSTEM_PROMPT, prompt)
+
+    def _handle_message_while_operating(self, user_message: str) -> bool:
+        """操作進行中收到訊息：只認「停/取消」與「好/不要」確認。"""
+        runtime = self._web_runtime
+        if is_stop(user_message):
+            logger.info("使用者要求中止操作")
+            if runtime is not None:
+                runtime.request_cancel()
+            self._awaiting_confirm = False
+            self.bubble_text_requested.emit(
+                "好，doro停下來囉～", {"auto_hide": True, "hide_delay_ms": 6000}
+            )
+            return True
+        if self._awaiting_confirm:
+            yes = is_affirmative(user_message)
+            self._awaiting_confirm = False
+            if runtime is not None:
+                runtime.provide_confirm(yes)
+            return True
+        # 操作中、又不是停/確認 → 先擋著
+        self.notification_requested.emit("info", "Chat", "doro 正在操作網頁，稍等一下下～")
+        return True
+
+    @QtCore.Slot(str)
+    def _on_op_progress(self, text: str) -> None:
+        """操作過程／結果要顯示的一句話。"""
+        cleaned = self._strip_markdown((text or "").strip())
+        if not cleaned:
+            return
+        self.bubble_text_requested.emit(
+            cleaned, {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 20000}
+        )
+
+    @QtCore.Slot(str)
+    def _on_op_confirm(self, text: str) -> None:
+        """操作要送出前、或碰到驗證/登入牆時，問使用者（等你打字回覆）。
+
+        ``text`` 已是完整泡泡文字（operator 那邊組好），這裡照顯示即可。
+        """
+        self._awaiting_confirm = True
+        self.bubble_text_requested.emit(
+            text, {"override_visibility": True, "auto_hide": False}
+        )
+
+    @QtCore.Slot()
+    def _on_op_finished(self) -> None:
+        """一次操作結束（成功/中止/出錯）。"""
+        logger.info("網頁操作結束")
+        self._operating = False
+        self._awaiting_confirm = False
+        self.busy_cursor_requested.emit(False)
 
     # ------------------------------------------------------------------ Configuration API
 
@@ -137,9 +528,73 @@ class ChatOrchestrator(QtCore.QObject):
 
     def _on_request_succeeded(self, assistant_text: str, _was_auto: bool) -> str:
         logger.info(f"Chat request succeeded, response length: {len(assistant_text)}")
-        display_text = self._handle_actions_in_text(assistant_text)
+
+        # LLM 判斷路：模型自己決定要讀網頁時會吐 `[read:網址]`。本輪還沒自動讀過、
+        # 且目前沒在讀，就去讀（拿使用者這輪原本的問題當提問）。讀完會把內容餵回
+        # 來讓模型正式作答。不把這個「決定去讀」的回覆顯示出來。
+        if not self._web_reading and not self._auto_read_used:
+            read_url = parse_read_action(assistant_text)
+            if read_url:
+                logger.info(f"LLM 主動要求讀網頁：{read_url}")
+                self._begin_web_read(read_url, self._last_user_text)
+                return ""
+
+        # LLM 判斷路：登入助手 [login:網址] — 使用者想自己登入某站時，doro 只把站
+        # 開著、停在那讓使用者本人登入（不操作）。優先於 operate 檢查。
+        if not self._operating and not self._web_reading:
+            login_url = parse_login_action(assistant_text)
+            if login_url:
+                logger.info(f"LLM 主動要求開站登入：{login_url}")
+                self._begin_login(login_url)
+                return ""
+
+        # LLM 判斷路（查證）：模型覺得使用者要「查證/查資料/比對來源」時吐 [verify:問題]。
+        # read-only，不受操作總開關限制。
+        if not self._operating and not self._web_reading:
+            verify_query = parse_verify_action(assistant_text)
+            if verify_query is not None:
+                query = verify_query or self._last_user_text
+                logger.info(f"LLM 主動要求查證：{query!r}")
+                # 顯示 doro 自己那句可愛台詞（把 [verify:] 等標記去掉），當作「我去查囉」，
+                # 之後就靜靜查、只在查完顯示答案（不再報機械進度）。
+                lead = self._strip_control_tokens(assistant_text).strip()
+                if lead:
+                    self.bubble_text_requested.emit(
+                        lead, {"override_visibility": True, "auto_hide": False}
+                    )
+                self._begin_verify(query)
+                return ""
+
+        # LLM 判斷路（操作）：模型覺得使用者要「在網站上辦事」時吐 [operate:目標]。
+        # 由此啟動網頁操作（_begin_operation 會擋總開關）。不顯示這則「決定去操作」的回覆。
+        if not self._operating and not self._web_reading:
+            operate_goal = parse_operate_action(assistant_text)
+            if operate_goal is not None:
+                goal = operate_goal or self._last_user_text
+                logger.info(f"LLM 主動要求操作網頁：{goal!r}")
+                self._begin_operation(goal)
+                return ""
+
+        # 讀完網頁的那一則答覆：允許多行完整顯示，且停久一點讓人讀得完。
+        was_web_answer = self._expect_web_answer
+        self._expect_web_answer = False
+        web_bubble_kwargs = {
+            "override_visibility": True,
+            "auto_hide": True,
+            "hide_delay_ms": 30000,
+        }
+
+        display_text = self._handle_actions_in_text(
+            assistant_text, keep_multiline=was_web_answer
+        )
+        if was_web_answer and display_text:
+            # 純文字泡泡框裝不下 Markdown：把 **粗體**、`程式碼`、#標題、項目符號
+            # 這些符號清掉（模型偶爾會用，切斷時還會留下半截的 * / **）。
+            display_text = self._strip_markdown(display_text)
         if display_text:
-            self.bubble_text_requested.emit(display_text, {})
+            self.bubble_text_requested.emit(
+                display_text, web_bubble_kwargs if was_web_answer else {}
+            )
             shown = display_text
         else:
             # No dialogue survived action processing. Strip any control tokens
@@ -193,7 +648,7 @@ class ChatOrchestrator(QtCore.QObject):
 
     # ------------------------------------------------------------------ Response processing
 
-    def _handle_actions_in_text(self, assistant_text: str) -> str:
+    def _handle_actions_in_text(self, assistant_text: str, *, keep_multiline: bool = False) -> str:
         cleaned_text, actions = parse_actions_from_text(assistant_text)
         move_reports: list[str] = []
         # Mouse brackets are queued behind movement brackets in the dispatcher,
@@ -269,7 +724,7 @@ class ChatOrchestrator(QtCore.QObject):
             for report in move_reports:
                 self._movement.record_manual_report(report)
 
-        return self._clean_assistant_dialogue(cleaned_text)
+        return self._clean_assistant_dialogue(cleaned_text, multi_line=keep_multiline)
 
     def _handle_mouse_bracket(self, token: str) -> bool:
         """Handle `[mouse:...]` brackets. Returns True if the token was claimed
@@ -366,6 +821,27 @@ class ChatOrchestrator(QtCore.QObject):
         )
         return None
 
+    @staticmethod
+    def _strip_markdown(text: str) -> str:
+        """把 Markdown 排版符號清掉，只留純文字（給讀網頁的多行答覆用）。
+
+        - 行首的 -、*、• 項目符號 → 換成「・」。
+        - 去掉 **粗體**、*斜體*、`程式碼`、~~刪除線~~、#標題 的符號。
+        - 清掉因為被截斷而落單的 * / ** / ` 殘符，以及變空的行。
+        """
+        out_lines: list[str] = []
+        for raw in text.split("\n"):
+            line = _BULLET_PREFIX_RE.sub("・", raw)
+            line = re.sub(r"^\s*#{1,6}\s*", "", line)          # 標題 #
+            line = line.replace("**", "").replace("__", "")     # 粗體
+            line = line.replace("~~", "").replace("`", "")      # 刪除線 / 程式碼
+            line = re.sub(r"(?<!\w)\*(?!\w)", "", line)          # 落單的 *
+            line = line.rstrip()
+            # 整行清完只剩符號/空白就丟掉（例如被截斷留下的一顆 *）
+            if line.strip(" 　・*#`~-"):
+                out_lines.append(line)
+        return "\n".join(out_lines).strip()
+
     def _strip_control_tokens(self, text: str) -> str:
         stripped = (text or "").strip()
         if not stripped:
@@ -374,7 +850,13 @@ class ChatOrchestrator(QtCore.QObject):
         cleaned = BRACKET_PATTERN.sub("", cleaned)
         return cleaned.strip()
 
-    def _clean_assistant_dialogue(self, text: str) -> str:
+    def _clean_assistant_dialogue(self, text: str, *, multi_line: bool = False) -> str:
+        """把 AI 回覆整理成要顯示在泡泡框的對話。
+
+        預設（``multi_line=False``）維持寵物一句話的個性：濾掉代替使用者發話的
+        行後，只取第一句。讀網頁的正式答覆（``multi_line=True``）則保留全部乾淨
+        的行、用換行接起來，這樣長一點的摘要才不會被砍到只剩第一行。
+        """
         stripped = (text or "").strip()
         if not stripped:
             return ""
@@ -392,6 +874,8 @@ class ChatOrchestrator(QtCore.QObject):
                 continue
             filtered.append(line)
         target = filtered if filtered else lines
+        if multi_line:
+            return "\n".join(target).strip()
         for line in target:
             if line:
                 return line

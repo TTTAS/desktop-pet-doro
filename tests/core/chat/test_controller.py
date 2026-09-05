@@ -39,6 +39,7 @@ def mock_config_manager():
     manager.chat.timeout_seconds = 30
     manager.chat.temperature = 0.7
     manager.chat.api_key = ""
+    manager.chat.max_tokens = 512
     manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     return manager
@@ -67,6 +68,7 @@ def controller_with_qsettings(tmp_prompt_file, mock_state_service, mock_config_m
     default_manager.chat.timeout_seconds = 30
     default_manager.chat.temperature = 0.7
     default_manager.chat.api_key = ""
+    default_manager.chat.max_tokens = 512
     default_manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     default_manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
     default_manager.update_chat = Mock()

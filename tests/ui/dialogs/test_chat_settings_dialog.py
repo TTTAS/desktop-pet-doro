@@ -20,6 +20,7 @@ def _make_stub_settings():
         api_key="",
         temperature=0.7,
         timeout_seconds=30,
+        max_tokens=512,
         stop_tokens=[],
         set_server_url=Mock(),
         set_model=Mock(),
@@ -27,6 +28,7 @@ def _make_stub_settings():
         set_api_key=Mock(),
         set_temperature=Mock(),
         set_timeout_seconds=Mock(),
+        set_max_tokens=Mock(),
         set_max_stop_tokens=Mock(),
         set_stop_tokens=Mock(),
     )

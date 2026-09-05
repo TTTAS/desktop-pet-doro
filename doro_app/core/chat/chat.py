@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 
 from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 設 DORO_WEB_DEBUG=1 就把每一次 LLM 的原始回傳（含錯誤）印到終端機，方便除錯——
+# 涵蓋一般聊天、讀網頁、查證、操作所有 LLM 呼叫（都經過 perform_chat_request）。
+_DEBUG = os.environ.get("DORO_WEB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _dbg_llm(header: str, body: str) -> None:
+    if _DEBUG:
+        print(f"\n===== [doro LLM] {header} =====", flush=True)
+        print((body or "")[:3000], flush=True)
+        print("=" * 40 + "\n", flush=True)
 
 
 def build_messages_for_mistral_instruct(system_prompt: str, user_text: str) -> list[dict]:
@@ -67,6 +79,7 @@ def perform_chat_request(
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read()
             logger.debug(f"Received response: {len(raw)} bytes")
+        _dbg_llm("原始回傳", raw.decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as exc:
         detail = ""
         try:
@@ -110,8 +123,10 @@ def perform_chat_request(
     assistant_text = ChatResponseParser.extract_assistant_text(payload)
     if assistant_text:
         logger.info(f"Chat request successful, response length: {len(assistant_text)}")
+        _dbg_llm("抽出的文字", assistant_text)
     else:
         logger.warning("Chat request returned no assistant text")
+        _dbg_llm("抽不出文字！（上面原始回傳裡沒有可用的 content，可能被 stop token 切掉或模型回空）", "")
     return assistant_text, None
 
 

@@ -112,6 +112,12 @@ class ChatSettingsDialog(FramelessDialog):
         self._timeout_spin.setSuffix(" s")
         form.addRow("Timeout:", self._timeout_spin)
 
+        # 一次回覆最多幾個 token（字數上限）。太小長回答會被砍斷。
+        self._max_tokens_spin = QtWidgets.QSpinBox()
+        self._max_tokens_spin.setRange(1, 32000)
+        self._max_tokens_spin.setSingleStep(128)
+        form.addRow("Max tokens:", self._max_tokens_spin)
+
         self._stop_tokens_edit = QtWidgets.QPlainTextEdit()
         self._stop_tokens_edit.setMaximumHeight(72)
         self._stop_tokens_edit.setPlaceholderText("One token per line (use \\n for newline)")
@@ -174,6 +180,7 @@ class ChatSettingsDialog(FramelessDialog):
         self._api_key_edit.setText(st.api_key)
         self._temperature_spin.setValue(st.temperature)
         self._timeout_spin.setValue(st.timeout_seconds)
+        self._max_tokens_spin.setValue(st.max_tokens)
         self._max_stop_spin.setValue(max_stop)
 
         tokens = st.stop_tokens
@@ -232,6 +239,7 @@ class ChatSettingsDialog(FramelessDialog):
         st.set_api_key(self._api_key_edit.text().strip())
         st.set_temperature(self._temperature_spin.value())
         st.set_timeout_seconds(self._timeout_spin.value())
+        st.set_max_tokens(self._max_tokens_spin.value())
         st.set_max_stop_tokens(self._max_stop_spin.value())
 
         tokens = [

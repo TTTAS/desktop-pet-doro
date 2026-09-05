@@ -5,6 +5,34 @@
 > 用詞約定：**功能**＝使用者會脫口而出想改的東西；**門**＝外面該從這裡進來的入口；
 > **地雷**＝能動但是爛路、別照抄。畫法以「角色＋位置」為主，只有「門」和「地雷」點到精確檔案。
 
+### 🌐 網頁（讀／搜尋／操作，分層做）
+- 核心邏輯：`doro_app/core/web/`
+- **第 1 層：讀** 已完成並接進聊天（貼網址→開真瀏覽器讀→交給聊天 AI 摘要／回答）。
+- **第 3 層：操作** 已完成並接進聊天（點/填/翻頁；送出類先問你）。
+  - 動作指令＋安全分級：`web_actions.py`（`parse_web_action`、`needs_confirmation`）。
+  - 看→想→（問）→做 循環：`operator.py`（`WebOperator`，注入 session/ask_llm/confirm/emit，純邏輯好測）。
+  - 觸發：**交給 LLM 判斷**——模型在一般聊天回覆吐 `[operate:目標]` 才啟動（`parse_operate_action` 在 `_on_request_succeeded` 攔）。不再用關鍵字硬觸發（避免「幫我點書籤」這種桌面動作被誤判；桌面/工具列點擊走 a11y 的 `[MOVE:to]+[mouse:click]`）。仍受**總開關**管（右鍵選單「讓 Doro 操作網頁」，`automation.web_operation_enabled`，預設關；關著時吐 [operate:] 會回友善提示）。區分規則寫在 `dia_prompt.txt`（目標在「這台電腦視窗/程式」→ mouse；在「網站/網頁裡」→ operate）。`parse_operate_command`（舊關鍵字版）保留但已不接線。
+  - 確認（`needs_confirmation(action, names, page_context)`）：點到「送出/購買/刪除/登入…」名稱的按鈕、或點擊目標編號對不上 → 要問；**按 Enter 只在敏感頁（結帳/付款/登入，看 `_SENSITIVE_PAGE_MARKERS`）才問**，一般頁（搜尋/逛網頁）Enter 不問；goto/scroll/type/back 不問。回「好」才做；其餘（含模糊、300s 逾時）都當不做。中止：打「停/取消」，或關視窗。confirm 文字由 operator 組好、`_on_op_confirm` 照顯示。
+  - **卡關接手續做**：碰到 CAPTCHA / 登入牆（`looks_like_captcha` / `looks_like_login_wall`）不再直接停，而是**暫停**用 confirm 問你「處理完回好我續做」→ 回「好」`continue` 重看頁面接著做、回「不要」放棄。收尾前提示詞要求誠實自檢、不准謊報成功。
+  - **登入助手**：模型吐 `[login:網址]`（`parse_login_action`）→ `_begin_login` → `WebRuntime.submit_login`：只開站停著讓你本人登入（不操作），並 `_hold_open=True` 讓閒置不自動關；登入狀態存專屬設定檔。
+- **共用瀏覽器 + 專屬執行緒**：`runtime.py`（`WebRuntime`）——一條專屬執行緒擁有唯一 `WebSession`，讀與操作都排隊走它（天生一次一個）；閒置 5 分鐘自動關；`op_confirm`/`provide_confirm` 用 Event 橋接「聊天打字確認」。**Playwright sync 綁執行緒，所有網頁動作都在這條執行緒**。
+  - `app.py` 的 `_on_about_to_quit` 會呼叫 `orchestrator.shutdown_web()` 收掉。
+  - 隔離：操作進行中 orchestrator 擋掉一般聊天/自動訊息（只收「好/不要/停」）；idle 看 `is_web_busy` 自動安靜；操作提示**不掛 a11y 前景樹**（`_operation_ask_llm` 自建 payload）。
+- **第 2 層：查證** 已完成（`verify.py` 的 `VerifyPipeline`）：搜尋(Bing)→抓前幾個結果連結(`session.collect_links`+`pick_result_links`)→各讀一頁→把所有來源一起餵給 AI 比對→誠實回報（找不到就說找不到）。跳過需登入/驗證的來源。**read-only，不受操作總開關限制**。觸發＝模型吐 `[operate:]` 之外的 `[verify:問題]`（`parse_verify_action`，在 `_on_request_succeeded` 攔）。走 `WebRuntime.submit_verify`→`verify_progress`/`verify_finished` signal。查證/操作的 LLM 呼叫共用 `_web_llm(system_prompt, prompt)`（各自系統提示、不掛 a11y）。
+- 兩條觸發路（都在 `doro_app/core/chat/orchestrator.py`，讀完共用 `_begin_web_read`）：
+  1. **明確路**（快）：`send_message` 用 `parse_web_read_command` 抓「讀取動詞＋http 網址」，命中直接讀。
+  2. **LLM 判斷路**（寬）：其它訊息照常送 LLM；模型想讀就在回覆吐 `[read:網址]`，
+     `_on_request_succeeded` 用 `parse_read_action` 抓到就去讀。每輪最多自動讀一次（`_auto_read_used` 防迴圈）。
+  讀完 → 背景 `WebReadWorker` → 把網頁內容＋原問題組成一則加料訊息丟回既有聊天流程作答。
+- **讀「目前這頁」**（doro 自己操作/讀後還開著的頁，無網址）：`parse_read_current_command`（有「這頁/你剛開的頁」等 referent＋讀取意圖、且沒網址才算）→ `_begin_web_read_current` → `WebRuntime.submit_read_current`（不重新導航，直接 snapshot 目前頁）→ 一樣走 `_on_web_read_result`。
+- 門（判斷指令 / 抓 [read:] 標記）：`parse_web_read_command`、`parse_read_current_command`、`parse_read_action` … `doro_app/core/web/intent.py`
+- 門（實際開瀏覽器讀）：`WebPageReader` … `doro_app/core/web/reader.py`
+- `[read:網址]` 標記要讓模型會用：指令寫在 `doro_app/core/chat/dia_prompt.txt`（跟 `[MOVE:]`/`[mouse:click]` 同一套動作標記慣例）。
+- 需要 Playwright：`pip install playwright` + `playwright install chromium`（見 pyproject `web` extra）。
+  沒裝也不會壞，只有真的叫它讀網頁時回安裝指引。
+- doro 專屬瀏覽器設定檔（登入狀態留這、跟你平常 Chrome 分開）：`AppDataLocation/web_profile`。
+- 規則：只有「明確讀取動詞＋http 網址」才攔截；純聊天不動。上網用你**當下設定的聊天模型**。
+
 ### 🗨️ 聊天
 - 核心邏輯：`doro_app/core/chat/`
 - 門 1（GUI 用）：`ChatOrchestrator` … `doro_app/core/chat/orchestrator.py`

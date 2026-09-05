@@ -157,7 +157,13 @@ class ChatController(QtCore.QObject):
         self._history.clear()
         self._last_user_message = ""
 
-    def start_request(self, user_message: str, *, is_auto: bool = False) -> tuple[bool, str | None]:
+    def start_request(
+        self,
+        user_message: str,
+        *,
+        is_auto: bool = False,
+        max_tokens: int | None = None,
+    ) -> tuple[bool, str | None]:
         cleaned = (user_message or "").strip()
         if not cleaned:
             logger.warning("Chat request rejected: empty message")
@@ -176,7 +182,8 @@ class ChatController(QtCore.QObject):
         self._retry.remember_original(cleaned)
 
         logger.debug("Building chat payload")
-        payload = self._build_chat_payload(cleaned)
+        # max_tokens 覆寫：讀網頁的正式答覆需要比寵物一句話更多字數，避免講到一半被砍。
+        payload = self._build_chat_payload(cleaned, max_tokens_override=max_tokens)
 
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
@@ -380,7 +387,7 @@ class ChatController(QtCore.QObject):
 
     # ------------------------------------------------------------------ Payload helpers
 
-    def _build_chat_payload(self, user_message: str) -> dict:
+    def _build_chat_payload(self, user_message: str, *, max_tokens_override: int | None = None) -> dict:
         messages: list[dict[str, str]] = []
         system_prompt = self._compose_system_prompt()
         stop_tokens = self._settings.stop_tokens
@@ -397,7 +404,10 @@ class ChatController(QtCore.QObject):
         messages.extend(history)
         messages.extend(first_entry)
 
-        max_tokens = self._config_manager.chat.max_tokens
+        max_tokens = self._settings.max_tokens
+        if max_tokens_override is not None and max_tokens_override > 0:
+            # 只往上取，不會意外把使用者設定的額度調小。
+            max_tokens = max(max_tokens, int(max_tokens_override))
 
         return {
             "model": self._settings.model,

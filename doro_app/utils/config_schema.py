@@ -36,6 +36,7 @@ from .config_defaults import (
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_A11Y_ENABLED,
     DEFAULT_A11Y_SHARE_INPUT_VALUES,
+    DEFAULT_WEB_OPERATION_ENABLED,
 )
 
 
@@ -153,6 +154,10 @@ class AutomationConfig:
     # redacted by default (URL bar, search box, half-typed text). The
     # user can opt in via the settings dialog.
     a11y_share_input_values: bool = DEFAULT_A11Y_SHARE_INPUT_VALUES
+    # 網頁操作（第 3 層）總開關。預設關：doro 只有在這打開時，才准「明講的」
+    # 操作指令去點/填/送出網頁（送出類仍會逐一問使用者）。跟 mouse/a11y 同樣是
+    # 保守的 opt-in。
+    web_operation_enabled: bool = DEFAULT_WEB_OPERATION_ENABLED
 
     def __post_init__(self):
         if not isinstance(self.mouse_enabled, bool):
@@ -170,6 +175,10 @@ class AutomationConfig:
         if not isinstance(self.a11y_share_input_values, bool):
             raise ValueError(
                 f"a11y_share_input_values must be bool, got {type(self.a11y_share_input_values)}"
+            )
+        if not isinstance(self.web_operation_enabled, bool):
+            raise ValueError(
+                f"web_operation_enabled must be bool, got {type(self.web_operation_enabled)}"
             )
         # Normalize to tuple of stripped non-empty strings
         normalized = tuple(

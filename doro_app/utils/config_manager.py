@@ -41,6 +41,7 @@ from .config_defaults import (
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_A11Y_ENABLED,
     DEFAULT_A11Y_SHARE_INPUT_VALUES,
+    DEFAULT_WEB_OPERATION_ENABLED,
 )
 from ..utils.logger import get_logger
 
@@ -281,6 +282,9 @@ class ConfigManager:
             "a11y_share_input_values": kwargs.get(
                 "a11y_share_input_values", current.a11y_share_input_values
             ),
+            "web_operation_enabled": kwargs.get(
+                "web_operation_enabled", current.web_operation_enabled
+            ),
         }
         new_config = AutomationConfig(**updated_values)
         self._config.automation = new_config
@@ -422,6 +426,10 @@ class ConfigManager:
                     self._settings.value("automation/a11y_share_input_values"),
                     DEFAULT_A11Y_SHARE_INPUT_VALUES,
                 ),
+                web_operation_enabled=_safe_bool(
+                    self._settings.value("automation/web_operation_enabled"),
+                    DEFAULT_WEB_OPERATION_ENABLED,
+                ),
             )
             self._config.automation = automation_config
         except ValueError as e:
@@ -494,6 +502,10 @@ class ConfigManager:
         self._settings.setValue(
             "automation/a11y_share_input_values",
             bool(automation.a11y_share_input_values),
+        )
+        self._settings.setValue(
+            "automation/web_operation_enabled",
+            bool(automation.web_operation_enabled),
         )
 
         # Save app config

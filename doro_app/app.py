@@ -162,6 +162,7 @@ class DoroApp:
             automation=self._automation,
             action_dispatcher=self._action_dispatcher,
             schedule=_dispatcher_schedule,
+            config_manager=self._config_manager,
         )
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,
@@ -652,6 +653,7 @@ class DoroApp:
             ("automation", "_automation", "shutdown"),
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),
+            ("web", "_chat_orchestrator", "shutdown_web"),
         ]
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)

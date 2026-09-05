@@ -97,6 +97,9 @@ class ContextMenuController:
             mouse_enabled=bool(
                 self._core_manager.config_manager.automation.mouse_enabled
             ),
+            web_operation_enabled=bool(
+                self._core_manager.config_manager.automation.web_operation_enabled
+            ),
         )
 
     def _build_callbacks(self) -> MenuCallbacks:
@@ -122,6 +125,7 @@ class ContextMenuController:
             toggle_a11y=self._toggle_a11y,
             preview_a11y=self._preview_a11y,
             toggle_mouse_enabled=self._toggle_mouse_enabled,
+            toggle_web_operation=self._toggle_web_operation,
             simulate_response=self._simulate_response,
             inspect_position=self._inspect_position,
             quit_app=QtWidgets.QApplication.instance().quit,
@@ -148,6 +152,16 @@ class ContextMenuController:
         """
         cm = self._core_manager.config_manager
         cm.update_automation(mouse_enabled=bool(checked))
+        cm.save()
+
+    def _toggle_web_operation(self, checked: bool) -> None:
+        """網頁操作總開關（第 3 層）開/關並存檔。
+
+        orchestrator 在啟動操作前會讀這個旗標；關著時叫它操作會回友善提示。
+        不用重開 doro，切了立即生效。
+        """
+        cm = self._core_manager.config_manager
+        cm.update_automation(web_operation_enabled=bool(checked))
         cm.save()
 
     def _preview_a11y(self) -> None:

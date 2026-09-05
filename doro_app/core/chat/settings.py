@@ -61,6 +61,7 @@ class ChatSettings(QtCore.QObject):
         self._api_key = chat.api_key
         self._timeout_seconds = chat.timeout_seconds
         self._temperature = chat.temperature
+        self._max_tokens = chat.max_tokens
         self._stop_tokens = list(chat.stop_tokens)
         self._max_stop_tokens = chat.max_stop_tokens
 
@@ -137,6 +138,15 @@ class ChatSettings(QtCore.QObject):
         self._timeout_seconds = int(value)
         self._schedule_persist()
 
+    @property
+    def max_tokens(self) -> int:
+        return int(self._max_tokens)
+
+    def set_max_tokens(self, value: int) -> None:
+        # 最少 1；ChatConfig 會驗證（必須是正整數）。
+        self._max_tokens = max(1, int(value))
+        self._schedule_persist()
+
     # ------------------------------------------------------------------ System prompt
 
     @property
@@ -169,6 +179,7 @@ class ChatSettings(QtCore.QObject):
             api_key=self._api_key,
             temperature=self._temperature,
             timeout_seconds=self._timeout_seconds,
+            max_tokens=self._max_tokens,
             stop_tokens=self._stop_tokens,
             max_stop_tokens=self._max_stop_tokens,
         )

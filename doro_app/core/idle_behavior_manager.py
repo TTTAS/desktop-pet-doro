@@ -101,6 +101,12 @@ class IdleBehaviorManager(QtCore.QObject):
             self._schedule_next()
             return
 
+        # 讀 / 操作網頁進行中也要安靜：不要在操作時插話、亂走，以免跟操作搶焦點
+        # 或干擾（隔離規則 Q2）。用 getattr 兼容沒有這個屬性的舊/假替身。
+        if getattr(self._chat_orchestrator, "is_web_busy", False):
+            self._schedule_next()
+            return
+
         if self._movement.has_active_movement:
             self._schedule_next()
             return
