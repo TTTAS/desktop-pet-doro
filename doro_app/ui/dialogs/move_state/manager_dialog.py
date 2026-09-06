@@ -40,11 +40,13 @@ class _ActionCard(QtWidgets.QFrame):
         details: str = "",
         extra_info: str = "",
         removable: bool = True,
+        title: Optional[str] = None,
         parent: Optional[QtWidgets.QWidget] = None,
     ):
         super().__init__(parent)
         self._action_type = action_type
         self._key = key
+        self._title = title or key
         self._removable = removable
         self._gif_paths = gif_paths
         self._gif_player = gif_player
@@ -122,7 +124,7 @@ class _ActionCard(QtWidgets.QFrame):
                 self._preview.setMovie(movie)
 
         # ── Key label ──
-        name = QtWidgets.QLabel(self._key)
+        name = QtWidgets.QLabel(self._title)
         name.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         name.setStyleSheet("font-size: 13px; font-weight: bold; color: #4a2040;")
         name.setWordWrap(True)
@@ -327,23 +329,29 @@ class MoveStateManagerDialog(FramelessDialog):
             self._cards.append(card)
             idx += 1
 
-        # Named actions (Phase 1c) — only when an ActionService is wired in.
+        # Named actions — registry-driven: one card per registered action
+        # (click, dragged, …). Only when an ActionService is wired in.
         if self._action_service is not None:
-            from ....core.action.repository import CLICK_ACTION_KEY
+            from ....core.action.repository import CLICK_ACTION_KEY, DRAG_ACTION_KEY
 
-            click_path = self._action_service.resolve_action_gif_path(CLICK_ACTION_KEY)
-            gif_paths = [click_path] if click_path else []
-            card = _ActionCard(
-                "action", CLICK_ACTION_KEY, gif_paths, self._gif_player,
-                details="Wind-up GIF for [mouse:click]",
-                extra_info="(fallback active)" if not click_path else "",
-                removable=False,  # Click is builtin; user can only rebind GIF.
-                parent=self._grid_container,
-            )
-            card.edit_clicked.connect(self._on_edit)
-            self._grid_layout.addWidget(card, idx // cols, idx % cols)
-            self._cards.append(card)
-            idx += 1
+            action_details = {
+                CLICK_ACTION_KEY: "Wind-up GIF for [mouse:click]",
+                DRAG_ACTION_KEY: "拖曳 Doro 時播放",
+            }
+            for action_key in self._action_service.named_action_keys():
+                gif_paths = self._action_service.list_action_gif_paths(action_key)
+                card = _ActionCard(
+                    "action", action_key, gif_paths, self._gif_player,
+                    title=self._action_service.get_action_display_name(action_key),
+                    details=action_details.get(action_key, ""),
+                    extra_info="(fallback active)" if not gif_paths else "",
+                    removable=False,  # builtins: user can only rebind the GIF
+                    parent=self._grid_container,
+                )
+                card.edit_clicked.connect(self._on_edit)
+                self._grid_layout.addWidget(card, idx // cols, idx % cols)
+                self._cards.append(card)
+                idx += 1
 
         # Transition actions
         for key in sorted(self.service.all_transition_keys()):

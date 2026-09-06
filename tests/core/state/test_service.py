@@ -369,3 +369,22 @@ class TestStateSaving:
         state_service_with_mocks.update_state("test", label="Updated")
 
         assert mock_callback.called
+
+
+class TestHiddenStatesExcludedFromLLMList:
+    """Action-backed hidden states must never reach the LLM state list."""
+
+    def test_write_state_list_excludes_hidden_action_states(self, real_state_service):
+        svc = real_state_service
+        svc.initialize(default_gif_path=None)
+        svc.add_state("happy", "Happy")
+        # Register a hidden action-backed display state (as ActionService does).
+        svc.ensure_action_state("dragged", "拖曳", gif_id=None)
+
+        out = svc.write_state_list()
+
+        assert "(idle)" in out
+        assert "(happy)" in out
+        # The hidden gesture-only state must not be advertised to the LLM.
+        assert "dragged" not in out
+        assert svc.is_hidden_state("dragged") is True

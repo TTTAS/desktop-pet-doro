@@ -81,13 +81,22 @@
 - 門 1（執行時派工用）：`ActionDispatcher` … `doro_app/core/action/dispatcher.py`
   （`app.py`／`chat`／`idle_behavior_manager` 用它觸發點擊等動作）
 - 門 2（開機註冊用）：`ActionService` … `doro_app/core/action/service.py`
-  （`bootstrap.py` 用它把內建的 `click` 動作註冊好）
+  （`bootstrap.py` 用它把內建的 `click`＋`dragged` 動作註冊好）
+- **命名動作是一套「登記處」**：每個動作是 `actions.json` 裡一筆 `ActionEntry`（`key`＋`display_name`＋`gif_id`＋`is_builtin`＋`kind`）。`kind` 是分類種子（現有 `click`/`dragged`，未來可掛 `move`/`transition`）。每個動作背後掛一個**隱藏、受保護的顯示狀態**當「播放載體」（`click`→`click_action`、`dragged`→`dragged`；隱藏＝不進 States 選單、idle 也挑不到），對應表寫在 `service.py` 的 `_ACTION_STATE_KEYS`。綁 GIF 走 `bind_action_gif(key, path)`（`bind_click_gif` 是相容薄殼）。加一個新反應＝`repository.py` 補一個 builtin＋`_ACTION_STATE_KEYS` 加一列，不用新 UI。
 - 資料夾內的房間（需要時才進去）：
   - `click_action.py`、`movement_action.py`：各種動作的組裝
   - `phases.py`：一個動作拆成「等待／視覺／效果」幾個階段
-  - `repository.py`：`actions.json` 存檔
+  - `repository.py`：`actions.json` 存檔＋內建動作（`click`/`dragged`）
   - `fakes.py`：測試用替身
 - 點擊提示視窗：`doro_app/ui/click_warning_overlay.py`、`doro_app/ui/controllers/click_action_controller.py`
+- **設定介面（門）**：右鍵選單 **Actions → Edit actions** 開的是 `MoveStateManagerDialog`（標題其實叫 "Action Manager"）… `doro_app/ui/dialogs/move_state/manager_dialog.py`。它是一個**卡片清單**，同時列 Movement／Transition／命名動作（click、拖曳），命名動作那段是 **registry 驅動**（迴圈 `ActionService.named_action_keys()`，不再寫死 click）。換 GIF 走 `edit_dialog.py` 的 action 模式（`bind_action_gif`）。
+
+### 🫳 拖曳反應（被拖曳時播的 GIF）
+- **功能**：抓著 Doro 拖動時播一段專屬 GIF，放開回原狀態。
+- 它是一個**命名動作** `dragged`（不是 state、不是 movement），走上面「點擊互動」的登記處那套；素材預設放 `doro_app/res/drag/`，開機首次 `ActionService._seed_drag_defaults()` 把裡面的 `.webp/.gif/.apng` 種進 `dragged` 狀態的 GIF 池（多檔＝隨機播；使用者改過就不覆蓋）。
+- **觸發／收尾（門）**：`doro_app/ui/events/mouse_event_handler.py` 的 `drag_started`／`drag_ended` 兩個信號 → `app.py` 的 `_on_doro_dragged`（記下拖曳前狀態＋`request_state("dragged", force=True)`）與 `_on_drag_ended`（還原；拖曳前是走路類或就是 dragged→回 `idle`）。`drag_ended` 只在真的拖曳後發、單純點擊不發。
+- **設定**：右鍵 Actions → Edit actions → 「拖曳」卡換 GIF（跟 click 同一個 Action Manager）。
+- 地雷：`app.py` 的 `_on_doro_dragged` 除了播 GIF 還負責**取消進行中的走路／排隊點擊**（拖動時原有行為），別把那段刪掉。
 
 ### 🤖 自動化 / 前景追蹤
 - 核心邏輯：`doro_app/core/automation/`

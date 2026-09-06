@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .repository import CLICK_ACTION_KEY, ActionEntry
+from .repository import CLICK_ACTION_KEY, DRAG_ACTION_KEY, ActionEntry
 
 
 class FakeActionRepository:
@@ -33,6 +33,15 @@ class FakeActionRepository:
                 display_name="Click",
                 gif_id=None,
                 is_builtin=True,
+                kind="click",
+            )
+        if DRAG_ACTION_KEY not in self._entries:
+            self._entries[DRAG_ACTION_KEY] = ActionEntry(
+                key=DRAG_ACTION_KEY,
+                display_name="拖曳",
+                gif_id=None,
+                is_builtin=True,
+                kind="dragged",
             )
 
     def save(self) -> bool:
@@ -57,5 +66,6 @@ class FakeActionRepository:
             display_name=entry.display_name,
             gif_id=gif_id,
             is_builtin=entry.is_builtin,
+            kind=entry.kind,
         )
         return self.save()

@@ -26,6 +26,7 @@ def fake_action_service(tmp_path):
     """Minimal ActionService stand-in."""
     svc = Mock()
     svc.resolve_action_gif_path.return_value = None  # no GIF yet bound
+    svc.bind_action_gif.return_value = True
     svc.bind_click_gif.return_value = True
     return svc
 
@@ -99,7 +100,7 @@ def test_action_edit_mode_loads_existing_binding_path(
     assert dialog.key_edit.text() == CLICK_ACTION_KEY
 
 
-def test_save_action_calls_bind_click_gif(
+def test_save_action_binds_gif_for_the_edited_action(
     qtbot, fake_state_service, fake_action_service, tmp_path,
 ):
     EditMoveStateDialog = _import_dialog()
@@ -116,7 +117,7 @@ def test_save_action_calls_bind_click_gif(
     dialog.selected_gif_path = selected
     dialog._on_accept()
 
-    fake_action_service.bind_click_gif.assert_called_once_with(selected)
+    fake_action_service.bind_action_gif.assert_called_once_with(CLICK_ACTION_KEY, selected)
 
 
 def test_save_action_with_no_selection_does_not_call_service(
@@ -132,7 +133,7 @@ def test_save_action_with_no_selection_does_not_call_service(
     qtbot.addWidget(dialog)
 
     dialog._on_accept()
-    fake_action_service.bind_click_gif.assert_not_called()
+    fake_action_service.bind_action_gif.assert_not_called()
 
 
 def test_movement_mode_still_works_alongside_action_service(

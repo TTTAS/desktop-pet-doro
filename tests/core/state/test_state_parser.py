@@ -14,7 +14,13 @@ from doro_app.core.state.state_parser import StateParser
 class MockStateProvider:
     """Mock state provider for testing."""
 
-    def __init__(self, states: set[str], movement_only: set[str], labels: dict[str, str]):
+    def __init__(
+        self,
+        states: set[str],
+        movement_only: set[str],
+        labels: dict[str, str],
+        hidden: Optional[set[str]] = None,
+    ):
         """
         Initialize mock provider.
 
@@ -22,10 +28,13 @@ class MockStateProvider:
             states: Set of valid state keys
             movement_only: Set of movement-only state keys
             labels: Dict mapping state keys to labels (for label matching)
+            hidden: Set of hidden (action-backed) state keys the LLM must
+                not be able to select
         """
         self.states = states
         self.movement_only = movement_only
         self.labels = labels  # key -> label
+        self.hidden = hidden or set()
 
     def get_state(self, key: str):
         """Get state by key (returns truthy if exists)."""
@@ -34,6 +43,10 @@ class MockStateProvider:
     def is_movement_only_state(self, key: str) -> bool:
         """Check if state is movement-only."""
         return key in self.movement_only
+
+    def is_hidden_state(self, key: str) -> bool:
+        """Check if state is hidden (action-backed)."""
+        return key in self.hidden
 
     def find_state_by_label(self, label_query: str) -> Optional[str]:
         """Find state by label matching."""
@@ -302,3 +315,34 @@ class TestDefaultAliases:
         custom_aliases = {"test": "custom"}
         parser = StateParser(action_aliases=custom_aliases)
         assert parser._action_aliases == custom_aliases
+
+
+class TestHiddenStatesRejected:
+    """LLM tokens must never select hidden, gesture-only action states."""
+
+    def _parser(self):
+        return StateParser(action_aliases={})
+
+    def test_hidden_state_token_is_rejected(self):
+        provider = MockStateProvider(
+            states={"idle", "click_action", "dragged"},
+            movement_only=set(),
+            labels={"dragged": "拖曳"},
+            hidden={"click_action", "dragged"},
+        )
+        parser = self._parser()
+        assert parser.parse("(click_action)", provider) is None
+        assert parser.parse("dragged", provider) is None
+        # A normal state right next to them still resolves.
+        assert parser.parse("idle", provider) == "idle"
+
+    def test_hidden_state_rejected_via_label_match(self):
+        provider = MockStateProvider(
+            states={"idle", "dragged"},
+            movement_only=set(),
+            labels={"dragged": "拖曳"},
+            hidden={"dragged"},
+        )
+        parser = self._parser()
+        # Even by its display label, a hidden state must not be selectable.
+        assert parser.parse("拖曳", provider) is None

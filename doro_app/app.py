@@ -401,6 +401,7 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         mouse_handler.window_drag_requested.connect(self.window.move)
         mouse_handler.drag_started.connect(self._on_doro_dragged)
+        mouse_handler.drag_ended.connect(self._on_drag_ended)
         mouse_handler.click_detected.connect(
             lambda: (
                 self.window.mark_user_activity(),
@@ -631,12 +632,42 @@ class DoroApp:
         listeners during shutdown, no one is subscribed any more — that
         prevents the cancelled action from being inadvertently advanced.
         """
+        # Remember where to return once the drag ends. Capture before the
+        # cancels below, which can themselves revert state (e.g. a mid-walk
+        # cancel). A movement-only key (or the drag state itself) is not a
+        # sensible resting pose, so those restore to idle instead.
+        self._pre_drag_state_key = self._state_service.get_committed_state_key()
+
         if self._automation is not None:
             self._automation.cancel_pending_click("drag")
         dispatcher = getattr(self, "_action_dispatcher", None)
         if dispatcher is not None:
             dispatcher.cancel_current("drag")
         self._movement.cancel_active_movement()
+
+        # Play the drag reaction GIF (force through the transition lock —
+        # this is a direct user gesture, not an LLM/idle state change).
+        self._state_service.request_state(
+            self._action_service.drag_state_key, force=True
+        )
+
+    def _on_drag_ended(self) -> None:
+        """Drag released — restore the state captured at drag start.
+
+        Falls back to idle when the pre-drag state was a movement pose
+        (Doro was walking when grabbed) or the drag state itself, neither
+        of which is a natural thing to freeze on.
+        """
+        key = getattr(self, "_pre_drag_state_key", None)
+        drag_key = self._action_service.drag_state_key
+        if (
+            not key
+            or key == drag_key
+            or self._state_service.is_movement_only_state(key)
+        ):
+            key = "idle"
+        self._state_service.request_state(key, force=True)
+        self._pre_drag_state_key = None
 
     def _on_about_to_quit(self) -> None:
         """Tear down background workers so the process can exit cleanly.

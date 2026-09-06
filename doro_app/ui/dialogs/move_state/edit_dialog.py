@@ -212,10 +212,11 @@ class EditMoveStateDialog(FramelessDialog):
         # Show manage GIFs button only for transitions
         self.manage_gifs_btn.setVisible(is_transition)
 
-        # Named-action edits pin the key — Phase 1c only opens this slot
-        # for the builtin "click" entry.
+        # Named-action edits pin the key to the action being edited
+        # (builtins: click, dragged). New-action flow has no key yet, so
+        # fall back to the click builtin as before.
         if is_action:
-            self.key_edit.setText(CLICK_ACTION_KEY)
+            self.key_edit.setText(self._edit_action_key or CLICK_ACTION_KEY)
             self.key_edit.setEnabled(False)
             self.key_label.setText("Action key:")
         elif not self.is_edit:
@@ -231,7 +232,7 @@ class EditMoveStateDialog(FramelessDialog):
             )
         elif is_action:
             self.info_label.setText(
-                "💡 Action: Bind the GIF that plays during a click wind-up. "
+                "💡 Action: Bind the GIF this reaction plays. "
                 "Leaving this empty falls back to a random stand pose at runtime."
             )
         else:
@@ -396,11 +397,10 @@ class EditMoveStateDialog(FramelessDialog):
         return self._save_transition()
 
     def _save_action(self):
-        """Persist the user's GIF choice for a named action.
+        """Persist the user's GIF choice for a named action (click, dragged).
 
-        Phase 1c only supports the builtin ``click`` action. Selecting no
-        new GIF is treated as "keep what's bound" (matches the rest of
-        the dialog) rather than "clear binding".
+        Selecting no new GIF is treated as "keep what's bound" (matches the
+        rest of the dialog) rather than "clear binding".
         """
         if self._action_service is None:
             QtWidgets.QMessageBox.warning(
@@ -416,9 +416,10 @@ class EditMoveStateDialog(FramelessDialog):
             self.accept()
             return
 
-        if not self._action_service.bind_click_gif(self.selected_gif_path):
+        action_key = self._edit_action_key or CLICK_ACTION_KEY
+        if not self._action_service.bind_action_gif(action_key, self.selected_gif_path):
             QtWidgets.QMessageBox.warning(
-                self, "Save", "Failed to bind the GIF to the click action.",
+                self, "Save", f"Failed to bind the GIF to the '{action_key}' action.",
             )
             return
         self.accept()

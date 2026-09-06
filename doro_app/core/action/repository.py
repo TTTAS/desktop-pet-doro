@@ -3,9 +3,15 @@
 Stores ``ActionEntry`` records in ``actions.json`` alongside the other
 schema files (``states.json``, ``move_states.json``, ``transitions.json``).
 
-Phase 1c only ships one builtin action — ``click``. Future phases (1e/1f)
-will allow user-added named actions; the schema reserves an
+Ships two builtin actions — ``click`` (the wind-up before a
+``[mouse:click]``) and ``dragged`` (played while the user drags Doro).
+Future phases will allow user-added named actions; the schema reserves an
 ``is_builtin`` flag to differentiate.
+
+Each entry carries a ``kind`` discriminator (``"click"`` / ``"dragged"``,
+and later ``"move"`` / ``"transition"``). It is the seed of a unified
+"action registry": the Action Manager iterates entries and groups them by
+kind, so surfacing a new reaction is a data change, not a UI rewrite.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ logger = get_logger(__name__)
 
 
 CLICK_ACTION_KEY = "click"
+DRAG_ACTION_KEY = "dragged"
 
 
 @dataclass
@@ -31,6 +38,10 @@ class ActionEntry:
     display_name: str
     gif_id: Optional[str] = None
     is_builtin: bool = False
+    # Registry discriminator. Defaults to "click" so legacy actions.json
+    # files (which only ever held the click builtin, without a kind field)
+    # still load as the click action.
+    kind: str = "click"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -42,6 +53,7 @@ class ActionEntry:
             display_name=data.get("display_name", data["key"].title()),
             gif_id=data.get("gif_id"),
             is_builtin=bool(data.get("is_builtin", False)),
+            kind=data.get("kind", "click"),
         )
 
 
@@ -57,9 +69,10 @@ class ActionRepository:
           ]
         }
 
-    On first load the builtin ``click`` action is auto-inserted with
-    ``gif_id=None`` — the runtime fallback chain (see
-    :class:`ActionService`) makes sure clicks still work without an asset.
+    On first load the builtin ``click`` and ``dragged`` actions are
+    auto-inserted with ``gif_id=None`` — the runtime fallback chain (see
+    :class:`ActionService`) makes sure they still play without a bound
+    asset.
     """
 
     def __init__(self, file_path: Path):
@@ -71,7 +84,7 @@ class ActionRepository:
         return self._file_path
 
     def load(self) -> None:
-        """Populate from disk, then ensure the ``click`` builtin exists."""
+        """Populate from disk, then ensure the builtins exist."""
         self._entries.clear()
         if self._file_path.is_file():
             try:
@@ -81,24 +94,32 @@ class ActionRepository:
                     self._entries[entry.key] = entry
             except Exception as exc:
                 logger.warning(f"Failed to read {self._file_path}: {exc}")
-        self._ensure_click_builtin()
+        self._ensure_builtin(CLICK_ACTION_KEY, "Click", kind="click")
+        self._ensure_builtin(DRAG_ACTION_KEY, "拖曳", kind="dragged")
 
-    def _ensure_click_builtin(self) -> None:
-        if CLICK_ACTION_KEY not in self._entries:
-            self._entries[CLICK_ACTION_KEY] = ActionEntry(
-                key=CLICK_ACTION_KEY,
-                display_name="Click",
+    def _ensure_builtin(self, key: str, default_name: str, *, kind: str) -> None:
+        """Insert a builtin action, or re-affirm its builtin flag/kind.
+
+        A user's bound ``gif_id`` and renamed ``display_name`` survive; only
+        the ``is_builtin`` flag and ``kind`` are re-asserted so an older
+        actions.json (missing these) is upgraded in place on next save.
+        """
+        existing = self._entries.get(key)
+        if existing is None:
+            self._entries[key] = ActionEntry(
+                key=key,
+                display_name=default_name,
                 gif_id=None,
                 is_builtin=True,
+                kind=kind,
             )
         else:
-            # Preserve user gif_id; just re-affirm the builtin flag.
-            existing = self._entries[CLICK_ACTION_KEY]
-            self._entries[CLICK_ACTION_KEY] = ActionEntry(
+            self._entries[key] = ActionEntry(
                 key=existing.key,
-                display_name=existing.display_name or "Click",
+                display_name=existing.display_name or default_name,
                 gif_id=existing.gif_id,
                 is_builtin=True,
+                kind=kind,
             )
 
     def save(self) -> bool:

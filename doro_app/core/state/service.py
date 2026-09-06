@@ -271,6 +271,15 @@ class StateService:
         """Check if a state key is reserved for movement only."""
         return self._move_states.is_movement_only(key)
 
+    def is_hidden_state(self, key: str) -> bool:
+        """Check if a state is hidden from menus / the LLM state list.
+
+        Hidden states are the action-backed display states (click_action,
+        dragged, click_failed) — driven only by real gestures / the
+        dispatcher, never selectable by the LLM.
+        """
+        return self._states.is_hidden(key)
+
     def get_move_state(self, key: str) -> Optional[MoveState]:
         """Get a movement state by key."""
         return self._move_states.get(key)
@@ -1002,11 +1011,21 @@ class StateService:
     # ═══════════════════════════════════════════════════════════
 
     def write_state_list(self) -> str:
-        """Write state summary for LLM context."""
+        """Write state summary for LLM context.
+
+        Hidden states (the action-backed ``click_action`` / ``dragged`` /
+        ``click_failed`` display states) are excluded: they are driven only
+        by real click/drag gestures and the dispatcher, never chosen by the
+        LLM, so they must not appear in the LLM-facing list.
+        """
+        hidden = self._states.hidden_keys()
+        visible_states = {
+            k: v for k, v in self._states.items().items() if k not in hidden
+        }
         # Collect GIF path and count information
         gif_paths: dict[str, Optional[Path]] = {}
         gif_counts: dict[str, int] = {}
-        for key, state in self._states.items().items():
+        for key, state in visible_states.items():
             # Check multi-GIF subfolder first
             multi_gifs = self._gif_repo.list_gifs(key)
             if multi_gifs:
@@ -1033,7 +1052,7 @@ class StateService:
                 gif_counts[key] = 0
 
         return self._state_list_writer.write(
-            self._states.items(),
+            visible_states,
             self._move_states.items(),
             gif_paths,
             set(self._move_states.movement_only_keys()),

@@ -18,6 +18,9 @@ class MouseEventHandler(QtCore.QObject):
             the click/drag threshold — wired by the app to cancel any
             in-flight movement + queued click so dragging Doro mid-walk
             doesn't fire an unwanted click at the end.
+        drag_ended: Emitted on release that ended a drag gesture (not a
+            click) — the app uses it to restore the pre-drag state after
+            the drag reaction GIF.
         click_detected: Emitted when a click (not drag) is detected
         user_activity_detected: Emitted when any user interaction occurs
     """
@@ -25,6 +28,7 @@ class MouseEventHandler(QtCore.QObject):
     # Signals
     window_drag_requested = QtCore.Signal(QtCore.QPoint)  # global position for window
     drag_started = QtCore.Signal()
+    drag_ended = QtCore.Signal()
     click_detected = QtCore.Signal()
     user_activity_detected = QtCore.Signal()
 
@@ -119,15 +123,20 @@ class MouseEventHandler(QtCore.QObject):
                 and self._click_press_pos is not None
                 and (event.position() - self._click_press_pos).manhattanLength() <= self._click_threshold
             )
+            was_drag = self._click_was_dragging
 
             # Reset state
             self._drag_pos = None
             self._click_press_pos = None
             self._click_was_dragging = False
 
-            # Emit click signal if detected
+            # Emit click / drag-end signal
             if was_click:
                 self.click_detected.emit()
+            elif was_drag:
+                # Paired with drag_started: the app restores the pre-drag
+                # state now that the gesture is over.
+                self.drag_ended.emit()
 
             return (True, was_click)
 

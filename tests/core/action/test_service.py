@@ -7,10 +7,16 @@ from pathlib import Path
 import pytest
 
 from doro_app.core.action.fakes import FakeActionRepository
-from doro_app.core.action.repository import ActionEntry, CLICK_ACTION_KEY
+from doro_app.core.action.repository import (
+    ActionEntry,
+    CLICK_ACTION_KEY,
+    DRAG_ACTION_KEY,
+)
 from doro_app.core.action.service import (
     CLICK_ACTION_STATE_KEY,
     CLICK_ACTION_STATE_LABEL,
+    DRAG_ACTION_STATE_KEY,
+    DRAG_ACTION_STATE_LABEL,
     ActionService,
 )
 
@@ -40,6 +46,12 @@ class RecordingStateService:
         self.ensure_calls: list[tuple[str, str, str | None]] = []
         self.update_calls: list[tuple[str, dict]] = []
         self.store_returns: str | None = "stored_gif_id"
+        self.deleted_all: list[str] = []
+        self.added: list[tuple[str, object]] = []
+        self.gif_by_state: dict[str, Path] = {}
+        # Pretend the drag pool is already populated so bootstrap's seeding
+        # step is a no-op here; seeding is covered by its own test.
+        self._drag_seeded = True
 
     def ensure_action_state(self, *, key, label, gif_id=None):
         self.ensure_calls.append((key, label, gif_id))
@@ -50,6 +62,22 @@ class RecordingStateService:
 
     def store_gif(self, source_path, state_key):
         return self.store_returns
+
+    def list_gif_paths(self, state_key):
+        if state_key == DRAG_ACTION_STATE_KEY and self._drag_seeded:
+            return [Path("already_seeded")]
+        return []
+
+    def get_gif_path(self, state_key):
+        return self.gif_by_state.get(state_key)
+
+    def add_gif(self, state_key, path):
+        self.added.append((state_key, path))
+        return True
+
+    def delete_all_gifs(self, state_key):
+        self.deleted_all.append(state_key)
+        return True
 
 
 # ─── Bootstrap behaviour ──────────────────────────────────────────
@@ -80,9 +108,12 @@ def test_bootstrap_registers_click_state_with_user_bound_gif(tmp_path):
         CLICK_FAILED_STATE_KEY,
         CLICK_FAILED_STATE_LABEL,
     )
+    # The drag action registers a third hidden state, always with gif_id
+    # None (its GIFs live in the state's own seeded pool, not the entry).
     assert state_service.ensure_calls == [
         (CLICK_ACTION_STATE_KEY, CLICK_ACTION_STATE_LABEL, "click/user.gif"),
         (CLICK_FAILED_STATE_KEY, CLICK_FAILED_STATE_LABEL, "click/user.gif"),
+        (DRAG_ACTION_STATE_KEY, DRAG_ACTION_STATE_LABEL, None),
     ]
 
 
@@ -106,11 +137,16 @@ def test_bootstrap_falls_back_to_random_stand_when_no_user_binding(tmp_path):
     # storage_dir so GifRepository.get_path can resolve it later. Both
     # click_action and click_failed are registered with the same
     # bootstrap-time fallback.
-    assert len(state_service.ensure_calls) == 2
+    assert len(state_service.ensure_calls) == 3
     keys = [c[0] for c in state_service.ensure_calls]
     assert keys[0] == CLICK_ACTION_STATE_KEY
-    for _, _, gif_id in state_service.ensure_calls:
-        assert gif_id == "stand/stand_2.gif"
+    # click_action + click_failed share the stand fallback; the drag state
+    # is registered with None (it seeds its own pool).
+    for key, _, gif_id in state_service.ensure_calls:
+        if key == DRAG_ACTION_STATE_KEY:
+            assert gif_id is None
+        else:
+            assert gif_id == "stand/stand_2.gif"
 
 
 def test_bootstrap_falls_back_to_single_stand_gif(tmp_path):
@@ -331,3 +367,147 @@ def test_unbind_click_gif_clears_both_repo_and_state(tmp_path):
     assert service.unbind_click_gif() is True
     assert repo.get(CLICK_ACTION_KEY).gif_id is None
     assert (CLICK_ACTION_STATE_KEY, {"gif_id": None}) in state_service.update_calls
+
+
+# ─── Drag action + registry ───────────────────────────────────────
+
+
+def test_bootstrap_registers_drag_state(tmp_path):
+    """Bootstrap ensures the hidden drag display state exists."""
+    storage = tmp_path / "state"
+    storage.mkdir()
+    repo = FakeActionRepository()
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()  # drag pool pretended present
+
+    service = ActionService(repo, state_service, gif_repo)
+    service.bootstrap()
+
+    keys = [c[0] for c in state_service.ensure_calls]
+    assert DRAG_ACTION_STATE_KEY in keys
+
+
+def test_bootstrap_seeds_drag_defaults_from_dir(tmp_path):
+    """The bundled webp/gif in the drag dir are seeded into the pool once."""
+    storage = tmp_path / "state"
+    storage.mkdir()
+    drag_dir = tmp_path / "drag"
+    drag_dir.mkdir()
+    (drag_dir / "a.webp").write_bytes(b"x")
+    (drag_dir / "b.gif").write_bytes(b"x")
+    (drag_dir / "notes.txt").write_bytes(b"x")  # ignored (not animated)
+
+    repo = FakeActionRepository()
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()
+    state_service._drag_seeded = False  # pool empty -> seeding runs
+
+    service = ActionService(
+        repo, state_service, gif_repo, drag_assets_dir=drag_dir,
+    )
+    service.bootstrap()
+
+    seeded = [p for (k, p) in state_service.added if k == DRAG_ACTION_STATE_KEY]
+    names = sorted(p.name for p in seeded)
+    assert names == ["a.webp", "b.gif"]
+
+
+def test_bootstrap_skips_drag_seeding_when_pool_present(tmp_path):
+    """A user who already populated the drag pool is never overwritten."""
+    storage = tmp_path / "state"
+    storage.mkdir()
+    drag_dir = tmp_path / "drag"
+    drag_dir.mkdir()
+    (drag_dir / "a.webp").write_bytes(b"x")
+
+    repo = FakeActionRepository()
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()  # _drag_seeded True by default
+
+    service = ActionService(
+        repo, state_service, gif_repo, drag_assets_dir=drag_dir,
+    )
+    service.bootstrap()
+
+    assert state_service.added == []
+
+
+def test_bind_action_gif_dragged_clears_pool_and_binds(tmp_path):
+    """Rebinding the drag GIF clears the seeded pool then stores the choice."""
+    storage = tmp_path / "state"
+    storage.mkdir()
+    source = tmp_path / "new_drag.gif"
+    source.write_bytes(b"gif")
+
+    repo = FakeActionRepository()
+    repo.load()  # ensures the dragged builtin exists
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()
+    state_service.store_returns = "dragged/new_drag.gif"
+
+    service = ActionService(repo, state_service, gif_repo)
+    assert service.bind_action_gif(DRAG_ACTION_KEY, source) is True
+
+    # Seeded pool cleared before the single bind wins the priority chain.
+    assert DRAG_ACTION_STATE_KEY in state_service.deleted_all
+    assert repo.get(DRAG_ACTION_KEY).gif_id == "dragged/new_drag.gif"
+    assert (DRAG_ACTION_STATE_KEY, {"gif_id": "dragged/new_drag.gif"}) \
+        in state_service.update_calls
+
+
+def test_bind_action_gif_rejects_unknown_action(tmp_path):
+    storage = tmp_path / "state"
+    storage.mkdir()
+    source = tmp_path / "x.gif"
+    source.write_bytes(b"gif")
+
+    repo = FakeActionRepository()
+    repo.load()
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()
+
+    service = ActionService(repo, state_service, gif_repo)
+    assert service.bind_action_gif("not_a_real_action", source) is False
+    assert state_service.deleted_all == []  # never touched
+
+
+def test_resolve_dragged_uses_state_pool(tmp_path):
+    """Drag GIFs live in the state's own pool, not the ActionEntry gif_id."""
+    storage = tmp_path / "state"
+    storage.mkdir()
+    seeded = storage / "dragged" / "H3.webp"
+    seeded.parent.mkdir(parents=True)
+    seeded.write_bytes(b"webp")
+
+    repo = FakeActionRepository()
+    repo.load()  # dragged builtin, gif_id None
+    gif_repo = FakeGifRepository(storage)
+    state_service = RecordingStateService()
+    state_service.gif_by_state[DRAG_ACTION_STATE_KEY] = seeded
+
+    service = ActionService(repo, state_service, gif_repo)
+    assert service.resolve_action_gif_path(DRAG_ACTION_KEY) == seeded
+
+
+def test_named_action_keys_lists_builtins_first(tmp_path):
+    storage = tmp_path / "state"
+    storage.mkdir()
+    repo = FakeActionRepository()
+    repo.load()
+    gif_repo = FakeGifRepository(storage)
+    service = ActionService(repo, RecordingStateService(), gif_repo)
+
+    assert service.named_action_keys()[:2] == [CLICK_ACTION_KEY, DRAG_ACTION_KEY]
+
+
+def test_get_action_display_name_and_state_key(tmp_path):
+    storage = tmp_path / "state"
+    storage.mkdir()
+    repo = FakeActionRepository()
+    repo.load()
+    gif_repo = FakeGifRepository(storage)
+    service = ActionService(repo, RecordingStateService(), gif_repo)
+
+    assert service.get_action_display_name(DRAG_ACTION_KEY) == "拖曳"
+    assert service.action_state_key(DRAG_ACTION_KEY) == DRAG_ACTION_STATE_KEY
+    assert service.drag_state_key == DRAG_ACTION_STATE_KEY

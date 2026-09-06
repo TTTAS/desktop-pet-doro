@@ -17,6 +17,10 @@ class StateProvider(Protocol):
         """Check if state is movement-only."""
         ...
 
+    def is_hidden_state(self, key: str) -> bool:
+        """Check if state is hidden (action-backed; not LLM-selectable)."""
+        ...
+
     def find_state_by_label(self, label_query: str) -> Optional[str]:
         """Find state by label matching."""
         ...
@@ -103,7 +107,7 @@ class StateParser:
         # Check aliases (e.g., "sleep" -> "idle")
         alias_target = self._action_aliases.get(normalized)
         if alias_target and state_provider.get_state(alias_target):
-            if not state_provider.is_movement_only_state(alias_target):
+            if self._is_selectable(state_provider, alias_target):
                 return alias_target
 
         # Try various normalized forms
@@ -120,12 +124,24 @@ class StateParser:
 
         for candidate in candidates:
             if state_provider.get_state(candidate):
-                if not state_provider.is_movement_only_state(candidate):
+                if self._is_selectable(state_provider, candidate):
                     return candidate
 
         # Try matching by label
         result = state_provider.find_state_by_label(normalized)
-        if result and not state_provider.is_movement_only_state(result):
+        if result and self._is_selectable(state_provider, result):
             return result
 
         return None
+
+    @staticmethod
+    def _is_selectable(state_provider: StateProvider, key: str) -> bool:
+        """An LLM token may select a state only if it is neither movement-only
+        nor hidden. Hidden states (click_action / dragged / click_failed) are
+        driven exclusively by real click/drag gestures, never by the LLM."""
+        if state_provider.is_movement_only_state(key):
+            return False
+        is_hidden = getattr(state_provider, "is_hidden_state", None)
+        if callable(is_hidden) and is_hidden(key):
+            return False
+        return True
