@@ -54,6 +54,7 @@ class RenderingEngine:
         window_size: QtCore.QSize,
         sprite_anchor_top: float | None,
         panel_height_hint: float | None = None,
+        reserve_above: bool = False,
     ) -> tuple[QtCore.QPointF, float | None]:
         """
         Calculate sprite center position within the window.
@@ -61,6 +62,11 @@ class RenderingEngine:
         Args:
             window_size: Current window size
             sprite_anchor_top: Current sprite anchor top position (None for initial calculation)
+            panel_height_hint: Expected bubble height, used to reserve room for it.
+            reserve_above: When True, reserve the bubble's room ABOVE the sprite
+                (sprite sits low in the window) so the bubble renders above —
+                used when Doro is near the bottom of the screen and there is no
+                room below. When False (default), room is reserved below.
 
         Returns:
             Tuple of (sprite_center_point, updated_sprite_anchor_top)
@@ -102,7 +108,12 @@ class RenderingEngine:
             # enough space underneath and isn't forced to clip.
             reserve_height = max(PANEL_DEFAULT_HEIGHT_HINT, float(panel_height_hint or 0.0))
             panel_reserve = reserve_height + SPRITE_PANEL_RESERVE_OFFSET
-            initial_base_y = (window_size.height() - panel_reserve) / 2.0
+            # Reserve below (sprite higher) or above (sprite lower) so the bubble
+            # has room on the chosen side.
+            if reserve_above:
+                initial_base_y = (window_size.height() + panel_reserve) / 2.0
+            else:
+                initial_base_y = (window_size.height() - panel_reserve) / 2.0
             initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
             sprite_anchor_top = max(0.0, initial_base_y - half_h)
 
@@ -142,6 +153,7 @@ class RenderingEngine:
         sprite_center: QtCore.QPointF,
         window_size: QtCore.QSize,
         panel_height_hint: float,
+        prefer_above: bool = False,
     ) -> QtCore.QRectF | None:
         """
         Render the text panel (bubble).
@@ -153,6 +165,10 @@ class RenderingEngine:
             sprite_center: Center position of sprite
             window_size: Current window size
             panel_height_hint: Panel height hint
+            prefer_above: Prefer drawing the bubble above the sprite (set when
+                the layout reserved room above because Doro is near the bottom
+                of the screen). Still falls back to the other side if the
+                preferred one genuinely cannot fit.
 
         Returns:
             Panel rect if rendered, None otherwise
@@ -205,11 +221,17 @@ class RenderingEngine:
         max_panel_height = max(0.0, window_size.height() - margin_top - margin_bottom)
         adjusted_panel_height = min(panel_height, max_panel_height)
 
-        # Prefer below the sprite; fall back to above only when below cannot fit
-        # the full height but above has more room.
-        place_below = not (
-            available_below < adjusted_panel_height and available_above > available_below
-        )
+        # Choose the side. Normally prefer below and fall back above only when
+        # below cannot fit the full height but above has more room. When
+        # prefer_above is set (layout reserved room above), the bias flips.
+        if prefer_above:
+            place_below = (
+                available_above < adjusted_panel_height and available_below > available_above
+            )
+        else:
+            place_below = not (
+                available_below < adjusted_panel_height and available_above > available_below
+            )
 
         if place_below:
             top = max(margin_top, below_top)

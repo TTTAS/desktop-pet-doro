@@ -132,7 +132,11 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
     lines.append("1. 綜合各來源回答使用者的問題，並在關鍵處標明是哪個來源說的。")
     lines.append("2. 說明來源之間『一致還是有出入』；若彼此矛盾，把不同說法都講出來。")
     lines.append("3. 這些來源不足以回答、或找不到，就【老實說找不到/不確定】，絕對不要編。")
-    lines.append("4. 用純文字、不要 Markdown；開頭加一個 (狀態)；可以多行、講清楚。")
+    lines.append("4. 用純文字、不要 Markdown；開頭加一個 (狀態)。")
+    lines.append(
+        "5. 【務必簡潔】doro 是小小的桌面寵物，只用 2～4 句話講重點就好，"
+        "大約 150 字以內；不要條列一大串、不要逐一交代每個來源。抓最重要的結論講給人聽即可。"
+    )
     return "\n".join(lines)
 
 

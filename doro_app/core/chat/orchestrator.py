@@ -40,6 +40,11 @@ WEB_ANSWER_MAX_TOKENS = 900
 # 行首的項目符號（-、*、•…）。泡泡框是純文字，統一換成「・」比較乾淨。
 _BULLET_PREFIX_RE = re.compile(r"^\s*[\-\*•‣◦·]\s+")
 
+# 開頭那一個「(狀態)」槽位。網頁答覆（查證）是原樣顯示、不走一般聊天的括號解析，
+# 所以只拆掉開頭這一個標記；內文裡的括號（例如「(USGS)」「(來源1, 來源2)」）要保留。
+# 長度上限避免把「開頭剛好是一句話括號」整句吃掉。半形/全形括號都收。
+_LEADING_STATE_MARKER_RE = re.compile(r"^\s*[(（]\s*([^()（）\n]{1,24})\s*[)）]\s*")
+
 # 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
 # [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
 _OPERATION_SYSTEM_PROMPT = (
@@ -305,11 +310,35 @@ class ChatOrchestrator(QtCore.QObject):
         self._web_reading = False
         self._current_web_request_id = None
         self.busy_cursor_requested.emit(False)
-        final = self._strip_markdown((answer or "").strip())
+        cleaned = self._apply_leading_state_marker((answer or "").strip())
+        final = self._strip_markdown(cleaned)
         self.bubble_text_requested.emit(
             final or "doro查完了，但一時整理不出來…",
             {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 40000},
         )
+
+    def _apply_leading_state_marker(self, text: str) -> str:
+        """Strip a single leading ``(狀態)`` marker and apply that state if known.
+
+        The web-answer prompts ask the model to prepend a ``(狀態)`` slot. The
+        normal chat path removes it via ``parse_actions_from_text`` (which strips
+        *every* parenthesis), but web answers are shown verbatim — so here we
+        remove ONLY this one leading marker and leave parentheses inside the
+        body intact (e.g. ``(USGS)``, ``(來源1, 來源2)``). If the model echoed the
+        literal placeholder ``(狀態)`` instead of a real state key, the marker is
+        still stripped; the state simply isn't changed.
+        """
+        match = _LEADING_STATE_MARKER_RE.match(text or "")
+        if not match:
+            return text
+        token = match.group(1).strip()
+        state_key = self._state_service.parse_state_from_action(token)
+        if state_key and not self._state_service.is_movement_only_state(state_key):
+            current = self._state_service.get_current_state()
+            current_key = current.key if current else None
+            if state_key != current_key:
+                self._state_service.set_state(state_key)
+        return text[match.end():].lstrip()
 
     def _begin_web_read_current(self, question: str) -> bool:
         """讀 doro 目前開著的那頁（不重新導航）；讀完一樣走 ``_on_web_read_result``。"""
@@ -375,7 +404,8 @@ class ChatOrchestrator(QtCore.QObject):
             f"我的問題／指令：{q}\n"
             "回答要求：\n"
             "1. 只根據上面的網頁內容回答；內容裡找不到就老實說在這頁找不到，不要亂編。\n"
-            "2. 這一則不受平常「只回一行」限制，可以用多行、把重點真的講出來（不要只說『我幫你看了』就結束）。\n"
+            "2. 這一則可以比平常長一點，把重點真的講出來（不要只說『我幫你看了』就結束）；"
+            "但 doro 是小小的桌面寵物，請務必簡潔，用 2～4 句話、大約 150 字以內抓重點就好，不要長篇大論。\n"
             "3. 開頭一樣要有 (狀態)，並保持 doro 的口氣。\n"
             "4. 一定要用純文字，禁止使用任何 Markdown 符號（不要出現 *、**、#、`、- 開頭的項目符號）；"
             "要分點就用「1. 2. 3.」或直接換行。"
