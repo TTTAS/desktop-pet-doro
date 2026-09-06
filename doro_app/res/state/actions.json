@@ -1,0 +1,10 @@
+{
+  "actions": [
+    {
+      "key": "click",
+      "display_name": "Click",
+      "gif_id": "click_action.gif",
+      "is_builtin": true
+    }
+  ]
+}

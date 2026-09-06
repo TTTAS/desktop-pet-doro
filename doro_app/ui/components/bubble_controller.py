@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...constants import BUBBLE_SCALE_MIN, BUBBLE_SCALE_MAX
+from ...constants import (
+    BUBBLE_SCALE_MIN,
+    BUBBLE_SCALE_MAX,
+    BUBBLE_CHUNK_MAX_CHARS,
+    BUBBLE_CHUNK_MIN_READ_MS,
+    BUBBLE_CHUNK_MAX_READ_MS,
+    BUBBLE_CHUNK_PER_CHAR_MS,
+)
 from ...utils.config_manager import ConfigManager
+
+# Sentence-ending punctuation used to split long text at natural boundaries
+# (CJK 。！？…、newlines, plus ASCII . ! ?). A unit keeps its trailing marks.
+_SENTENCE_SPLIT_RE = re.compile(r"[^。！？!?…\n]*[。！？!?…\n]+|[^。！？!?…\n]+")
+_SENTENCE_ENDERS = "。！？!?…\n"
 
 
 @dataclass
@@ -52,12 +65,22 @@ class BubbleController(QtCore.QObject):
         self._visible = True
 
         # Auto-hide timer (owned by BubbleController, not Window)
+        # Doubles as the "advance to next chunk" timer while a multi-part
+        # message is being spoken (see set_text / _on_hide_timer_timeout).
         self._hide_timer = QtCore.QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._on_hide_timer_timeout)
 
         # Auto-hide default delay (can be overridden per-message)
         self._default_auto_hide_ms = 6000
+
+        # Multi-part ("speak in chunks") sequence state. When a long reply is
+        # split, the remaining pieces wait here and the display settings that
+        # applied to the whole message are remembered for the final piece.
+        self._chunk_queue: list[str] = []
+        self._seq_override_visibility = True
+        self._seq_auto_hide = True
+        self._seq_hide_delay_ms: int | None = None
 
     # ------------------------------------------------------------------ State access
     @property
@@ -137,6 +160,12 @@ class BubbleController(QtCore.QObject):
             auto_hide: If True and delay > 0, automatically hide after delay
             hide_delay_ms: Custom delay in milliseconds (None = use default)
 
+        Long messages are split into several short bubbles shown one after
+        another ("Doro speaks in parts") so a single bubble never grows tall
+        enough to push the sprite up or run off the bottom of the screen. Each
+        mid-sequence piece stays up for a reading-time delay; the final piece
+        follows the normal auto-hide rules below.
+
         Fixed: Previously, auto_hide=False would prevent timer from working.
         Now: If auto_hide=False, message stays forever (until manually cleared).
                 If auto_hide=True with delay=0, also stays forever.
@@ -144,36 +173,119 @@ class BubbleController(QtCore.QObject):
         """
         clean = (text or "").strip()
 
-        # Update internal state
-        self._text = clean
-        self._text_show_override = override_visibility and bool(clean)
-
-        # Emit signal to notify observers
-        self.text_changed.emit(clean, self._text_show_override)
-
-        # Stop any existing timer
+        # Any new message cancels a chunk sequence still in progress.
         self._hide_timer.stop()
+        self._chunk_queue = []
 
-        # Schedule auto-hide if requested
-        if clean:  # Only schedule if there's actually text
-            if auto_hide:
-                delay = hide_delay_ms if hide_delay_ms is not None else self._default_auto_hide_ms
-                if delay > 0:
-                    self._hide_timer.start(int(delay))
-            # else: auto_hide=False means keep message visible indefinitely
+        # Empty text just clears the bubble.
+        if not clean:
+            self._text = ""
+            self._text_show_override = False
+            self.text_changed.emit("", False)
+            self.repaint_requested.emit()
+            return
 
-        # Request repaint
+        # Remember how the whole message wanted to be shown/hidden so the last
+        # chunk can honour it.
+        self._seq_override_visibility = override_visibility
+        self._seq_auto_hide = auto_hide
+        self._seq_hide_delay_ms = hide_delay_ms
+
+        # Split into chunks; the first shows now, the rest queue up.
+        chunks = self._split_into_chunks(clean)
+        self._chunk_queue = chunks
+        self._show_next_chunk()
+
+    def _show_next_chunk(self):
+        """Display the next queued chunk and schedule what follows it.
+
+        Mid-sequence chunks advance after a reading-time delay; the final chunk
+        falls back to the message's original auto-hide behaviour.
+        """
+        if not self._chunk_queue:
+            return
+
+        chunk = self._chunk_queue.pop(0)
+
+        self._text = chunk
+        self._text_show_override = self._seq_override_visibility and bool(chunk)
+        self.text_changed.emit(chunk, self._text_show_override)
+
+        if self._chunk_queue:
+            # More to say — keep this piece up just long enough to read it.
+            self._hide_timer.start(self._reading_delay_ms(chunk))
+        elif self._seq_auto_hide:
+            delay = (
+                self._seq_hide_delay_ms
+                if self._seq_hide_delay_ms is not None
+                else self._default_auto_hide_ms
+            )
+            if delay > 0:
+                self._hide_timer.start(int(delay))
+        # else: last chunk with auto_hide off — stays until cleared.
+
         self.repaint_requested.emit()
 
+    @staticmethod
+    def _reading_delay_ms(chunk: str) -> int:
+        """How long a mid-sequence chunk stays up, scaled to its length."""
+        estimate = BUBBLE_CHUNK_MIN_READ_MS + len(chunk) * BUBBLE_CHUNK_PER_CHAR_MS
+        return int(min(BUBBLE_CHUNK_MAX_READ_MS, max(BUBBLE_CHUNK_MIN_READ_MS, estimate)))
+
+    @staticmethod
+    def _split_into_chunks(text: str) -> list[str]:
+        """Break *text* into bubble-sized pieces at sentence boundaries.
+
+        Short messages pass through untouched (a single-item list). Longer ones
+        are packed greedily up to ``BUBBLE_CHUNK_MAX_CHARS``; any single
+        sentence longer than that is hard-wrapped so no piece ever exceeds the
+        limit.
+        """
+        text = text.strip()
+        if len(text) <= BUBBLE_CHUNK_MAX_CHARS:
+            return [text]
+
+        # Sentence-ish units, then hard-wrap any unit that is itself too long.
+        units: list[str] = []
+        for match in _SENTENCE_SPLIT_RE.findall(text):
+            unit = match.strip()
+            if not unit:
+                continue
+            if len(unit) <= BUBBLE_CHUNK_MAX_CHARS:
+                units.append(unit)
+            else:
+                for i in range(0, len(unit), BUBBLE_CHUNK_MAX_CHARS):
+                    units.append(unit[i:i + BUBBLE_CHUNK_MAX_CHARS])
+
+        # Greedily pack units into chunks.
+        chunks: list[str] = []
+        current = ""
+        for unit in units:
+            if not current:
+                current = unit
+            elif len(current) + len(unit) <= BUBBLE_CHUNK_MAX_CHARS:
+                current += unit
+            else:
+                chunks.append(current)
+                current = unit
+        if current:
+            chunks.append(current)
+
+        return chunks or [text]
+
     def _on_hide_timer_timeout(self):
-        """Called when auto-hide timer expires."""
-        self.clear_text()
+        """Timer fired: advance to the next chunk, or hide if none remain."""
+        if self._chunk_queue:
+            self._show_next_chunk()
+        else:
+            self.clear_text()
 
     def clear_text(self):
         """Clear bubble text immediately."""
         self._text = ""
         self._text_show_override = False
         self._hide_timer.stop()
+        self._chunk_queue = []
         self.text_changed.emit("", False)
         self.repaint_requested.emit()
 

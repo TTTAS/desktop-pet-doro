@@ -55,8 +55,7 @@ class ContextMenuController:
         """Build and display the context menu at *global_pos*."""
         menu = create_doro_menu(
             parent=self._window,
-            avatar_position="top-center",
-            avatar_pixmap=self._window.sprite_renderer.current_pixmap(),
+            avatar_position="none",
         )
         snapshot = self._build_snapshot()
         cbs = self._build_callbacks()
