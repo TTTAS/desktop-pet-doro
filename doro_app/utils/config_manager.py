@@ -18,7 +18,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from PySide6 import QtCore
 
-from .config_schema import ChatConfig, UIConfig, AppConfig, AutomationConfig, DoroConfig
+from .config_schema import ChatConfig, UIConfig, AppConfig, AutomationConfig, WebConfig, DoroConfig
 from ..constants import (
     CHAT_DEFAULT_HISTORY_TURNS,
     CHAT_DEFAULT_TIMEOUT_SECONDS,
@@ -42,6 +42,8 @@ from .config_defaults import (
     DEFAULT_A11Y_ENABLED,
     DEFAULT_A11Y_SHARE_INPUT_VALUES,
     DEFAULT_WEB_OPERATION_ENABLED,
+    DEFAULT_TAVILY_API_KEY,
+    DEFAULT_VERIFY_SEARCH_DEPTH,
 )
 from ..utils.logger import get_logger
 
@@ -150,10 +152,7 @@ class ConfigManager:
         from PySide6 import QtCore
 
         if settings_path:
-            self._settings = QtCore.QSettings(
-                str(settings_path),
-                QtCore.QSettings.Format.IniFormat
-            )
+            self._settings = QtCore.QSettings(str(settings_path), QtCore.QSettings.Format.IniFormat)
         else:
             # Use default QSettings location (platform-specific)
             self._settings = QtCore.QSettings("doro-pet", "doro")
@@ -189,6 +188,11 @@ class ConfigManager:
     def automation(self) -> AutomationConfig:
         """Get automation (synthetic mouse click) configuration (read-only)."""
         return self._config.automation
+
+    @property
+    def web(self) -> WebConfig:
+        """Get web (search/verify) configuration (read-only)."""
+        return self._config.web
 
     @property
     def config(self) -> DoroConfig:
@@ -276,9 +280,7 @@ class ConfigManager:
                 "mouse_target_allowlist", current.mouse_target_allowlist
             ),
             "a11y_enabled": kwargs.get("a11y_enabled", current.a11y_enabled),
-            "a11y_app_blacklist": kwargs.get(
-                "a11y_app_blacklist", current.a11y_app_blacklist
-            ),
+            "a11y_app_blacklist": kwargs.get("a11y_app_blacklist", current.a11y_app_blacklist),
             "a11y_share_input_values": kwargs.get(
                 "a11y_share_input_values", current.a11y_share_input_values
             ),
@@ -289,6 +291,16 @@ class ConfigManager:
         new_config = AutomationConfig(**updated_values)
         self._config.automation = new_config
         logger.debug(f"Automation config updated: {kwargs}")
+
+    def update_web(self, **kwargs) -> None:
+        """Update web (search/verify) configuration with validation."""
+        current = self._config.web
+        updated_values = {
+            "tavily_api_key": kwargs.get("tavily_api_key", current.tavily_api_key),
+            "verify_search_depth": kwargs.get("verify_search_depth", current.verify_search_depth),
+        }
+        self._config.web = WebConfig(**updated_values)
+        logger.debug(f"Web config updated: {kwargs}")
 
     def update_app(self, **kwargs) -> None:
         """
@@ -330,48 +342,33 @@ class ConfigManager:
         try:
             chat_config = ChatConfig(
                 server_url=_safe_str(
-                    self._settings.value("chat/server_url"),
-                    DEFAULT_CHAT_SERVER_URL
+                    self._settings.value("chat/server_url"), DEFAULT_CHAT_SERVER_URL
                 ),
-                model=_safe_str(
-                    self._settings.value("chat/model"),
-                    DEFAULT_CHAT_MODEL
-                ),
+                model=_safe_str(self._settings.value("chat/model"), DEFAULT_CHAT_MODEL),
                 endpoint_path=_safe_str(
-                    self._settings.value("chat/endpoint_path"),
-                    DEFAULT_CHAT_ENDPOINT_PATH
+                    self._settings.value("chat/endpoint_path"), DEFAULT_CHAT_ENDPOINT_PATH
                 ),
-                api_key=_safe_str(
-                    self._settings.value("chat/api_key"),
-                    DEFAULT_CHAT_API_KEY
-                ),
+                api_key=_safe_str(self._settings.value("chat/api_key"), DEFAULT_CHAT_API_KEY),
                 timeout_seconds=_safe_int(
-                    self._settings.value("chat/timeout_seconds"),
-                    CHAT_DEFAULT_TIMEOUT_SECONDS
+                    self._settings.value("chat/timeout_seconds"), CHAT_DEFAULT_TIMEOUT_SECONDS
                 ),
                 temperature=_safe_float(
-                    self._settings.value("chat/temperature"),
-                    CHAT_DEFAULT_TEMPERATURE
+                    self._settings.value("chat/temperature"), CHAT_DEFAULT_TEMPERATURE
                 ),
                 max_tokens=_safe_int(
-                    self._settings.value("chat/max_tokens"),
-                    CHAT_DEFAULT_MAX_TOKENS
+                    self._settings.value("chat/max_tokens"), CHAT_DEFAULT_MAX_TOKENS
                 ),
                 max_retries=_safe_int(
-                    self._settings.value("chat/max_retries"),
-                    DEFAULT_CHAT_MAX_RETRIES
+                    self._settings.value("chat/max_retries"), DEFAULT_CHAT_MAX_RETRIES
                 ),
                 history_turns=_safe_int(
-                    self._settings.value("chat/history_turns"),
-                    CHAT_DEFAULT_HISTORY_TURNS
+                    self._settings.value("chat/history_turns"), CHAT_DEFAULT_HISTORY_TURNS
                 ),
                 stop_tokens=_safe_str_list(
-                    self._settings.value("chat/stop_tokens"),
-                    DEFAULT_CHAT_STOP_TOKENS
+                    self._settings.value("chat/stop_tokens"), DEFAULT_CHAT_STOP_TOKENS
                 ),
                 max_stop_tokens=_safe_int(
-                    self._settings.value("chat/max_stop_tokens"),
-                    DEFAULT_CHAT_MAX_STOP_TOKENS
+                    self._settings.value("chat/max_stop_tokens"), DEFAULT_CHAT_MAX_STOP_TOKENS
                 ),
             )
             self._config.chat = chat_config
@@ -383,16 +380,13 @@ class ConfigManager:
         try:
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
-                    self._settings.value("ui/bubble_offset_x"),
-                    BUBBLE_DEFAULT_OFFSET_X
+                    self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
                 ),
                 bubble_offset_y=_safe_float(
-                    self._settings.value("ui/bubble_offset_y"),
-                    BUBBLE_DEFAULT_OFFSET_Y
+                    self._settings.value("ui/bubble_offset_y"), BUBBLE_DEFAULT_OFFSET_Y
                 ),
                 bubble_scale=_safe_float(
-                    self._settings.value("ui/bubble_scale"),
-                    BUBBLE_DEFAULT_SCALE
+                    self._settings.value("ui/bubble_scale"), BUBBLE_DEFAULT_SCALE
                 ),
             )
             self._config.ui = ui_config
@@ -440,13 +434,27 @@ class ConfigManager:
                 a11y_share_input_values=DEFAULT_A11Y_SHARE_INPUT_VALUES,
             )
 
+        # Load web config
+        try:
+            web_config = WebConfig(
+                tavily_api_key=_safe_str(
+                    self._settings.value("web/tavily_api_key"),
+                    DEFAULT_TAVILY_API_KEY,
+                ),
+                verify_search_depth=_safe_str(
+                    self._settings.value("web/verify_search_depth"),
+                    DEFAULT_VERIFY_SEARCH_DEPTH,
+                ),
+            )
+            self._config.web = web_config
+        except ValueError as e:
+            logger.warning(f"Invalid web config, using defaults: {e}")
+            self._config.web = WebConfig()
+
         # Load app config
         try:
             app_config = AppConfig(
-                current_state=_safe_str(
-                    self._settings.value("current_state"),
-                    "idle"
-                ),
+                current_state=_safe_str(self._settings.value("current_state"), "idle"),
             )
             self._config.app = app_config
         except ValueError as e:
@@ -507,6 +515,11 @@ class ConfigManager:
             "automation/web_operation_enabled",
             bool(automation.web_operation_enabled),
         )
+
+        # Save web config
+        web = self._config.web
+        self._settings.setValue("web/tavily_api_key", web.tavily_api_key)
+        self._settings.setValue("web/verify_search_depth", web.verify_search_depth)
 
         # Save app config
         app = self._config.app

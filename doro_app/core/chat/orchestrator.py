@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ...utils.actions import ACTION_PATTERN, BRACKET_PATTERN, parse_actions_from_text, extract_inline_move_commands
+from ...utils.actions import (
+    ACTION_PATTERN,
+    BRACKET_PATTERN,
+    parse_actions_from_text,
+    extract_inline_move_commands,
+)
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from ..web import (
     WebReadResult,
@@ -107,8 +112,8 @@ class ChatOrchestrator(QtCore.QObject):
         # 「一次一個」。runtime 延遲建立（第一次用到才建），測試可從外面注入假的。
         self._config_manager = config_manager
         self._web_runtime = web_runtime
-        self._web_reading = False       # 正在讀網頁
-        self._operating = False         # 正在操作網頁
+        self._web_reading = False  # 正在讀網頁
+        self._operating = False  # 正在操作網頁
         self._awaiting_confirm = False  # 操作中，正在等你回「好/不要」
         self._current_web_request_id: str | None = None
         self._pending_web_question = ""
@@ -136,7 +141,9 @@ class ChatOrchestrator(QtCore.QObject):
         """讀或操作網頁進行中？（給閒置行為判斷要不要安靜）"""
         return self._web_reading or self._operating
 
-    def send_message(self, user_message: str, *, silent: bool = False, is_auto: bool = False) -> bool:
+    def send_message(
+        self, user_message: str, *, silent: bool = False, is_auto: bool = False
+    ) -> bool:
         logger.info(f"Sending chat message (auto={is_auto}, silent={silent})")
 
         # 操作進行中：只收「好/不要」確認與「停/取消」中止，其它一律先擋（隔離規則 Q2）。
@@ -292,8 +299,25 @@ class ChatOrchestrator(QtCore.QObject):
         self._web_reading = True  # 借用忙碌鎖：查證期間擋其它網頁動作、idle 安靜
         self._current_web_request_id = QtCore.QUuid.createUuid().toString()
         self.busy_cursor_requested.emit(True)
-        runtime.submit_verify(self._current_web_request_id, query, self._verify_ask_llm)
+        runtime.submit_verify(
+            self._current_web_request_id, query, self._verify_ask_llm, self._build_search_provider()
+        )
         return True
+
+    def _build_search_provider(self):
+        """依 config 的 Tavily key 組搜尋 provider。key/depth 只在這層讀，
+        runtime / pipeline 都不碰 ConfigManager。"""
+        from ..web.search_providers import build_search_provider
+
+        key, depth = "", "basic"
+        cm = self._config_manager
+        if cm is not None:
+            try:
+                key = cm.web.tavily_api_key
+                depth = cm.web.verify_search_depth
+            except Exception:
+                key, depth = "", "basic"
+        return build_search_provider(key, search_depth=depth)
 
     @QtCore.Slot(str)
     def _on_verify_progress(self, text: str) -> None:
@@ -338,7 +362,7 @@ class ChatOrchestrator(QtCore.QObject):
             current_key = current.key if current else None
             if state_key != current_key:
                 self._state_service.set_state(state_key)
-        return text[match.end():].lstrip()
+        return text[match.end() :].lstrip()
 
     def _begin_web_read_current(self, question: str) -> bool:
         """讀 doro 目前開著的那頁（不重新導航）；讀完一樣走 ``_on_web_read_result``。"""
@@ -510,9 +534,7 @@ class ChatOrchestrator(QtCore.QObject):
         ``text`` 已是完整泡泡文字（operator 那邊組好），這裡照顯示即可。
         """
         self._awaiting_confirm = True
-        self.bubble_text_requested.emit(
-            text, {"override_visibility": True, "auto_hide": False}
-        )
+        self.bubble_text_requested.emit(text, {"override_visibility": True, "auto_hide": False})
 
     @QtCore.Slot()
     def _on_op_finished(self) -> None:
@@ -614,9 +636,7 @@ class ChatOrchestrator(QtCore.QObject):
             "hide_delay_ms": 30000,
         }
 
-        display_text = self._handle_actions_in_text(
-            assistant_text, keep_multiline=was_web_answer
-        )
+        display_text = self._handle_actions_in_text(assistant_text, keep_multiline=was_web_answer)
         if was_web_answer and display_text:
             # 純文字泡泡框裝不下 Markdown：把 **粗體**、`程式碼`、#標題、項目符號
             # 這些符號清掉（模型偶爾會用，切斷時還會留下半截的 * / **）。
@@ -672,8 +692,7 @@ class ChatOrchestrator(QtCore.QObject):
             # FIXED: Error messages should auto-hide after longer delay (12s instead of 6s)
             # Previously used auto_hide=False which broke the timer completely
             self.bubble_text_requested.emit(
-                fallback_text,
-                {"auto_hide": True, "hide_delay_ms": 12000}
+                fallback_text, {"auto_hide": True, "hide_delay_ms": 12000}
             )
 
     # ------------------------------------------------------------------ Response processing
@@ -688,6 +707,7 @@ class ChatOrchestrator(QtCore.QObject):
         # Defer all mouse brackets until after the loop so movement brackets
         # always reach the dispatcher first.
         from ..automation.parser import parse_mouse_bracket
+
         pending_mouse_tokens: list[str] = []
 
         for kind, token in actions:
@@ -699,9 +719,7 @@ class ChatOrchestrator(QtCore.QObject):
                     # `[mouse:click]` brackets in the same reply are dropped
                     # rather than queued back-to-back.
                     if pending_mouse_tokens:
-                        logger.info(
-                            "[automation] extra [mouse:click] in same response dropped"
-                        )
+                        logger.info("[automation] extra [mouse:click] in same response dropped")
                     else:
                         pending_mouse_tokens.append(token)
                     continue
@@ -787,9 +805,8 @@ class ChatOrchestrator(QtCore.QObject):
 
         if self._action_dispatcher is not None and self._schedule is not None:
             from ..action import make_click_action
-            self._action_dispatcher.dispatch(
-                make_click_action(self._automation, self._schedule)
-            )
+
+            self._action_dispatcher.dispatch(make_click_action(self._automation, self._schedule))
         else:
             self._automation.execute_click()
         return True
@@ -817,6 +834,7 @@ class ChatOrchestrator(QtCore.QObject):
         # First check the token is actually a move bracket — if not,
         # return False so the caller can try other parsers.
         from ..movement.parser import parse_move_bracket
+
         if parse_move_bracket(token) is None:
             return False
 
@@ -846,6 +864,7 @@ class ChatOrchestrator(QtCore.QObject):
             return self._movement.apply_directional_move(direction)
 
         from ..action import make_movement_action
+
         self._action_dispatcher.dispatch(
             make_movement_action(self._movement, self._schedule, direction=direction)
         )
@@ -862,10 +881,10 @@ class ChatOrchestrator(QtCore.QObject):
         out_lines: list[str] = []
         for raw in text.split("\n"):
             line = _BULLET_PREFIX_RE.sub("・", raw)
-            line = re.sub(r"^\s*#{1,6}\s*", "", line)          # 標題 #
-            line = line.replace("**", "").replace("__", "")     # 粗體
-            line = line.replace("~~", "").replace("`", "")      # 刪除線 / 程式碼
-            line = re.sub(r"(?<!\w)\*(?!\w)", "", line)          # 落單的 *
+            line = re.sub(r"^\s*#{1,6}\s*", "", line)  # 標題 #
+            line = line.replace("**", "").replace("__", "")  # 粗體
+            line = line.replace("~~", "").replace("`", "")  # 刪除線 / 程式碼
+            line = re.sub(r"(?<!\w)\*(?!\w)", "", line)  # 落單的 *
             line = line.rstrip()
             # 整行清完只剩符號/空白就丟掉（例如被截斷留下的一顆 *）
             if line.strip(" 　・*#`~-"):

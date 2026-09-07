@@ -41,12 +41,12 @@ class WebRuntime(QtCore.QObject):
 
     # → 主執行緒
     read_finished = QtCore.Signal(str, object)  # (request_id, WebReadResult)
-    op_progress = QtCore.Signal(str)            # 操作過程/結果要顯示的話
-    op_confirm = QtCore.Signal(str)             # 要使用者確認（完整泡泡文字）
-    op_finished = QtCore.Signal()               # 一次操作結束（成功/中止/出錯）
+    op_progress = QtCore.Signal(str)  # 操作過程/結果要顯示的話
+    op_confirm = QtCore.Signal(str)  # 要使用者確認（完整泡泡文字）
+    op_finished = QtCore.Signal()  # 一次操作結束（成功/中止/出錯）
     login_done = QtCore.Signal(str, bool, str)  # (request_id, ok, message) 開站給使用者登入
-    verify_progress = QtCore.Signal(str)        # 查證過程的狀態一句話
-    verify_finished = QtCore.Signal(str, str)   # (request_id, final_answer) 查證結束
+    verify_progress = QtCore.Signal(str)  # 查證過程的狀態一句話
+    verify_finished = QtCore.Signal(str, str)  # (request_id, final_answer) 查證結束
 
     def __init__(
         self,
@@ -107,8 +107,8 @@ class WebRuntime(QtCore.QObject):
         self._cancel.clear()
         self._queue.put(lambda: self._do_operation(goal, ask_llm))
 
-    def submit_verify(self, request_id: str, query: str, ask_llm: AskLLM) -> None:
-        self._queue.put(lambda: self._do_verify(request_id, query, ask_llm))
+    def submit_verify(self, request_id: str, query: str, ask_llm: AskLLM, search_provider) -> None:
+        self._queue.put(lambda: self._do_verify(request_id, query, ask_llm, search_provider))
 
     def provide_confirm(self, yes: bool) -> None:
         """使用者回覆確認（主執行緒呼叫），放行卡住的操作執行緒。"""
@@ -156,21 +156,31 @@ class WebRuntime(QtCore.QObject):
         session = self._get_session()
         err = session.ensure_open()
         if err:
-            self.read_finished.emit(request_id, WebReadResult(url=url, title="", text="", error=err))
+            self.read_finished.emit(
+                request_id, WebReadResult(url=url, title="", text="", error=err)
+            )
             return
         goto_err = session.goto(url)
         if goto_err:
-            self.read_finished.emit(request_id, WebReadResult(url=url, title="", text="", error=goto_err))
+            self.read_finished.emit(
+                request_id, WebReadResult(url=url, title="", text="", error=goto_err)
+            )
             return
         view = session.snapshot()
         if not view.ok:
-            self.read_finished.emit(request_id, WebReadResult(url=url, title="", text="", error=view.error))
+            self.read_finished.emit(
+                request_id, WebReadResult(url=url, title="", text="", error=view.error)
+            )
             return
         if not view.text:
             self.read_finished.emit(
                 request_id,
-                WebReadResult(url=view.url, title=view.title, text="",
-                              error="這頁 doro 讀不到內容（可能需要登入、或整頁都是圖片/影片）。"),
+                WebReadResult(
+                    url=view.url,
+                    title=view.title,
+                    text="",
+                    error="這頁 doro 讀不到內容（可能需要登入、或整頁都是圖片/影片）。",
+                ),
             )
             return
         self.read_finished.emit(
@@ -182,19 +192,29 @@ class WebRuntime(QtCore.QObject):
         if self._session is None or not self._session.is_open:
             self.read_finished.emit(
                 request_id,
-                WebReadResult(url="", title="", text="",
-                              error="doro 現在沒有開著的網頁耶～先叫我讀某個網址、或操作一次，我才有頁可以讀喔。"),
+                WebReadResult(
+                    url="",
+                    title="",
+                    text="",
+                    error="doro 現在沒有開著的網頁耶～先叫我讀某個網址、或操作一次，我才有頁可以讀喔。",
+                ),
             )
             return
         view = self._session.snapshot()
         if not view.ok:
-            self.read_finished.emit(request_id, WebReadResult(url="", title="", text="", error=view.error))
+            self.read_finished.emit(
+                request_id, WebReadResult(url="", title="", text="", error=view.error)
+            )
             return
         if not view.text:
             self.read_finished.emit(
                 request_id,
-                WebReadResult(url=view.url, title=view.title, text="",
-                              error="這頁 doro 讀不到內容（可能還在載入、需要登入、或整頁都是圖片/影片）。"),
+                WebReadResult(
+                    url=view.url,
+                    title=view.title,
+                    text="",
+                    error="這頁 doro 讀不到內容（可能還在載入、需要登入、或整頁都是圖片/影片）。",
+                ),
             )
             return
         self.read_finished.emit(
@@ -215,13 +235,15 @@ class WebRuntime(QtCore.QObject):
         self._hold_open = True
         self.login_done.emit(request_id, True, url)
 
-    def _do_verify(self, request_id: str, query: str, ask_llm: AskLLM) -> None:
+    def _do_verify(self, request_id: str, query: str, ask_llm: AskLLM, search_provider) -> None:
         from .verify import VerifyPipeline
+
         self._hold_open = False
-        session = self._get_session()
         final_holder = {"text": ""}
+        # session_provider 懶開：只有真的要補讀時 pipeline 才呼叫 _get_session。
         pipeline = VerifyPipeline(
-            session,
+            search_provider,
+            self._get_session,
             ask_llm,
             self.verify_progress.emit,
             lambda text: final_holder.__setitem__("text", text),
