@@ -1,11 +1,12 @@
 # VERIFY 階段 1 開工清單（verify-stage1-checklist）
 
-> 狀態：待動工 ｜ 日期：2026-09-06 ｜ 搭配 `docs/verify-refactor-plan.md`（設計/為什麼）
+> 狀態：階段 1 已實作（PR #51） ｜ 日期：2026-09-07 ｜ 搭配 `docs/verify-refactor-plan.md`（設計/為什麼）
 > 本檔＝「改哪些檔、門檻定多少、失敗怎麼退」的可執行清單。所有 `或`／模糊處已釘死。
 
-## 0. 一個待你點頭的取捨
-- **`search_depth`**：預設 **`advanced`**（內容較長、通常免補讀，「0 goto」才成立；代價：多吃 Tavily 額度）。
-  若選 `basic`（省額度），驗收 §6 的「有 key → 0 goto」要改成「多數情況仍會補讀」。**其餘決策不受此影響。**
+## 0. 已定案
+- **`search_depth` 預設 `basic`**（省額度、較快）；`advanced` 為設定可覆寫。
+  驗收敘事：**「有 key 且來源夠料 → 0 goto；basic 預設下多數仍會開頁補讀」**——不追帳面上的 0 goto。
+- **`SEARCH_TIMEOUT_S = 30`**（對齊 OpenClaw Tavily plugin）。
 
 ## 1. 釘死的常數（放新 module 或 `verify.py` 頂部）
 ```
@@ -13,8 +14,8 @@ MIN_SNIPPET_CHARS = 250   # 每來源 snippet ≥ 此字數 → 視為「有料�
 MIN_GOOD_SOURCES  = 2     # 選中來源裡有料數 ≥ 此值 → 免補讀（0 goto）
 TARGET_SOURCES    = 3     # 需補讀時，湊到幾個有料來源為止
 MAX_RESULTS       = 6     # 跟 Tavily 要幾筆（挑來源前）
-SEARCH_TIMEOUT_S  = 10    # 搜尋 API 硬逾時
-TAVILY_SEARCH_DEPTH = "advanced"   # 見 §0
+SEARCH_TIMEOUT_S  = 30    # 搜尋 API 硬逾時（對齊 OpenClaw Tavily plugin）
+TAVILY_SEARCH_DEPTH = "basic"      # 見 §0；advanced 為設定可覆寫
 TAVILY_COUNTRY    = "taiwan"        # 小寫國名；language/locale 查官方 enum 再決定是否加
 ```
 

@@ -164,8 +164,8 @@ class ChatSettingsDialog(FramelessDialog):
         self._a11y_checkbox.toggled.connect(self._a11y_share_values_checkbox.setEnabled)
 
         verify_hint = QtWidgets.QLabel(
-            "查證用：填 Tavily key → 搜尋更快更準、通常免開瀏覽器；"
-            "留空 → 用免費 DuckDuckGo，較慢、多半要開頁補讀。"
+            "查證用：填 Tavily key → 搜尋更穩更準（basic 多數仍會開頁補讀，"
+            "advanced 才較接近免開瀏覽器）；留空 → 用免費 DuckDuckGo，幾乎都要開頁補讀。"
         )
         verify_hint.setObjectName("instructionLabel")
         verify_hint.setWordWrap(True)
