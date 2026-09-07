@@ -285,6 +285,8 @@ class DoroConfig:
             f"    offset=({self.ui.bubble_offset_x}, {self.ui.bubble_offset_y}),\n"
             f"    scale={self.ui.bubble_scale}\n"
             f"  ),\n"
-            f"  app=AppConfig(current_state='{self.app.current_state}')\n"
+            f"  app=AppConfig(current_state='{self.app.current_state}'),\n"
+            f"  web=WebConfig(has_key={bool(self.web.tavily_api_key)}, "
+            f"depth='{self.web.verify_search_depth}')\n"
             f")"
         )

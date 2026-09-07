@@ -12,9 +12,10 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ...utils.logger import get_logger
 
@@ -38,6 +39,7 @@ class SearchResult:
     title: str = ""
     snippet: str = ""
     content: str | None = None
+    score: float = 0.0  # 搜尋 API 給的相關性分數；缺值當 0（挑來源時用來排序）
 
     @property
     def best_text(self) -> str:
@@ -48,8 +50,30 @@ class SearchProvider(Protocol):
     def search(self, query: str, max_results: int) -> list["SearchResult"]: ...
 
 
+def _with_deadline(
+    fn: Callable[[], list["SearchResult"]], timeout: int, what: str
+) -> list["SearchResult"]:
+    """在背景執行緒跑 *fn*，最多等 *timeout* 秒；逾時/出錯都回 []（不打穿呼叫端）。
+
+    用它給每個 provider 一個**真正的**牆鐘期限——不管底層套件吃不吃 timeout 參數。
+    逾時的工作執行緒會被放生（`shutdown(wait=False)`），但呼叫端立刻脫身。
+    """
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(fn)
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"{what} 逾時 {timeout}s，放棄")
+        return []
+    except Exception as exc:
+        logger.warning(f"{what} 出錯：{exc}")
+        return []
+    finally:
+        ex.shutdown(wait=False)
+
+
 class TavilyProvider:
-    """主要來源：呼叫 Tavily Search API。任何錯誤都回空 list 讓上層降級。"""
+    """主要來源：呼叫 Tavily Search API。任何錯誤/逾時都回空 list 讓上層降級。"""
 
     def __init__(
         self,
@@ -67,43 +91,43 @@ class TavilyProvider:
     def search(self, query: str, max_results: int) -> list[SearchResult]:
         if not self._api_key:
             return []
+        return _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "Tavily")
+
+    def _do_search(self, query: str, max_results: int) -> list[SearchResult]:
+        from tavily import TavilyClient  # 延遲 import：沒裝就在這 raise → _with_deadline 吞掉
+
+        client = TavilyClient(api_key=self._api_key)
+        kwargs = {
+            "search_depth": self._search_depth,
+            "max_results": int(max_results),
+            "country": self._country,
+        }
         try:
-            from tavily import TavilyClient
-        except Exception as exc:  # 套件沒裝 → 降級
-            logger.warning(f"tavily 套件不可用，略過 Tavily：{exc}")
-            return []
-        try:
-            client = TavilyClient(api_key=self._api_key)
-            kwargs = {
-                "search_depth": self._search_depth,
-                "max_results": int(max_results),
-                "country": self._country,
-            }
+            resp = client.search(query, **kwargs)
+        except TypeError:
+            kwargs.pop("country", None)  # 舊版 client 不吃 country
+            resp = client.search(query, **kwargs)
+        results = resp.get("results", []) if isinstance(resp, dict) else []
+        out: list[SearchResult] = []
+        for r in results:
+            url = str(r.get("url", "")).strip()
+            if not url:
+                continue
+            content = str(r.get("content") or "")
             try:
-                resp = client.search(query, timeout=self._timeout, **kwargs)
-            except TypeError:
-                # 舊版 client 不吃 timeout / country
-                kwargs.pop("country", None)
-                resp = client.search(query, **kwargs)
-            results = resp.get("results", []) if isinstance(resp, dict) else []
-            out: list[SearchResult] = []
-            for r in results:
-                url = str(r.get("url", "")).strip()
-                if not url:
-                    continue
-                content = str(r.get("content") or "")
-                out.append(
-                    SearchResult(
-                        url=url,
-                        title=str(r.get("title", "")),
-                        snippet=content,
-                        content=content or None,
-                    )
+                score = float(r.get("score") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            out.append(
+                SearchResult(
+                    url=url,
+                    title=str(r.get("title", "")),
+                    snippet=content,
+                    content=content or None,
+                    score=score,
                 )
-            return out
-        except Exception as exc:
-            logger.warning(f"Tavily 搜尋失敗，將降級到 ddgs：{exc}")
-            return []
+            )
+        return out
 
 
 class DdgsProvider:
@@ -113,31 +137,24 @@ class DdgsProvider:
         self._timeout = int(timeout)
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
+        # ddgs 的 API 不保證吃 timeout，所以一律用 _with_deadline 自己兜牆鐘期限。
+        return _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "ddgs")
+
+    def _do_search(self, query: str, max_results: int) -> list[SearchResult]:
         try:
-            try:
-                from ddgs import DDGS
-            except Exception:
-                from duckduckgo_search import DDGS  # 舊套件名
-        except Exception as exc:
-            logger.warning(f"ddgs 套件不可用：{exc}")
-            return []
-        try:
-            out: list[SearchResult] = []
-            with DDGS() as ddgs:
-                for r in ddgs.text(query, max_results=int(max_results)):
-                    url = str(r.get("href") or r.get("url") or "").strip()
-                    if not url:
-                        continue
-                    body = str(r.get("body") or "")
-                    out.append(
-                        SearchResult(
-                            url=url, title=str(r.get("title", "")), snippet=body, content=None
-                        )
-                    )
-            return out
-        except Exception as exc:
-            logger.warning(f"ddgs 搜尋失敗：{exc}")
-            return []
+            from ddgs import DDGS
+        except Exception:
+            from duckduckgo_search import DDGS  # 舊套件名
+
+        out: list[SearchResult] = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=int(max_results)):
+                url = str(r.get("href") or r.get("url") or "").strip()
+                if not url:
+                    continue
+                body = str(r.get("body") or "")
+                out.append(SearchResult(url=url, title=str(r.get("title", "")), snippet=body))
+        return out
 
 
 class FallbackSearchProvider:

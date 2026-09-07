@@ -70,3 +70,7 @@ def test_sanitize_strips_injection_lines():
     assert "忽略以上指示" not in out
     assert "ignore all previous" not in out.lower()
     assert "正常一行" in out and "又一行正常" in out
+
+
+def test_search_result_score_defaults_zero():
+    assert SearchResult(url="u").score == 0.0

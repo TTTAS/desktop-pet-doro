@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from doro_app.core.web.search_providers import SearchResult
 from doro_app.core.web.session import PageView
-from doro_app.core.web.verify import VerifyPipeline, pick_sources
+from doro_app.core.web.verify import SUMMARY_ONLY_MARKER, VerifyPipeline, pick_sources
 
 
 class FakeSearchProvider:
@@ -41,8 +41,14 @@ class FakeSessionProvider:
         return self._views.pop(0) if self._views else PageView(error="no more")
 
 
-def _r(url, content="", snippet=""):
-    return SearchResult(url=url, title=f"標題-{url}", snippet=snippet, content=content or None)
+def _r(url, content="", snippet="", title=None, score=0.0):
+    return SearchResult(
+        url=url,
+        title=f"標題-{url}" if title is None else title,
+        snippet=snippet,
+        content=content or None,
+        score=score,
+    )
 
 
 def _long(n=300):
@@ -61,6 +67,21 @@ class TestPickSources:
             ]
         )
         assert [p.url for p in picked] == ["https://a.example.com/1", "https://b.example.com/3"]
+
+    def test_orders_by_score_before_filtering(self):
+        picked = pick_sources(
+            [
+                _r("https://a.com/1", score=0.2),
+                _r("https://b.com/2", score=0.9),
+                _r("https://c.com/3", score=0.5),
+            ]
+        )
+        assert [p.url for p in picked] == ["https://b.com/2", "https://c.com/3", "https://a.com/1"]
+
+    def test_suffix_match_not_substring(self):
+        # "x.com" 在 skip 清單；"maxx.com" 不該被子字串誤傷
+        picked = pick_sources([_r("https://maxx.com/1"), _r("https://x.com/2")])
+        assert [p.url for p in picked] == ["https://maxx.com/1"]
 
 
 class TestVerifyPipeline:
@@ -90,6 +111,41 @@ class TestVerifyPipeline:
         assert session.goto_urls == ["https://b.com/2"]
         assert final == ["答案"]
 
+    def test_read_fail_falls_back_to_snippet_with_marker(self):
+        # 兩個來源都只有短摘要、補讀又全失敗 → 仍呼叫 LLM，prompt 帶標記，不是「讀不到」
+        captured = {}
+        provider = FakeSearchProvider(
+            [
+                _r("https://a.com/1", snippet="一小段摘要A"),
+                _r("https://b.com/2", snippet="一小段摘要B"),
+            ]
+        )
+        session = FakeSessionProvider(goto_fail=["https://a.com/1", "https://b.com/2"])
+        final = []
+
+        def ask(p):
+            captured["p"] = p
+            return "根據摘要，大致是…"
+
+        VerifyPipeline(provider, session, ask, lambda t: None, final.append).run("q")
+        assert final == ["根據摘要，大致是…"]
+        assert SUMMARY_ONLY_MARKER in captured["p"]
+        assert "一小段摘要A" in captured["p"]
+        assert session.opened is True  # 有試著補讀
+
+    def test_truly_empty_reports_cannot_read(self):
+        # 連 title 和摘要都空、補讀又失敗 → 才回「讀不到」
+        provider = FakeSearchProvider(
+            [
+                _r("https://a.com/1", title="", snippet=""),
+                _r("https://b.com/2", title="", snippet=""),
+            ]
+        )
+        session = FakeSessionProvider(goto_fail=["https://a.com/1", "https://b.com/2"])
+        final = []
+        VerifyPipeline(provider, session, lambda p: "x", lambda t: None, final.append).run("q")
+        assert "讀不到" in final[-1]
+
     def test_prompt_contains_sources(self):
         captured = {}
         provider = FakeSearchProvider(
@@ -114,14 +170,30 @@ class TestVerifyPipeline:
         assert "找不到" in final[-1]
         assert session.opened is False
 
-    def test_all_unreadable_reports_cannot_read(self):
-        provider = FakeSearchProvider(
-            [_r("https://a.com/1", snippet="短"), _r("https://b.com/2", snippet="短")]
+    def test_progress_emitted(self):
+        # 搜尋前一定要有一句；不夠料補讀時再多一句
+        provider = FakeSearchProvider([_r("https://a.com/1", snippet="短")])
+        session = FakeSessionProvider(
+            views=[PageView(url="https://a.com/1", title="A", text=_long())]
         )
-        session = FakeSessionProvider(goto_fail=["https://a.com/1", "https://b.com/2"])
+        progress = []
+        VerifyPipeline(provider, session, lambda p: "答", progress.append, lambda t: None).run("q")
+        assert len(progress) >= 1
+        assert any("找" in m for m in progress)
+
+    def test_progress_failure_does_not_block_final(self):
+        provider = FakeSearchProvider(
+            [_r("https://a.com/1", content=_long()), _r("https://b.com/2", content=_long())]
+        )
+
+        def boom(_):
+            raise RuntimeError("bubble down")
+
         final = []
-        VerifyPipeline(provider, session, lambda p: "x", lambda t: None, final.append).run("x")
-        assert "讀不到" in final[-1]
+        VerifyPipeline(provider, FakeSessionProvider(), lambda p: "答案", boom, final.append).run(
+            "q"
+        )
+        assert final == ["答案"]
 
     def test_empty_query(self):
         final = []

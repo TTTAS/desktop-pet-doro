@@ -56,6 +56,8 @@ class _StubConfigManager:
         )
         self.update_automation = Mock()
         self.save = Mock()
+        self.web = SimpleNamespace(tavily_api_key="", verify_search_depth="basic")
+        self.update_web = Mock()
 
 
 class _StubCoreManager:
@@ -82,9 +84,7 @@ def _make_dialog(
     from doro_app.ui.dialogs.chat_settings_dialog import ChatSettingsDialog
 
     orch = _StubOrchestrator()
-    config = _StubConfigManager(
-        a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled
-    )
+    config = _StubConfigManager(a11y_enabled=a11y_enabled, mouse_enabled=mouse_enabled)
     dialog = ChatSettingsDialog(
         _StubCoreManager(
             orch,
@@ -132,9 +132,7 @@ def test_save_persists_share_input_values_when_a11y_on(qtbot):
 
 
 def test_save_drops_share_input_values_when_a11y_off(qtbot):
-    dialog, _, config = _make_dialog(
-        qtbot, a11y_enabled=True
-    )
+    dialog, _, config = _make_dialog(qtbot, a11y_enabled=True)
     # User unchecks a11y but the share-values checkbox is still ticked:
     # the persisted value must be False because the dependency is gone.
     dialog._a11y_share_values_checkbox.setChecked(True)
@@ -166,3 +164,16 @@ def test_save_without_a11y_does_not_clear_blacklist(qtbot):
     dialog._on_save()
 
     service.clear_session_blacklist.assert_not_called()
+
+
+def test_save_persists_tavily_settings(qtbot):
+    dialog, _, config = _make_dialog(qtbot)
+    dialog._tavily_key_edit.setText("tvly-xyz")
+    dialog._verify_depth_combo.setCurrentText("advanced")
+
+    dialog._on_save()
+
+    config.update_web.assert_called_once_with(
+        tavily_api_key="tvly-xyz",
+        verify_search_depth="advanced",
+    )
