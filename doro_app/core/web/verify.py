@@ -1,15 +1,4 @@
-"""查證 / 查資料管線（第 2 層）。
-
-流程：**搜尋 API 找來源 → 有標題/摘要就直接比對，只有完全沒摘要才開瀏覽器補讀 → 一次比對 → 誠實回報**。
-
-- 搜尋改走 :class:`SearchProvider`（Tavily 主 / ddgs 備援），**不再爬 Bing HTML**。
-- 「夠料」判定：摘要 ≥ ``MIN_SNIPPET_CHARS`` 字的來源不當成「只有摘要」。
-- **預設不開瀏覽器**：只要搜尋結果有 title 或 snippet，就拿去答（短的標
-  :data:`SUMMARY_ONLY_MARKER`）。補讀只留給「連 title/摘要都空」的來源。
-- **瀏覽器懶開**：只有真的要補讀時才呼叫 ``session_provider()``。
-- 補讀撞驗證／逾時：立刻離開該頁（``about:blank``），換下一個；不問使用者過驗證。
-- 只讀不點不送出（read-only），不受操作總開關限制。
-"""
+"""查證 / 查資料管線（第 2 層）。"""
 
 from __future__ import annotations
 
@@ -26,6 +15,7 @@ from .search_providers import (
     SearchProvider,
     SearchResult,
     sanitize_source_text,
+    search_backend_name,
 )
 from .session import PageView
 
@@ -166,6 +156,11 @@ class VerifyPipeline:
         except Exception as exc:
             _dbg(f"search provider raised: {exc}")
             raw = []
+
+        backend = search_backend_name(self._search)
+        _dbg(f"search via {backend}: raw={len(raw)}")
+        if raw:
+            self._emit_progress(f"用 {backend} 找到來源…📡")
 
         picked = pick_sources(raw)
         _dbg(f"picked {len(picked)} candidates: {[r.url for r in picked]}")
