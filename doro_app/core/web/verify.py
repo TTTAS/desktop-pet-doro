@@ -110,7 +110,7 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
     lines: list[str] = []
     lines.append(f"使用者想查證／了解：{query}")
     lines.append("")
-    lines.append("以下是 doro 從網路上找到的幾個來源，請你比對它們後用繁體中文回答：")
+    lines.append("以下是 doro 剛打開並讀過的分頁，請比對後用繁體中文回答：")
     for i, src in enumerate(sources, 1):
         lines.append("")
         lines.append(f"【來源{i}】{src.get('title') or '(無標題)'}")
@@ -118,10 +118,10 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
         lines.append(src.get("text", "")[:_PER_SOURCE_CHARS])
     lines.append("")
     lines.append("回答要求：")
-    lines.append("1. 用兩三句講重點。不要寫「來源1」「來源2」，人會看打開的網頁。")
-    lines.append("2. 來源矛盾就兩邊都講。不足就說不確定，絕不要編。")
-    lines.append("3. 用純文字、不要 Markdown；開頭加一個 (狀態)。")
-    lines.append("4. 2～4 句話，約 150 字以內。")
+    lines.append("1. 用兩三句講重點。不要寫「來源1」「來源2」。")
+    lines.append("2. 多個分頁都要考慮，不只講最後一頁。矛盾就兩邊都講。")
+    lines.append("3. 不足就說不確定，絕不要編。")
+    lines.append("4. 純文字；開頭 (狀態)；2～4 句，約 150 字。")
     return "\n".join(lines)
 
 
@@ -175,29 +175,19 @@ class VerifyPipeline:
             self._final("唔…doro找不到適合的來源耶。換個關鍵字再試試？")
             return
 
-        self._open_found(self.found_urls[:MAX_OPEN_TABS])
-        tab_reads = self._read_open_tabs()
+        tab_reads = self._open_and_read(self.found_urls[:MAX_OPEN_TABS])
 
         chosen: list[dict] = []
         if tab_reads:
             for s in tab_reads[: self._target]:
                 chosen.append(self._as_source(s, summary_only=False))
         else:
-            empty: list[SearchResult] = []
             for s in picked:
                 if _has_search_text(s):
                     long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
                     chosen.append(self._as_source(s, summary_only=not long_enough))
-                else:
-                    empty.append(s)
-            if empty and len(chosen) < self._target:
-                self._emit_progress("資料有點少，doro 開頁看仔細一點…📖")
-                for s in empty:
                     if len(chosen) >= self._target:
                         break
-                    filled = self._read_source(s)
-                    if filled is not None:
-                        chosen.append(self._as_source(filled, summary_only=False))
 
         sources: list[dict] = []
         for c in chosen[: self._target]:
@@ -257,98 +247,51 @@ class VerifyPipeline:
                 return False
             print(f"[doro verify] tab: {url}", flush=True)
             return True
-        if extra:
-            ctx = getattr(session, "_context", None)
-            if ctx is not None:
-                try:
-                    page = ctx.new_page()
-                    page.goto(url, wait_until="domcontentloaded", timeout=VERIFY_NAV_TIMEOUT_MS)
-                    if hasattr(session, "use_page"):
-                        session.use_page(page)
-                    print(f"[doro verify] tab: {url}", flush=True)
-                    return True
-                except Exception as exc:
-                    print(f"[doro verify] tab failed: {url} ({exc})", flush=True)
-                    return False
         if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
-            return False
-        view = self._snapshot(session, wait_idle=False)
-        if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
-            print("[doro verify] open skipped (block/captcha)", flush=True)
-            self._abandon_page(session)
+            print(f"[doro verify] goto failed: {url}", flush=True)
             return False
         return True
 
-    def _open_found(self, urls: list[str]) -> None:
+    def _view_as_result(self, view: PageView) -> SearchResult | None:
+        if not getattr(view, "ok", False):
+            print(f"[doro verify] skip tab (bad snapshot): {getattr(view, 'error', '')}", flush=True)
+            return None
+        if looks_like_captcha(view) or looks_like_login_wall(view):
+            print(f"[doro verify] skip tab (block): {getattr(view, 'url', '')}", flush=True)
+            return None
+        text = (getattr(view, "text", None) or "").strip()
+        if not text:
+            return None
+        print(f"[doro verify] read tab: {view.url}", flush=True)
+        return SearchResult(
+            url=view.url or "",
+            title=getattr(view, "title", "") or "",
+            snippet="",
+            content=text,
+        )
+
+    def _open_and_read(self, urls: list[str]) -> list[SearchResult]:
         if not urls:
-            return
+            return []
         self._emit_progress("doro 把找到的頁打開給你看…")
         print(f"[doro verify] open after pick: {urls}", flush=True)
         session = self._session_provider()
         err = session.ensure_open()
         if err:
             print(f"[doro verify] open failed: {err}", flush=True)
-            return
+            return []
+        out: list[SearchResult] = []
         opened = 0
         for i, url in enumerate(urls):
             print(f"[doro verify] open: {url}", flush=True)
-            if self._open_tab(session, url, extra=(i > 0)):
-                opened += 1
+            if not self._open_tab(session, url, extra=(i > 0)):
+                continue
+            opened += 1
+            view = self._snapshot(session, wait_idle=False)
+            filled = self._view_as_result(view)
+            if filled is not None:
+                out.append(filled)
         if opened:
             self.keep_browser = True
-            print(f"[doro verify] opened {opened} tab(s)", flush=True)
-
-    def _read_open_tabs(self) -> list[SearchResult]:
-        session = self._session_provider()
-        fn = getattr(session, "snapshot_open_pages", None)
-        if not callable(fn):
-            return []
-        try:
-            views = fn(wait_idle=False)
-        except TypeError:
-            views = fn()
-        except Exception as exc:
-            print(f"[doro verify] read tabs failed: {exc}", flush=True)
-            return []
-        out: list[SearchResult] = []
-        for view in views or []:
-            if not getattr(view, "ok", False):
-                continue
-            if looks_like_captcha(view) or looks_like_login_wall(view):
-                print(f"[doro verify] skip tab (block): {getattr(view, 'url', '')}", flush=True)
-                continue
-            text = (getattr(view, "text", None) or "").strip()
-            if not text:
-                continue
-            print(f"[doro verify] read tab: {view.url}", flush=True)
-            out.append(
-                SearchResult(
-                    url=view.url or "",
-                    title=getattr(view, "title", "") or "",
-                    snippet="",
-                    content=text,
-                )
-            )
+            print(f"[doro verify] opened {opened} tab(s), read {len(out)}", flush=True)
         return out
-
-    def _read_source(self, s: SearchResult) -> SearchResult | None:
-        _dbg(f"補讀：{s.url}")
-        session = self._session_provider()
-        if session.ensure_open():
-            return None
-        if self._goto(session, s.url, VERIFY_NAV_TIMEOUT_MS):
-            self._abandon_page(session)
-            return None
-        view = self._snapshot(session, wait_idle=False)
-        if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
-            if looks_like_captcha(view):
-                self._emit_progress("這站要驗證，doro 換下一個…")
-            self._abandon_page(session)
-            return None
-        text = (view.text or "").strip()
-        if not text:
-            self._abandon_page(session)
-            return None
-        return SearchResult(
-            url=view.url or s.url, title=view.title or s.title, snippet="", content=text
-        )
