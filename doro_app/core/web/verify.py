@@ -1,12 +1,13 @@
 """查證 / 查資料管線（第 2 層）。
 
-流程：**搜尋 API 找來源 → 摘要夠料就直接比對，不夠才用瀏覽器補讀 → 一次比對 → 誠實回報**。
+流程：**搜尋 API 找來源 → 有標題/摘要就直接比對，只有完全沒摘要才開瀏覽器補讀 → 一次比對 → 誠實回報**。
 
 - 搜尋改走 :class:`SearchProvider`（Tavily 主 / ddgs 備援），**不再爬 Bing HTML**。
-- 「夠料」判定：至少 ``MIN_GOOD_SOURCES`` 個來源的摘要 ≥ ``MIN_SNIPPET_CHARS`` 字 → 免補讀。
-- **瀏覽器懶開**：只有真的要補讀時才呼叫 ``session_provider()``——結構上擋掉提前開瀏覽器。
-- **補讀失敗仍硬答**：補讀不成、但手上有 title/摘要，就照樣送進比對並標
-  :data:`SUMMARY_ONLY_MARKER`；只有「連 title/摘要都空」才回「讀不到」。
+- 「夠料」判定：摘要 ≥ ``MIN_SNIPPET_CHARS`` 字的來源不當成「只有摘要」。
+- **預設不開瀏覽器**：只要搜尋結果有 title 或 snippet，就拿去答（短的標
+  :data:`SUMMARY_ONLY_MARKER`）。補讀只留給「連 title/摘要都空」的來源。
+- **瀏覽器懶開**：只有真的要補讀時才呼叫 ``session_provider()``。
+- 補讀撞驗證／逾時：立刻離開該頁（``about:blank``），換下一個；不問使用者過驗證。
 - 只讀不點不送出（read-only），不受操作總開關限制。
 """
 
@@ -20,7 +21,6 @@ from ...utils.logger import get_logger
 from .operator import looks_like_captcha, looks_like_login_wall
 from .search_providers import (
     MAX_RESULTS,
-    MIN_GOOD_SOURCES,
     MIN_SNIPPET_CHARS,
     TARGET_SOURCES,
     SearchProvider,
@@ -31,12 +31,13 @@ from .session import PageView
 
 logger = get_logger(__name__)
 
-DEFAULT_MAX_SOURCES = TARGET_SOURCES  # 最終要幾個來源比對
-PICK_CANDIDATES = 5  # 從搜尋結果挑幾個候選（供補讀用）
-_PER_SOURCE_CHARS = 2000  # 每個來源最多取多少字餵給 AI
-SUMMARY_ONLY_MARKER = "【此來源可能只有摘要】"  # 補讀失敗、只有短摘要時標這行
+DEFAULT_MAX_SOURCES = TARGET_SOURCES
+PICK_CANDIDATES = 5
+_PER_SOURCE_CHARS = 2000
+SUMMARY_ONLY_MARKER = "【此來源可能只有摘要】"
+VERIFY_NAV_TIMEOUT_MS = 10_000
+_BLANK = "about:blank"
 
-# 挑來源時要跳過的網域（搜尋引擎自己、追蹤、社群、無關）。比對用「等於或 .結尾」。
 _SKIP_DOMAINS = (
     "bing.com",
     "microsoft.com",
@@ -68,8 +69,8 @@ def _dbg(msg: str) -> None:
 
 class SessionLike(Protocol):
     def ensure_open(self) -> str | None: ...
-    def goto(self, url: str) -> str | None: ...
-    def snapshot(self) -> PageView: ...
+    def goto(self, url: str, timeout_ms: int | None = None) -> str | None: ...
+    def snapshot(self, wait_idle: bool = True) -> PageView: ...
 
 
 AskLLM = Callable[[str], str]
@@ -90,7 +91,6 @@ def _is_skipped(dom: str) -> bool:
 
 
 def pick_sources(results: list[SearchResult], limit: int = PICK_CANDIDATES) -> list[SearchResult]:
-    """挑候選來源：**先依 score 排序**，再跳過搜尋引擎/社群、每網域一個、取前 *limit* 個。"""
     ranked = sorted(results, key=lambda r: (r.score or 0.0), reverse=True)
     picked: list[SearchResult] = []
     seen: set[str] = set()
@@ -106,7 +106,6 @@ def pick_sources(results: list[SearchResult], limit: int = PICK_CANDIDATES) -> l
 
 
 def build_verify_prompt(query: str, sources: list[dict]) -> str:
-    """把使用者的問題 + 幾個來源的內容，組成給 AI 比對的提示。"""
     lines: list[str] = []
     lines.append(f"使用者想查證／了解：{query}")
     lines.append("")
@@ -132,9 +131,11 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
     return "\n".join(lines)
 
 
-class VerifyPipeline:
-    """跑「搜尋 API → 夠料直接比對／不夠才補讀 → 比對」的查證流程。"""
+def _has_search_text(s: SearchResult) -> bool:
+    return bool((s.best_text or "").strip() or (s.title or "").strip())
 
+
+class VerifyPipeline:
     def __init__(
         self,
         search_provider: SearchProvider,
@@ -146,14 +147,13 @@ class VerifyPipeline:
         max_sources: int = DEFAULT_MAX_SOURCES,
     ) -> None:
         self._search = search_provider
-        self._session_provider = session_provider  # 真的要補讀才呼叫（懶開瀏覽器）
+        self._session_provider = session_provider
         self._ask_llm = ask_llm
         self._progress = emit_progress
         self._final = emit_final
         self._target = max(1, int(max_sources))
 
     def run(self, query: str) -> None:
-        """對 *query* 跑完查證（阻塞，需在專屬背景執行緒呼叫）。"""
         query = (query or "").strip()
         if not query:
             self._final("人要doro查什麼呀？再說清楚一點嘛～")
@@ -163,7 +163,7 @@ class VerifyPipeline:
         _dbg(f"search: {query}")
         try:
             raw = self._search.search(query, MAX_RESULTS)
-        except Exception as exc:  # provider 理論上自己吞錯；這裡再兜一層底
+        except Exception as exc:
             _dbg(f"search provider raised: {exc}")
             raw = []
 
@@ -173,30 +173,26 @@ class VerifyPipeline:
             self._final("唔…doro找不到適合的來源耶。換個關鍵字再試試？")
             return
 
-        good = [s for s in picked if len(s.best_text) >= MIN_SNIPPET_CHARS]
         chosen: list[dict] = []
-        if len(good) >= MIN_GOOD_SOURCES:
-            for s in good[: self._target]:
-                chosen.append(self._as_source(s, summary_only=False))
-            _dbg(f"{len(good)} 個來源摘要夠料 → 免補讀（0 goto）")
-        else:
-            for s in good:
-                chosen.append(self._as_source(s, summary_only=False))
-            remaining = [s for s in picked if s not in good]
-            if remaining and len(chosen) < self._target:
-                self._emit_progress("資料有點少，doro 開頁看仔細一點…📖")
-                for s in remaining:
-                    if len(chosen) >= self._target:
-                        break
-                    filled = self._read_source(s)
-                    if filled is not None:
-                        chosen.append(self._as_source(filled, summary_only=False))
-                    elif s.best_text.strip() or (s.title or "").strip():
-                        # 補讀失敗，但手上有 title/摘要 → 硬答（標記可能只有摘要）
-                        chosen.append(self._as_source(s, summary_only=True))
+        empty: list[SearchResult] = []
+        for s in picked:
+            if _has_search_text(s):
+                long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
+                chosen.append(self._as_source(s, summary_only=not long_enough))
+            else:
+                empty.append(s)
+
+        if empty and len(chosen) < self._target:
+            self._emit_progress("資料有點少，doro 開頁看仔細一點…📖")
+            for s in empty:
+                if len(chosen) >= self._target:
+                    break
+                filled = self._read_source(s)
+                if filled is not None:
+                    chosen.append(self._as_source(filled, summary_only=False))
 
         sources: list[dict] = []
-        for c in chosen:
+        for c in chosen[: self._target]:
             text = sanitize_source_text(c["text"])
             if c["summary_only"]:
                 text = (SUMMARY_ONLY_MARKER + "\n" + text).strip()
@@ -212,30 +208,56 @@ class VerifyPipeline:
         _dbg(f"answer len={len(answer)}")
         self._final(answer.strip() or "doro查完了，但一時整理不出來…要不要換個問法？")
 
-    # ── helpers ────────────────────────────────────────────
     def _emit_progress(self, text: str) -> None:
         try:
             self._progress(text)
-        except Exception as exc:  # 進度顯示失敗不該影響最終答案
+        except Exception as exc:
             _dbg(f"emit_progress failed: {exc}")
 
     @staticmethod
     def _as_source(s: SearchResult, *, summary_only: bool) -> dict:
         return {"text": s.best_text, "title": s.title, "url": s.url, "summary_only": summary_only}
 
+    def _abandon_page(self, session: SessionLike) -> None:
+        try:
+            session.goto(_BLANK, timeout_ms=3_000)
+        except TypeError:
+            try:
+                session.goto(_BLANK)
+            except Exception as exc:
+                _dbg(f"abandon page failed: {exc}")
+        except Exception as exc:
+            _dbg(f"abandon page failed: {exc}")
+
+    def _goto(self, session: SessionLike, url: str, timeout_ms: int | None = None) -> str | None:
+        try:
+            return session.goto(url, timeout_ms=timeout_ms)
+        except TypeError:
+            return session.goto(url)
+
+    def _snapshot(self, session: SessionLike, *, wait_idle: bool) -> PageView:
+        try:
+            return session.snapshot(wait_idle=wait_idle)
+        except TypeError:
+            return session.snapshot()
+
     def _read_source(self, s: SearchResult) -> SearchResult | None:
-        """摘要不夠時，用瀏覽器補讀一個來源（此時才真的開瀏覽器）。讀不到回 None。"""
         _dbg(f"補讀：{s.url}")
         session = self._session_provider()
         if session.ensure_open():
             return None
-        if session.goto(s.url):
+        if self._goto(session, s.url, VERIFY_NAV_TIMEOUT_MS):
+            self._abandon_page(session)
             return None
-        view = session.snapshot()
+        view = self._snapshot(session, wait_idle=False)
         if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
+            if looks_like_captcha(view):
+                self._emit_progress("這站要驗證，doro 換下一個…")
+            self._abandon_page(session)
             return None
         text = (view.text or "").strip()
         if not text:
+            self._abandon_page(session)
             return None
         return SearchResult(
             url=view.url or s.url, title=view.title or s.title, snippet="", content=text
