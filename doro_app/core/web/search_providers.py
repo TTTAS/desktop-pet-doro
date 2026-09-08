@@ -1,14 +1,4 @@
-"""搜尋來源提供者：把「找來源」從爬 Bing HTML 換成呼叫搜尋 API。
-
-`VerifyPipeline` 只依賴 `SearchProvider` 這個介面。正式環境注入 Tavily（有 key）
-或 ddgs（免 key）；測試注入假的。每個 provider 自己吞錯回空 list，
-`FallbackSearchProvider` 依序試、回第一個非空結果——降級順序固定、永不 raise。
-
-門（外面要用就從這裡進來）：
-- ``build_search_provider(tavily_key, search_depth=...)`` … 依 key 組出 provider。
-- ``sanitize_source_text(text)`` … 進 LLM 前剝掉可疑的注入行。
-常數（見 docs/verify-stage1-checklist.md）：`MIN_SNIPPET_CHARS` 等。
-"""
+"""搜尋來源提供者：把「找來源」從爬 Bing HTML 換成呼叫搜尋 API。"""
 
 from __future__ import annotations
 
@@ -21,25 +11,22 @@ from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# ── 釘死的常數 ────────────────────────────────────────────────
-MIN_SNIPPET_CHARS = 250  # 每來源摘要 ≥ 此字數 → 視為「有料」（免補讀）
-MIN_GOOD_SOURCES = 2  # 有料來源 ≥ 此值 → 完全不開瀏覽器
-TARGET_SOURCES = 3  # 需補讀時，湊到幾個來源為止
-MAX_RESULTS = 6  # 跟搜尋 API 要幾筆
-SEARCH_TIMEOUT_S = 30  # 搜尋硬逾時（對齊 OpenClaw Tavily plugin）
-DEFAULT_SEARCH_DEPTH = "basic"  # 可被設定覆寫成 "advanced"
-TAVILY_COUNTRY = "taiwan"  # 只設 country；language/locale 不臆造
+MIN_SNIPPET_CHARS = 250
+MIN_GOOD_SOURCES = 2
+TARGET_SOURCES = 3
+MAX_RESULTS = 6
+SEARCH_TIMEOUT_S = 30
+DEFAULT_SEARCH_DEPTH = "basic"
+TAVILY_COUNTRY = "taiwan"
 
 
 @dataclass
 class SearchResult:
-    """一筆搜尋結果。``content`` 是 API 抽好的內容（可能為 None → 需補讀）。"""
-
     url: str
     title: str = ""
     snippet: str = ""
     content: str | None = None
-    score: float = 0.0  # 搜尋 API 給的相關性分數；缺值當 0（挑來源時用來排序）
+    score: float = 0.0
 
     @property
     def best_text(self) -> str:
@@ -47,17 +34,22 @@ class SearchResult:
 
 
 class SearchProvider(Protocol):
+    name: str
+
     def search(self, query: str, max_results: int) -> list["SearchResult"]: ...
+
+
+def search_backend_name(provider: object) -> str:
+    """這次真正用到的引擎名（Fallback 會記 last_used）。"""
+    used = getattr(provider, "last_used", None) or getattr(provider, "name", None)
+    if used:
+        return str(used)
+    return provider.__class__.__name__
 
 
 def _with_deadline(
     fn: Callable[[], list["SearchResult"]], timeout: int, what: str
 ) -> list["SearchResult"]:
-    """在背景執行緒跑 *fn*，最多等 *timeout* 秒；逾時/出錯都回 []（不打穿呼叫端）。
-
-    用它給每個 provider 一個**真正的**牆鐘期限——不管底層套件吃不吃 timeout 參數。
-    逾時的工作執行緒會被放生（`shutdown(wait=False)`），但呼叫端立刻脫身。
-    """
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     fut = ex.submit(fn)
     try:
@@ -73,7 +65,7 @@ def _with_deadline(
 
 
 class TavilyProvider:
-    """主要來源：呼叫 Tavily Search API。任何錯誤/逾時都回空 list 讓上層降級。"""
+    name = "Tavily"
 
     def __init__(
         self,
@@ -87,14 +79,19 @@ class TavilyProvider:
         self._search_depth = (search_depth or DEFAULT_SEARCH_DEPTH).strip().lower()
         self._country = country
         self._timeout = int(timeout)
+        self.last_used = ""
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
+        self.last_used = ""
         if not self._api_key:
             return []
-        return _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "Tavily")
+        out = _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "Tavily")
+        if out:
+            self.last_used = self.name
+        return out
 
     def _do_search(self, query: str, max_results: int) -> list[SearchResult]:
-        from tavily import TavilyClient  # 延遲 import：沒裝就在這 raise → _with_deadline 吞掉
+        from tavily import TavilyClient
 
         client = TavilyClient(api_key=self._api_key)
         kwargs = {
@@ -105,7 +102,7 @@ class TavilyProvider:
         try:
             resp = client.search(query, **kwargs)
         except TypeError:
-            kwargs.pop("country", None)  # 舊版 client 不吃 country
+            kwargs.pop("country", None)
             resp = client.search(query, **kwargs)
         results = resp.get("results", []) if isinstance(resp, dict) else []
         out: list[SearchResult] = []
@@ -131,20 +128,24 @@ class TavilyProvider:
 
 
 class DdgsProvider:
-    """備援來源：ddgs（DuckDuckGo）。免 key，通常只有短摘要 → content=None。"""
+    name = "DuckDuckGo"
 
     def __init__(self, *, timeout: int = SEARCH_TIMEOUT_S) -> None:
         self._timeout = int(timeout)
+        self.last_used = ""
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
-        # ddgs 的 API 不保證吃 timeout，所以一律用 _with_deadline 自己兜牆鐘期限。
-        return _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "ddgs")
+        self.last_used = ""
+        out = _with_deadline(lambda: self._do_search(query, max_results), self._timeout, "ddgs")
+        if out:
+            self.last_used = self.name
+        return out
 
     def _do_search(self, query: str, max_results: int) -> list[SearchResult]:
         try:
             from ddgs import DDGS
         except Exception:
-            from duckduckgo_search import DDGS  # 舊套件名
+            from duckduckgo_search import DDGS
 
         out: list[SearchResult] = []
         with DDGS() as ddgs:
@@ -158,27 +159,32 @@ class DdgsProvider:
 
 
 class FallbackSearchProvider:
-    """依序試多個 provider，回第一個非空結果；全空回空。單一 provider 出錯不打穿。"""
+    name = "Fallback"
 
     def __init__(self, providers: list[SearchProvider]) -> None:
         self._providers = list(providers)
+        self.last_used = ""
 
     def search(self, query: str, max_results: int) -> list[SearchResult]:
+        self.last_used = ""
         for provider in self._providers:
+            label = getattr(provider, "name", provider.__class__.__name__)
             try:
                 results = provider.search(query, max_results)
             except Exception as exc:
-                logger.warning(f"搜尋 provider 出錯，換下一個：{exc}")
+                logger.warning(f"搜尋 {label} 出錯，換下一個：{exc}")
                 results = []
             if results:
+                self.last_used = getattr(provider, "last_used", None) or label
+                logger.info(f"搜尋用 {self.last_used}，{len(results)} 筆")
                 return results
+            logger.info(f"搜尋 {label} 沒結果，換下一個")
         return []
 
 
 def build_search_provider(
     tavily_key: str, *, search_depth: str = DEFAULT_SEARCH_DEPTH
 ) -> SearchProvider:
-    """有 Tavily key → Tavily 主 + ddgs 備援；沒 key → 只用 ddgs。"""
     key = (tavily_key or "").strip()
     if key:
         return FallbackSearchProvider(
@@ -187,7 +193,6 @@ def build_search_provider(
     return DdgsProvider()
 
 
-# ── 注入防護（硬規則）──────────────────────────────────────────
 _INJECTION_LINE_RE = re.compile(
     r"(忽略(以上|前面|先前).{0,6}(指示|指令|要求))"
     r"|(ignore\s+(all\s+)?previous)"
@@ -199,7 +204,6 @@ _INJECTION_LINE_RE = re.compile(
 
 
 def sanitize_source_text(text: str) -> str:
-    """逐行剝掉命中注入樣式的行後才進 LLM。先上這組、觀察，避免過度誤殺。"""
     if not text:
         return ""
     kept = [ln for ln in text.splitlines() if not _INJECTION_LINE_RE.search(ln)]
