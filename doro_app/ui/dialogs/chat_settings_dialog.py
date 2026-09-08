@@ -45,6 +45,7 @@ QPushButton#eyeButton {
 QPushButton#eyeButton:hover { background: #FFC4F0; border-radius: 4px; }
 """
 
+
 class ChatSettingsDialog(FramelessDialog):
     """All chat/LLM settings in a single panel."""
 
@@ -94,7 +95,7 @@ class ChatSettingsDialog(FramelessDialog):
         self._api_key_edit = QtWidgets.QLineEdit()
         self._api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         key_row.addWidget(self._api_key_edit, 1)
-        self._eye_btn = QtWidgets.QPushButton("\U0001F441")
+        self._eye_btn = QtWidgets.QPushButton("\U0001f441")
         self._eye_btn.setObjectName("eyeButton")
         self._eye_btn.setFixedWidth(32)
         self._eye_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -128,12 +129,20 @@ class ChatSettingsDialog(FramelessDialog):
         self._max_stop_spin.setSpecialValueText("Unlimited")
         form.addRow("Max stop tokens:", self._max_stop_spin)
 
+        # ── 查證搜尋（第 2 層）：Tavily key + 深度 ──────────────
+        self._tavily_key_edit = QtWidgets.QLineEdit()
+        self._tavily_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._tavily_key_edit.setPlaceholderText("tvly-...（留空則用免費 DuckDuckGo）")
+        form.addRow("Tavily API Key:", self._tavily_key_edit)
+
+        self._verify_depth_combo = QtWidgets.QComboBox()
+        self._verify_depth_combo.addItems(["basic", "advanced"])
+        form.addRow("查證搜尋深度:", self._verify_depth_combo)
+
         layout.addLayout(form)
 
         # ── Accessibility tree reading (Phase 1d) ──────────────
-        self._a11y_checkbox = QtWidgets.QCheckBox(
-            "讓 Doro 讀取前景視窗的可點元素（無障礙樹）"
-        )
+        self._a11y_checkbox = QtWidgets.QCheckBox("讓 Doro 讀取前景視窗的可點元素（無障礙樹）")
         layout.addWidget(self._a11y_checkbox)
         a11y_hint = QtWidgets.QLabel(
             "開啟後，目前前景視窗的按鈕／連結／輸入框與座標會加進提示詞，"
@@ -153,6 +162,14 @@ class ChatSettingsDialog(FramelessDialog):
         self._a11y_share_values_checkbox.setEnabled(False)
         layout.addWidget(self._a11y_share_values_checkbox)
         self._a11y_checkbox.toggled.connect(self._a11y_share_values_checkbox.setEnabled)
+
+        verify_hint = QtWidgets.QLabel(
+            "查證用：填 Tavily key → 搜尋更穩更準（basic 多數仍會開頁補讀，"
+            "advanced 才較接近免開瀏覽器）；留空 → 用免費 DuckDuckGo，幾乎都要開頁補讀。"
+        )
+        verify_hint.setObjectName("instructionLabel")
+        verify_hint.setWordWrap(True)
+        layout.addWidget(verify_hint)
 
         # Save button
         save_btn = QtWidgets.QPushButton("儲存")
@@ -194,13 +211,19 @@ class ChatSettingsDialog(FramelessDialog):
         )
         self._a11y_share_values_checkbox.setEnabled(a11y_enabled)
 
+        web = self._core.config_manager.web
+        self._tavily_key_edit.setText(web.tavily_api_key)
+        self._verify_depth_combo.setCurrentText(web.verify_search_depth)
+
         # Detect which provider matches
         matched = "Custom"
         for name, preset in _PROVIDER_PRESETS.items():
-            if (url == preset["server_url"]
-                    and model == preset["model"]
-                    and endpoint == preset["endpoint_path"]
-                    and max_stop == preset["max_stop_tokens"]):
+            if (
+                url == preset["server_url"]
+                and model == preset["model"]
+                and endpoint == preset["endpoint_path"]
+                and max_stop == preset["max_stop_tokens"]
+            ):
                 matched = name
                 break
 
@@ -251,13 +274,15 @@ class ChatSettingsDialog(FramelessDialog):
 
         config = self._core.config_manager
         a11y_enabled = self._a11y_checkbox.isChecked()
-        a11y_share_input_values = (
-            a11y_enabled and self._a11y_share_values_checkbox.isChecked()
-        )
+        a11y_share_input_values = a11y_enabled and self._a11y_share_values_checkbox.isChecked()
 
         config.update_automation(
             a11y_enabled=a11y_enabled,
             a11y_share_input_values=a11y_share_input_values,
+        )
+        config.update_web(
+            tavily_api_key=self._tavily_key_edit.text().strip(),
+            verify_search_depth=self._verify_depth_combo.currentText(),
         )
         config.save()
 

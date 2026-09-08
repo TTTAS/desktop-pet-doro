@@ -29,7 +29,12 @@ DEFAULT_CHAT_MAX_STOP_TOKENS = 0  # 0 = no limit
 
 # Master opt-in for synthetic-click automation. `DORO_MOUSE=true` flips this
 # on at process start. Anything else (unset, "0", "false") leaves it off.
-DEFAULT_MOUSE_AUTOMATION_ENABLED = _env("DORO_MOUSE", "false").strip().lower() in ("1", "true", "yes", "on")
+DEFAULT_MOUSE_AUTOMATION_ENABLED = _env("DORO_MOUSE", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 # Master opt-in for accessibility-tree reading (Phase 1d). Independent of
 # `mouse_enabled`: the user may want Doro to *see* the foreground window
@@ -46,4 +51,19 @@ DEFAULT_A11Y_SHARE_INPUT_VALUES = False
 
 # 網頁操作（第 3 層）總開關，預設關。可用環境變數 `DORO_WEB_OPERATE=true` 覆寫，
 # 但主要靠 doro 設定裡的打勾開關（會記住）。
-DEFAULT_WEB_OPERATION_ENABLED = _env("DORO_WEB_OPERATE", "false").strip().lower() in ("1", "true", "yes", "on")
+DEFAULT_WEB_OPERATION_ENABLED = _env("DORO_WEB_OPERATE", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+
+# ═══════════════════════════════════════════════════════════
+# Web / Verify (search API) Defaults
+# ═══════════════════════════════════════════════════════════
+
+# Tavily search API key（查證用；與聊天 LLM 的 api_key 分開存）。可用環境變數覆寫。
+DEFAULT_TAVILY_API_KEY = _env("DORO_TAVILY_API_KEY", "")
+# 查證搜尋深度：basic（1 credit、較快、預設）或 advanced（2 credits、內容較長）。
+DEFAULT_VERIFY_SEARCH_DEPTH = _env("DORO_VERIFY_SEARCH_DEPTH", "basic")

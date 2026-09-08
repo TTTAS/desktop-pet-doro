@@ -18,7 +18,7 @@
 - **共用瀏覽器 + 專屬執行緒**：`runtime.py`（`WebRuntime`）——一條專屬執行緒擁有唯一 `WebSession`，讀與操作都排隊走它（天生一次一個）；閒置 5 分鐘自動關；`op_confirm`/`provide_confirm` 用 Event 橋接「聊天打字確認」。**Playwright sync 綁執行緒，所有網頁動作都在這條執行緒**。
   - `app.py` 的 `_on_about_to_quit` 會呼叫 `orchestrator.shutdown_web()` 收掉。
   - 隔離：操作進行中 orchestrator 擋掉一般聊天/自動訊息（只收「好/不要/停」）；idle 看 `is_web_busy` 自動安靜；操作提示**不掛 a11y 前景樹**（`_operation_ask_llm` 自建 payload）。
-- **第 2 層：查證** 已完成（`verify.py` 的 `VerifyPipeline`）：搜尋(Bing)→抓前幾個結果連結(`session.collect_links`+`pick_result_links`)→各讀一頁→把所有來源一起餵給 AI 比對→誠實回報（找不到就說找不到）。跳過需登入/驗證的來源。**read-only，不受操作總開關限制**。觸發＝模型吐 `[operate:]` 之外的 `[verify:問題]`（`parse_verify_action`，在 `_on_request_succeeded` 攔）。走 `WebRuntime.submit_verify`→`verify_progress`/`verify_finished` signal。查證/操作的 LLM 呼叫共用 `_web_llm(system_prompt, prompt)`（各自系統提示、不掛 a11y）。
+- **第 2 層：查證** 已完成（`verify.py` 的 `VerifyPipeline`）：搜尋 API(Tavily 主／ddgs 備援，見 `search_providers.py`)→摘要夠料(每源 ≥250 字、至少 2 源)就直接比對、不夠才用瀏覽器補讀(`session_provider` 懶開；補讀失敗仍用摘要硬答並標「只有摘要」)→把來源一起餵給 AI 比對→誠實回報（找不到就說找不到）。Tavily key 存在 `web.tavily_api_key`（與聊天 key 分開），沒 key 走 ddgs。跳過需登入/驗證的來源。**read-only，不受操作總開關限制**。觸發＝模型吐 `[operate:]` 之外的 `[verify:問題]`（`parse_verify_action`，在 `_on_request_succeeded` 攔）。走 `WebRuntime.submit_verify`→`verify_progress`/`verify_finished` signal。查證/操作的 LLM 呼叫共用 `_web_llm(system_prompt, prompt)`（各自系統提示、不掛 a11y）。
 - 兩條觸發路（都在 `doro_app/core/chat/orchestrator.py`，讀完共用 `_begin_web_read`）：
   1. **明確路**（快）：`send_message` 用 `parse_web_read_command` 抓「讀取動詞＋http 網址」，命中直接讀。
   2. **LLM 判斷路**（寬）：其它訊息照常送 LLM；模型想讀就在回覆吐 `[read:網址]`，

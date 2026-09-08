@@ -37,8 +37,9 @@ from .config_defaults import (
     DEFAULT_A11Y_ENABLED,
     DEFAULT_A11Y_SHARE_INPUT_VALUES,
     DEFAULT_WEB_OPERATION_ENABLED,
+    DEFAULT_TAVILY_API_KEY,
+    DEFAULT_VERIFY_SEARCH_DEPTH,
 )
-
 
 # ═══════════════════════════════════════════════════════════
 # Configuration Dataclasses
@@ -76,7 +77,9 @@ class ChatConfig:
         """Validate configuration values."""
         # Validate timeout
         if not isinstance(self.timeout_seconds, int) or self.timeout_seconds <= 0:
-            raise ValueError(f"timeout_seconds must be positive integer, got {self.timeout_seconds}")
+            raise ValueError(
+                f"timeout_seconds must be positive integer, got {self.timeout_seconds}"
+            )
 
         # Validate temperature
         if not isinstance(self.temperature, (int, float)) or not (0.0 <= self.temperature <= 2.0):
@@ -92,7 +95,9 @@ class ChatConfig:
 
         # Validate history_turns
         if not isinstance(self.history_turns, int) or self.history_turns < 0:
-            raise ValueError(f"history_turns must be non-negative integer, got {self.history_turns}")
+            raise ValueError(
+                f"history_turns must be non-negative integer, got {self.history_turns}"
+            )
 
     @property
     def config_key_prefix(self) -> str:
@@ -196,6 +201,32 @@ class AutomationConfig:
 
 
 @dataclass
+class WebConfig:
+    """Web / verify (search API) configuration.
+
+    Holds the Tavily API key and verify search depth. Deliberately a
+    SEPARATE section from ChatConfig so the search key never shares a
+    slot with the LLM endpoint key (chat.api_key).
+    """
+
+    tavily_api_key: str = DEFAULT_TAVILY_API_KEY
+    verify_search_depth: str = DEFAULT_VERIFY_SEARCH_DEPTH
+
+    def __post_init__(self):
+        if not isinstance(self.tavily_api_key, str):
+            raise ValueError(f"tavily_api_key must be str, got {type(self.tavily_api_key)}")
+        self.tavily_api_key = self.tavily_api_key.strip()
+        depth = str(self.verify_search_depth).strip().lower()
+        if depth not in ("basic", "advanced"):
+            depth = "basic"
+        self.verify_search_depth = depth
+
+    @property
+    def config_key_prefix(self) -> str:
+        return "web"
+
+
+@dataclass
 class AppConfig:
     """
     Application-level configuration.
@@ -237,6 +268,7 @@ class DoroConfig:
     ui: UIConfig = field(default_factory=UIConfig)
     app: AppConfig = field(default_factory=AppConfig)
     automation: AutomationConfig = field(default_factory=AutomationConfig)
+    web: WebConfig = field(default_factory=WebConfig)
 
     def __repr__(self) -> str:
         """Readable representation of configuration."""
@@ -253,6 +285,8 @@ class DoroConfig:
             f"    offset=({self.ui.bubble_offset_x}, {self.ui.bubble_offset_y}),\n"
             f"    scale={self.ui.bubble_scale}\n"
             f"  ),\n"
-            f"  app=AppConfig(current_state='{self.app.current_state}')\n"
+            f"  app=AppConfig(current_state='{self.app.current_state}'),\n"
+            f"  web=WebConfig(has_key={bool(self.web.tavily_api_key)}, "
+            f"depth='{self.web.verify_search_depth}')\n"
             f")"
         )

@@ -5,6 +5,7 @@ from pathlib import Path
 
 try:
     from PySide6 import QtCore
+
     HAS_PYSIDE6 = True
 except ImportError:
     HAS_PYSIDE6 = False
@@ -94,11 +95,7 @@ class TestConfigManagerUpdate:
         """Can update multiple chat config fields."""
         manager = ConfigManager(tmp_path / "test.ini")
 
-        manager.update_chat(
-            temperature=0.9,
-            timeout_seconds=60,
-            model="gpt-4"
-        )
+        manager.update_chat(temperature=0.9, timeout_seconds=60, model="gpt-4")
 
         assert manager.chat.temperature == 0.9
         assert manager.chat.timeout_seconds == 60
@@ -397,3 +394,20 @@ class TestAutomationClassListPersistence:
 
         manager2 = ConfigManager(settings_path)
         assert manager2.automation.mouse_target_allowlist == ()
+
+
+def test_web_config_roundtrip(tmp_path):
+    """WebConfig 存/讀 round-trip（非 GUI；走 QSettings 檔）。"""
+    from doro_app.utils.config_manager import ConfigManager
+
+    path = tmp_path / "settings.ini"
+    m = ConfigManager(path)
+    assert m.web.tavily_api_key == ""
+    assert m.web.verify_search_depth == "basic"
+
+    m.update_web(tavily_api_key="tvly-abc", verify_search_depth="advanced")
+    m.save()
+
+    m2 = ConfigManager(path)
+    assert m2.web.tavily_api_key == "tvly-abc"
+    assert m2.web.verify_search_depth == "advanced"
