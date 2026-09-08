@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import urllib.parse
 from typing import Callable, Protocol
 
@@ -27,6 +28,12 @@ _PER_SOURCE_CHARS = 2000
 SUMMARY_ONLY_MARKER = "【此來源可能只有摘要】"
 VERIFY_NAV_TIMEOUT_MS = 10_000
 _BLANK = "about:blank"
+
+# 「幫我找東西給我看」才開頁；純查證（是誰、真假）不開。
+_SHOW_QUERY_RE = re.compile(
+    r"找|尋找|買|購買|產品|商品|周邊|推薦|給我看|秀給|哪裡有|有沒有賣|shop|buy|product",
+    re.IGNORECASE,
+)
 
 _SKIP_DOMAINS = (
     "bing.com",
@@ -55,6 +62,11 @@ _DEBUG = os.environ.get("DORO_WEB_DEBUG", "").strip().lower() in ("1", "true", "
 def _dbg(msg: str) -> None:
     if _DEBUG:
         print(f"[doro verify] {msg}", flush=True)
+
+
+def looks_like_show_query(query: str) -> bool:
+    """人是要「找東西看」而不只是問真假？"""
+    return bool(_SHOW_QUERY_RE.search((query or "").strip()))
 
 
 class SessionLike(Protocol):
@@ -142,6 +154,8 @@ class VerifyPipeline:
         self._progress = emit_progress
         self._final = emit_final
         self._target = max(1, int(max_sources))
+        self.found_urls: list[str] = []
+        self.keep_browser = False
 
     def run(self, query: str) -> None:
         query = (query or "").strip()
@@ -163,7 +177,8 @@ class VerifyPipeline:
             self._emit_progress(f"用 {backend} 找到來源…📡")
 
         picked = pick_sources(raw)
-        _dbg(f"picked {len(picked)} candidates: {[r.url for r in picked]}")
+        self.found_urls = [r.url for r in picked]
+        _dbg(f"picked {len(picked)} candidates: {self.found_urls}")
         if not picked:
             self._final("唔…doro找不到適合的來源耶。換個關鍵字再試試？")
             return
@@ -203,6 +218,10 @@ class VerifyPipeline:
         _dbg(f"answer len={len(answer)}")
         self._final(answer.strip() or "doro查完了，但一時整理不出來…要不要換個問法？")
 
+        # 查證本身不開窗；「找給我看」才用與讀頁相同的 goto把第一個能開的網址打開。
+        if looks_like_show_query(query) and self.found_urls:
+            self._open_first_ok(self.found_urls)
+
     def _emit_progress(self, text: str) -> None:
         try:
             self._progress(text)
@@ -235,6 +254,26 @@ class VerifyPipeline:
             return session.snapshot(wait_idle=wait_idle)
         except TypeError:
             return session.snapshot()
+
+    def _open_first_ok(self, urls: list[str]) -> None:
+        """用讀頁同款的 goto 開第一張不是驗證的頁，留給人看。"""
+        self._emit_progress("doro 把找到的頁打開給你看…")
+        session = self._session_provider()
+        if session.ensure_open():
+            return
+        for url in urls:
+            _dbg(f"open for user: {url}")
+            if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
+                self._abandon_page(session)
+                continue
+            view = self._snapshot(session, wait_idle=False)
+            if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
+                if looks_like_captcha(view):
+                    self._emit_progress("這站要驗證，doro 換下一個…")
+                self._abandon_page(session)
+                continue
+            self.keep_browser = True
+            return
 
     def _read_source(self, s: SearchResult) -> SearchResult | None:
         _dbg(f"補讀：{s.url}")
