@@ -221,7 +221,10 @@ class WebRuntime(QtCore.QObject):
             pipeline.run(query)
         finally:
             self.verify_finished.emit(request_id, final_holder["text"])
-            self._close_session()
+            if pipeline.keep_browser:
+                pass
+            else:
+                self._close_session()
 
     def _do_operation(self, goal: str, ask_llm: AskLLM) -> None:
         self._hold_open = False
