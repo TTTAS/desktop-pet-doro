@@ -10,6 +10,7 @@ from ...utils.logger import get_logger
 from .operator import looks_like_captcha, looks_like_login_wall
 from .search_providers import (
     MAX_RESULTS,
+    MIN_GOOD_SOURCES,
     MIN_SNIPPET_CHARS,
     TARGET_SOURCES,
     SearchProvider,
@@ -169,22 +170,25 @@ class VerifyPipeline:
             return
 
         chosen: list[dict] = []
-        empty: list[SearchResult] = []
+        need_read: list[SearchResult] = []
         for s in picked:
-            if _has_search_text(s):
-                long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
-                chosen.append(self._as_source(s, summary_only=not long_enough))
+            if len(s.best_text) >= MIN_SNIPPET_CHARS:
+                chosen.append(self._as_source(s, summary_only=False))
             else:
-                empty.append(s)
+                need_read.append(s)
 
-        if empty and len(chosen) < self._target:
+        # 摘要不夠 250 字（DDG 幾乎都是）→ 開瀏覽器補讀，便於你看到來源頁。
+        # 驗證頁不等你點；讀完/放棄後離開該頁。
+        if need_read and len(chosen) < MIN_GOOD_SOURCES:
             self._emit_progress("資料有點少，doro 開頁看仔細一點…📖")
-            for s in empty:
+            for s in need_read:
                 if len(chosen) >= self._target:
                     break
                 filled = self._read_source(s)
                 if filled is not None:
                     chosen.append(self._as_source(filled, summary_only=False))
+                elif _has_search_text(s):
+                    chosen.append(self._as_source(s, summary_only=True))
 
         sources: list[dict] = []
         for c in chosen[: self._target]:
