@@ -123,7 +123,7 @@ class WebSession:
         pages = self.open_pages()
         if pages:
             if self._page is None or self._page.is_closed():
-                self._page = pages[-1]
+                self._page = pages[0]
             return True
         return False
 
@@ -192,38 +192,46 @@ class WebSession:
     def snapshot(self) -> PageView:
         if not self.is_open:
             return PageView(error=self._closed_error())
-        return self._snapshot_one(self._page, wait_idle=True)
+        return self._snapshot_one(self._page, wait_idle=False)
 
     def snapshot_open_pages(self, *, wait_idle: bool = False) -> list[PageView]:
-        """讀所有開著、沒關的分頁。"""
         views: list[PageView] = []
-        pages = self.open_pages()
-        for page in pages:
+        for page in self.open_pages():
             views.append(self._snapshot_one(page, wait_idle=wait_idle))
-        if pages:
-            self.use_page(pages[-1])
         return views
 
     def _snapshot_one(self, page, *, wait_idle: bool) -> PageView:
         if page is None:
             return PageView(error="沒有頁可讀")
-        try:
-            if wait_idle:
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                if wait_idle:
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=3000)
+                    except Exception:
+                        pass
+                url = page.url or ""
+                if url.startswith("about:"):
+                    return PageView(url=url, error="空白頁")
+                title = (page.title() or "").strip()
+                body_text = page.inner_text("body")
                 try:
-                    page.wait_for_load_state("networkidle", timeout=4000)
+                    elements = page.evaluate(_SNAPSHOT_JS)
                 except Exception:
-                    pass
-            url = page.url
-            title = (page.title() or "").strip()
-            elements = page.evaluate(_SNAPSHOT_JS)
-            body_text = page.inner_text("body")
-        except Exception as exc:
-            logger.error(f"snapshot 失敗：{exc}")
-            return PageView(error=self._error_or_closed(exc, "讀目前頁面"))
-        text = _collapse_whitespace(body_text or "")
-        if len(text) > self._max_chars:
-            text = text[: self._max_chars] + "\n\n……（內容太長，只讀前面這段）"
-        return PageView(url=url, title=title, text=text, elements=elements or [])
+                    elements = []
+                text = _collapse_whitespace(body_text or "")
+                if len(text) > self._max_chars:
+                    text = text[: self._max_chars] + "\n\n……（內容太長，只讀前面這段）"
+                return PageView(url=url, title=title, text=text, elements=elements or [])
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc).lower()
+                if attempt == 0 and ("context was destroyed" in msg or "execution context" in msg):
+                    continue
+                break
+        logger.error(f"snapshot 失敗：{last_exc}")
+        return PageView(error=self._error_or_closed(last_exc or RuntimeError("snapshot"), "讀目前頁面"))
 
     def collect_links(self) -> list[dict]:
         if not self.is_open:
@@ -244,8 +252,9 @@ class WebSession:
 
     def new_tab(self, url: str, timeout_ms: int | None = None) -> str | None:
         if self.ensure_open():
-            return self._closed_error()
+            return "瀏覽器還沒開。"
         timeout = int(timeout_ms or self._nav_timeout_ms)
+        page = None
         try:
             page = self._context.new_page()
             page.set_default_timeout(timeout)
@@ -254,7 +263,12 @@ class WebSession:
             return None
         except Exception as exc:
             logger.error(f"new_tab 失敗：{exc}")
-            return self._error_or_closed(exc, f"新分頁 {url}")
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            return f"新分頁打不開：{str(exc)[:120]}"
 
     def click_index(self, index: int) -> str | None:
         return self._guard(
