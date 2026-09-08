@@ -129,6 +129,13 @@ def _has_search_text(s: SearchResult) -> bool:
     return bool((s.best_text or "").strip() or (s.title or "").strip())
 
 
+def _fallback_speech(sources: list[dict]) -> str:
+    names = [(s.get("title") or s.get("url") or "一頁").strip() for s in sources]
+    names = [n for n in names if n][:3]
+    opened = "、".join(names) if names else "幾個分頁"
+    return f"doro把頁打開了，但整理回覆時卡住了。人先自己看分頁吧～開了：{opened}"
+
+
 class VerifyPipeline:
     def __init__(
         self,
@@ -178,16 +185,19 @@ class VerifyPipeline:
         tab_reads = self._open_and_read(self.found_urls[:MAX_OPEN_TABS])
 
         chosen: list[dict] = []
-        if tab_reads:
-            for s in tab_reads[: self._target]:
-                chosen.append(self._as_source(s, summary_only=False))
-        else:
+        seen_urls: set[str] = set()
+        for s in tab_reads[: self._target]:
+            chosen.append(self._as_source(s, summary_only=False))
+            seen_urls.add(s.url)
+        if len(chosen) < self._target:
             for s in picked:
-                if _has_search_text(s):
-                    long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
-                    chosen.append(self._as_source(s, summary_only=not long_enough))
-                    if len(chosen) >= self._target:
-                        break
+                if s.url in seen_urls or not _has_search_text(s):
+                    continue
+                long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
+                chosen.append(self._as_source(s, summary_only=not long_enough))
+                seen_urls.add(s.url)
+                if len(chosen) >= self._target:
+                    break
 
         sources: list[dict] = []
         for c in chosen[: self._target]:
@@ -202,9 +212,13 @@ class VerifyPipeline:
             return
 
         _dbg(f"比對 {len(sources)} 個來源")
-        answer = self._ask_llm(build_verify_prompt(query, sources)) or ""
+        try:
+            answer = self._ask_llm(build_verify_prompt(query, sources)) or ""
+        except Exception as exc:
+            print(f"[doro verify] llm failed: {exc}", flush=True)
+            answer = ""
         _dbg(f"answer len={len(answer)}")
-        self._final(answer.strip() or "doro查完了，但一時整理不出來…要不要換個問法？")
+        self._final(answer.strip() or _fallback_speech(sources))
 
     def _emit_progress(self, text: str) -> None:
         try:
@@ -235,22 +249,30 @@ class VerifyPipeline:
 
     def _snapshot(self, session: SessionLike, *, wait_idle: bool) -> PageView:
         try:
-            return session.snapshot(wait_idle=wait_idle)
-        except TypeError:
-            return session.snapshot()
+            try:
+                return session.snapshot(wait_idle=wait_idle)
+            except TypeError:
+                return session.snapshot()
+        except Exception as exc:
+            print(f"[doro verify] snapshot raised: {exc}", flush=True)
+            return PageView(error=str(exc))
 
     def _open_tab(self, session: SessionLike, url: str, *, extra: bool) -> bool:
-        if extra and hasattr(session, "new_tab"):
-            err = session.new_tab(url, timeout_ms=VERIFY_NAV_TIMEOUT_MS)
-            if err:
-                print(f"[doro verify] tab failed: {url} ({err})", flush=True)
+        try:
+            if extra and hasattr(session, "new_tab"):
+                err = session.new_tab(url, timeout_ms=VERIFY_NAV_TIMEOUT_MS)
+                if err:
+                    print(f"[doro verify] tab failed: {url} ({err})", flush=True)
+                    return False
+                print(f"[doro verify] tab: {url}", flush=True)
+                return True
+            if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
+                print(f"[doro verify] goto failed: {url}", flush=True)
                 return False
-            print(f"[doro verify] tab: {url}", flush=True)
             return True
-        if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
-            print(f"[doro verify] goto failed: {url}", flush=True)
+        except Exception as exc:
+            print(f"[doro verify] open raised: {url} ({exc})", flush=True)
             return False
-        return True
 
     def _view_as_result(self, view: PageView) -> SearchResult | None:
         if not getattr(view, "ok", False):
