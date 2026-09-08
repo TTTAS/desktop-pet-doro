@@ -33,11 +33,11 @@ class FakeSessionProvider:
     def ensure_open(self):
         return None
 
-    def goto(self, url):
+    def goto(self, url, timeout_ms=None):
         self.goto_urls.append(url)
         return "打不開" if url in self._goto_fail else None
 
-    def snapshot(self):
+    def snapshot(self, wait_idle=True):
         return self._views.pop(0) if self._views else PageView(error="no more")
 
 
@@ -79,7 +79,6 @@ class TestPickSources:
         assert [p.url for p in picked] == ["https://b.com/2", "https://c.com/3", "https://a.com/1"]
 
     def test_suffix_match_not_substring(self):
-        # "x.com" 在 skip 清單；"maxx.com" 不該被子字串誤傷
         picked = pick_sources([_r("https://maxx.com/1"), _r("https://x.com/2")])
         assert [p.url for p in picked] == ["https://maxx.com/1"]
 
@@ -95,10 +94,11 @@ class TestVerifyPipeline:
             provider, session, lambda p: "(高) 都說 28590～", lambda t: None, final.append
         ).run("基本工資")
         assert final and "28590" in final[0]
-        assert session.opened is False  # 0 goto：完全沒開瀏覽器
+        assert session.opened is False
         assert session.goto_urls == []
 
-    def test_insufficient_triggers_read(self):
+    def test_short_snippet_does_not_open_browser(self):
+        captured = {}
         provider = FakeSearchProvider(
             [_r("https://a.com/1", content=_long()), _r("https://b.com/2", snippet="太短")]
         )
@@ -106,13 +106,19 @@ class TestVerifyPipeline:
             views=[PageView(url="https://b.com/2", title="B", text=_long())]
         )
         final = []
-        VerifyPipeline(provider, session, lambda p: "答案", lambda t: None, final.append).run("q")
-        assert session.opened is True
-        assert session.goto_urls == ["https://b.com/2"]
+
+        def ask(p):
+            captured["p"] = p
+            return "答案"
+
+        VerifyPipeline(provider, session, ask, lambda t: None, final.append).run("q")
+        assert session.opened is False
+        assert session.goto_urls == []
         assert final == ["答案"]
+        assert SUMMARY_ONLY_MARKER in captured["p"]
+        assert "太短" in captured["p"]
 
     def test_read_fail_falls_back_to_snippet_with_marker(self):
-        # 兩個來源都只有短摘要、補讀又全失敗 → 仍呼叫 LLM，prompt 帶標記，不是「讀不到」
         captured = {}
         provider = FakeSearchProvider(
             [
@@ -131,10 +137,9 @@ class TestVerifyPipeline:
         assert final == ["根據摘要，大致是…"]
         assert SUMMARY_ONLY_MARKER in captured["p"]
         assert "一小段摘要A" in captured["p"]
-        assert session.opened is True  # 有試著補讀
+        assert session.opened is False
 
     def test_truly_empty_reports_cannot_read(self):
-        # 連 title 和摘要都空、補讀又失敗 → 才回「讀不到」
         provider = FakeSearchProvider(
             [
                 _r("https://a.com/1", title="", snippet=""),
@@ -144,6 +149,30 @@ class TestVerifyPipeline:
         session = FakeSessionProvider(goto_fail=["https://a.com/1", "https://b.com/2"])
         final = []
         VerifyPipeline(provider, session, lambda p: "x", lambda t: None, final.append).run("q")
+        assert "讀不到" in final[-1]
+        assert session.opened is True
+        assert "about:blank" in session.goto_urls
+
+    def test_captcha_skips_and_leaves_page(self):
+        provider = FakeSearchProvider([_r("https://blocked.com/x", title="", snippet="")])
+        session = FakeSessionProvider(
+            views=[
+                PageView(
+                    url="https://blocked.com/x",
+                    title="wikis.tw",
+                    text="正在執行安全驗證 驗證您是人類",
+                )
+            ]
+        )
+        progress = []
+        final = []
+        VerifyPipeline(provider, session, lambda p: "不該叫到", progress.append, final.append).run(
+            "q"
+        )
+        assert session.opened is True
+        assert session.goto_urls[0] == "https://blocked.com/x"
+        assert session.goto_urls[-1] == "about:blank"
+        assert any("驗證" in m for m in progress)
         assert "讀不到" in final[-1]
 
     def test_prompt_contains_sources(self):
@@ -171,15 +200,13 @@ class TestVerifyPipeline:
         assert session.opened is False
 
     def test_progress_emitted(self):
-        # 搜尋前一定要有一句；不夠料補讀時再多一句
         provider = FakeSearchProvider([_r("https://a.com/1", snippet="短")])
-        session = FakeSessionProvider(
-            views=[PageView(url="https://a.com/1", title="A", text=_long())]
-        )
+        session = FakeSessionProvider()
         progress = []
         VerifyPipeline(provider, session, lambda p: "答", progress.append, lambda t: None).run("q")
         assert len(progress) >= 1
         assert any("找" in m for m in progress)
+        assert session.opened is False
 
     def test_progress_failure_does_not_block_final(self):
         provider = FakeSearchProvider(
