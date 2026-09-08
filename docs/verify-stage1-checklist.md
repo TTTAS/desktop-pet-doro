@@ -61,7 +61,7 @@ else:
 補讀與 API content 都要過。完整 prompt-injection 工程仍留階段 3。
 
 ## 6. 驗收標準（收斂版）
-- **有 key（advanced）**：典型查證 **0 次** `goto`/`ensure_open`；測試斷言 `session_provider` **未被呼叫**；答案走現行 `build_verify_prompt`。
+- **有 key 且來源夠料**：典型查證 **0 次** `goto`/`ensure_open`（basic 預設下多數仍會開頁補讀）；測試斷言 `session_provider` **未被呼叫**；答案走現行 `build_verify_prompt`。
 - **有 key 但來源不夠料**：只對「不夠料」來源補讀，湊到 `TARGET_SOURCES`。
 - **無 key**：ddgs → 才開瀏覽器補讀。
 - **Tavily 掛（逾時/quota/網路）**：自動落 ddgs，不 crash。
@@ -99,5 +99,5 @@ else:
 
 ## 9. 兩個已知但階段 1 先不解的痛（解你 #8，明列以免預期落差）
 - **有 key/無 key 體感差很大**：無 key 仍開多分頁補讀，會被覺得「改了還是慢」。已寫進 §6 驗收，對外預期要顧。
-- **搜尋仍排在 `doro-web` 執行緒**：純 HTTP 其實不必跟 Playwright 排隊。階段 1 先留原執行緒＋10s 硬逾時擋長堵；
+- **搜尋仍排在 `doro-web` 執行緒**：純 HTTP 其實不必跟 Playwright 排隊。階段 1 先留原執行緒＋30s 硬逾時擋長堵；
   若 Tavily 實測慢，階段 1.5 再把「純搜尋」移出該執行緒。

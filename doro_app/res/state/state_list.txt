@@ -1,4 +1,6 @@
-[2026-09-08 07:10:11] 可使用的狀態為:
+[2026-09-06 12:57:13] 可使用的狀態為:
+- (click_action) Click | type: transition | GIF: C:\Users\KHUser\Desktop\doro\doro_app\res\state\click_action.gif
+- (click_failed) Click Failed | type: transition | GIF: C:\Users\KHUser\Desktop\doro\doro_app\res\state\click_action.gif
 - (idle) Idle | type: transition | GIF: 5 GIFs
 - (stand) stand | type: transition | GIF: 2 GIFs
 
