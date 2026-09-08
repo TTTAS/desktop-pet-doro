@@ -171,25 +171,49 @@ class WebRuntime(QtCore.QObject):
                 ),
             )
             return
-        view = self._session.snapshot()
-        if not view.ok:
-            self.read_finished.emit(
-                request_id, WebReadResult(url="", title="", text="", error=view.error)
-            )
-            return
-        if not view.text:
+        views = []
+        snap_all = getattr(self._session, "snapshot_open_pages", None)
+        if callable(snap_all):
+            try:
+                views = list(snap_all(wait_idle=False) or [])
+            except TypeError:
+                views = list(snap_all() or [])
+        if not views:
+            views = [self._session.snapshot()]
+        chunks: list[str] = []
+        urls: list[str] = []
+        titles: list[str] = []
+        for i, view in enumerate(views, 1):
+            if not getattr(view, "ok", False):
+                continue
+            body = (getattr(view, "text", None) or "").strip()
+            if not body:
+                continue
+            url = getattr(view, "url", "") or ""
+            title = getattr(view, "title", "") or ""
+            urls.append(url)
+            titles.append(title)
+            chunks.append(f"【分頁{i}】{title or '(無標題)'}\n網址：{url}\n{body}")
+        if not chunks:
             self.read_finished.emit(
                 request_id,
                 WebReadResult(
-                    url=view.url,
-                    title=view.title,
+                    url="",
+                    title="",
                     text="",
-                    error="這頁 doro 讀不到內容（可能還在載入、需要登入、或整頁都是圖片/影片）。",
+                    error="開著的分頁 doro 都讀不到內容（可能還在載入、要登入、或整頁都是圖片/影片）。",
                 ),
             )
             return
+        print(f"[doro web] read current: {len(chunks)} tab(s)", flush=True)
         self.read_finished.emit(
-            request_id, WebReadResult(url=view.url, title=view.title, text=view.text, error=None)
+            request_id,
+            WebReadResult(
+                url=" | ".join(urls),
+                title="、".join(t for t in titles if t) or f"{len(chunks)} 個分頁",
+                text="\n\n".join(chunks),
+                error=None,
+            ),
         )
 
     def _do_login(self, request_id: str, url: str) -> None:
