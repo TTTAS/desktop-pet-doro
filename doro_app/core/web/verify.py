@@ -28,6 +28,7 @@ _PER_SOURCE_CHARS = 2000
 SUMMARY_ONLY_MARKER = "【此來源可能只有摘要】"
 VERIFY_NAV_TIMEOUT_MS = 10_000
 _BLANK = "about:blank"
+MAX_OPEN_TABS = 3
 
 _SHOW_QUERY_RE = re.compile(
     r"找|尋找|買|購買|產品|商品|周邊|推薦|給我看|秀給|哪裡有|有沒有賣|shop|buy|product",
@@ -117,17 +118,10 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
         lines.append(src.get("text", "")[:_PER_SOURCE_CHARS])
     lines.append("")
     lines.append("回答要求：")
-    if looks_like_show_query(query):
-        lines.append("1. 用兩三句講找到什麼即可。不要寫「來源1」「來源2」，人會自己看打開的網頁。")
-    else:
-        lines.append("1. 綜合各來源回答使用者的問題，關鍵處可標來源。")
-    lines.append("2. 說明來源之間一致還是有出入；矛盾就两邊都講。")
-    lines.append(
-        "3. 不足以回答就老實說不確定，絕對不要編；"
-        f"標了「{SUMMARY_ONLY_MARKER}」的只有摘要。"
-    )
-    lines.append("4. 用純文字、不要 Markdown；開頭加一個 (狀態)。")
-    lines.append("5. 只用 2～4 句話，約 150 字以內。")
+    lines.append("1. 用兩三句講重點。不要寫「來源1」「來源2」，人會看打開的網頁。")
+    lines.append("2. 來源矛盾就兩邊都講。不足就說不確定，絕不要編。")
+    lines.append("3. 用純文字、不要 Markdown；開頭加一個 (狀態)。")
+    lines.append("4. 2～4 句話，約 150 字以內。")
     return "\n".join(lines)
 
 
@@ -181,9 +175,7 @@ class VerifyPipeline:
             self._final("唔…doro找不到適合的來源耶。換個關鍵字再試試？")
             return
 
-        # 找到網址就開；不等比對講完。查證問句不開窗。
-        if looks_like_show_query(query):
-            self._open_first_ok(self.found_urls)
+        self._open_found(self.found_urls[:MAX_OPEN_TABS])
 
         chosen: list[dict] = []
         empty: list[SearchResult] = []
@@ -253,29 +245,44 @@ class VerifyPipeline:
         except TypeError:
             return session.snapshot()
 
-    def _open_first_ok(self, urls: list[str]) -> None:
+    def _open_tab(self, session: SessionLike, url: str, *, extra: bool) -> bool:
+        ctx = getattr(session, "_context", None)
+        if extra and ctx is not None:
+            try:
+                page = ctx.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=VERIFY_NAV_TIMEOUT_MS)
+                print(f"[doro verify] tab: {url}", flush=True)
+                return True
+            except Exception as exc:
+                print(f"[doro verify] tab failed: {url} ({exc})", flush=True)
+                return False
+        if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
+            return False
+        view = self._snapshot(session, wait_idle=False)
+        if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
+            print("[doro verify] open skipped (block/captcha)", flush=True)
+            self._abandon_page(session)
+            return False
+        return True
+
+    def _open_found(self, urls: list[str]) -> None:
+        if not urls:
+            return
         self._emit_progress("doro 把找到的頁打開給你看…")
-        print(f"[doro verify] open after pick: {urls[:3]}", flush=True)
+        print(f"[doro verify] open after pick: {urls}", flush=True)
         session = self._session_provider()
         err = session.ensure_open()
         if err:
             print(f"[doro verify] open failed: {err}", flush=True)
             return
-        for url in urls:
+        opened = 0
+        for i, url in enumerate(urls):
             print(f"[doro verify] open: {url}", flush=True)
-            if self._goto(session, url, VERIFY_NAV_TIMEOUT_MS):
-                self._abandon_page(session)
-                continue
-            view = self._snapshot(session, wait_idle=False)
-            if not view.ok or looks_like_captcha(view) or looks_like_login_wall(view):
-                if looks_like_captcha(view):
-                    self._emit_progress("這站要驗證，doro 換下一個…")
-                print("[doro verify] open skipped (block/captcha)", flush=True)
-                self._abandon_page(session)
-                continue
+            if self._open_tab(session, url, extra=(i > 0)):
+                opened += 1
+        if opened:
             self.keep_browser = True
-            print("[doro verify] opened for user", flush=True)
-            return
+            print(f"[doro verify] opened {opened} tab(s)", flush=True)
 
     def _read_source(self, s: SearchResult) -> SearchResult | None:
         _dbg(f"補讀：{s.url}")
