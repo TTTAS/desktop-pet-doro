@@ -24,18 +24,21 @@ _SNAPSHOT_JS = r"""
     if (style.visibility === 'hidden' || style.display === 'none') continue;
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute('role') || tag;
-    let name = (
+    const input_type = (el.getAttribute('type') || '').toLowerCase();
+    const sensitive = input_type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.getAttribute('autocomplete') || '');
+    let name = sensitive ? '密碼或驗證碼（內容不提供）' : (
       el.getAttribute('aria-label') ||
       el.getAttribute('placeholder') ||
-      (el.value && String(el.value)) ||
-      (el.innerText && el.innerText.trim()) ||
+      (!['input', 'textarea', 'select'].includes(tag) && !el.isContentEditable && el.innerText && el.innerText.trim()) ||
       el.getAttribute('title') ||
       el.getAttribute('alt') ||
       el.getAttribute('name') ||
       ''
     ).replace(/\s+/g, ' ').trim().slice(0, 80);
     el.setAttribute('data-doro-idx', String(idx));
-    out.push({ idx, tag, role, name });
+    const is_submit = !!el.form && ((tag === 'button' && (!input_type || input_type === 'submit')) || (tag === 'input' && ['submit', 'image'].includes(input_type)));
+    out.push({ idx, tag, role, name, input_type, sensitive, is_submit,
+      focused: el === document.activeElement });
     idx++;
   }
   return out;
@@ -248,10 +251,10 @@ class WebSession:
             logger.debug(f"collect_links 失敗：{exc}")
             return []
 
-    def goto(self, url: str) -> str | None:
+    def goto(self, url: str, timeout_ms: int | None = None) -> str | None:
         return self._guard(
             lambda: self._page.goto(
-                url, wait_until="domcontentloaded", timeout=self._nav_timeout_ms
+                url, wait_until="domcontentloaded", timeout=timeout_ms or self._nav_timeout_ms
             ),
             f"打開 {url}",
         )
@@ -283,10 +286,19 @@ class WebSession:
         )
 
     def type_index(self, index: int, text: str) -> str | None:
-        return self._guard(
-            lambda: self._page.fill(f'[data-doro-idx="{int(index)}"]', text),
-            f"在第 {index} 個欄位輸入",
-        )
+        if not self.is_open:
+            return self._closed_error()
+        try:
+            locator = self._page.locator(f'[data-doro-idx="{int(index)}"]')
+            sensitive = locator.evaluate("el => el.type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.autocomplete || '')")
+            if sensitive:
+                return "密碼或驗證碼請使用者自行輸入。"
+            locator.fill(text)
+            return None
+        except Exception:
+            # Playwright's exception call log may include the filled text.
+            logger.warning("欄位輸入失敗（不記錄輸入內容）")
+            return "欄位輸入失敗，請重新讀取頁面後再試。"
 
     def press(self, key: str) -> str | None:
         return self._guard(lambda: self._page.keyboard.press(key), f"按下 {key}")

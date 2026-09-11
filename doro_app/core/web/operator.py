@@ -224,6 +224,7 @@ class WebOperator:
         *,
         max_steps: int = DEFAULT_MAX_STEPS,
         should_cancel: Callable[[], bool] | None = None,
+        emit_reply: Emit | None = None,
     ) -> None:
         self._session = session
         self._ask_llm = ask_llm
@@ -232,6 +233,7 @@ class WebOperator:
         self._max_steps = max(1, int(max_steps))
         # 使用者打「停/取消」時會讓這個回 True；每步之間檢查，讓中止最慢下一步生效。
         self._should_cancel = should_cancel or (lambda: False)
+        self._emit_reply = emit_reply
 
     def run(self, goal: str) -> None:
         """對 *goal* 跑完整個操作循環（阻塞，需在專屬背景執行緒呼叫）。"""
@@ -294,6 +296,9 @@ class WebOperator:
                 goal, view, history, step=step, max_steps=self._max_steps, warning=warning
             )
             reply = self._ask_llm(prompt) or ""
+            if self._should_cancel():
+                self._emit("好，doro停下來囉～")
+                return
             action = parse_web_action(reply)
 
             # 保險：沒包成 [web:goto]，但回覆裡有網址 → 當成 goto。但**只在網址跟
@@ -303,11 +308,13 @@ class WebOperator:
                 if url_match and _norm_url(url_match.group(0)) != _norm_url(view.url):
                     action = WebAction(verb="goto", params={"url": url_match.group(0)}, raw=reply)
 
-            _dbg(f"parsed action = {action}")
+            _dbg(f"parsed action = {action.verb if action else 'none'}")
             if action is None or action.verb == "done":
                 _dbg("→ 收尾（沒有可執行動作 / done）")
-                final = _clean_final(reply)
-                self._emit(final or "doro弄完囉～")
+                if self._emit_reply is not None:
+                    self._emit_reply(reply or "doro這次沒拿到回答，還不能確認完成了。")
+                else:
+                    self._emit(_clean_final(reply) or "doro這次沒拿到回答，還不能確認完成了。")
                 return
 
             # 防打轉：只盯 goto / click（會「狂重開同一頁 / 狂點同一顆」的兩種）。
@@ -347,18 +354,27 @@ class WebOperator:
 
             names = view.element_names()
             page_context = f"{view.url} {view.title}"
-            if needs_confirmation(action, names, page_context):
+            target = next((el for el in view.elements if el.get("idx") == action.index()), {})
+            if action.verb == "type" and target.get("sensitive"):
+                self._emit("密碼或驗證碼請人自己輸入，doro不代填喔。")
+                return
+            if needs_confirmation(action, names, page_context, view.elements):
                 confirm_text = f"doro 要{describe_action(action, names)}，可以嗎？回「好」或「不要」～"
                 if not self._confirm(confirm_text):
                     self._emit("好，那這一步doro就不動囉～")
                     return
 
+            if self._should_cancel():
+                self._emit("好，doro停下來囉～")
+                return
             exec_err = self._session.execute(action)
             # 歷史用精簡描述（goto 的原始標記含超長網址，改用短網址省 token）。
             if action.verb == "goto":
                 step_note = f"開啟 {_short_url(action.params.get('url', ''))}"
             elif action.verb in ("click", "press"):
                 step_note = describe_action(action, names)
+            elif action.verb == "type":
+                step_note = f"在第 {action.index()} 個欄位輸入（內容不記錄）"
             else:
                 step_note = action.raw
             history.append(step_note + (f"（失敗：{exec_err}）" if exec_err else "（完成）"))

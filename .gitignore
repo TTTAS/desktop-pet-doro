@@ -60,3 +60,5 @@ coverage.xml
 # Linters / type-checkers (auto-generated caches)
 .ruff_cache/
 .mypy_cache/
+.test-home/
+.browsers/

@@ -11,7 +11,6 @@ from ...utils.logger import get_logger
 from .operator import looks_like_captcha, looks_like_login_wall
 from .search_providers import (
     MAX_RESULTS,
-    MIN_SNIPPET_CHARS,
     TARGET_SOURCES,
     SearchProvider,
     SearchResult,
@@ -110,7 +109,7 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
     lines: list[str] = []
     lines.append(f"使用者想查證／了解：{query}")
     lines.append("")
-    lines.append("以下是 doro 剛打開並讀過的分頁，請比對後用繁體中文回答：")
+    lines.append("以下是讀到的分頁或搜尋摘要；有摘要標記的來源未取得正文，請誠實區分：")
     for i, src in enumerate(sources, 1):
         lines.append("")
         lines.append(f"【來源{i}】{src.get('title') or '(無標題)'}")
@@ -193,8 +192,8 @@ class VerifyPipeline:
             for s in picked:
                 if s.url in seen_urls or not _has_search_text(s):
                     continue
-                long_enough = len(s.best_text) >= MIN_SNIPPET_CHARS
-                chosen.append(self._as_source(s, summary_only=not long_enough))
+                # Text length does not prove that the browser read the source.
+                chosen.append(self._as_source(s, summary_only=True))
                 seen_urls.add(s.url)
                 if len(chosen) >= self._target:
                     break

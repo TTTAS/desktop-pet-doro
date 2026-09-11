@@ -216,6 +216,16 @@ class DoroApp:
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
 
+        from .core.presence.controller import PresenceController
+        self._presence = PresenceController(
+            self._chat_orchestrator,
+            self._chat_orchestrator._default_web_profile_dir().parent / "presence.json",
+            busy=lambda: (self._chat_orchestrator.is_inflight or self._chat_orchestrator.is_web_busy
+                          or not self._action_dispatcher.is_idle or self._movement.has_active_movement
+                          or self._state_service.is_transitioning()),
+        )
+        self._chat_orchestrator.set_presence(self._presence)
+
         # Quit-time teardown: stop the pynput listener thread, the
         # a11y UIA worker pool, and the foreground-window poller before
         # the Qt event loop unwinds. A hung UIA read would otherwise
@@ -654,6 +664,7 @@ class DoroApp:
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),
             ("web", "_chat_orchestrator", "shutdown_web"),
+            ("presence", "_presence", "shutdown"),
         ]
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)

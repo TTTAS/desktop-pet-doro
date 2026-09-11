@@ -101,3 +101,7 @@ pytest
 ## License
 
 See [LICENSE](LICENSE) for details.
+# 分頁陪伴與上網角色動作
+
+此分支加入上網結果的表情／走路整合，以及只讀分享目前分頁的 Chromium 擴充。
+安裝與配對見 [分頁陪伴設定](docs/web-presence-setup.md)，六項修正與驗收見 [實作計畫](docs/web-presence-plan.md)。

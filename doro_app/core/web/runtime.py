@@ -27,6 +27,7 @@ AskLLM = Callable[[str], str]
 class WebRuntime(QtCore.QObject):
     read_finished = QtCore.Signal(str, object)
     op_progress = QtCore.Signal(str)
+    op_reply = QtCore.Signal(str)
     op_confirm = QtCore.Signal(str)
     op_finished = QtCore.Signal()
     login_done = QtCore.Signal(str, bool, str)
@@ -260,6 +261,7 @@ class WebRuntime(QtCore.QObject):
             self.op_progress.emit,
             max_steps=self._max_steps,
             should_cancel=self._cancel.is_set,
+            emit_reply=self.op_reply.emit,
         )
         try:
             operator.run(goal)
