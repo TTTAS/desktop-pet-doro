@@ -51,6 +51,11 @@ Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, m
 
 ## Project Structure
 
+For AI-assisted work, start with [AGENTS.md](AGENTS.md) and the compact
+[repository map](docs/REPO_MAP.md). Retrieve only the relevant symbols with
+`python scripts/repo_map.py --focus presence` (Chinese aliases such as `分頁` also work).
+See [map usage and maintenance](docs/ai/WORKFLOW.md) for details.
+
 ```
 doro_app/
   app.py                  # Application assembly (5-phase bootstrap)

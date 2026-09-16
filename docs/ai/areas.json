@@ -1,0 +1,290 @@
+[
+  {
+    "id": "startup",
+    "name": "啟動與組裝",
+    "aliases": [
+      "啟動",
+      "組裝",
+      "cli"
+    ],
+    "scope": [
+      "doro.py",
+      "doro_app/*.py"
+    ],
+    "entries": [
+      "doro.py",
+      "doro_app/cli.py",
+      "doro_app/app.py",
+      "doro_app/bootstrap.py"
+    ],
+    "tests": [
+      "tests/test_smoke.py"
+    ],
+    "purpose": "啟動檢查、建立服務、接線與關閉。"
+  },
+  {
+    "id": "chat",
+    "name": "聊天與角色回覆",
+    "aliases": [
+      "聊天",
+      "回覆",
+      "模型"
+    ],
+    "scope": [
+      "doro_app/core/chat/*.py"
+    ],
+    "entries": [
+      "doro_app/core/chat/orchestrator.py",
+      "doro_app/core/chat/controller.py",
+      "doro_app/core/chat/presentation.py"
+    ],
+    "tests": [
+      "tests/core/chat"
+    ],
+    "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現。"
+  },
+  {
+    "id": "web",
+    "name": "指令上網",
+    "aliases": [
+      "上網",
+      "查證",
+      "搜尋",
+      "verify"
+    ],
+    "scope": [
+      "doro_app/core/web/*.py"
+    ],
+    "entries": [
+      "doro_app/core/web/runtime.py",
+      "doro_app/core/web/operator.py",
+      "doro_app/core/web/verify.py",
+      "doro_app/core/web/session.py"
+    ],
+    "tests": [
+      "tests/core/web",
+      "tests/browser"
+    ],
+    "purpose": "專屬執行緒讀頁、搜尋查證與經確認的網站操作。"
+  },
+  {
+    "id": "presence",
+    "name": "分頁陪伴",
+    "aliases": [
+      "分頁",
+      "陪伴",
+      "存在感",
+      "擴充",
+      "extension"
+    ],
+    "scope": [
+      "doro_app/core/presence/*.py",
+      "extensions/doro-presence/*.js"
+    ],
+    "entries": [
+      "doro_app/core/presence/controller.py",
+      "doro_app/core/presence/bridge.py",
+      "doro_app/core/presence/models.py",
+      "extensions/doro-presence/background.js",
+      "extensions/doro-presence/content.js"
+    ],
+    "tests": [
+      "tests/core/presence",
+      "tests/browser"
+    ],
+    "purpose": "只讀分享聚焦分頁；配對、事件去重與過時回覆失效。"
+  },
+  {
+    "id": "state",
+    "name": "狀態與轉場",
+    "aliases": [
+      "狀態",
+      "換裝",
+      "轉場"
+    ],
+    "scope": [
+      "doro_app/core/state/*.py"
+    ],
+    "entries": [
+      "doro_app/core/state/service.py",
+      "doro_app/core/state/models.py",
+      "doro_app/core/state/transition_coordinator.py"
+    ],
+    "tests": [
+      "tests/core/state",
+      "tests/integration/test_state_lifecycle.py"
+    ],
+    "purpose": "狀態資料、持久化與轉場；外部切換走 StateService。"
+  },
+  {
+    "id": "movement",
+    "name": "移動與走路",
+    "aliases": [
+      "移動",
+      "走路"
+    ],
+    "scope": [
+      "doro_app/core/movement/*.py"
+    ],
+    "entries": [
+      "doro_app/core/movement/manager.py",
+      "doro_app/core/movement/parser.py"
+    ],
+    "tests": [
+      "tests/core/movement"
+    ],
+    "purpose": "位置、方向與動畫移動；入口 MovementManager。"
+  },
+  {
+    "id": "action",
+    "name": "動作派工",
+    "aliases": [
+      "動作",
+      "派工",
+      "dispatcher"
+    ],
+    "scope": [
+      "doro_app/core/action/*.py"
+    ],
+    "entries": [
+      "doro_app/core/action/dispatcher.py",
+      "doro_app/core/action/phases.py",
+      "doro_app/core/action/walk_and_speak_action.py"
+    ],
+    "tests": [
+      "tests/core/action"
+    ],
+    "purpose": "序列化動作、等待完成、走完再說話與取消。"
+  },
+  {
+    "id": "reaction",
+    "name": "反應時間軸",
+    "aliases": [
+      "反應",
+      "時間軸",
+      "timeline"
+    ],
+    "scope": [
+      "doro_app/core/reaction/*.py"
+    ],
+    "entries": [
+      "doro_app/core/reaction/director.py",
+      "doro_app/core/reaction/runner.py",
+      "doro_app/core/reaction/timeline.py"
+    ],
+    "tests": [
+      "tests/core/reaction"
+    ],
+    "purpose": "組成及播放角色反應時間軸。"
+  },
+  {
+    "id": "idle",
+    "name": "基本活潑與核心協調",
+    "aliases": [
+      "閒置",
+      "活潑",
+      "idle"
+    ],
+    "scope": [
+      "doro_app/core/*.py"
+    ],
+    "entries": [
+      "doro_app/core/core_manager.py",
+      "doro_app/core/idle_behavior_manager.py"
+    ],
+    "tests": [
+      "tests/core/test_core_manager.py",
+      "tests/core/test_core_manager_click.py"
+    ],
+    "purpose": "核心事件協調及不依賴頁面模型的閒置陪伴。"
+  },
+  {
+    "id": "automation",
+    "name": "桌面自動化",
+    "aliases": [
+      "自動化",
+      "前景",
+      "滑鼠"
+    ],
+    "scope": [
+      "doro_app/core/automation/*.py"
+    ],
+    "entries": [
+      "doro_app/core/automation/manager.py",
+      "doro_app/core/automation/foreground_tracker.py"
+    ],
+    "tests": [
+      "tests/core/automation"
+    ],
+    "purpose": "桌面輸入、白名單、前景追蹤與座標換算。"
+  },
+  {
+    "id": "a11y",
+    "name": "可及性語意點擊",
+    "aliases": [
+      "可及性",
+      "語意點擊",
+      "uia"
+    ],
+    "scope": [
+      "doro_app/core/a11y/*.py"
+    ],
+    "entries": [
+      "doro_app/core/a11y/service.py",
+      "doro_app/core/a11y/clicker.py"
+    ],
+    "tests": [
+      "tests/core/a11y"
+    ],
+    "purpose": "Windows UI Automation 目標搜尋、過濾及語意點擊。"
+  },
+  {
+    "id": "ui",
+    "name": "視窗與設定介面",
+    "aliases": [
+      "視窗",
+      "泡泡",
+      "介面",
+      "渲染"
+    ],
+    "scope": [
+      "doro_app/ui/**/*.py",
+      "doro_app/ui/*.py"
+    ],
+    "entries": [
+      "doro_app/ui/window.py",
+      "doro_app/ui/components/bubble_controller.py",
+      "doro_app/ui/components/context_menu_controller.py",
+      "doro_app/ui/viewmodels/doro_viewmodel.py"
+    ],
+    "tests": [
+      "tests/ui"
+    ],
+    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs。"
+  },
+  {
+    "id": "config",
+    "name": "設定與共用工具",
+    "aliases": [
+      "設定",
+      "提示詞",
+      "資源",
+      "config"
+    ],
+    "scope": [
+      "doro_app/utils/*.py"
+    ],
+    "entries": [
+      "doro_app/utils/config_manager.py",
+      "doro_app/utils/config_schema.py",
+      "doro_app/utils/paths.py",
+      "doro_app/utils/prompts.py"
+    ],
+    "tests": [
+      "tests/test_config_manager.py",
+      "tests/test_config_schema.py",
+      "tests/test_actions.py"
+    ],
+    "purpose": "設定讀寫、schema、資源定位、提示詞載入與共用解析。"
+  }
+]
