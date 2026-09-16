@@ -111,7 +111,7 @@ class WebSession:
         kwargs = dict(
             user_data_dir=str(self._user_data_dir),
             headless=self._headless,
-            viewport=None,
+            no_viewport=True,
             args=[
                 "--hide-crash-restore-bubble",
                 "--no-first-run",
@@ -121,11 +121,7 @@ class WebSession:
         )
         if channel:
             kwargs["channel"] = channel
-        try:
-            return self._pw.chromium.launch_persistent_context(**kwargs)
-        except TypeError:
-            kwargs.pop("viewport", None)
-            return self._pw.chromium.launch_persistent_context(**kwargs)
+        return self._pw.chromium.launch_persistent_context(**kwargs)
 
     @property
     def is_open(self) -> bool:

@@ -1,6 +1,8 @@
 import threading
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
+
+import pytest
 
 from doro_app.core.presence.controller import PresenceController
 from doro_app.core.presence.models import PageEvent
@@ -12,7 +14,11 @@ def page(text):
 
 def make_controller(tmp_path):
     orch = Mock()
-    orch.present_character_reply.side_effect = lambda text: text
+    def present(text, *, should_present, on_present):
+        if should_present():
+            on_present(text)
+        return text
+    orch.present_character_reply.side_effect = present
     busy = [False]
     controller = PresenceController(orch, tmp_path / "presence.json", lambda: busy[0])
     controller.settings["react"] = True
@@ -56,7 +62,9 @@ def test_new_page_discards_old_model_result(qtbot, tmp_path):
         controller._on_page(bridge.current_page)
         release.set()
         qtbot.waitUntil(lambda: orch.present_character_reply.call_count == 1)
-        orch.present_character_reply.assert_called_once_with("New answer")
+        orch.present_character_reply.assert_called_once_with(
+            "New answer", should_present=ANY, on_present=ANY,
+        )
     finally:
         release.set()
         controller.shutdown()
@@ -109,6 +117,60 @@ def test_reply_waits_for_character_to_finish_moving(qapp, tmp_path):
         orch.present_character_reply.assert_not_called()
         busy[0] = False
         controller._pump()
-        orch.present_character_reply.assert_called_once_with("Hello")
+        orch.present_character_reply.assert_called_once_with(
+            "Hello", should_present=ANY, on_present=ANY,
+        )
+    finally:
+        controller.shutdown()
+
+
+@pytest.mark.parametrize("change", [
+    "unchanged", "interrupt", "page", "away_and_back", "disconnect", "disable", "shutdown",
+])
+def test_presence_revalidates_when_walk_finishes(qapp, tmp_path, change):
+    from doro_app.core.action.dispatcher import ActionDispatcher
+    from doro_app.core.chat.orchestrator import ChatOrchestrator
+
+    state = Mock()
+    state.get_current_state.return_value.key = "idle"
+    movement = Mock()
+    movement.has_active_movement = True
+    completions = []
+    movement.add_completion_listener.side_effect = (
+        lambda cb: (completions.append(cb), lambda: None)[1]
+    )
+    schedule = lambda ms, cb: None
+    orch = ChatOrchestrator(Mock(), movement, state)
+    dispatcher = ActionDispatcher(state, schedule)
+    orch._action_dispatcher = dispatcher
+    orch._schedule = schedule
+    spoken = []
+    orch.bubble_text_requested.connect(lambda text, _opts: spoken.append(text))
+    controller = PresenceController(orch, tmp_path / "presence.json", lambda: not dispatcher.is_idle)
+    controller.settings["react"] = True
+    event = page("article")
+    bridge = SimpleNamespace(current_page=event, shutdown=lambda: None)
+    controller._bridge = bridge
+    controller._observed_page = event
+    try:
+        controller._on_result(event, controller._epoch, "Article reply [MOVE:dir=right;distance=80]", True)
+        assert completions and not spoken
+        assert controller._last_reaction == ""
+        if change == "interrupt":
+            controller.interrupt()
+        elif change in {"page", "away_and_back", "disconnect"}:
+            bridge.current_page = None if change == "disconnect" else page("another article")
+            controller._on_page(bridge.current_page)
+            if change == "away_and_back":
+                bridge.current_page = event
+                controller._on_page(event)
+        elif change == "disable":
+            controller.apply_settings({"enabled": False, "react": False})
+        elif change == "shutdown":
+            controller.shutdown()
+        completions[0]()
+        expected = ["Article reply"] if change == "unchanged" else []
+        assert spoken == expected
+        assert controller._last_reaction == ("Article reply" if expected else "")
     finally:
         controller.shutdown()

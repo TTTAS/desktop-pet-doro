@@ -32,6 +32,7 @@ class PresenceController(QtCore.QObject):
         self._epoch = 0
         self._last_reaction = ""
         self._completed = None
+        self._observed_page = None
         self.status = "尚未配對"
         self.settings = {
             "enabled": False,
@@ -122,6 +123,9 @@ class PresenceController(QtCore.QObject):
         current = self.current_page
         if page is not None and page != current:
             return
+        if current != self._observed_page:
+            self._observed_page = current
+            self.interrupt()
         self.status = "已連線，正在讀取目前分頁" if current else "沒有可分享的目前分頁"
         self._gate.offer(current if self.settings["react"] else None)
         self._pump()
@@ -133,7 +137,14 @@ class PresenceController(QtCore.QObject):
             event, epoch, answer = self._completed
             self._completed = None
             if epoch == self._epoch and event == self.current_page:
-                self._last_reaction = self._orchestrator.present_character_reply(answer)
+                self._orchestrator.present_character_reply(
+                    answer,
+                    should_present=lambda event=event, epoch=epoch: (
+                        not self._closed and self.settings["react"]
+                        and epoch == self._epoch and event == self.current_page
+                    ),
+                    on_present=self._remember_reaction,
+                )
         pending = self._gate.pending
         if pending is None:
             return
@@ -163,6 +174,10 @@ class PresenceController(QtCore.QObject):
                 self.result_ready.emit(event, epoch, answer, ok)
 
         threading.Thread(target=run, daemon=True, name="doro-presence-llm").start()
+
+    def _remember_reaction(self, text: str) -> None:
+        # Only spoken replies should suppress a later, similar reaction.
+        self._last_reaction = text
 
     @QtCore.Slot(object, int, str, bool)
     def _on_result(self, event, epoch, answer, ok):

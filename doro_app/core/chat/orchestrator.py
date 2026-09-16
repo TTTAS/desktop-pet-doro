@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PySide6 import QtCore
 
@@ -396,15 +396,26 @@ class ChatOrchestrator(QtCore.QObject):
         self._web_character_prompt = character_instructions(list(keys))
 
     @QtCore.Slot(str)
-    def present_character_reply(self, text: str) -> str:
+    def present_character_reply(
+        self, text: str, *, should_present: Callable[[], bool] | None = None,
+        on_present: Callable[[str], None] | None = None,
+    ) -> str:
+        if should_present is not None and not should_present():
+            return ""
         reply = parse_character_reply(text)
         cleaned = self._strip_markdown(self._apply_leading_state_marker(reply.text))
         if not cleaned:
             return ""
         def speak():
+            # A presence reply may wait for a walk before speaking. Revalidate
+            # at the actual side effect, not only when the action was queued.
+            if should_present is not None and not should_present():
+                return
             self.bubble_text_requested.emit(cleaned, {
                 "override_visibility": True, "auto_hide": True, "hide_delay_ms": 40000,
             })
+            if on_present is not None:
+                on_present(cleaned)
         if reply.direction and self._action_dispatcher is not None and self._schedule is not None:
             from ..action import make_walk_and_speak_action
             self._action_dispatcher.dispatch(make_walk_and_speak_action(

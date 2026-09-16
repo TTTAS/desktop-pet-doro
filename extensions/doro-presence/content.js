@@ -30,7 +30,8 @@
     });
   }
   new MutationObserver(changed).observe(document.documentElement, {
-    subtree: true, childList: true, characterData: true,
+    // Visibility and editable state may change without changing any text node.
+    subtree: true, childList: true, characterData: true, attributes: true,
   });
   document.addEventListener('visibilitychange', changed);
   window.addEventListener('focus', changed);
