@@ -107,7 +107,7 @@ def pick_sources(results: list[SearchResult], limit: int = PICK_CANDIDATES) -> l
 
 def build_verify_prompt(query: str, sources: list[dict]) -> str:
     lines: list[str] = []
-    lines.append(f"使用者想查證／了解：{query}")
+    lines.append(f"使用者的搜尋任務：{query}")
     lines.append("")
     lines.append("以下是讀到的分頁或搜尋摘要；有摘要標記的來源未取得正文，請誠實區分：")
     for i, src in enumerate(sources, 1):
@@ -117,8 +117,8 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
         lines.append(src.get("text", "")[:_PER_SOURCE_CHARS])
     lines.append("")
     lines.append("回答要求：")
-    lines.append("1. 用兩三句講重點。不要寫「來源1」「來源2」。")
-    lines.append("2. 多個分頁都要考慮，不只講最後一頁。矛盾就兩邊都講。")
+    lines.append("1. 依任務目的作答：探索／推薦就挑具體候選並說明特色或理由；查資料就回答問題；查證真偽才比對證據與矛盾。")
+    lines.append("2. 考慮各個分頁，挑相關內容，不必硬湊推薦數量。提到候選時用實際名稱，可附提供的網址，不要寫「來源1」「來源2」。")
     lines.append("3. 不足就說不確定，絕不要編。")
     lines.append("4. 純文字；開頭 (狀態)；2～4 句，約 150 字。")
     return "\n".join(lines)

@@ -3,7 +3,7 @@
     {
       "key": "click",
       "display_name": "Click",
-      "gif_id": "click_action.gif",
+      "gif_id": null,
       "is_builtin": true
     }
   ]
