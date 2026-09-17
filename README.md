@@ -51,6 +51,11 @@ Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, m
 
 ## Project Structure
 
+For AI-assisted work, start with [AGENTS.md](AGENTS.md) and the compact
+[repository map](docs/REPO_MAP.md). Retrieve only the relevant symbols with
+`python scripts/repo_map.py --focus presence` (Chinese aliases such as `分頁` also work).
+See [map usage and maintenance](docs/ai/WORKFLOW.md) for details.
+
 ```
 doro_app/
   app.py                  # Application assembly (5-phase bootstrap)
@@ -101,3 +106,7 @@ pytest
 ## License
 
 See [LICENSE](LICENSE) for details.
+# 分頁陪伴與上網角色動作
+
+此分支加入上網結果的表情／走路整合，以及只讀分享目前分頁的 Chromium 擴充。
+安裝與配對見 [分頁陪伴設定](docs/web-presence-setup.md)，六項修正與驗收見 [實作計畫](docs/web-presence-plan.md)。

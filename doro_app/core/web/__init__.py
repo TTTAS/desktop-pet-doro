@@ -5,8 +5,8 @@ doro 用瀏覽器與搜尋 API 幫你做三件事：
 - **讀**（第 1 層）：打開你給的網址、把內容讀進來交給聊天 AI 摘要／回答
   （``intent.py`` 聽指令、``reader.py`` 用 Playwright 讀、``worker.py`` 丟背景）。
 - **查證**（第 2 層）：``verify.py`` 的 ``VerifyPipeline``——**用搜尋 API
-  （Tavily 主／ddgs 備援，見 ``search_providers.py``）找來源，摘要夠就直接比對、
-  不夠才用瀏覽器補讀**，多來源一起比對後誠實回報。已不再爬 Bing HTML。
+  （Tavily 主／ddgs 備援，見 ``search_providers.py``）找來源，開頁供使用者查看並逐頁讀取；
+  失敗時以明示的搜尋摘要備援**，多來源一起比對後誠實回報。已不再爬 Bing HTML。
 - **操作**（第 3 層）：``operator.py`` 的 ``WebOperator`` 點／填／送出（送出類先問你）。
 
 門（外面要用就從這裡進來）：

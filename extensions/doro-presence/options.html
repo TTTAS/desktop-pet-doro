@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><title>Doro 分頁陪伴</title>
+<style>body{font:16px system-ui;max-width:620px;margin:48px auto;padding:24px;background:#fff5fa;color:#382b35}label{display:block;margin:20px 0}input:not([type=checkbox]){display:block;box-sizing:border-box;width:100%;padding:10px;margin-top:6px}button{padding:10px 20px}code{overflow-wrap:anywhere}</style>
+<h1>Doro 分頁陪伴</h1>
+<p>只分享目前聚焦分頁的可見文字。輸入框、密碼和編輯中的內容不會分享；擴充不會點擊或填寫網頁。一般頁面文字仍可能包含私人資訊，分享後會交給 Doro 設定的聊天模型。</p>
+<p>你的擴充 ID：<code id="extension-id"></code></p>
+<p>先把 ID 貼到 Doro 的「分頁陪伴設定」，再把那裡的埠號與配對碼填到下方。</p>
+<form id="settings">
+<label>連線埠<input id="port" type="number" min="1024" max="65535" required></label>
+<label>配對碼<input id="token" type="password" autocomplete="off" required pattern="[A-Za-z0-9_-]{32,128}"></label>
+<label><input id="enabled" type="checkbox"> 分享目前分頁（取消勾選即可暫停）</label>
+<button type="submit">儲存</button>
+</form><p id="status" role="status"></p>
+<p>工具列顯示 ON 表示已連線；! 表示正在等待 Doro。重新載入擴充後，請重新整理已開著的網頁。</p>
+<script src="options.js"></script></html>

@@ -125,10 +125,17 @@ class ContextMenuController:
             preview_a11y=self._preview_a11y,
             toggle_mouse_enabled=self._toggle_mouse_enabled,
             toggle_web_operation=self._toggle_web_operation,
+            show_presence_settings=self._show_presence_settings,
             simulate_response=self._simulate_response,
             inspect_position=self._inspect_position,
             quit_app=QtWidgets.QApplication.instance().quit,
         )
+
+    def _show_presence_settings(self) -> None:
+        from ..dialogs.presence_dialog import PresenceDialog
+        presence = self._core_manager.chat_orchestrator.presence
+        if presence is not None:
+            PresenceDialog(presence, self._window).exec()
 
     def _toggle_a11y(self, checked: bool) -> None:
         """Flip accessibility tree reading on/off and persist it.

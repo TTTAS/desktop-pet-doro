@@ -109,6 +109,7 @@ def needs_confirmation(
     action: WebAction,
     element_names: dict[int, str] | None = None,
     page_context: str = "",
+    elements: list[dict] | None = None,
 ) -> bool:
     """這個動作是不是「送出類／不可逆」、執行前必須先問使用者？
 
@@ -118,24 +119,31 @@ def needs_confirmation(
         page_context: 目前頁面的網址＋標題（判斷是不是結帳/付款/登入等敏感頁）。
 
     規則：
-    - ``press`` Enter：**只有在敏感頁（結帳/付款/登入…）才問**；一般頁（搜尋、逛網頁）
-      按 Enter 無害又可逆，不用問。其它按鍵一律不用。
-    - ``click``：目標名稱含送出類關鍵字（送出/購買/刪除/登入…）→ 要問；查不到名稱
-      （編號對不上）→ 也問。
+    - ``press``：已聚焦搜尋框且非敏感頁的普通 Enter 免問；複合／未知鍵需問。
+      Tab、Escape、方向與頁面導覽鍵免問。
+    - ``click``：送出關鍵字、表單提交、空名稱或未知編號都要問。
     - ``goto`` / ``scroll`` / ``back`` / ``type`` / ``done``：不用問。
     """
     verb = action.verb
     if verb == "press":
-        if action.params.get("key", "").strip().lower() != "enter":
+        key = action.params.get("key", "").strip().lower()
+        if key in {"tab", "shift+tab", "escape", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown", "home", "end"}:
             return False
+        # Only a plain Enter in an explicitly focused search input is known
+        # to be a search. URL/title guesses cannot distinguish chat/form submit.
         ctx = (page_context or "").lower()
-        return any(m in ctx for m in _SENSITIVE_PAGE_MARKERS)
+        focused = next((el for el in (elements or []) if el.get("focused")), {})
+        return not (key == "enter" and focused.get("input_type") == "search"
+                    and not any(m in ctx for m in _SENSITIVE_PAGE_MARKERS))
     if verb == "click":
         idx = action.index()
         if idx is None:
             return True  # 連要點哪個都說不清，保守起見先問
         name = (element_names or {}).get(idx)
-        if name is None:
+        if not name or not name.strip():
             return True  # 編號對不上目前畫面 → 先問
+        element = next((el for el in (elements or []) if el.get("idx") == idx), {})
+        if element.get("is_submit"):
+            return True
         return _looks_like_commit(name)
     return False

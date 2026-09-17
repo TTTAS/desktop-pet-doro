@@ -44,6 +44,7 @@ def mock_state_service():
     """Create mock StateService."""
     service = Mock()
     service.has_state = Mock(return_value=True)
+    service.visible_state_keys.return_value = ["idle", "happy"]
     return service
 
 

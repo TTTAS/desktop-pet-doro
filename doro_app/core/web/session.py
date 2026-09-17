@@ -1,20 +1,4 @@
-"""一個「開著不關、可以連續操作」的瀏覽器工作階段（第 3 層操作的引擎）。
-
-跟 :class:`~doro_app.core.web.reader.WebPageReader`（讀一次就關）不同，
-``WebSession`` 打開後會一直留著，讓 doro 一步一步操作：看目前頁面 → 點/打字/捲動
-→ 再看新頁面。
-
-重要限制（給之後接線的人）：
-- Playwright 的 sync API **綁定建立它的那條執行緒**，跨執行緒呼叫會報錯。所以整個
-  ``WebSession`` 從開到關，必須固定在**同一條背景執行緒**上使用（不要用
-  QThreadPool 每個動作換一條）。接線層會用一條專屬執行緒＋命令佇列來驅動它。
-- 所有方法都會**阻塞**，不可在 Qt 主執行緒直接呼叫。
-- 用 doro 專屬設定檔（登入狀態留在那，跟使用者平常的 Chrome 分開）。
-
-``snapshot()`` 會替目前頁面上「可點 / 可打字」的元件編號（塞一個 data-doro-idx
-屬性），回傳含編號、角色、名稱的清單，之後 ``click_index`` / ``type_index`` 就靠這
-個編號指定目標。
-"""
+"""一個「開著不關、可以連續操作」的瀏覽器工作階段。"""
 
 from __future__ import annotations
 
@@ -27,7 +11,6 @@ from .web_actions import WebAction
 
 logger = get_logger(__name__)
 
-# snapshot 時掃描這些元件當作「可互動」。
 _SNAPSHOT_JS = r"""
 () => {
   const sel = 'a, button, input, textarea, select, [role=button], [role=link], [onclick]';
@@ -35,33 +18,33 @@ _SNAPSHOT_JS = r"""
   const out = [];
   let idx = 0;
   for (const el of nodes) {
-    // 只收看得見的
     const rect = el.getClientRects();
     if (!rect || rect.length === 0) continue;
     const style = window.getComputedStyle(el);
     if (style.visibility === 'hidden' || style.display === 'none') continue;
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute('role') || tag;
-    let name = (
+    const input_type = (el.getAttribute('type') || '').toLowerCase();
+    const sensitive = input_type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.getAttribute('autocomplete') || '');
+    let name = sensitive ? '密碼或驗證碼（內容不提供）' : (
       el.getAttribute('aria-label') ||
       el.getAttribute('placeholder') ||
-      (el.value && String(el.value)) ||
-      (el.innerText && el.innerText.trim()) ||
+      (!['input', 'textarea', 'select'].includes(tag) && !el.isContentEditable && el.innerText && el.innerText.trim()) ||
       el.getAttribute('title') ||
       el.getAttribute('alt') ||
       el.getAttribute('name') ||
       ''
     ).replace(/\s+/g, ' ').trim().slice(0, 80);
     el.setAttribute('data-doro-idx', String(idx));
-    out.push({ idx, tag, role, name });
+    const is_submit = !!el.form && ((tag === 'button' && (!input_type || input_type === 'submit')) || (tag === 'input' && ['submit', 'image'].includes(input_type)));
+    out.push({ idx, tag, role, name, input_type, sensitive, is_submit,
+      focused: el === document.activeElement });
     idx++;
   }
   return out;
 }
 """
 
-
-# 抓目前頁面上看得見、有文字的外部連結（給查證挑來源）。
 _LINKS_JS = r"""
 () => {
   const seen = new Set();
@@ -85,8 +68,6 @@ _LINKS_JS = r"""
 
 @dataclass
 class PageView:
-    """目前頁面的快照，給 LLM 決定下一步用。"""
-
     url: str = ""
     title: str = ""
     text: str = ""
@@ -98,7 +79,6 @@ class PageView:
         return self.error is None
 
     def element_names(self) -> dict[int, str]:
-        """編號 → 名稱 對照（安全分級判斷點擊時用）。"""
         names: dict[int, str] = {}
         for el in self.elements:
             try:
@@ -109,8 +89,6 @@ class PageView:
 
 
 class WebSession:
-    """一個持續開著、可連續操作的瀏覽器。單一執行緒使用。"""
-
     def __init__(
         self,
         user_data_dir: Path,
@@ -124,10 +102,7 @@ class WebSession:
         self._max_chars = max(500, int(max_chars))
         self._headless = bool(headless)
         self._nav_timeout_ms = int(nav_timeout_ms)
-        # 優先用電腦裡真正的 Chrome（相容性較好）；開不起來就退回 Playwright 內建
-        # 的 Chromium。設 None 直接用內建 Chromium。
         self._browser_channel = browser_channel
-
         self._pw = None
         self._context = None
         self._page = None
@@ -136,37 +111,45 @@ class WebSession:
         kwargs = dict(
             user_data_dir=str(self._user_data_dir),
             headless=self._headless,
-            # 關掉「未正確關閉／要還原網頁嗎」的還原泡泡、首次執行提示等干擾。
+            no_viewport=True,
             args=[
                 "--hide-crash-restore-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--start-maximized",
             ],
         )
         if channel:
             kwargs["channel"] = channel
         return self._pw.chromium.launch_persistent_context(**kwargs)
 
-    # ------------------------------------------------------------------ 生命週期
-
     @property
     def is_open(self) -> bool:
-        """瀏覽器是不是還活著（使用者可能已手動把視窗關掉）。"""
-        if self._page is None:
-            return False
+        pages = self.open_pages()
+        if pages:
+            if self._page is None or self._page.is_closed():
+                self._page = pages[0]
+            return True
+        return False
+
+    def open_pages(self) -> list:
+        if self._context is None:
+            return []
         try:
-            return not self._page.is_closed()
+            return [p for p in self._context.pages if not p.is_closed()]
         except Exception:
-            return False
+            return []
+
+    def use_page(self, page) -> None:
+        self._page = page
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
 
     def ensure_open(self) -> str | None:
-        """確保瀏覽器已開。成功回 ``None``，失敗回錯誤訊息。
-
-        若之前開過、但被使用者手動關掉了，會先清掉死掉的參照再重新開一個。
-        """
         if self.is_open:
             return None
-        # 有殘留的死參照（視窗被關）→ 先收乾淨，等下重新開。
         if self._page is not None or self._context is not None or self._pw is not None:
             self.close()
         try:
@@ -184,9 +167,10 @@ class WebSession:
                 if self._browser_channel:
                     logger.info(f"WebSession 用真 Chrome（channel={self._browser_channel}）")
             except Exception as exc:
-                # 沒裝 Chrome / 該 channel 開不起來 → 退回內建 Chromium。
                 if self._browser_channel:
-                    logger.warning(f"用 channel={self._browser_channel} 開失敗，改用內建 Chromium：{exc}")
+                    logger.warning(
+                        f"用 channel={self._browser_channel} 開失敗，改用內建 Chromium：{exc}"
+                    )
                     self._context = self._launch_context(None)
                 else:
                     raise
@@ -200,7 +184,6 @@ class WebSession:
             return f"打開操作用瀏覽器失敗：{exc}"
 
     def close(self) -> None:
-        """關掉瀏覽器、釋放資源。可重複呼叫。"""
         for closer in (
             lambda: self._context and self._context.close(),
             lambda: self._pw and self._pw.stop(),
@@ -211,35 +194,51 @@ class WebSession:
                 logger.debug(f"WebSession 關閉時忽略錯誤：{exc}")
         self._pw = self._context = self._page = None
 
-    # ------------------------------------------------------------------ 觀察
-
     def snapshot(self) -> PageView:
-        """讀目前頁面：網址、標題、文字、可互動元件清單（含編號）。"""
         if not self.is_open:
             return PageView(error=self._closed_error())
-        try:
-            try:
-                self._page.wait_for_load_state("networkidle", timeout=4000)
-            except Exception:
-                pass
-            url = self._page.url
-            title = (self._page.title() or "").strip()
-            elements = self._page.evaluate(_SNAPSHOT_JS)
-            body_text = self._page.inner_text("body")
-        except Exception as exc:
-            logger.error(f"snapshot 失敗：{exc}")
-            return PageView(error=self._error_or_closed(exc, "讀目前頁面"))
+        return self._snapshot_one(self._page, wait_idle=False)
 
-        text = _collapse_whitespace(body_text or "")
-        if len(text) > self._max_chars:
-            text = text[: self._max_chars] + "\n\n……（內容太長，只讀前面這段）"
-        return PageView(url=url, title=title, text=text, elements=elements or [])
+    def snapshot_open_pages(self, *, wait_idle: bool = False) -> list[PageView]:
+        views: list[PageView] = []
+        for page in self.open_pages():
+            views.append(self._snapshot_one(page, wait_idle=wait_idle))
+        return views
+
+    def _snapshot_one(self, page, *, wait_idle: bool) -> PageView:
+        if page is None:
+            return PageView(error="沒有頁可讀")
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                if wait_idle:
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=3000)
+                    except Exception:
+                        pass
+                url = page.url or ""
+                if url.startswith("about:"):
+                    return PageView(url=url, error="空白頁")
+                title = (page.title() or "").strip()
+                body_text = page.inner_text("body")
+                try:
+                    elements = page.evaluate(_SNAPSHOT_JS)
+                except Exception:
+                    elements = []
+                text = _collapse_whitespace(body_text or "")
+                if len(text) > self._max_chars:
+                    text = text[: self._max_chars] + "\n\n……（內容太長，只讀前面這段）"
+                return PageView(url=url, title=title, text=text, elements=elements or [])
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc).lower()
+                if attempt == 0 and ("context was destroyed" in msg or "execution context" in msg):
+                    continue
+                break
+        logger.error(f"snapshot 失敗：{last_exc}")
+        return PageView(error=self._error_or_closed(last_exc or RuntimeError("snapshot"), "讀目前頁面"))
 
     def collect_links(self) -> list[dict]:
-        """抓目前頁面上「看得見、有文字」的外部 http(s) 連結（給查證挑來源用）。
-
-        回傳 [{url, text}]，已依網址去重、最多 60 個。讀不到就回空清單。
-        """
         if not self.is_open:
             return []
         try:
@@ -248,15 +247,33 @@ class WebSession:
             logger.debug(f"collect_links 失敗：{exc}")
             return []
 
-    # ------------------------------------------------------------------ 操作
-
-    def goto(self, url: str) -> str | None:
+    def goto(self, url: str, timeout_ms: int | None = None) -> str | None:
         return self._guard(
             lambda: self._page.goto(
-                url, wait_until="domcontentloaded", timeout=self._nav_timeout_ms
+                url, wait_until="domcontentloaded", timeout=timeout_ms or self._nav_timeout_ms
             ),
             f"打開 {url}",
         )
+
+    def new_tab(self, url: str, timeout_ms: int | None = None) -> str | None:
+        if self.ensure_open():
+            return "瀏覽器還沒開。"
+        timeout = int(timeout_ms or self._nav_timeout_ms)
+        page = None
+        try:
+            page = self._context.new_page()
+            page.set_default_timeout(timeout)
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+            self.use_page(page)
+            return None
+        except Exception as exc:
+            logger.error(f"new_tab 失敗：{exc}")
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            return f"新分頁打不開：{str(exc)[:120]}"
 
     def click_index(self, index: int) -> str | None:
         return self._guard(
@@ -265,10 +282,19 @@ class WebSession:
         )
 
     def type_index(self, index: int, text: str) -> str | None:
-        return self._guard(
-            lambda: self._page.fill(f'[data-doro-idx="{int(index)}"]', text),
-            f"在第 {index} 個欄位輸入",
-        )
+        if not self.is_open:
+            return self._closed_error()
+        try:
+            locator = self._page.locator(f'[data-doro-idx="{int(index)}"]')
+            sensitive = locator.evaluate("el => el.type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.autocomplete || '')")
+            if sensitive:
+                return "密碼或驗證碼請使用者自行輸入。"
+            locator.fill(text)
+            return None
+        except Exception:
+            # Playwright's exception call log may include the filled text.
+            logger.warning("欄位輸入失敗（不記錄輸入內容）")
+            return "欄位輸入失敗，請重新讀取頁面後再試。"
 
     def press(self, key: str) -> str | None:
         return self._guard(lambda: self._page.keyboard.press(key), f"按下 {key}")
@@ -281,10 +307,6 @@ class WebSession:
         return self._guard(lambda: self._page.go_back(), "回上一頁")
 
     def execute(self, action: WebAction) -> str | None:
-        """執行一個 :class:`WebAction`。成功回 ``None``，失敗回錯誤訊息。
-
-        ``done`` 不是真的操作（代表結束），這裡當 no-op 回 ``None``。
-        """
         verb = action.verb
         if verb == "goto":
             return self.goto(action.params.get("url", ""))
@@ -306,10 +328,7 @@ class WebSession:
             return None
         return f"不認得的動作：{verb}"
 
-    # ------------------------------------------------------------------ 內部
-
     def _guard(self, fn, what: str) -> str | None:
-        """執行一個操作，成功回 ``None``，失敗回一句給人看的錯誤。"""
         if not self.is_open:
             return self._closed_error()
         try:
@@ -319,11 +338,16 @@ class WebSession:
             logger.error(f"{what} 失敗：{exc}")
             return self._error_or_closed(exc, what)
 
-    # 使用者手動關掉視窗時，各種 Playwright 錯誤字樣。
     _CLOSED_MARKERS = (
-        "has been closed", "target closed", "target page, context or browser",
-        "browser has been closed", "page has been closed", "connection closed",
-        "disconnected", "crashed", "browser is closed",
+        "has been closed",
+        "target closed",
+        "target page, context or browser",
+        "browser has been closed",
+        "page has been closed",
+        "connection closed",
+        "disconnected",
+        "crashed",
+        "browser is closed",
     )
 
     def _looks_closed(self, text: str) -> bool:
@@ -331,7 +355,6 @@ class WebSession:
         return (not self.is_open) or any(m in low for m in self._CLOSED_MARKERS)
 
     def _closed_error(self) -> str:
-        """視窗被關掉時的統一訊息，並順手重置（下次會重新開一個）。"""
         self.close()
         return "瀏覽器視窗好像被關掉了～doro這次先停，下次會自動重新開一個喔。"
 

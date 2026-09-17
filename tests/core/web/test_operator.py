@@ -127,12 +127,9 @@ def test_cancel_stops_between_steps():
     session = FakeSession([_view()])
     llm = FakeLLM(["[web:scroll;dir=down]"] * 50)
     emits = []
-    # 第二步之前就喊停
-    calls = {"n": 0}
-
+    # Cancellation is state, not a counter of how often safety is checked.
     def should_cancel():
-        calls["n"] += 1
-        return calls["n"] > 1  # 第一次檢查放行、第二次起中止
+        return len(session.executed) >= 1
 
     op = WebOperator(session, llm, lambda d: True, emits.append, should_cancel=should_cancel)
     op.run("一直捲")

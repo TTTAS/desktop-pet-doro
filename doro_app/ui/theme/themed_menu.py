@@ -49,6 +49,7 @@ class MenuCallbacks:
     simulate_response: Callable[[], None]
     inspect_position: Callable[[], None]
     quit_app: Callable[[], None]
+    show_presence_settings: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -407,6 +408,9 @@ def build_context_menu_content(
     web_op_toggle_action.setCheckable(True)
     web_op_toggle_action.setChecked(snapshot.web_operation_enabled)
     web_op_toggle_action.triggered.connect(callbacks.toggle_web_operation)
+
+    presence_action = chat_menu.addAction("分頁陪伴設定…")
+    presence_action.triggered.connect(callbacks.show_presence_settings)
 
     simulate_action = chat_menu.addAction("假傳伺服器回應（測試）")
     simulate_action.setEnabled(not snapshot.is_chat_inflight)

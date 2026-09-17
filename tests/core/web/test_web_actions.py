@@ -54,11 +54,11 @@ class TestNeedsConfirmation:
                     "[web:type;n=0;text=hi]", "[web:back]", "[web:done]"]:
             assert needs_confirmation(parse_web_action(raw), names) is False
 
-    def test_press_enter_on_normal_page_is_safe(self):
-        # 搜尋頁按 Enter 無害 → 不用問
+    def test_press_enter_requires_actual_search_focus(self):
         a = parse_web_action("[web:press;key=Enter]")
-        assert needs_confirmation(a, {}, "https://www.bing.com/search 搜尋") is False
-        assert needs_confirmation(a) is False
+        assert needs_confirmation(a, {}, "https://www.bing.com/search 搜尋") is True
+        assert needs_confirmation(a) is True
+        assert needs_confirmation(a, {}, "https://www.bing.com/search", [{"focused": True, "input_type": "search"}]) is False
 
     def test_press_enter_on_sensitive_page_needs_confirm(self):
         # 結帳/付款/登入頁按 Enter → 要問

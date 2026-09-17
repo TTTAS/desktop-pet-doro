@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
@@ -32,7 +33,7 @@ from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
 from .utils.logger import get_logger
-from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
+from .utils.paths import COMPANION_PROMPTS_PATH, DRAG_DIR, STATE_DIR
 
 logger = get_logger(__name__)
 
@@ -175,6 +176,7 @@ class DoroApp:
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
             mark_activity=lambda: self.window.mark_user_activity(),
+            interaction_busy=lambda: self._mouse_handler.is_dragging,
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )
@@ -215,6 +217,17 @@ class DoroApp:
         saved_state_key = self._config_manager.app.current_state
         if not self._state_service.set_state(saved_state_key):
             self._state_service.set_state("idle")
+
+        from .core.presence.controller import PresenceController
+        self._presence = PresenceController(
+            self._chat_orchestrator,
+            self._chat_orchestrator._default_web_profile_dir().parent / "presence.json",
+            busy=lambda: (self._chat_orchestrator.is_inflight or self._chat_orchestrator.is_web_busy
+                          or self._mouse_handler.is_dragging
+                          or not self._action_dispatcher.is_idle or self._movement.has_active_movement
+                          or self._state_service.is_transitioning()),
+        )
+        self._chat_orchestrator.set_presence(self._presence)
 
         # Quit-time teardown: stop the pynput listener thread, the
         # a11y UIA worker pool, and the foreground-window poller before
@@ -357,6 +370,7 @@ class DoroApp:
         mouse_handler = MouseEventHandler(
             click_threshold=CLICK_DRAG_THRESHOLD_PX,
         )
+        self._mouse_handler = mouse_handler
 
         # ─────────────────────────────────────────────────────────
         # Inject all controllers into Window via public API
@@ -401,6 +415,7 @@ class DoroApp:
         # ─────────────────────────────────────────────────────────
         mouse_handler.window_drag_requested.connect(self.window.move)
         mouse_handler.drag_started.connect(self._on_doro_dragged)
+        mouse_handler.drag_finished.connect(self._sprite_controller.end_drag_animation)
         mouse_handler.click_detected.connect(
             lambda: (
                 self.window.mark_user_activity(),
@@ -637,6 +652,14 @@ class DoroApp:
         if dispatcher is not None:
             dispatcher.cancel_current("drag")
         self._movement.cancel_active_movement()
+        presence = getattr(self, "_presence", None)
+        if presence is not None:
+            presence.interrupt()
+        animations = sorted(p for p in DRAG_DIR.glob("*") if p.suffix.lower() in {".gif", ".webp", ".apng"})
+        random.shuffle(animations)
+        for path in animations:
+            if self._sprite_controller.start_drag_animation(path):
+                break
 
     def _on_about_to_quit(self) -> None:
         """Tear down background workers so the process can exit cleanly.
@@ -654,6 +677,7 @@ class DoroApp:
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),
             ("web", "_chat_orchestrator", "shutdown_web"),
+            ("presence", "_presence", "shutdown"),
         ]
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)

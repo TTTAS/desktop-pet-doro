@@ -582,7 +582,7 @@ class StateService:
 
         self._release_expired_lock()
         if self._transition_coordinator.is_active():
-            logger.warning(f"State change rejected: '{key}' (transition in progress)")
+            logger.info(f"State change queued: '{key}' (transition in progress)")
             self._requested_key = key
             return False
 

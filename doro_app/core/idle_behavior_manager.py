@@ -55,6 +55,7 @@ class IdleBehaviorManager(QtCore.QObject):
         mark_activity: Callable[[], None],
         action_dispatcher: "ActionDispatcher | None" = None,
         schedule: "ScheduleFn | None" = None,
+        interaction_busy: Callable[[], bool] | None = None,
     ):
         super().__init__()
         self._chat_orchestrator = chat_orchestrator
@@ -64,6 +65,7 @@ class IdleBehaviorManager(QtCore.QObject):
         self._mark_activity = mark_activity
         self._action_dispatcher = action_dispatcher
         self._schedule = schedule
+        self._interaction_busy = interaction_busy or (lambda: False)
 
         self._lines: list[str] = []
         self._load_lines(companion_file)
@@ -94,6 +96,9 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule_next()
 
     def _on_timer(self) -> None:
+        if self._interaction_busy():
+            self._schedule_next()
+            return
         # No user-activity gate: Doro acts on her own 1-3 min rhythm whether
         # or not you're using the computer. The checks below only defer when
         # *Doro herself* is busy (mid-request / mid-move / mid-transition).

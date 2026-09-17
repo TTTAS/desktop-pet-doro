@@ -13,6 +13,7 @@ automation = [
     "pynput>=1.7.6",
 ]
 web = [
+    "websockets>=15,<18",
     "playwright>=1.40.0",
     "tavily-python>=0.5.0",
     "ddgs>=6.0.0",
@@ -37,8 +38,8 @@ dev = [
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["doro_app"]
+[tool.setuptools.packages.find]
+include = ["doro_app*"]
 
 [tool.setuptools.package-data]
 doro_app = ["**/*.json", "**/*.txt", "**/*.gif", "**/*.apng", "**/*.webp", "**/*.png"]

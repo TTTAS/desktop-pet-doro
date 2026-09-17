@@ -1,16 +1,4 @@
-"""網頁執行緒管家：一條專屬執行緒 + 一個共用瀏覽器，讀與操作都排隊走它。
-
-為什麼需要它（隔離規則的落實）：
-- Playwright sync API 綁定建立它的執行緒，**整個瀏覽器從開到關必須在同一條執行緒**。
-  所以這裡用一條專屬 ``threading.Thread`` 擁有唯一的 :class:`WebSession`，所有網頁工
-  作（讀 / 操作）都丟進佇列、在這條執行緒上依序執行——天生就是「一次一個」（Q1 那把
-  鎖）。
-- **閒置 5 分鐘自動關**（Q10 甲）：佇列等太久沒工作就把瀏覽器收掉，下次用到再開。
-- **確認橋接**（送出前問你、打字回覆）：操作執行緒要問使用者時，用 signal 通知主執行緒
-  顯示、然後**卡住等**一個 Event；主執行緒收到你的「好/不要」再放行。逾時（預設 120 秒）
-  當「不做」。
-- 結果一律用 signal 送回主執行緒（Qt 會自動用 queued connection），不直接碰 UI。
-"""
+"""網頁執行緒管家：一條專屬執行緒 + 一個共用瀏覽器，讀與操作都排隊走它。"""
 
 from __future__ import annotations
 
@@ -28,25 +16,23 @@ from .session import WebSession
 
 logger = get_logger(__name__)
 
-_SHUTDOWN = object()  # 丟進佇列代表「收工、關執行緒」
+_SHUTDOWN = object()
 
-DEFAULT_IDLE_CLOSE_SECONDS = 300  # 閒置多久自動關瀏覽器
-DEFAULT_CONFIRM_TIMEOUT_SECONDS = 300  # 確認/等你處理牆 等多久沒回當「不做」（登入要時間）
+DEFAULT_IDLE_CLOSE_SECONDS = 300
+DEFAULT_CONFIRM_TIMEOUT_SECONDS = 300
 
 AskLLM = Callable[[str], str]
 
 
 class WebRuntime(QtCore.QObject):
-    """擁有共用瀏覽器的專屬執行緒；讀與操作都排隊走它。"""
-
-    # → 主執行緒
-    read_finished = QtCore.Signal(str, object)  # (request_id, WebReadResult)
-    op_progress = QtCore.Signal(str)  # 操作過程/結果要顯示的話
-    op_confirm = QtCore.Signal(str)  # 要使用者確認（完整泡泡文字）
-    op_finished = QtCore.Signal()  # 一次操作結束（成功/中止/出錯）
-    login_done = QtCore.Signal(str, bool, str)  # (request_id, ok, message) 開站給使用者登入
-    verify_progress = QtCore.Signal(str)  # 查證過程的狀態一句話
-    verify_finished = QtCore.Signal(str, str)  # (request_id, final_answer) 查證結束
+    read_finished = QtCore.Signal(str, object)
+    op_progress = QtCore.Signal(str)
+    op_reply = QtCore.Signal(str)
+    op_confirm = QtCore.Signal(str)
+    op_finished = QtCore.Signal()
+    login_done = QtCore.Signal(str, bool, str)
+    verify_progress = QtCore.Signal(str)
+    verify_finished = QtCore.Signal(str, str)
 
     def __init__(
         self,
@@ -67,15 +53,12 @@ class WebRuntime(QtCore.QObject):
 
         self._queue: "queue.Queue" = queue.Queue()
         self._thread: threading.Thread | None = None
-        self._session: WebSession | None = None  # 只在專屬執行緒上碰
+        self._session: WebSession | None = None
 
         self._confirm_event = threading.Event()
         self._confirm_result = False
         self._cancel = threading.Event()
-        # 「開站給使用者登入」後，先別讓閒置計時把瀏覽器關掉（登入可能要好幾分鐘）。
         self._hold_open = False
-
-    # ------------------------------------------------------------------ 生命週期
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -85,22 +68,17 @@ class WebRuntime(QtCore.QObject):
         logger.info("WebRuntime 專屬執行緒已啟動")
 
     def shutdown(self) -> None:
-        """收工：請執行緒關掉瀏覽器並結束。"""
         self._cancel.set()
         self._confirm_event.set()
         self._queue.put(_SHUTDOWN)
-
-    # ------------------------------------------------------------------ 主執行緒呼叫
 
     def submit_read(self, request_id: str, url: str) -> None:
         self._queue.put(lambda: self._do_read(request_id, url))
 
     def submit_read_current(self, request_id: str) -> None:
-        """讀「目前開著的那頁」（doro 剛剛操作/讀過、還開著的頁），不重新導航。"""
         self._queue.put(lambda: self._do_read_current(request_id))
 
     def submit_login(self, request_id: str, url: str) -> None:
-        """開一個網站、停在那讓使用者本人登入（不操作），並保持開著不自動關。"""
         self._queue.put(lambda: self._do_login(request_id, url))
 
     def submit_operation(self, goal: str, ask_llm: AskLLM) -> None:
@@ -111,18 +89,13 @@ class WebRuntime(QtCore.QObject):
         self._queue.put(lambda: self._do_verify(request_id, query, ask_llm, search_provider))
 
     def provide_confirm(self, yes: bool) -> None:
-        """使用者回覆確認（主執行緒呼叫），放行卡住的操作執行緒。"""
         self._confirm_result = bool(yes)
         self._confirm_event.set()
 
     def request_cancel(self) -> None:
-        """中止進行中的操作（主執行緒呼叫）。"""
         self._cancel.set()
-        # 若正卡在等確認，順手當「不做」放行，讓它盡快收尾。
         self._confirm_result = False
         self._confirm_event.set()
-
-    # ------------------------------------------------------------------ 專屬執行緒內部
 
     def _run_loop(self) -> None:
         while True:
@@ -130,7 +103,7 @@ class WebRuntime(QtCore.QObject):
                 job = self._queue.get(timeout=self._idle_close_seconds)
             except queue.Empty:
                 if not self._hold_open:
-                    self._close_session()  # 閒置太久 → 關瀏覽器
+                    self._close_session()
                 continue
             if job is _SHUTDOWN:
                 self._close_session()
@@ -188,7 +161,6 @@ class WebRuntime(QtCore.QObject):
         )
 
     def _do_read_current(self, request_id: str) -> None:
-        # 不開新頁：讀目前 session 開著的那頁。沒有開著的頁就回友善錯誤。
         if self._session is None or not self._session.is_open:
             self.read_finished.emit(
                 request_id,
@@ -200,25 +172,49 @@ class WebRuntime(QtCore.QObject):
                 ),
             )
             return
-        view = self._session.snapshot()
-        if not view.ok:
-            self.read_finished.emit(
-                request_id, WebReadResult(url="", title="", text="", error=view.error)
-            )
-            return
-        if not view.text:
+        views = []
+        snap_all = getattr(self._session, "snapshot_open_pages", None)
+        if callable(snap_all):
+            try:
+                views = list(snap_all(wait_idle=False) or [])
+            except TypeError:
+                views = list(snap_all() or [])
+        if not views:
+            views = [self._session.snapshot()]
+        chunks: list[str] = []
+        urls: list[str] = []
+        titles: list[str] = []
+        for i, view in enumerate(views, 1):
+            if not getattr(view, "ok", False):
+                continue
+            body = (getattr(view, "text", None) or "").strip()
+            if not body:
+                continue
+            url = getattr(view, "url", "") or ""
+            title = getattr(view, "title", "") or ""
+            urls.append(url)
+            titles.append(title)
+            chunks.append(f"【分頁{i}】{title or '(無標題)'}\n網址：{url}\n{body}")
+        if not chunks:
             self.read_finished.emit(
                 request_id,
                 WebReadResult(
-                    url=view.url,
-                    title=view.title,
+                    url="",
+                    title="",
                     text="",
-                    error="這頁 doro 讀不到內容（可能還在載入、需要登入、或整頁都是圖片/影片）。",
+                    error="開著的分頁 doro 都讀不到內容（可能還在載入、要登入、或整頁都是圖片/影片）。",
                 ),
             )
             return
+        print(f"[doro web] read current: {len(chunks)} tab(s)", flush=True)
         self.read_finished.emit(
-            request_id, WebReadResult(url=view.url, title=view.title, text=view.text, error=None)
+            request_id,
+            WebReadResult(
+                url=" | ".join(urls),
+                title="、".join(t for t in titles if t) or f"{len(chunks)} 個分頁",
+                text="\n\n".join(chunks),
+                error=None,
+            ),
         )
 
     def _do_login(self, request_id: str, url: str) -> None:
@@ -231,7 +227,6 @@ class WebRuntime(QtCore.QObject):
         if goto_err:
             self.login_done.emit(request_id, False, goto_err)
             return
-        # 保持開著，別讓閒置計時關掉，好讓使用者慢慢登入。
         self._hold_open = True
         self.login_done.emit(request_id, True, url)
 
@@ -240,7 +235,6 @@ class WebRuntime(QtCore.QObject):
 
         self._hold_open = False
         final_holder = {"text": ""}
-        # session_provider 懶開：只有真的要補讀時 pipeline 才呼叫 _get_session。
         pipeline = VerifyPipeline(
             search_provider,
             self._get_session,
@@ -252,9 +246,13 @@ class WebRuntime(QtCore.QObject):
             pipeline.run(query)
         finally:
             self.verify_finished.emit(request_id, final_holder["text"])
+            if pipeline.keep_browser:
+                pass
+            else:
+                self._close_session()
 
     def _do_operation(self, goal: str, ask_llm: AskLLM) -> None:
-        self._hold_open = False  # 開始正常操作 → 恢復閒置自動關
+        self._hold_open = False
         session = self._get_session()
         operator = WebOperator(
             session,
@@ -263,6 +261,7 @@ class WebRuntime(QtCore.QObject):
             self.op_progress.emit,
             max_steps=self._max_steps,
             should_cancel=self._cancel.is_set,
+            emit_reply=self.op_reply.emit,
         )
         try:
             operator.run(goal)
@@ -270,7 +269,6 @@ class WebRuntime(QtCore.QObject):
             self.op_finished.emit()
 
     def _confirm_bridge(self, description: str) -> bool:
-        """在操作執行緒上呼叫：問主執行緒、卡住等回覆（或逾時當不做）。"""
         if self._cancel.is_set():
             return False
         self._confirm_event.clear()

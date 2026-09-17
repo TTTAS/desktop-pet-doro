@@ -1,218 +1,39 @@
-# Doro 專案文檔索引
+# Doro 文件索引
 
-> **最後更新：** 2026-08-15
-> **文檔總數：** 15
+先按任務定位，不必依序讀完整個 docs。程式碼、測試與已採用 ADR 優先於舊計畫和工作紀錄。
 
----
+## 目前的工作入口
 
-## 📋 核心文檔
+| 需要 | 先看 |
+| --- | --- |
+| AI 開始修改 repo | [AGENTS.md](../AGENTS.md) → [repo 地圖](REPO_MAP.md) 的相關功能列 |
+| 查當前類別、函式、行號及 import | `python scripts/repo_map.py --focus 功能或符號`；[工具說明](ai/WORKFLOW.md) |
+| 看功能責任與主要入口 | [功能細節導覽](ai/FEATURE_GUIDE.md)，只讀相關段落 |
+| 對齊產品用詞 | [CONTEXT.md](../CONTEXT.md) |
+| 安裝與啟動 | [README](../README.md) |
+| 分頁陪伴配對、驗收 | [分頁陪伴設定](web-presence-setup.md) |
+| 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
-### 🎯 必讀文檔
+## 架構決策（已採用）
 
-1. **[最佳實踐與教訓總結](BEST_PRACTICES.md)** ⭐ **NEW**
-   - 過度工程化的教訓
-   - 規模與複雜度對照
-   - 架構設計原則
-   - 重構檢查清單
-   - 技術債管理
-   - **適合：** 所有開發者，尤其是新加入專案的人
+- [0001：三個網頁表面](adr/0001-three-web-surfaces.md)
+- [0002：兩層活潑](adr/0002-two-layer-liveliness.md)
+- [0003：擴充與 localhost WebSocket](adr/0003-extension-localhost-websocket.md)
+- [0004：角色回覆與網站操作](adr/0004-character-replies-and-operation-safety.md)
 
-2. **[架構說明](ARCHITECTURE.md)**
-   - 系統架構概覽（三層設計：FSM、UI、LLM）
-   - 模組職責說明
-   - 回覆驗證與重試機制
-   - 數據持久化完整規格
-   - **適合：** 理解整體架構
+## 按需參考
 
----
+- [架構背景](ARCHITECTURE.md)：較早的整體設計說明；可能未涵蓋新模組，目前入口以 repo 地圖為準。
+- [聊天視窗設計](chat_dialog_design.md)、[網路失敗台詞](network_fail_messages.md)、[日誌指南](LOGGING_GUIDE.md)。
+- [最佳實踐與教訓](BEST_PRACTICES.md)：歷史經驗，不要求每次任務先讀。
 
-## 📝 歷史記錄
+## 歷史、計畫與待辦
 
-### 重構與改進
+以下記錄當時的方案或結果，不是目前實作的保證；需要理解變更背景時才讀。
 
-4. **[重構總結](REFACTORING_SUMMARY.md)**
-   - 2024-12-09 重構成果
-   - CoreManager 創建
-   - 循環依賴消除
-   - 分層架構建立
-   - **適合：** 了解重構歷史
+- [分頁陪伴實作計畫](web-presence-plan.md)、[查證重構計畫](verify-refactor-plan.md)、[查證驗收清單](verify-stage1-checklist.md)。
+- [狀態重構計畫](state-refactor-plan.md)、[架構改進待辦](architecture-deepening-backlog.md)、[Backlog](BACKLOG.md)、[Open Claw TODO](TODO_OPEN_CLAW.md)。
+- [重構總結](REFACTORING_SUMMARY.md)、[改進總結](IMPROVEMENTS_SUMMARY.md)、[舊審查](review.md)、[舊覆蓋率報告](TEST_COVERAGE_REPORT.md)。
+- `CHANGELOG_session_*.md`、`pr-*.md`：個別變更紀錄；用 `rg --files docs` 按日期或主題查找。
 
-5. **[改進總結](IMPROVEMENTS_SUMMARY.md)**
-   - 歷次改進記錄
-   - 已解決的問題
-   - **適合：** 查看專案演進
-
-6. **[變更日誌](CHANGELOG_session_2025-11-27.md)**
-   - 2025-11-27 會話的變更記錄
-   - **適合：** 追蹤具體變更
-
-14. **[變更日誌 2026-06-16](CHANGELOG_session_2026-06-16.md)**
-    - 點擊紅框 silent-skip 診斷與 stdout 升級
-    - **適合：** 追蹤具體變更
-
-15. **[變更日誌 2026-08-15](CHANGELOG_session_2026-08-15.md)**
-    - 移除 Live2D 渲染支援（保留可插拔渲染器架構）
-    - 順修 Windows 路徑分隔符測試 bug
-    - **適合：** 追蹤具體變更
-
-16. **[變更日誌 2026-09-06](CHANGELOG_session_2026-09-06.md)**
-    - 說話泡泡：長文分段顯示、自動選邊（不再把 doro 往上擠/衝出畫面）
-    - 修查證答覆開頭 `(狀態)` 被念出來
-    - **適合：** 追蹤具體變更
-
----
-
-## 🏗️ 功能設計
-
-### Chat 功能
-
-7. **[Chat 對話框設計](chat_dialog_design.md)**
-   - UI 設計
-   - 互動流程
-   - **適合：** UI 開發
-
-8. **[網絡失敗訊息](network_fail_messages.md)**
-   - 錯誤訊息設計
-   - 用戶體驗考慮
-   - **適合：** 錯誤處理
-
----
-
-## 📚 開發指南
-
-9. **[測試指南](TESTING.md)**
-    - 測試策略
-    - 測試工具使用
-    - **適合：** 編寫測試
-
-10. **[日誌使用指南](LOGGING_GUIDE.md)**
-    - 日誌等級使用
-    - 如何在新模組添加日誌
-    - 日誌檔案位置
-    - **適合：** 日常開發
-
-11. **[測試覆蓋率報告](TEST_COVERAGE_REPORT.md)**
-    - 分層覆蓋率分析
-    - 風險評估與改進建議
-    - **適合：** 了解測試品質
-
----
-
-## 📋 待辦與計劃
-
-12. **[Backlog](BACKLOG.md)**
-    - 待完成的功能
-    - 已知問題
-    - **適合：** 查看待辦事項
-
-13. **[審查筆記](review.md)**
-    - 代碼審查記錄
-    - **適合：** Code Review
-
----
-
-## 🎯 快速導航
-
-### 我想...
-
-| 需求 | 推薦文檔 |
-|------|---------|
-| **了解專案教訓和最佳實踐** | [最佳實踐](BEST_PRACTICES.md) |
-| **理解系統架構** | [架構說明](ARCHITECTURE.md) |
-| **查看重構歷史** | [重構總結](REFACTORING_SUMMARY.md) |
-| **開發聊天功能** | [架構說明](ARCHITECTURE.md)（LLM 層章節） |
-| **編寫測試** | [測試指南](TESTING.md) |
-| **添加日誌** | [日誌指南](LOGGING_GUIDE.md) |
-| **查看待辦事項** | [Backlog](BACKLOG.md) |
-
----
-
-## 📊 文檔分類統計
-
-| 類別 | 文件數 | 文檔 |
-|------|--------|------|
-| **核心文檔** | 2 | BEST_PRACTICES, ARCHITECTURE |
-| **歷史記錄** | 5 | REFACTORING_SUMMARY, IMPROVEMENTS_SUMMARY, CHANGELOG (2025-11-27, 2026-06-16, 2026-08-15) |
-| **功能設計** | 2 | chat_dialog_design, network_fail_messages |
-| **開發指南** | 3 | TESTING, LOGGING_GUIDE, TEST_COVERAGE_REPORT |
-| **待辦計劃** | 2 | BACKLOG, review |
-| **本索引** | 1 | INDEX.md |
-| **總計** | **15** | |
-
----
-
-## 🗑️ 已清理的文檔
-
-為了減少認知負擔和避免重複信息，已刪除以下文檔：
-
-**合併至 ARCHITECTURE.md（2026-03-23）：**
-- CURRENT_LAYERS.md — 內容與 ARCHITECTURE.md 重複
-- chat_architecture_current.md — 獨特內容已合併至 ARCHITECTURE.md
-
-**過時文檔清理（2024-12-11）：**
-
-已刪除以下 24 個文檔：
-
-**審計報告（已過時）：**
-- ARCHITECTURE_AUDIT.md
-- CONFIG_AUDIT.md
-- ERROR_HANDLING_AUDIT.md
-- MAGIC_NUMBERS_AUDIT.md
-- CIRCULAR_DEPENDENCIES_ANALYSIS.md
-- PHASE4_1_AUDIT.md
-
-**階段計劃（已完成）：**
-- PHASE1_COMPLETION_REPORT.md
-- PHASE4_COMPLETE.md
-- PHASE4_PLAN.md
-- PHASE4_SUMMARY.md
-- REFACTORING_PLAN.md
-- SIMPLIFICATION_PLAN.md
-- STATE_SERVICE_SPLIT_PLAN.md
-
-**提案文檔（已實施或過時）：**
-- ARCHITECTURE_PROPOSAL_V2.md
-- REFACTORING_FEASIBILITY.md
-- function_calling_proposal.md
-- parsing_with_retry_proposal.md
-- structured_output_proposal.md
-
-**依賴分析（已解決）：**
-- WINDOW_DEPENDENCIES_CURRENT.md
-- WINDOW_DEPENDENCIES_PROPOSED.md
-- WINDOW_LOGIC_EXTRACTION.md
-
-**TODO（已完成或過時）：**
-- TODO_transition_player.md
-- chat_request_execution_todo.md
-- enhanced_parsing_implementation.md
-
-**清理原則：** 代碼是真相，過時的文檔比沒有文檔更糟糕。
-
----
-
-## 📖 閱讀建議
-
-### 新加入專案的開發者
-
-1. 先讀 [最佳實踐](BEST_PRACTICES.md) — 了解專案的教訓和原則
-2. 再讀 [架構說明](ARCHITECTURE.md) — 理解系統結構
-3. 根據工作內容選讀相關文檔
-
-### 參與重構的開發者
-
-1. [最佳實踐](BEST_PRACTICES.md) — 重構原則和檢查清單
-2. [重構總結](REFACTORING_SUMMARY.md) — 歷史重構經驗
-3. [架構說明](ARCHITECTURE.md) — 當前架構與已知問題
-
-### 功能開發者
-
-1. [架構說明](ARCHITECTURE.md) — 系統架構與聊天流程
-2. [測試指南](TESTING.md) — 如何編寫測試
-3. [日誌指南](LOGGING_GUIDE.md) — 如何添加日誌
-
----
-
-**維護者：** Doro 開發團隊
-**更新頻率：** 每次新增/刪除文檔時更新
-**最後更新：** 2026-08-15
+新增文件時放到適合的分類，不維護容易過時的總數或每次對話摘要。
