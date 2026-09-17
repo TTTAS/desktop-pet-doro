@@ -63,6 +63,7 @@ class MovementManager:
         self._movement_direction_key: Optional[str] = None
         self._movement_pending_report: Optional[str] = None
         self._movement_previous_state: Optional[str] = None
+        self._movement_requested_state: Optional[str] = None
         self._movement_reports: list[str] = []
         self._last_move_report = ""
         self._last_error: Optional[str] = None  # Track last parse error
@@ -484,12 +485,17 @@ class MovementManager:
         # after state revert — cancellation should leave Doro wherever she was
         # dragged to.
         snap_target = final_position
-        report = self._movement_pending_report
         if final_position is None:
             final_position = window.current_position()
-        if report is None:
-            direction_label_text = direction_label(self._active_movement.direction)
-            report = format_move_report(final_position, direction_label_text, 0, 0)
+        # Pending reports describe the planned destination. On cancellation
+        # that destination may never have been reached (or movement ticked).
+        dx = final_position.x() - self._movement_start_pos.x()
+        dy = final_position.y() - self._movement_start_pos.y()
+        direction_label_text = direction_label((dx, dy))
+        outcome = "已完成" if snap_target is not None else "已取消"
+        report = f"{outcome}：" + format_move_report(final_position, direction_label_text, dx, dy)
+        if dx == 0 and dy == 0:
+            report += "（未位移）"
         self._record_move_report(report)
         self._active_movement = None
         self._movement_velocity = QtCore.QPointF(0.0, 0.0)
@@ -499,7 +505,17 @@ class MovementManager:
         if self._movement_previous_state and self._state_service.get_state(self._movement_previous_state):
             current_state = self._state_service.get_current_state()
             current = current_state.key if current_state else None
-            if current != self._movement_previous_state:
+            requested = self._state_service.get_requested_state_key()
+            stale_walk = (
+                self._movement_requested_state is not None
+                and requested == self._movement_requested_state
+                and requested != self._movement_previous_state
+            )
+            # A transition can defer the walking sprite until AFTER arrival.
+            # Withdraw our pending walk even when the old state is still
+            # committed; otherwise the late request leaves Doro walking in
+            # place. Do not overwrite a newer queued expression in this case.
+            if current != self._movement_previous_state or stale_walk:
                 self._state_service.set_state(self._movement_previous_state)
                 # Mirror of `_start_movement`'s snap-back: reverting the state
                 # may resize the sprite and trigger
@@ -511,6 +527,7 @@ class MovementManager:
                 if snap_target is not None:
                     window.move_window_to(snap_target)
         self._movement_previous_state = None
+        self._movement_requested_state = None
 
         # Notify completion listeners. `emit` iterates over a snapshot —
         # listeners may unsubscribe themselves during the callback (the
@@ -643,6 +660,7 @@ class MovementManager:
         # Only change state if we found a valid one and it's different
         current_state_obj = self._state_service.get_current_state()
         current_state_key = current_state_obj.key if current_state_obj else None
+        self._movement_requested_state = desired_key
         if desired_key and desired_key != current_state_key:
             self._state_service.set_state(desired_key)
 
