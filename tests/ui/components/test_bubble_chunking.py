@@ -14,10 +14,10 @@ import pytest
 from doro_app.constants import BUBBLE_CHUNK_MAX_CHARS
 from doro_app.ui.components.bubble_controller import BubbleController
 
-
 # --------------------------------------------------------------------------- #
 # Pure splitting logic (no Qt needed — static methods)
 # --------------------------------------------------------------------------- #
+
 
 def test_short_text_stays_one_chunk():
     text = "嘿嘿，doro幫人去查查看喔～"
@@ -69,6 +69,7 @@ def test_reading_delay_scales_and_is_bounded():
 # --------------------------------------------------------------------------- #
 # Behaviour (needs a QApplication for QTimer — provided by pytest-qt `qapp`)
 # --------------------------------------------------------------------------- #
+
 
 @pytest.fixture
 def controller(qapp):

@@ -10,7 +10,6 @@ from typing import Callable, List, Tuple
 import pytest
 
 from doro_app.core.action import (
-    Action,
     ActionDispatcher,
     make_click_action,
 )
@@ -52,6 +51,7 @@ class FakeAutomation:
         def unsub():
             if callback in self._listeners:
                 self._listeners.remove(callback)
+
         return unsub
 
     def fire_outcome(self, outcome: ClickOutcome, detail: str = "") -> None:
@@ -99,7 +99,9 @@ def dispatcher(state_service, scheduler):
 
 class TestClickAction:
     def test_successful_click_routes_through_dispatcher(
-        self, dispatcher, scheduler,
+        self,
+        dispatcher,
+        scheduler,
     ):
         automation = FakeAutomation()
         dispatcher.dispatch(make_click_action(automation, scheduler))
@@ -117,7 +119,10 @@ class TestClickAction:
         assert dispatcher.is_idle
 
     def test_preflight_rejection_routes_to_failure(
-        self, dispatcher, scheduler, state_service,
+        self,
+        dispatcher,
+        scheduler,
+        state_service,
     ):
         automation = FakeAutomation(preflight=ClickOutcome.RATE_LIMITED)
         dispatcher.dispatch(make_click_action(automation, scheduler))
@@ -132,7 +137,10 @@ class TestClickAction:
         assert dispatcher.is_idle
 
     def test_non_fired_terminal_outcome_is_failure(
-        self, dispatcher, scheduler, state_service,
+        self,
+        dispatcher,
+        scheduler,
+        state_service,
     ):
         """Allowlist miss / esc abort / drag grace — none fired the click,
         all should surface as dispatcher-level failure (so the failure

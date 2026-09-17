@@ -289,8 +289,11 @@ class DoroWindow(QtWidgets.QWidget):
 
     def event(self, e: QtCore.QEvent):
         # A lost mouse grab (e.g. deactivation) may have no release event.
-        if e.type() in (QtCore.QEvent.Type.UngrabMouse, QtCore.QEvent.Type.WindowDeactivate,
-                        QtCore.QEvent.Type.Hide):
+        if e.type() in (
+            QtCore.QEvent.Type.UngrabMouse,
+            QtCore.QEvent.Type.WindowDeactivate,
+            QtCore.QEvent.Type.Hide,
+        ):
             handler = getattr(self, "_mouse_handler", None)
             if handler is not None:
                 handler.reset()
@@ -357,9 +360,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Pick the side the bubble sits on BEFORE resizing, from where the
         # sprite currently is on screen. Near the bottom → flip above.
         if sprite_center_screen is not None:
-            self._bubble_above = self._decide_bubble_above(
-                sprite_center_screen, panel_h_hint
-            )
+            self._bubble_above = self._decide_bubble_above(sprite_center_screen, panel_h_hint)
 
         self._sizing_in_progress = True
         try:
@@ -393,7 +394,9 @@ class DoroWindow(QtWidgets.QWidget):
         except Exception:
             return None
         sprite_center, _ = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         return QtCore.QPointF(
@@ -430,7 +433,9 @@ class DoroWindow(QtWidgets.QWidget):
         # Reset anchor so layout recomputes for the new window size.
         self._sprite_anchor_top = None
         new_local_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         if new_anchor is not None:
@@ -460,7 +465,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Calculate sprite center using RenderingEngine
         sprite_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         if new_anchor is not None:
@@ -472,7 +479,10 @@ class DoroWindow(QtWidgets.QWidget):
         # Render text panel using RenderingEngine
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
-            (self._view_model.bubble_visible or (self._bubble_controller and self._bubble_controller.text_show_override))
+            (
+                self._view_model.bubble_visible
+                or (self._bubble_controller and self._bubble_controller.text_show_override)
+            )
             and self._view_model.bubble_alpha > 0
             and bool(bubble_text.strip())
         )
@@ -481,7 +491,12 @@ class DoroWindow(QtWidgets.QWidget):
 
             alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
-                p, bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint,
+                p,
+                bubble_text,
+                alpha,
+                sprite_center,
+                self.size(),
+                self._panel_height_hint,
                 prefer_above=self._bubble_above,
             )
         else:

@@ -124,10 +124,16 @@ class CoreManager(QtCore.QObject):
             lambda text, kwargs: self.chat_response_received.emit(text, kwargs)
         )
         self._chat_orchestrator.busy_cursor_requested.connect(
-            lambda enabled: self.chat_operation_started.emit() if enabled else self.chat_operation_completed.emit()
+            lambda enabled: (
+                self.chat_operation_started.emit()
+                if enabled
+                else self.chat_operation_completed.emit()
+            )
         )
         self._chat_orchestrator.notification_requested.connect(
-            lambda severity, title, msg: self.chat_error_occurred.emit(msg) if severity == "error" else None
+            lambda severity, title, msg: (
+                self.chat_error_occurred.emit(msg) if severity == "error" else None
+            )
         )
 
         # Transition player signals → Domain events

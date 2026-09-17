@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import builtins
 
-import pytest
 
 from doro_app.core.web.reader import WebPageReader
 

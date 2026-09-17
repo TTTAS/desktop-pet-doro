@@ -7,7 +7,6 @@ import re
 import sys
 from importlib.metadata import version as pkg_version, PackageNotFoundError
 
-
 _MIN_PYTHON = (3, 10)
 _MIN_PYSIDE6 = "6.5.0"
 
@@ -54,7 +53,11 @@ def preflight_check() -> tuple[list[str], list[str]]:
                 "DORO_MOUSE 已設為 true 但 pynput 未安裝；滑鼠自動化將被停用 — "
                 "pip install 'doro[automation]'"
             )
-        if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+        if (
+            sys.platform.startswith("linux")
+            and os.environ.get("WAYLAND_DISPLAY")
+            and not os.environ.get("DISPLAY")
+        ):
             warnings.append(
                 "偵測到 Wayland 純會話（無 XWayland）；滑鼠自動化目前僅支援 X11 / Windows，將進入 disabled 狀態。"
             )

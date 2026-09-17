@@ -1,13 +1,11 @@
 """Tests for multi-GIF per state support."""
 
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
 from doro_app.core.state.repository import GifRepository
-from doro_app.core.exceptions import GifNotFoundError, GifStorageError
-
+from doro_app.core.exceptions import GifNotFoundError
 
 # ═══════════════════════════════════════════════════════════
 # GifRepository — multi-GIF operations
@@ -295,9 +293,7 @@ class TestGifRepositoryDeleteAllGifs:
 class TestStateServiceMultiGif:
     """Test StateService multi-GIF support."""
 
-    def test_get_gif_path_uses_random_pick(
-        self, state_service_with_mocks, mock_gif_repo
-    ):
+    def test_get_gif_path_uses_random_pick(self, state_service_with_mocks, mock_gif_repo):
         """get_gif_path prefers multi-GIF subfolder."""
         state_service_with_mocks.add_state("stand", "Stand")
         random_path = Path("/fake/storage/stand/stand_2.gif")
@@ -308,9 +304,7 @@ class TestStateServiceMultiGif:
         assert result == random_path
         mock_gif_repo.pick_random_gif.assert_called_with("stand")
 
-    def test_get_gif_path_falls_back_to_gif_id(
-        self, state_service_with_mocks, mock_gif_repo
-    ):
+    def test_get_gif_path_falls_back_to_gif_id(self, state_service_with_mocks, mock_gif_repo):
         """get_gif_path falls back to gif_id when no subfolder."""
         state_service_with_mocks.add_state("stand", "Stand")
         state_service_with_mocks.update_state("stand", gif_id="stand.gif")
@@ -321,9 +315,7 @@ class TestStateServiceMultiGif:
 
         assert result == Path("/fake/stand.gif")
 
-    def test_add_gif_delegates_to_manager(
-        self, state_service_with_mocks, mock_gif_repo
-    ):
+    def test_add_gif_delegates_to_manager(self, state_service_with_mocks, mock_gif_repo):
         state_service_with_mocks.add_state("stand", "Stand")
         mock_gif_repo.add_gif.return_value = "stand/stand_1.gif"
 
@@ -332,24 +324,18 @@ class TestStateServiceMultiGif:
         assert result is True
         mock_gif_repo.add_gif.assert_called_once()
 
-    def test_add_gif_returns_false_for_missing_state(
-        self, state_service_with_mocks
-    ):
+    def test_add_gif_returns_false_for_missing_state(self, state_service_with_mocks):
         result = state_service_with_mocks.add_gif("nonexistent", Path("/source.gif"))
         assert result is False
 
-    def test_list_gif_paths_delegates(
-        self, state_service_with_mocks, mock_gif_repo
-    ):
+    def test_list_gif_paths_delegates(self, state_service_with_mocks, mock_gif_repo):
         paths = [Path("/a.gif"), Path("/b.gif")]
         mock_gif_repo.list_gifs.return_value = paths
 
         result = state_service_with_mocks.list_gif_paths("stand")
         assert result == paths
 
-    def test_delete_all_gifs_delegates(
-        self, state_service_with_mocks, mock_gif_repo
-    ):
+    def test_delete_all_gifs_delegates(self, state_service_with_mocks, mock_gif_repo):
         mock_gif_repo.delete_all_gifs.return_value = True
 
         result = state_service_with_mocks.delete_all_gifs("stand")

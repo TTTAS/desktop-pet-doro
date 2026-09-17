@@ -597,9 +597,7 @@ class StateService:
             return False
 
         self._requested_key = key
-        logger.info(
-            f"State changed: {old_key} -> {key}" + (" [forced]" if forced else "")
-        )
+        logger.info(f"State changed: {old_key} -> {key}" + (" [forced]" if forced else ""))
 
         state = self._states.get(key)
         if self.on_state_changed and state:

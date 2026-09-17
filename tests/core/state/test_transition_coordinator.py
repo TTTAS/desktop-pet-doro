@@ -1,6 +1,5 @@
 """Tests for TransitionCoordinator."""
 
-import pytest
 from unittest.mock import Mock
 
 from doro_app.core.state.transition_coordinator import TransitionCoordinator
@@ -15,10 +14,7 @@ class TestTransitionCoordinatorFinding:
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
         transition = Transition(
-            key="idle_to_happy",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="trans_123"
+            key="idle_to_happy", from_state="idle", to_state="happy", transition_gif_id="trans_123"
         )
         coordinator.add(transition)
 
@@ -45,10 +41,7 @@ class TestTransitionCoordinatorFinding:
         # Arrange
         coordinator = TransitionCoordinator(transition_repo=None)
         transition = Transition(
-            key="idle_to_happy",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="trans_123"
+            key="idle_to_happy", from_state="idle", to_state="happy", transition_gif_id="trans_123"
         )
         coordinator.add(transition)
 

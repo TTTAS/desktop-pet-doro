@@ -71,9 +71,10 @@ class MovementWindowFake(MovementWindowPort):
     def get_bubble_offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._bubble_offset)
 
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):  # pragma: no cover - trivial
+    def apply_bubble_offset(
+        self, offset: QtCore.QPointF, *, persist: bool = False
+    ):  # pragma: no cover - trivial
         self._bubble_offset = QtCore.QPointF(offset)
 
     def reset_tick_timer(self, value: float):  # pragma: no cover - trivial
         self.last_reset_time = value
-

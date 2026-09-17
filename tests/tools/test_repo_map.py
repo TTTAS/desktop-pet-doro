@@ -8,7 +8,6 @@ import re
 import unittest
 from unittest.mock import patch
 
-
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("repo_map", ROOT / "scripts/repo_map.py")
 repo_map = importlib.util.module_from_spec(spec)
@@ -21,15 +20,31 @@ class RepoMapTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.write("doro.py", "from doro_app.alpha import Alpha\n")
-        self.write("doro_app/alpha.py", "from .beta import helper\nclass Alpha:\n    def run(self, value: int = 1) -> str:\n        return str(value)\n")
-        self.write("doro_app/beta.py", "def helper():\n    return 1\nraise RuntimeError('must not execute')\n")
+        self.write(
+            "doro_app/alpha.py",
+            "from .beta import helper\nclass Alpha:\n    def run(self, value: int = 1) -> str:\n        return str(value)\n",
+        )
+        self.write(
+            "doro_app/beta.py",
+            "def helper():\n    return 1\nraise RuntimeError('must not execute')\n",
+        )
         self.write("tests/test_alpha.py", "")
-        self.write("docs/ai/areas.json", json.dumps([{
-            "id": "alpha", "name": "測試模組", "aliases": ["範例"],
-            "scope": ["doro.py", "doro_app/*.py"],
-            "entries": ["doro_app/alpha.py"], "tests": ["tests/test_alpha.py"],
-            "purpose": "Test navigation.",
-        }]))
+        self.write(
+            "docs/ai/areas.json",
+            json.dumps(
+                [
+                    {
+                        "id": "alpha",
+                        "name": "測試模組",
+                        "aliases": ["範例"],
+                        "scope": ["doro.py", "doro_app/*.py"],
+                        "entries": ["doro_app/alpha.py"],
+                        "tests": ["tests/test_alpha.py"],
+                        "purpose": "Test navigation.",
+                    }
+                ]
+            ),
+        )
 
     def write(self, path, content):
         target = self.root / path
@@ -92,14 +107,22 @@ class RepoMapTests(unittest.TestCase):
             self.assertEqual(repo_map.main(["--check"]), 1)
 
     def test_navigation_links_resolve(self):
-        for relative in ("AGENTS.md", "CLAUDE.md", "docs/INDEX.md", "docs/REPO_MAP.md",
-                         "docs/ai/WORKFLOW.md", "docs/ai/FEATURE_GUIDE.md"):
+        for relative in (
+            "AGENTS.md",
+            "CLAUDE.md",
+            "docs/INDEX.md",
+            "docs/REPO_MAP.md",
+            "docs/ai/WORKFLOW.md",
+            "docs/ai/FEATURE_GUIDE.md",
+        ):
             document = ROOT / relative
             text = document.read_text(encoding="utf-8-sig")
             for link in re.findall(r"\]\(([^)]+)\)", text):
                 if "://" in link or link.startswith("#"):
                     continue
-                self.assertTrue((document.parent / link.split("#")[0]).exists(), f"{relative}: {link}")
+                self.assertTrue(
+                    (document.parent / link.split("#")[0]).exists(), f"{relative}: {link}"
+                )
 
 
 if __name__ == "__main__":

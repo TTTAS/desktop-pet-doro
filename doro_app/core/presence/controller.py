@@ -140,8 +140,10 @@ class PresenceController(QtCore.QObject):
                 self._orchestrator.present_character_reply(
                     answer,
                     should_present=lambda event=event, epoch=epoch: (
-                        not self._closed and self.settings["react"]
-                        and epoch == self._epoch and event == self.current_page
+                        not self._closed
+                        and self.settings["react"]
+                        and epoch == self._epoch
+                        and event == self.current_page
                     ),
                     on_present=self._remember_reaction,
                 )

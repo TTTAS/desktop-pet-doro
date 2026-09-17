@@ -17,14 +17,15 @@ from doro_app.core.automation.manager import AutomationManager, ClickOutcome
 
 from .conftest import ConfigManagerStub
 
-
 # ────────────────────────────────────────────────────────────────────────
 # Happy path / opt-in
 # ────────────────────────────────────────────────────────────────────────
 
 
 class TestEnabledGate:
-    def test_disabled_short_circuits_before_wind_up(self, fake_clicker, config_stub, fake_window, fake_backend, scheduler, clock, coord_stub):
+    def test_disabled_short_circuits_before_wind_up(
+        self, fake_clicker, config_stub, fake_window, fake_backend, scheduler, clock, coord_stub
+    ):
         config_stub.update_automation(mouse_enabled=False)
         manager = AutomationManager(
             config_manager=config_stub,
@@ -68,7 +69,9 @@ class TestAllowlistHit:
         coord_stub.end.assert_called_once()
         assert manager.is_busy is False
 
-    def test_transparent_toggle_brackets_the_click(self, manager, fake_backend, fake_window, scheduler):
+    def test_transparent_toggle_brackets_the_click(
+        self, manager, fake_backend, fake_window, scheduler
+    ):
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
         scheduler.flush()
@@ -79,7 +82,9 @@ class TestAllowlistHit:
 
 class TestAllowlistMiss:
     @pytest.mark.parametrize("bad_class", ["KeePassXC", "Bitwarden", None, "", "Gedit"])
-    def test_miss_aborts_without_click(self, fake_clicker, manager, fake_backend, scheduler, coord_stub, bad_class):
+    def test_miss_aborts_without_click(
+        self, fake_clicker, manager, fake_backend, scheduler, coord_stub, bad_class
+    ):
         fake_backend.set_window_class(bad_class)
         manager.execute_click()
         scheduler.flush()
@@ -108,10 +113,10 @@ class TestAllowlistMiss:
     @pytest.mark.parametrize(
         "win_class",
         [
-            "Chrome_WidgetWin_1",          # Windows Chrome main hwnd
+            "Chrome_WidgetWin_1",  # Windows Chrome main hwnd
             "Chrome_WidgetWin_0",
             "Chrome_RenderWidgetHostHWND",  # Chrome subwindow
-            "CHROME_WIDGETWIN_1",          # case-insensitive
+            "CHROME_WIDGETWIN_1",  # case-insensitive
         ],
     )
     def test_prefix_match_lets_chrome_family_through(
@@ -136,9 +141,9 @@ class TestAllowlistMiss:
         manager.execute_click()
         scheduler.flush()
 
-        assert manager.outcomes[-1] == ClickOutcome.FIRED, (
-            f"{win_class!r} should match the `Chrome` prefix"
-        )
+        assert (
+            manager.outcomes[-1] == ClickOutcome.FIRED
+        ), f"{win_class!r} should match the `Chrome` prefix"
 
     def test_prefix_match_does_not_match_unrelated_class(
         self, fake_clicker, fake_window, fake_backend, coord_stub, scheduler, clock
@@ -170,7 +175,12 @@ class TestForegroundVerification:
     didn't intend Doro to act on a window they aren't focused on."""
 
     def test_background_allowlisted_window_is_rejected(
-        self, fake_clicker, manager, fake_backend, scheduler, coord_stub,
+        self,
+        fake_clicker,
+        manager,
+        fake_backend,
+        scheduler,
+        coord_stub,
     ):
         fake_backend.set_window_class("Firefox")
         # Same class lives under the click point AND in foreground, but
@@ -186,7 +196,11 @@ class TestForegroundVerification:
         coord_stub.end.assert_called_once()
 
     def test_matching_foreground_is_accepted(
-        self, fake_clicker, manager, fake_backend, scheduler,
+        self,
+        fake_clicker,
+        manager,
+        fake_backend,
+        scheduler,
     ):
         fake_backend.set_window_class("Firefox")
         fake_backend.handle_at_default = 100
@@ -204,7 +218,11 @@ class TestForegroundVerification:
         assert fake_clicker.invoke_hwnds == [100]
 
     def test_missing_handle_skips_check(
-        self, fake_clicker, manager, fake_backend, scheduler,
+        self,
+        fake_clicker,
+        manager,
+        fake_backend,
+        scheduler,
     ):
         """When the backend can't supply hwnds (X11/macOS), fall back to
         the class-only gate — same as before this fix."""
@@ -218,7 +236,11 @@ class TestForegroundVerification:
         assert manager.outcomes[-1] == ClickOutcome.FIRED
 
     def test_doro_process_as_foreground_is_treated_as_aligned(
-        self, fake_clicker, manager, fake_backend, scheduler,
+        self,
+        fake_clicker,
+        manager,
+        fake_backend,
+        scheduler,
     ):
         """Doro spawns multiple top-level Qt windows (sprite, chat dialog,
         warning overlay, settings frame). Whichever of them happens to
@@ -227,8 +249,8 @@ class TestForegroundVerification:
         import os
 
         fake_backend.set_window_class("Firefox")
-        fake_backend.handle_at_default = 100   # Chrome (or w/e) under the cursor
-        fake_backend.foreground_handle = 999   # a different hwnd…
+        fake_backend.handle_at_default = 100  # Chrome (or w/e) under the cursor
+        fake_backend.foreground_handle = 999  # a different hwnd…
         fake_backend.pid_of_handle_map = {999: os.getpid()}  # …but it's Doro's
 
         manager.execute_click()
@@ -238,7 +260,11 @@ class TestForegroundVerification:
         assert manager.outcomes[-1] == ClickOutcome.FIRED
 
     def test_rejection_detail_includes_foreground_class(
-        self, fake_clicker, manager, fake_backend, scheduler,
+        self,
+        fake_clicker,
+        manager,
+        fake_backend,
+        scheduler,
     ):
         """When the gate rejects, the audit detail must name the class of
         the foreground window so the operator can tell *who* stole focus
@@ -269,7 +295,13 @@ class TestMultiMonitorClamp:
     the primary monitor."""
 
     def test_target_inside_secondary_monitor_passes_through(
-        self, fake_clicker, fake_backend, coord_stub, config_stub, scheduler, clock,
+        self,
+        fake_clicker,
+        fake_backend,
+        coord_stub,
+        config_stub,
+        scheduler,
+        clock,
     ):
         # Secondary monitor at x=1920..3839.
         from doro_app.core.automation.fakes import FakeAutomationWindow
@@ -306,7 +338,13 @@ class TestNotInvocable:
     in any case, so the LLM can retry without disrupting the user."""
 
     def test_no_clicker_wired_records_not_invocable(
-        self, config_stub, fake_window, fake_backend, coord_stub, scheduler, clock,
+        self,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         manager = AutomationManager(
             config_manager=config_stub,
@@ -327,9 +365,16 @@ class TestNotInvocable:
         coord_stub.end.assert_called_once()
 
     def test_clicker_returns_false_records_not_invocable(
-        self, config_stub, fake_window, fake_backend, coord_stub, scheduler, clock,
+        self,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         from doro_app.core.automation.fakes import FakeA11yClicker
+
         clicker = FakeA11yClicker(should_succeed=False)
         manager = AutomationManager(
             config_manager=config_stub,
@@ -350,11 +395,18 @@ class TestNotInvocable:
         assert manager.outcomes[-1] == ClickOutcome.NOT_INVOCABLE
 
     def test_allowlist_miss_short_circuits_before_invoke(
-        self, config_stub, fake_window, fake_backend, coord_stub, scheduler, clock,
+        self,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """Allowlist is the first defence — if the target class isn't
         allowed we never even ask the clicker."""
         from doro_app.core.automation.fakes import FakeA11yClicker
+
         clicker = FakeA11yClicker(should_succeed=True)
         manager = AutomationManager(
             config_manager=config_stub,
@@ -388,9 +440,7 @@ class TestRateLimit:
         assert len(scheduler.scheduled) == 1
         scheduler.flush()
 
-    def test_rate_limited_after_recent_click(
-        self, manager, fake_backend, scheduler, clock
-    ):
+    def test_rate_limited_after_recent_click(self, manager, fake_backend, scheduler, clock):
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
         scheduler.flush()  # first click fires
@@ -533,9 +583,7 @@ class TestKillSwitch:
         assert config_stub.automation.mouse_enabled is False
         assert config_stub.save_called >= 1
 
-    def test_kill_switch_blocks_subsequent_clicks(
-        self, manager, fake_backend, config_stub, clock
-    ):
+    def test_kill_switch_blocks_subsequent_clicks(self, manager, fake_backend, config_stub, clock):
         fake_backend.press_esc()
         clock.advance(0.1)
         fake_backend.press_esc()
@@ -545,9 +593,7 @@ class TestKillSwitch:
         outcome = manager.execute_click()
         assert outcome == ClickOutcome.KILL_SWITCH
 
-    def test_esc_outside_window_does_not_engage(
-        self, manager, fake_backend, config_stub, clock
-    ):
+    def test_esc_outside_window_does_not_engage(self, manager, fake_backend, config_stub, clock):
         # Three presses, but one is too far from the others.
         fake_backend.press_esc()
         clock.advance(0.1)
@@ -557,9 +603,7 @@ class TestKillSwitch:
 
         assert manager.is_kill_switch_engaged is False
 
-    def test_reset_kill_switch_re_arms_manager(
-        self, manager, fake_backend, config_stub, clock
-    ):
+    def test_reset_kill_switch_re_arms_manager(self, manager, fake_backend, config_stub, clock):
         """The settings dialog can re-arm clicking without an app restart."""
         # Engage by triple-Esc.
         fake_backend.press_esc()
@@ -694,10 +738,18 @@ class TestWindUpAnimator:
     """
 
     def _build_manager(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         from doro_app.core.automation.manager import AutomationManager
+
         return AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -710,12 +762,25 @@ class TestWindUpAnimator:
         )
 
     def test_begin_fires_when_wind_up_starts(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -726,12 +791,25 @@ class TestWindUpAnimator:
         assert wind_up_animator.end_calls == 0
 
     def test_fired_path_calls_end_exactly_once(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -739,12 +817,25 @@ class TestWindUpAnimator:
         assert wind_up_animator.end_calls == 1
 
     def test_allowlist_miss_still_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         fake_backend.set_window_class("KeePassXC")
         manager.execute_click()
@@ -752,12 +843,25 @@ class TestWindUpAnimator:
         assert wind_up_animator.end_calls == 1
 
     def test_esc_abort_still_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -766,12 +870,25 @@ class TestWindUpAnimator:
         assert wind_up_animator.end_calls == 1
 
     def test_grace_exceeded_still_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         fake_backend.set_window_class("Firefox")
         fake_backend.left_button_pressed = True
@@ -782,13 +899,26 @@ class TestWindUpAnimator:
         assert wind_up_animator.end_calls == 1
 
     def test_animator_exception_does_not_strand_other_locks(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, wind_up_animator,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        wind_up_animator,
     ):
         """A raising animator.end() must not block transition_coordinator.end()."""
         manager = self._build_manager(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, wind_up_animator,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            wind_up_animator,
         )
         wind_up_animator.raise_on_end = True
         fake_backend.set_window_class("Firefox")
@@ -797,11 +927,18 @@ class TestWindUpAnimator:
         coord_stub.end.assert_called_once()
 
     def test_manager_works_without_animator(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """``wind_up_animator`` is optional; older wiring must keep working."""
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -829,10 +966,19 @@ class TestClickWarningOverlay:
     """
 
     def _build(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay, bounds=(100, 200, 50, 30),
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
+        bounds=(100, 200, 50, 30),
     ):
         from doro_app.core.automation.manager import AutomationManager
+
         return AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -846,12 +992,26 @@ class TestClickWarningOverlay:
         )
 
     def test_begin_called_with_provider_bounds(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay, bounds=(10, 20, 80, 40),
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
+            bounds=(10, 20, 80, 40),
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -860,12 +1020,25 @@ class TestClickWarningOverlay:
         assert warning_overlay.end_calls == 0
 
     def test_fired_path_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -876,12 +1049,25 @@ class TestClickWarningOverlay:
         assert warning_overlay.end_calls >= 1
 
     def test_esc_abort_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -890,12 +1076,25 @@ class TestClickWarningOverlay:
         assert warning_overlay.end_calls == 1
 
     def test_allowlist_miss_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
         )
         fake_backend.set_window_class("KeePassXC")
         manager.execute_click()
@@ -906,12 +1105,25 @@ class TestClickWarningOverlay:
         assert warning_overlay.end_calls >= 1
 
     def test_grace_exceeded_calls_end(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
         )
         fake_backend.set_window_class("Firefox")
         fake_backend.left_button_pressed = True
@@ -922,13 +1134,21 @@ class TestClickWarningOverlay:
         assert warning_overlay.end_calls == 1
 
     def test_none_bounds_still_calls_begin(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         """When the bounds provider returns None (e.g. raw x/y move with no
         a11y id), the manager still drives the port — the adapter is the
         one that decides not to display anything."""
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -945,13 +1165,26 @@ class TestClickWarningOverlay:
         assert warning_overlay.begin_calls == [None]
 
     def test_overlay_exception_does_not_strand_other_locks(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         """A raising overlay.end() must not block transition_coordinator.end()."""
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, warning_overlay,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            warning_overlay,
         )
         warning_overlay.raise_on_end = True
         fake_backend.set_window_class("Firefox")
@@ -960,11 +1193,18 @@ class TestClickWarningOverlay:
         coord_stub.end.assert_called_once()
 
     def test_manager_works_without_overlay(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """``warning_overlay`` is optional; older wiring must keep working."""
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -984,13 +1224,22 @@ class TestClickTargetProvider:
     """Click coord sourcing: target_provider wins; foot is fallback."""
 
     def _build(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, target_provider, click_proximity_px=10_000,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        target_provider,
+        click_proximity_px=10_000,
     ):
         # Default to a very permissive proximity so this fixture exercises
         # target-vs-foot precedence without the proximity guard interfering.
         # Tests that exercise the proximity guard itself pass a smaller value.
         from doro_app.core.automation.manager import AutomationManager
+
         return AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -1004,13 +1253,25 @@ class TestClickTargetProvider:
         )
 
     def test_target_overrides_foot(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         # fake_window has foot at (500, 500). Target should win.
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, target_provider=lambda: (190, 102),
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            target_provider=lambda: (190, 102),
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -1018,12 +1279,24 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(190, 102)]
 
     def test_none_target_falls_back_to_foot(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, target_provider=lambda: None,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            target_provider=lambda: None,
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -1031,11 +1304,18 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(500, 500)]
 
     def test_no_provider_falls_back_to_foot(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """No `click_target_provider` arg → old behaviour: click at foot."""
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -1051,13 +1331,25 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(500, 500)]
 
     def test_target_clamped_to_screen(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         # fake_window default screen is 1920×1080. Off-screen target must clamp.
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, target_provider=lambda: (5000, -50),
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            target_provider=lambda: (5000, -50),
         )
         fake_backend.set_window_class("Firefox")
         manager.execute_click()
@@ -1065,14 +1357,25 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(1919, 0)]
 
     def test_far_target_falls_back_to_foot(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """Target beyond `click_proximity_px` from foot → click foot."""
         # foot at (500, 500), target at (1000, 1000) → ~707px away → over 300.
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
             target_provider=lambda: (1000, 1000),
             click_proximity_px=300,
         )
@@ -1082,14 +1385,25 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(500, 500)]
 
     def test_near_target_used_within_proximity(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """Target within `click_proximity_px` of foot → click target."""
         # foot at (500, 500), target at (550, 530) → ~58px away → under 300.
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock,
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
             target_provider=lambda: (550, 530),
             click_proximity_px=300,
         )
@@ -1099,19 +1413,32 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(550, 530)]
 
     def test_proximity_threshold_scales_with_dpr(
-        self, fake_clicker, config_stub, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """The logical-px threshold is scaled by DPR before comparing
         against the physical-px distance: 450px from foot exceeds 300
         at dpr=1.0 but fits within 300×2.0 at dpr=2.0."""
         from doro_app.core.automation.fakes import FakeAutomationWindow
+
         window = FakeAutomationWindow(
-            foot_logical=(500, 500), foot_physical=(500, 500), dpr=2.0,
+            foot_logical=(500, 500),
+            foot_physical=(500, 500),
+            dpr=2.0,
         )
         manager = self._build(
-            fake_clicker, config_stub, window, fake_backend, coord_stub,
-            scheduler, clock,
+            fake_clicker,
+            config_stub,
+            window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
             target_provider=lambda: (950, 500),  # 450px from foot
             click_proximity_px=300,
         )
@@ -1121,14 +1448,26 @@ class TestClickTargetProvider:
         assert fake_clicker.invoke_calls == [(950, 500)]
 
     def test_window_class_read_at_clicked_coord(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         """Allowlist check must use the actual click coord, not the foot —
         otherwise edge targets could be allowlisted via Doro's own window."""
         manager = self._build(
-            fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-            scheduler, clock, target_provider=lambda: (190, 102),
+            fake_clicker,
+            config_stub,
+            fake_window,
+            fake_backend,
+            coord_stub,
+            scheduler,
+            clock,
+            target_provider=lambda: (190, 102),
         )
         # Map: foot position belongs to Firefox, target belongs to KeePass.
         fake_backend.window_class_at = {
@@ -1157,10 +1496,18 @@ class TestSelfClickingTrapAtFire:
     be made pass-through BEFORE the class read, not just before click."""
 
     def test_overlay_hidden_before_class_read(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock, warning_overlay,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
+        warning_overlay,
     ):
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,
@@ -1180,10 +1527,17 @@ class TestSelfClickingTrapAtFire:
         assert warning_overlay.end_calls >= 1
 
     def test_main_window_transparent_during_class_read(
-        self, fake_clicker, config_stub, fake_window, fake_backend, coord_stub,
-        scheduler, clock,
+        self,
+        fake_clicker,
+        config_stub,
+        fake_window,
+        fake_backend,
+        coord_stub,
+        scheduler,
+        clock,
     ):
         from doro_app.core.automation.manager import AutomationManager
+
         manager = AutomationManager(
             config_manager=config_stub,
             window=fake_window,

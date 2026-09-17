@@ -87,7 +87,8 @@ class TestAnchorDriftFix:
         endpoints: list[QtCore.QPoint] = []
         for shift_dx, shift_dy in [(0, 0), (5, -3), (-7, 4)]:
             manager, window, _ = _make_manager_with_state_shift(
-                shift_dx=shift_dx, shift_dy=shift_dy,
+                shift_dx=shift_dx,
+                shift_dy=shift_dy,
             )
             manager.handle_move_bracket("move:to;x=400;y=300", [])
             for _ in range(200):
@@ -131,7 +132,8 @@ class TestAnchorDriftFix:
         manager.cancel_active_movement()
         # state revert applied its (+11, -7) shift; nothing snapped it away.
         expected = QtCore.QPoint(
-            pos_before_cancel.x() + 11, pos_before_cancel.y() - 7,
+            pos_before_cancel.x() + 11,
+            pos_before_cancel.y() - 7,
         )
         assert window.current_position() == expected
         assert window.current_position() != planned_target

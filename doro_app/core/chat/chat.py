@@ -26,9 +26,7 @@ def _dbg_llm(header: str, body: str) -> None:
 def build_messages_for_mistral_instruct(system_prompt: str, user_text: str) -> list[dict]:
     """Fold system content into first user message for Mistral instruct-compatible backends."""
     first_user = f"<<SYS>>\n{system_prompt.strip()}\n<</SYS>>\n\n{user_text.strip()}"
-    return [
-        {"role": "user", "content": first_user}
-    ]
+    return [{"role": "user", "content": first_user}]
 
 
 def resolve_chat_endpoint(server_url: str, endpoint_path: str) -> str:
@@ -126,7 +124,9 @@ def perform_chat_request(
         _dbg_llm("抽出的文字", assistant_text)
     else:
         logger.warning("Chat request returned no assistant text")
-        _dbg_llm("抽不出文字！（上面原始回傳裡沒有可用的 content，可能被 stop token 切掉或模型回空）", "")
+        _dbg_llm(
+            "抽不出文字！（上面原始回傳裡沒有可用的 content，可能被 stop token 切掉或模型回空）", ""
+        )
     return assistant_text, None
 
 

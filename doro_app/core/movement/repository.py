@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 # Data Models
 # ───────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class SpeedDefaults:
     """Default speed values (px/s) keyed by tier name."""
@@ -72,6 +73,7 @@ class MovementStateEntry:
 # ───────────────────────────────────────────────────────────
 # Repository
 # ───────────────────────────────────────────────────────────
+
 
 class MovementRepository:
     """Reads ``movements.json`` and exposes typed data models.

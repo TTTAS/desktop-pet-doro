@@ -73,10 +73,7 @@ class FramelessDialog(QtWidgets.QDialog):
 
     def __init__(self, title: str = "", parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.Dialog
-        )
+        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Dialog)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         # Outer layout (holds the painted card)

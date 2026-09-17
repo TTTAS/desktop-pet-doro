@@ -130,7 +130,9 @@ class TestPrecondition:
         sched = ManualScheduler()
         done: list[bool] = []
         phase = WaitPhase(
-            sig.subscribe, sched, precondition=lambda: False,
+            sig.subscribe,
+            sched,
+            precondition=lambda: False,
         )
 
         phase.start(lambda: done.append(True), lambda r: None)
@@ -148,7 +150,9 @@ class TestPrecondition:
         sched = ManualScheduler()
         done: list[bool] = []
         phase = WaitPhase(
-            sig.subscribe, sched, precondition=lambda: True,
+            sig.subscribe,
+            sched,
+            precondition=lambda: True,
         )
 
         phase.start(lambda: done.append(True), lambda r: None)

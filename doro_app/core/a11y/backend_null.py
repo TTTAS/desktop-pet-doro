@@ -19,6 +19,9 @@ class NullA11yBackend:
         return None
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: Optional[int] = None,
     ) -> bool:
         return False

@@ -139,16 +139,12 @@ class TestSetGifOperations:
         assert state is not None
         assert state.gif_id == "stored_gif_id"
 
-    def test_set_gif_returns_false_for_missing_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_set_gif_returns_false_for_missing_state(self, state_service_with_mocks: StateService):
         """Test set_gif returns False for non-existent state."""
         result = state_service_with_mocks.set_gif("missing", Path("/fake.gif"))
         assert result is False
 
-    def test_get_gif_id_returns_id_for_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_gif_id_returns_id_for_state(self, state_service_with_mocks: StateService):
         """Test getting GIF ID for a state."""
         state_service_with_mocks.add_state("test", "Test")
         state_service_with_mocks.update_state("test", gif_id="my_gif_123")
@@ -211,9 +207,7 @@ class TestGifStorageErrorHandling:
 class TestGifEncapsulation:
     """Test that GIF repository is properly encapsulated."""
 
-    def test_gif_repo_is_not_directly_accessible(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_gif_repo_is_not_directly_accessible(self, state_service_with_mocks: StateService):
         """Test that _gif_repo is private and not exposed."""
         # Should not be able to access _gif_repo through public API
         # This is a design test - accessing private attributes is possible but discouraged

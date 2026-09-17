@@ -11,9 +11,6 @@ from PySide6 import QtCore, QtWidgets
 from .bootstrap import BootstrappedDependencies, bootstrap_environment
 from .constants import (
     BUBBLE_AUTO_HIDE_MS,
-    BUBBLE_DEFAULT_OFFSET_X,
-    BUBBLE_DEFAULT_OFFSET_Y,
-    BUBBLE_DEFAULT_SCALE,
     CLICK_DRAG_THRESHOLD_PX,
 )
 from .core.action import ActionDispatcher
@@ -219,13 +216,18 @@ class DoroApp:
             self._state_service.set_state("idle")
 
         from .core.presence.controller import PresenceController
+
         self._presence = PresenceController(
             self._chat_orchestrator,
             self._chat_orchestrator._default_web_profile_dir().parent / "presence.json",
-            busy=lambda: (self._chat_orchestrator.is_inflight or self._chat_orchestrator.is_web_busy
-                          or self._mouse_handler.is_dragging
-                          or not self._action_dispatcher.is_idle or self._movement.has_active_movement
-                          or self._state_service.is_transitioning()),
+            busy=lambda: (
+                self._chat_orchestrator.is_inflight
+                or self._chat_orchestrator.is_web_busy
+                or self._mouse_handler.is_dragging
+                or not self._action_dispatcher.is_idle
+                or self._movement.has_active_movement
+                or self._state_service.is_transitioning()
+            ),
         )
         self._chat_orchestrator.set_presence(self._presence)
 
@@ -245,28 +247,16 @@ class DoroApp:
         # ═════════════════════════════════════════════════════════════
 
         # Chat domain events
-        self.core_manager.chat_response_received.connect(
-            self._on_chat_response_received
-        )
-        self.core_manager.chat_operation_started.connect(
-            self._on_chat_operation_started
-        )
-        self.core_manager.chat_operation_completed.connect(
-            self._on_chat_operation_completed
-        )
-        self.core_manager.chat_error_occurred.connect(
-            self._on_chat_error_occurred
-        )
+        self.core_manager.chat_response_received.connect(self._on_chat_response_received)
+        self.core_manager.chat_operation_started.connect(self._on_chat_operation_started)
+        self.core_manager.chat_operation_completed.connect(self._on_chat_operation_completed)
+        self.core_manager.chat_error_occurred.connect(self._on_chat_error_occurred)
 
         # State domain events
-        self.core_manager.state_changed.connect(
-            self._on_domain_state_changed
-        )
+        self.core_manager.state_changed.connect(self._on_domain_state_changed)
 
         # Transition domain events
-        self.core_manager.transition_completed.connect(
-            self._on_domain_transition_completed
-        )
+        self.core_manager.transition_completed.connect(self._on_domain_transition_completed)
 
         # TransitionPlayer → Window (UI-specific signal for playing GIF)
         self._transition_player.transition_movie_loaded.connect(
@@ -282,12 +272,8 @@ class DoroApp:
         self._bubble_controller.text_changed.connect(
             lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
         )
-        self._bubble_controller.visibility_changed.connect(
-            lambda *_: self.window.update()
-        )
-        self._bubble_controller.repaint_requested.connect(
-            self.window.update
-        )
+        self._bubble_controller.visibility_changed.connect(lambda *_: self.window.update())
+        self._bubble_controller.repaint_requested.connect(self.window.update)
         self._bubble_controller.update_bubble_side_requested.connect(
             self.window.update_bubble_side_from_offset
         )
@@ -300,17 +286,11 @@ class DoroApp:
         # ═════════════════════════════════════════════════════════════
 
         # State changes from StateController → CoreManager
-        self._state_controller.state_changed.connect(
-            self.core_manager.on_state_changed
-        )
+        self._state_controller.state_changed.connect(self.core_manager.on_state_changed)
 
         # Window output signals → Business Logic
-        self.window.tick_requested.connect(
-            self.core_manager.process_movement_tick
-        )
-        self.window.bubble_toggle_requested.connect(
-            self._on_bubble_toggle_requested
-        )
+        self.window.tick_requested.connect(self.core_manager.process_movement_tick)
+        self.window.bubble_toggle_requested.connect(self._on_bubble_toggle_requested)
 
     # ═════════════════════════════════════════════════════════════
     # Domain Event Translation Methods (Application Layer)
@@ -336,9 +316,7 @@ class DoroApp:
     def _on_chat_error_occurred(self, error_message: str):
         """Translate chat error domain event to UI notification."""
         self._dialog_manager.show_notification(
-            severity="error",
-            title="聊天錯誤",
-            message=error_message
+            severity="error", title="聊天錯誤", message=error_message
         )
 
     def _on_domain_state_changed(self, state_key: str):
@@ -422,9 +400,7 @@ class DoroApp:
                 self._click_action_controller.trigger_random_action(),
             )
         )
-        mouse_handler.user_activity_detected.connect(
-            self.window.mark_user_activity
-        )
+        mouse_handler.user_activity_detected.connect(self.window.mark_user_activity)
         # Idle behavior no longer resets on user activity: Doro acts on her
         # own fixed 1-3 min rhythm regardless of whether you're using the
         # computer, so this connection is intentionally omitted.
@@ -433,9 +409,7 @@ class DoroApp:
         # Connect UI controller signals → Window
         # ─────────────────────────────────────────────────────────
         self._state_controller.repaint_requested.connect(self.window.update)
-        self._state_controller.state_list_updated.connect(
-            self.window.on_state_list_updated
-        )
+        self._state_controller.state_list_updated.connect(self.window.on_state_list_updated)
 
         self._sprite_controller.repaint_requested.connect(self.window.update)
         self._sprite_controller.sprite_renderer_changed.connect(
@@ -561,8 +535,7 @@ class DoroApp:
             backend = PynputBackend()
         except Exception as exc:  # pragma: no cover - runtime path
             logger.warning(
-                f"pynput backend init failed; mouse-click automation "
-                f"unavailable ({exc})"
+                f"pynput backend init failed; mouse-click automation " f"unavailable ({exc})"
             )
             return None
 
@@ -592,9 +565,7 @@ class DoroApp:
         from .ui.click_warning_overlay import ClickWarningOverlay
 
         # Widget stays alive through the adapter → manager → DoroApp chain.
-        overlay_adapter = _QtClickWarningOverlayAdapter(
-            ClickWarningOverlay(), self.window
-        )
+        overlay_adapter = _QtClickWarningOverlayAdapter(ClickWarningOverlay(), self.window)
 
         # Cursor-free click backend. Production uses UIA's InvokePattern
         # via the already-built A11yService; on non-Windows (where the
@@ -603,6 +574,7 @@ class DoroApp:
         # the user's cursor.
         from .core.a11y import A11yClickerAdapter, NullA11yClicker
         import sys as _sys
+
         if _sys.platform == "win32" and self._a11y is not None:
             a11y_clicker = A11yClickerAdapter(self._a11y)
         else:
@@ -655,7 +627,9 @@ class DoroApp:
         presence = getattr(self, "_presence", None)
         if presence is not None:
             presence.interrupt()
-        animations = sorted(p for p in DRAG_DIR.glob("*") if p.suffix.lower() in {".gif", ".webp", ".apng"})
+        animations = sorted(
+            p for p in DRAG_DIR.glob("*") if p.suffix.lower() in {".gif", ".webp", ".apng"}
+        )
         random.shuffle(animations)
         for path in animations:
             if self._sprite_controller.start_drag_animation(path):
@@ -670,6 +644,7 @@ class DoroApp:
         until the OS reaps it.
         """
         from .utils.logger import get_logger as _gl
+
         logger = _gl(__name__)
         # (subsystem, attribute-on-self, method-name-on-subsystem)
         shutters = [
@@ -744,11 +719,14 @@ class DoroApp:
 
         try:
             from .core.a11y.service import A11yService
+
             if sys.platform == "win32":
                 from .core.a11y.backend_uiautomation import UIAutomationBackend
+
                 backend = UIAutomationBackend()
             else:
                 from .core.a11y.backend_null import NullA11yBackend
+
                 backend = NullA11yBackend()
             return A11yService(
                 config_manager=self._config_manager,
@@ -757,6 +735,7 @@ class DoroApp:
             )
         except Exception as exc:  # pragma: no cover - import/setup path
             from .utils.logger import get_logger as _gl
+
             _gl(__name__).warning(f"A11y setup failed: {exc}")
             return None
 
@@ -877,10 +856,7 @@ class _QtAutomationWindowAdapter:
         from .core.automation.coordinates import compute_physical_pixel_at
 
         fx, fy = self.foot_position_logical()
-        screen = (
-            _QtGui.QGuiApplication.screenAt(_QtCore.QPoint(fx, fy))
-            or self._window.screen()
-        )
+        screen = _QtGui.QGuiApplication.screenAt(_QtCore.QPoint(fx, fy)) or self._window.screen()
         if screen is None:
             return (fx, fy)
         geom = screen.geometry()
@@ -917,10 +893,12 @@ class _QtAutomationWindowAdapter:
             pass
 
         import sys
+
         if sys.platform != "win32":
             return
         try:
             import ctypes
+
             hwnd = int(self._window.winId())
             if hwnd == 0:
                 return
@@ -940,6 +918,7 @@ class _QtAutomationWindowAdapter:
                 user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new)
         except Exception:  # pragma: no cover - defensive
             from .utils.logger import get_logger as _gl
+
             _gl(__name__).exception("WS_EX_TRANSPARENT toggle failed")
 
     def screen_size_logical(self) -> tuple[int, int]:
@@ -953,7 +932,7 @@ class _QtAutomationWindowAdapter:
             return (1920, 1080)
 
     def screen_size_physical(self) -> tuple[int, int]:
-        l, t, w, h = self.screen_geometry_physical()
+        left, top, w, h = self.screen_geometry_physical()
         return (w, h)
 
     def screen_geometry_physical(self) -> tuple[int, int, int, int]:

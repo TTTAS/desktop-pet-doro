@@ -35,9 +35,9 @@ class TestInlineMovePattern:
     @pytest.mark.parametrize(
         "text",
         [
-            "remove left",   # "remove" contains "move" but shouldn't match
+            "remove left",  # "remove" contains "move" but shouldn't match
             "improve right",  # "improve" contains "move" but shouldn't match
-            "approved",       # "approved" contains partial keywords
+            "approved",  # "approved" contains partial keywords
         ],
     )
     def test_no_false_positives(self, text: str):

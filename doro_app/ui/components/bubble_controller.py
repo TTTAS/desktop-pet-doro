@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore
 
 from ...constants import (
     BUBBLE_SCALE_MIN,
@@ -53,7 +53,9 @@ class BubbleController(QtCore.QObject):
     scale_changed = QtCore.Signal(float)  # scale
     repaint_requested = QtCore.Signal()  # request window update
     update_bubble_side_requested = QtCore.Signal()  # request bubble side update
-    state_settings_apply_requested = QtCore.Signal(str)  # request state settings apply with state_key
+    state_settings_apply_requested = QtCore.Signal(
+        str
+    )  # request state settings apply with state_key
 
     def __init__(self, config_manager: ConfigManager):
         super().__init__()
@@ -255,7 +257,7 @@ class BubbleController(QtCore.QObject):
                 units.append(unit)
             else:
                 for i in range(0, len(unit), BUBBLE_CHUNK_MAX_CHARS):
-                    units.append(unit[i:i + BUBBLE_CHUNK_MAX_CHARS])
+                    units.append(unit[i : i + BUBBLE_CHUNK_MAX_CHARS])
 
         # Greedily pack units into chunks.
         chunks: list[str] = []

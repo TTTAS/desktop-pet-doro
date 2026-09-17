@@ -91,9 +91,7 @@ class ReactionDirector:
         if preempting:
             self._restore_key = inherited_restore
         else:
-            self._restore_key = (
-                self._current_key() if self._current_key is not None else None
-            )
+            self._restore_key = self._current_key() if self._current_key is not None else None
         self._run_next(self._generation)
         return True
 

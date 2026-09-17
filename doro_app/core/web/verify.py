@@ -117,8 +117,12 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
         lines.append(src.get("text", "")[:_PER_SOURCE_CHARS])
     lines.append("")
     lines.append("回答要求：")
-    lines.append("1. 依任務目的作答：探索／推薦就挑具體候選並說明特色或理由；查資料就回答問題；查證真偽才比對證據與矛盾。")
-    lines.append("2. 考慮各個分頁，挑相關內容，不必硬湊推薦數量。提到候選時用實際名稱，可附提供的網址，不要寫「來源1」「來源2」。")
+    lines.append(
+        "1. 依任務目的作答：探索／推薦就挑具體候選並說明特色或理由；查資料就回答問題；查證真偽才比對證據與矛盾。"
+    )
+    lines.append(
+        "2. 考慮各個分頁，挑相關內容，不必硬湊推薦數量。提到候選時用實際名稱，可附提供的網址，不要寫「來源1」「來源2」。"
+    )
     lines.append("3. 不足就說不確定，絕不要編。")
     lines.append("4. 純文字；開頭 (狀態)；2～4 句，約 150 字。")
     return "\n".join(lines)
@@ -275,7 +279,9 @@ class VerifyPipeline:
 
     def _view_as_result(self, view: PageView) -> SearchResult | None:
         if not getattr(view, "ok", False):
-            print(f"[doro verify] skip tab (bad snapshot): {getattr(view, 'error', '')}", flush=True)
+            print(
+                f"[doro verify] skip tab (bad snapshot): {getattr(view, 'error', '')}", flush=True
+            )
             return None
         if looks_like_captcha(view) or looks_like_login_wall(view):
             print(f"[doro verify] skip tab (block): {getattr(view, 'url', '')}", flush=True)

@@ -130,9 +130,7 @@ class TestPersistence:
         assert kwargs["server_url"] == "http://test:8000"
         assert kwargs["model"] == "test-model"
 
-    def test_updating_system_prompt_does_not_touch_config_manager(
-        self, settings, config_manager
-    ):
+    def test_updating_system_prompt_does_not_touch_config_manager(self, settings, config_manager):
         """System prompt is file-backed; it must not schedule a QSettings write."""
         with patch.object(settings._persist_timer, "start") as mock_start:
             settings.update_system_prompt("New")

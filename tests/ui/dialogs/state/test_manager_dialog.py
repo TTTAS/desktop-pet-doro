@@ -1,7 +1,5 @@
 """Tests for StateManagerDialog."""
 
-import pytest
-
 
 class TestStateManagerDialog:
     """Tests for StateManagerDialog class."""

@@ -162,7 +162,9 @@ class FakeAutomationWindow:
 
     # Test conveniences --------------------------------------------------
 
-    def move_foot_to(self, logical: tuple[int, int], physical: Optional[tuple[int, int]] = None) -> None:
+    def move_foot_to(
+        self, logical: tuple[int, int], physical: Optional[tuple[int, int]] = None
+    ) -> None:
         """Simulate the user dragging Doro to a new position during wind-up."""
         self._foot_logical = logical
         self._foot_physical = physical or logical

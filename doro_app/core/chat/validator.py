@@ -23,7 +23,9 @@ class ValidationResult:
     has_dialogue: bool = False
 
     @staticmethod
-    def success(*, has_state: bool = False, has_movement: bool = False, has_dialogue: bool = False) -> ValidationResult:
+    def success(
+        *, has_state: bool = False, has_movement: bool = False, has_dialogue: bool = False
+    ) -> ValidationResult:
         """Create a successful validation result."""
         return ValidationResult(
             valid=True,
@@ -107,7 +109,16 @@ class ResponseValidator:
 
         # Only fail on invalid directions (not invalid states)
         if invalid_directions:
-            valid_dirs = ["left", "right", "up", "down", "upleft", "upright", "downleft", "downright"]
+            valid_dirs = [
+                "left",
+                "right",
+                "up",
+                "down",
+                "upleft",
+                "upright",
+                "downleft",
+                "downright",
+            ]
             return ValidationResult.failure(
                 f"Invalid movement direction(s): {', '.join(invalid_directions)}. "
                 f"Valid directions: {', '.join(valid_dirs)}"

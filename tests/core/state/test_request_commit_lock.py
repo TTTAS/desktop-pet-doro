@@ -82,9 +82,7 @@ class TestLockTimeout:
 class TestRequestCommit:
     """requested_key vs committed_key on StateService."""
 
-    def test_request_without_lock_commits_immediately(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_request_without_lock_commits_immediately(self, state_service_with_mocks: StateService):
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.add_state("happy", "Happy")
@@ -114,9 +112,7 @@ class TestRequestCommit:
         assert service.get_requested_state_key() == "sad"
         assert service.get_committed_state_key() == "idle"
 
-    def test_end_transition_commits_last_request(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_end_transition_commits_last_request(self, state_service_with_mocks: StateService):
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.add_state("happy", "Happy")
@@ -138,9 +134,7 @@ class TestRequestCommit:
         assert event.old_key == "idle"
         assert event.new_key == "sad"
 
-    def test_set_state_is_thin_wrapper_for_request(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_set_state_is_thin_wrapper_for_request(self, state_service_with_mocks: StateService):
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.add_state("happy", "Happy")
@@ -170,9 +164,7 @@ class TestRequestCommit:
         assert service.end_transition() is True
         assert service.get_committed_state_key() == "walking"
 
-    def test_commit_state_writes_through_lock(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_commit_state_writes_through_lock(self, state_service_with_mocks: StateService):
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.add_state("happy", "Happy")
@@ -183,9 +175,7 @@ class TestRequestCommit:
         assert service.get_committed_state_key() == "happy"
         assert service.is_transitioning() is True
 
-    def test_request_missing_state_does_not_queue(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_request_missing_state_does_not_queue(self, state_service_with_mocks: StateService):
         service = state_service_with_mocks
         service.add_state("idle", "Idle")
         service.set_state("idle")
@@ -194,9 +184,7 @@ class TestRequestCommit:
         assert service.request_state("nope") is False
         assert service.get_requested_state_key() == "idle"
 
-    def test_lock_expiry_commits_pending_request(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_lock_expiry_commits_pending_request(self, state_service_with_mocks: StateService):
         """is_transitioning() must apply the queue when the lock times out."""
         clock = FakeClock()
         service = state_service_with_mocks

@@ -1,7 +1,6 @@
 """Tests for ConfigManager."""
 
 import pytest
-from pathlib import Path
 
 try:
     from PySide6 import QtCore

@@ -236,7 +236,9 @@ class WebSession:
                     continue
                 break
         logger.error(f"snapshot 失敗：{last_exc}")
-        return PageView(error=self._error_or_closed(last_exc or RuntimeError("snapshot"), "讀目前頁面"))
+        return PageView(
+            error=self._error_or_closed(last_exc or RuntimeError("snapshot"), "讀目前頁面")
+        )
 
     def collect_links(self) -> list[dict]:
         if not self.is_open:
@@ -286,7 +288,9 @@ class WebSession:
             return self._closed_error()
         try:
             locator = self._page.locator(f'[data-doro-idx="{int(index)}"]')
-            sensitive = locator.evaluate("el => el.type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.autocomplete || '')")
+            sensitive = locator.evaluate(
+                "el => el.type === 'password' || /^(current-password|new-password|one-time-code)$/.test(el.autocomplete || '')"
+            )
             if sensitive:
                 return "密碼或驗證碼請使用者自行輸入。"
             locator.fill(text)

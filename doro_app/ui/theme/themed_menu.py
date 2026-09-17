@@ -7,10 +7,10 @@ from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-
 # ─────────────────────────────────────────────────────────
 # Data objects passed into build_context_menu_content()
 # ─────────────────────────────────────────────────────────
+
 
 @dataclasses.dataclass(frozen=True)
 class MenuSnapshot:
@@ -63,7 +63,9 @@ class DoroMenu(QtWidgets.QMenu):
     - Custom styling for all menu elements
     """
 
-    def __init__(self, parent: QtWidgets.QWidget | None = None, *, avatar_position: str = "top-right"):
+    def __init__(
+        self, parent: QtWidgets.QWidget | None = None, *, avatar_position: str = "top-right"
+    ):
         """
         Initialize Doro-themed menu.
 
@@ -88,7 +90,7 @@ class DoroMenu(QtWidgets.QMenu):
                 current_margins.left(),
                 52,  # Extra 52px top margin (60 - 8 from stylesheet)
                 current_margins.right(),
-                current_margins.bottom()
+                current_margins.bottom(),
             )
 
     def set_avatar(self, pixmap: QtGui.QPixmap | None):
@@ -99,10 +101,9 @@ class DoroMenu(QtWidgets.QMenu):
     def _apply_doro_stylesheet(self):
         """Apply pink-themed stylesheet matching Doro's colors."""
         # Doro color palette
-        doro_pink = "#FF9BE3"      # Main hair color
+        doro_pink = "#FF9BE3"  # Main hair color
         doro_light_pink = "#FFC4F0"  # Lighter shade
-        doro_dark_pink = "#E86BD1"   # Darker shade
-        doro_accent = "#6CC1F0"      # Blue accent from gradient
+        doro_dark_pink = "#E86BD1"  # Darker shade
 
         stylesheet = f"""
         QMenu {{
@@ -190,7 +191,11 @@ class DoroMenu(QtWidgets.QMenu):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
         # Draw avatar if available
-        if self._avatar_pixmap and not self._avatar_pixmap.isNull() and self._avatar_position != "none":
+        if (
+            self._avatar_pixmap
+            and not self._avatar_pixmap.isNull()
+            and self._avatar_position != "none"
+        ):
             self._draw_avatar(painter)
 
         # Draw corner accent
@@ -226,10 +231,7 @@ class DoroMenu(QtWidgets.QMenu):
         glow_path = QtGui.QPainterPath()
         glow_path.addRoundedRect(glow_rect, (size + 6) / 2, (size + 6) / 2)
 
-        glow_gradient = QtGui.QRadialGradient(
-            glow_rect.center(),
-            size / 2 + 6
-        )
+        glow_gradient = QtGui.QRadialGradient(glow_rect.center(), size / 2 + 6)
         glow_gradient.setColorAt(0, QtGui.QColor(255, 155, 227, 120))
         glow_gradient.setColorAt(1, QtGui.QColor(255, 155, 227, 0))
         painter.fillPath(glow_path, glow_gradient)
@@ -246,9 +248,10 @@ class DoroMenu(QtWidgets.QMenu):
         painter.save()
         painter.setClipPath(path)
         scaled_pixmap = self._avatar_pixmap.scaled(
-            int(size), int(size),
+            int(size),
+            int(size),
             QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            QtCore.Qt.TransformationMode.SmoothTransformation
+            QtCore.Qt.TransformationMode.SmoothTransformation,
         )
         painter.drawPixmap(int(x), int(y), scaled_pixmap)
         painter.restore()
@@ -259,15 +262,12 @@ class DoroMenu(QtWidgets.QMenu):
         if self._avatar_position == "top-right":
             # Draw accent in bottom-left
             x, y = 8, self.height() - 8
-            angle_start = 180
         elif self._avatar_position == "top-left":
             # Draw accent in bottom-right
             x, y = self.width() - 8, self.height() - 8
-            angle_start = 0
         else:
             # No avatar, draw in top-right
             x, y = self.width() - 8, 8
-            angle_start = 0
 
         # Draw small decorative arc
         painter.save()

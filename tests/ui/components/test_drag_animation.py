@@ -11,21 +11,26 @@ from doro_app.ui.viewmodels.doro_viewmodel import DoroViewModel
 from doro_app.ui.window import DoroWindow
 from doro_app.utils.paths import DRAG_DIR
 
-
 LEFT = QtCore.Qt.MouseButton.LeftButton
 NONE = QtCore.Qt.MouseButton.NoButton
 
 
 def event(kind, x, *, local=5, button=NONE, buttons=LEFT):
     return QtGui.QMouseEvent(
-        kind, QtCore.QPointF(local, 5), QtCore.QPointF(x, 105),
-        button, buttons, QtCore.Qt.KeyboardModifier.NoModifier,
+        kind,
+        QtCore.QPointF(local, 5),
+        QtCore.QPointF(x, 105),
+        button,
+        buttons,
+        QtCore.Qt.KeyboardModifier.NoModifier,
     )
 
 
 def press(handler):
-    handler.handle_press(event(QtCore.QEvent.Type.MouseButtonPress, 105, button=LEFT),
-                         QtCore.QRect(100, 100, 200, 200))
+    handler.handle_press(
+        event(QtCore.QEvent.Type.MouseButtonPress, 105, button=LEFT),
+        QtCore.QRect(100, 100, 200, 200),
+    )
 
 
 def test_slow_drag_uses_total_screen_distance_and_does_not_click(qapp):
@@ -44,8 +49,9 @@ def test_slow_drag_uses_total_screen_distance_and_does_not_click(qapp):
     assert handler.is_dragging
     started.assert_called_once()
     assert moves[-1] == QtCore.QPoint(112, 100)
-    assert handler.handle_release(event(QtCore.QEvent.Type.MouseButtonRelease, 117,
-                                        button=LEFT, buttons=NONE)) == (True, False)
+    assert handler.handle_release(
+        event(QtCore.QEvent.Type.MouseButtonRelease, 117, button=LEFT, buttons=NONE)
+    ) == (True, False)
     finished.assert_called_once()
     clicks.assert_not_called()
     assert not handler.is_dragging
@@ -58,8 +64,9 @@ def test_click_does_not_play_drag_and_reset_is_idempotent(qapp):
     handler.drag_finished.connect(finished)
     handler.click_detected.connect(clicks)
     press(handler)
-    handler.handle_release(event(QtCore.QEvent.Type.MouseButtonRelease, 107,
-                                 button=LEFT, buttons=NONE))
+    handler.handle_release(
+        event(QtCore.QEvent.Type.MouseButtonRelease, 107, button=LEFT, buttons=NONE)
+    )
     started.assert_not_called()
     finished.assert_not_called()
     clicks.assert_called_once()
@@ -76,8 +83,11 @@ def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending):
     handler = MouseEventHandler()
     assets = sorted(DRAG_DIR.glob("*.webp"))
     app = SimpleNamespace(
-        _automation=Mock(), _action_dispatcher=Mock(), _movement=Mock(),
-        _presence=Mock(), _sprite_controller=sprite,
+        _automation=Mock(),
+        _action_dispatcher=Mock(),
+        _movement=Mock(),
+        _presence=Mock(),
+        _sprite_controller=sprite,
     )
     handler.drag_started.connect(lambda: DoroApp._on_doro_dragged(app))
     handler.drag_finished.connect(sprite.end_drag_animation)
@@ -103,15 +113,20 @@ def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending):
         assert sprite._view_model.sprite_size == normal_size
         count = sprite.gif_player.count()
         if ending == "release":
-            handler.handle_release(event(QtCore.QEvent.Type.MouseButtonRelease, 120,
-                                         button=LEFT, buttons=NONE))
+            handler.handle_release(
+                event(QtCore.QEvent.Type.MouseButtonRelease, 120, button=LEFT, buttons=NONE)
+            )
         elif ending == "reset":
             handler.reset()
         else:
             window = DoroWindow(state_service=Mock())
             qtbot.addWidget(window)
             window._mouse_handler = handler
-            kind = QtCore.QEvent.Type.WindowDeactivate if ending == "deactivate" else QtCore.QEvent.Type.UngrabMouse
+            kind = (
+                QtCore.QEvent.Type.WindowDeactivate
+                if ending == "deactivate"
+                else QtCore.QEvent.Type.UngrabMouse
+            )
             QtCore.QCoreApplication.sendEvent(window, QtCore.QEvent(kind))
         assert sprite.renderer.movie is latest
         assert sprite._drag_movie is None
@@ -140,9 +155,12 @@ def test_idle_defers_while_user_is_dragging(qapp, tmp_path):
     from doro_app.core.idle_behavior_manager import IdleBehaviorManager
 
     idle = IdleBehaviorManager(
-        companion_file=tmp_path / "missing.txt", chat_orchestrator=Mock(),
-        movement_manager=Mock(), state_service=Mock(),
-        idle_seconds_provider=lambda: 999, mark_activity=Mock(),
+        companion_file=tmp_path / "missing.txt",
+        chat_orchestrator=Mock(),
+        movement_manager=Mock(),
+        state_service=Mock(),
+        idle_seconds_provider=lambda: 999,
+        mark_activity=Mock(),
         interaction_busy=lambda: True,
     )
     try:

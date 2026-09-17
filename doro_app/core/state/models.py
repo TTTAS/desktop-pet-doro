@@ -233,11 +233,7 @@ class StateCollection(BaseCollection[State]):
     def visible_keys(self, movement_only_keys: set[str]) -> list[str]:
         """Get keys for states that should appear in UI menus."""
         blocked = {normalize_state_key(k) for k in movement_only_keys}
-        return [
-            k
-            for k in self._items.keys()
-            if k not in blocked and k not in self._hidden_keys
-        ]
+        return [k for k in self._items.keys() if k not in blocked and k not in self._hidden_keys]
 
     def protect(self, key: str) -> None:
         """Mark a state as protected (cannot be deleted)."""
@@ -299,8 +295,7 @@ class MoveStateCollection(BaseCollection[MoveState]):
         del self._items[key]
 
         still_in_use = any(
-            normalize_state_key(ms.state_key) == removed_state_key
-            for ms in self._items.values()
+            normalize_state_key(ms.state_key) == removed_state_key for ms in self._items.values()
         )
         if not still_in_use:
             self._movement_only_keys.discard(removed_state_key)

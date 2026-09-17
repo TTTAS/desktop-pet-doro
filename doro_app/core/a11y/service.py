@@ -149,15 +149,15 @@ class A11yService:
                 flush=True,
             )
             return False
-        future = self._executor.submit(
-            self._backend.invoke_at_physical_point, int(x), int(y), hwnd
-        )
+        future = self._executor.submit(self._backend.invoke_at_physical_point, int(x), int(y), hwnd)
         try:
             return bool(future.result(timeout=A11Y_INVOKE_TIMEOUT_SECONDS))
         except FuturesTimeout:
             logger.warning(
                 "a11y invoke at (%d,%d) exceeded %.1fs timeout — dropping click",
-                int(x), int(y), A11Y_INVOKE_TIMEOUT_SECONDS,
+                int(x),
+                int(y),
+                A11Y_INVOKE_TIMEOUT_SECONDS,
             )
             # Mirror to stdout so the failure shows up alongside the
             # backend's uia-trace block when reading the log.
@@ -171,9 +171,7 @@ class A11yService:
             logger.debug(f"a11y backend invoke raised: {exc}")
             return False
 
-    def bounds_at_physical_point(
-        self, x: int, y: int
-    ) -> Optional[tuple[int, int, int, int]]:
+    def bounds_at_physical_point(self, x: int, y: int) -> Optional[tuple[int, int, int, int]]:
         """Return ``(x, y, w, h)`` of the smallest cached element containing
         ``(x, y)`` in physical pixels, or None if no element covers it.
 
@@ -230,10 +228,7 @@ class A11yService:
         body = serialize(filtered) if filtered else ""
         if not body:
             visited = getattr(self._backend, "last_visited", 0)
-            hint = (
-                "前景視窗沒有可互動元件（按鈕／連結／輸入框等）。"
-                f"（走訪了 {visited} 個節點）"
-            )
+            hint = "前景視窗沒有可互動元件（按鈕／連結／輸入框等）。" f"（走訪了 {visited} 個節點）"
             if "chrome" in (window_cls or "").lower():
                 hint += (
                     "\nChrome 預設不對外開放網頁內容的無障礙樹；請開網頁無障礙："
@@ -255,7 +250,7 @@ class A11yService:
             import importlib.util
 
             if importlib.util.find_spec("uiautomation") is None:
-                msg += "；可能未安裝 uiautomation，請執行 pip install \"doro[a11y]\""
+                msg += '；可能未安裝 uiautomation，請執行 pip install "doro[a11y]"'
         return msg
 
     def clear_session_blacklist(self) -> None:
