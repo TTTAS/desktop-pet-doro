@@ -42,6 +42,7 @@ class SpriteController(QtCore.QObject):
         }
         self._renderer: SpriteRenderer = self._gif_renderer
         self._current_movie: QtGui.QMovie | None = None
+        self._drag_movie: QtGui.QMovie | None = None
 
     @property
     def renderer(self) -> SpriteRenderer:
@@ -88,6 +89,7 @@ class SpriteController(QtCore.QObject):
 
     def dispose_all(self) -> None:
         """Release resources for ALL renderers (call on application exit)."""
+        self.end_drag_animation()
         for r in self._renderers.values():
             if hasattr(r, "dispose"):
                 try:
@@ -124,6 +126,34 @@ class SpriteController(QtCore.QObject):
         self._gif_renderer.set_movie(movie)
         self._view_model.set_sprite_size(sprite_size)
         self.sprite_renderer_changed.emit()
+        self.repaint_requested.emit()
+
+    def start_drag_animation(self, path: Path) -> bool:
+        """Play a temporary gesture sprite without changing persisted state."""
+        if self._drag_movie is not None:
+            return True
+        movie = self._gif_player.load(path, size=self._view_model.sprite_size)
+        if movie is None:
+            return False
+        self._drag_movie = movie
+        movie.frameChanged.connect(self._on_drag_frame_changed)
+        movie.finished.connect(movie.start)
+        self._gif_renderer.set_temporary_movie(movie)
+        self.repaint_requested.emit()
+        return True
+
+    def end_drag_animation(self) -> None:
+        """Reveal the latest normal/transition sprite and release the drag movie."""
+        movie, self._drag_movie = self._drag_movie, None
+        if movie is None:
+            return
+        self._gif_renderer.set_temporary_movie(None)
+        movie.frameChanged.disconnect(self._on_drag_frame_changed)
+        movie.finished.disconnect(movie.start)
+        self._gif_player.stop(movie)
+        self.repaint_requested.emit()
+
+    def _on_drag_frame_changed(self, _frame_number: int) -> None:
         self.repaint_requested.emit()
 
     # ── Private helpers ────────────────────────────────────────

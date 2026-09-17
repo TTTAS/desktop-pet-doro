@@ -287,6 +287,15 @@ class DoroWindow(QtWidgets.QWidget):
         self._mouse_handler.handle_leave()
         super().leaveEvent(e)
 
+    def event(self, e: QtCore.QEvent):
+        # A lost mouse grab (e.g. deactivation) may have no release event.
+        if e.type() in (QtCore.QEvent.Type.UngrabMouse, QtCore.QEvent.Type.WindowDeactivate,
+                        QtCore.QEvent.Type.Hide):
+            handler = getattr(self, "_mouse_handler", None)
+            if handler is not None:
+                handler.reset()
+        return super().event(e)
+
     def keyPressEvent(self, e: QtGui.QKeyEvent):
         self.mark_user_activity()
         super().keyPressEvent(e)
@@ -596,9 +605,9 @@ class DoroWindow(QtWidgets.QWidget):
         try:
             # Clear all GIF resources via SpriteController
             if self._sprite_controller:
-                self._sprite_controller.gif_player.clear()
                 # Dispose ALL renderers (release any renderer-held resources)
                 self._sprite_controller.dispose_all()
+                self._sprite_controller.gif_player.clear()
 
             if self._timer:
                 try:

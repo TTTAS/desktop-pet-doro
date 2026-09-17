@@ -18,6 +18,7 @@ class MouseEventHandler(QtCore.QObject):
             the click/drag threshold — wired by the app to cancel any
             in-flight movement + queued click so dragging Doro mid-walk
             doesn't fire an unwanted click at the end.
+        drag_finished: Emitted once on release or cancellation of a drag.
         click_detected: Emitted when a click (not drag) is detected
         user_activity_detected: Emitted when any user interaction occurs
     """
@@ -25,6 +26,7 @@ class MouseEventHandler(QtCore.QObject):
     # Signals
     window_drag_requested = QtCore.Signal(QtCore.QPoint)  # global position for window
     drag_started = QtCore.Signal()
+    drag_finished = QtCore.Signal()
     click_detected = QtCore.Signal()
     user_activity_detected = QtCore.Signal()
 
@@ -43,6 +45,10 @@ class MouseEventHandler(QtCore.QObject):
         self._click_press_pos: QtCore.QPointF | None = None
         self._click_was_dragging = False
 
+    @property
+    def is_dragging(self) -> bool:
+        return self._click_was_dragging
+
     def handle_press(self, event: QtGui.QMouseEvent, frame_geometry: QtCore.QRect) -> bool:
         """
         Handle mouse press event.
@@ -59,7 +65,7 @@ class MouseEventHandler(QtCore.QObject):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             # Start window drag
             self._drag_pos = event.globalPosition().toPoint() - frame_geometry.topLeft()
-            self._click_press_pos = event.position()
+            self._click_press_pos = event.globalPosition()
             self._click_was_dragging = False
             return True
 
@@ -85,7 +91,7 @@ class MouseEventHandler(QtCore.QObject):
             if (
                 self._click_press_pos is not None
                 and not self._click_was_dragging
-                and (event.position() - self._click_press_pos).manhattanLength() > self._click_threshold
+                and (event.globalPosition() - self._click_press_pos).manhattanLength() > self._click_threshold
             ):
                 self._click_was_dragging = True
                 # One-shot: fires only on the false→true transition so
@@ -93,7 +99,8 @@ class MouseEventHandler(QtCore.QObject):
                 self.drag_started.emit()
 
             # Emit drag request
-            self.window_drag_requested.emit(event.globalPosition().toPoint() - self._drag_pos)
+            if self._click_was_dragging:
+                self.window_drag_requested.emit(event.globalPosition().toPoint() - self._drag_pos)
             return True
 
         return False
@@ -117,13 +124,11 @@ class MouseEventHandler(QtCore.QObject):
             was_click = (
                 not self._click_was_dragging
                 and self._click_press_pos is not None
-                and (event.position() - self._click_press_pos).manhattanLength() <= self._click_threshold
+                and (event.globalPosition() - self._click_press_pos).manhattanLength() <= self._click_threshold
             )
 
             # Reset state
-            self._drag_pos = None
-            self._click_press_pos = None
-            self._click_was_dragging = False
+            self.reset()
 
             # Emit click signal if detected
             if was_click:
@@ -131,11 +136,7 @@ class MouseEventHandler(QtCore.QObject):
 
             return (True, was_click)
 
-        # Reset state for non-left button
-        self._drag_pos = None
-        self._click_press_pos = None
-        self._click_was_dragging = False
-
+        # Releasing another button must not end an ongoing left-button drag.
         return (False, False)
 
     def handle_leave(self):
@@ -143,6 +144,9 @@ class MouseEventHandler(QtCore.QObject):
 
     def reset(self):
         """Reset internal state (e.g., when window loses focus)."""
+        was_dragging = self._click_was_dragging
         self._drag_pos = None
         self._click_press_pos = None
         self._click_was_dragging = False
+        if was_dragging:
+            self.drag_finished.emit()

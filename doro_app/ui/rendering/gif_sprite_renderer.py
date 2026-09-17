@@ -26,6 +26,7 @@ class GifSpriteRenderer:
     def __init__(self, view_model: DoroViewModel) -> None:
         self._view_model = view_model
         self._movie: QtGui.QMovie | None = None
+        self._temporary_movie: QtGui.QMovie | None = None
 
     @property
     def renderer_type(self) -> str:  # noqa: D401
@@ -41,18 +42,25 @@ class GifSpriteRenderer:
     @property
     def movie(self) -> QtGui.QMovie | None:
         """Direct access to underlying QMovie (needed by SpriteController)."""
-        return self._movie
+        return self._temporary_movie if self._temporary_movie is not None else self._movie
+
+    def set_temporary_movie(self, movie: QtGui.QMovie | None) -> None:
+        """Show a gesture animation while retaining the latest state movie."""
+        self._temporary_movie = movie
 
     def _is_movie_alive(self) -> bool:
         """Check if the underlying C++ QMovie object is still valid."""
-        if self._movie is None:
+        if self.movie is None:
             return False
         try:
-            self._movie.state()  # lightweight C++ call
+            self.movie.state()  # lightweight C++ call
             return True
         except RuntimeError:
             # C++ object already deleted
-            self._movie = None
+            if self._temporary_movie is not None:
+                self._temporary_movie = None
+            else:
+                self._movie = None
             return False
 
     # ── SpriteRenderer protocol ────────────────────────────────
@@ -68,8 +76,8 @@ class GifSpriteRenderer:
         painter.translate(center.x(), center.y() + bob)
         painter.scale(scale, scale)
 
-        if self._is_movie_alive() and not self._movie.currentPixmap().isNull():
-            pixmap = self._movie.currentPixmap()
+        if self._is_movie_alive() and not self.movie.currentPixmap().isNull():
+            pixmap = self.movie.currentPixmap()
             painter.translate(-pixmap.width() / 2.0, -pixmap.height() / 2.0)
             painter.drawPixmap(0, 0, pixmap)
         else:
@@ -85,17 +93,17 @@ class GifSpriteRenderer:
 
     def current_size(self) -> QtCore.QSize:
         if self._is_movie_alive():
-            rect = self._movie.frameRect()
+            rect = self.movie.frameRect()
             if rect.isValid():
                 return rect.size()
         return _FALLBACK_SIZE
 
     def is_valid(self) -> bool:
-        return self._is_movie_alive() and not self._movie.currentPixmap().isNull()
+        return self._is_movie_alive() and not self.movie.currentPixmap().isNull()
 
     def current_pixmap(self) -> QtGui.QPixmap | None:
-        if self._is_movie_alive() and self._movie.isValid():
-            pix = self._movie.currentPixmap()
+        if self._is_movie_alive() and self.movie.isValid():
+            pix = self.movie.currentPixmap()
             if not pix.isNull():
                 return pix
         return None
