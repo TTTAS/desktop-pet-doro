@@ -308,19 +308,30 @@ class StateManagerDialog(FramelessDialog):
         label = state.label or state_key
 
         dialog = GifGalleryDialog(state_key, label, gif_paths, parent=self)
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        try:
+            accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+        finally:
+            # accept()/reject() call hide(), not close(), so the dialog's
+            # closeEvent (and the cleanup it runs) never fires. Release the
+            # preview QMovies' file handles now — before we try to delete any
+            # GIF file — or Windows refuses the unlink with WinError 32.
+            dialog.cleanup()
+
+        if not accepted:
             return
 
-        changed = False
-        for filename in dialog.removed_filenames:
-            if self.service.remove_gif(state_key, filename):
-                changed = True
-        for path in dialog.added_paths:
-            if self.service.add_gif(state_key, path):
-                changed = True
+        # Our own state cards stream these same GIFs via QMovie (a shared
+        # GifPlayer), which keeps the files open and would block the unlink
+        # below on Windows (WinError 32). Release those handles before touching
+        # the files; _populate() at the end rebuilds the previews afresh.
+        self._gif_player.clear()
 
-        if changed:
-            self._populate()
+        for filename in dialog.removed_filenames:
+            self.service.remove_gif(state_key, filename)
+        for path in dialog.added_paths:
+            self.service.add_gif(state_key, path)
+
+        self._populate()
 
     def _on_remove(self, key: str):
         if self.service.is_state_protected(key):
