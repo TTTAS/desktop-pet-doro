@@ -1,13 +1,14 @@
 """Tests for ChatController - chat settings and request handling."""
 
 from unittest.mock import Mock
+
 import pytest
 from PySide6 import QtCore
 
 from doro_app.core.chat.controller import ChatController
 from doro_app.utils.config_defaults import (
-    DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_CHAT_STOP_TOKENS,
 )
 
 
@@ -109,7 +110,9 @@ class TestChatControllerInitialization:
         assert controller_with_qsettings.settings.server_url == "http://127.0.0.1:1234"  # Default
         assert controller_with_qsettings.settings.model == "lmstudio"  # Default
 
-    def test_initialization_with_config_manager(self, controller_with_config_manager, mock_config_manager):
+    def test_initialization_with_config_manager(
+        self, controller_with_config_manager, mock_config_manager
+    ):
         """ChatController can be initialized with ConfigManager."""
         assert controller_with_config_manager is not None
         # Should use ConfigManager values, not defaults
@@ -319,7 +322,7 @@ class TestPayloadBuilding:
         prompt = controller._compose_system_prompt()
 
         assert "[前景視窗元件樹]" in prompt
-        assert '書籤' in prompt
+        assert "書籤" in prompt
         assert prompt.index("[Doro 當下狀態]") < prompt.index("[前景視窗元件樹]")
 
     def test_compose_system_prompt_omits_a11y_tree_when_provider_empty(
@@ -389,6 +392,7 @@ class TestProviderCallbacks:
 
     def test_safe_call_provider_handles_errors(self, controller_with_qsettings):
         """_safe_call_provider handles provider exceptions gracefully."""
+
         def failing_provider():
             raise Exception("Provider failed")
 
@@ -399,6 +403,7 @@ class TestProviderCallbacks:
 
     def test_safe_call_provider_returns_value(self, controller_with_qsettings):
         """_safe_call_provider returns provider value."""
+
         def working_provider():
             return "test value"
 

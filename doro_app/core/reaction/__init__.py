@@ -29,11 +29,11 @@ __all__ = [
     "ReactionDirector",
     "ReactionRunner",
     "RestoreStep",
-    "build_default_runner",
     "SpeakStep",
     "StateStep",
     "Step",
     "Timeline",
     "WaitStep",
+    "build_default_runner",
     "speak_timeline",
 ]

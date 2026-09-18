@@ -133,22 +133,38 @@ def test_extension_focus_content_and_pause(tmp_path, website):
             # Attribute-only changes must refresh the bridge, including editor
             # transitions which must remove text from the shared snapshot.
             for attribute, value in (
-                ("hidden", ""), ("style", "display: none"),
-                ("aria-hidden", "true"), ("contenteditable", "true"),
+                ("hidden", ""),
+                ("style", "display: none"),
+                ("aria-hidden", "true"),
+                ("contenteditable", "true"),
             ):
                 page.locator("#article").evaluate(
-                    "(el, pair) => el.setAttribute(...pair)", [attribute, value],
+                    "(el, pair) => el.setAttribute(...pair)",
+                    [attribute, value],
                 )
-                eventually(page, lambda: bridge.current_page and "NEW_VISIBLE_FACT" not in bridge.current_page.text)
+                eventually(
+                    page,
+                    lambda: bridge.current_page
+                    and "NEW_VISIBLE_FACT" not in bridge.current_page.text,
+                )
                 page.locator("#article").evaluate(
-                    "(el, name) => el.removeAttribute(name)", attribute,
+                    "(el, name) => el.removeAttribute(name)",
+                    attribute,
                 )
-                eventually(page, lambda: bridge.current_page and "NEW_VISIBLE_FACT" in bridge.current_page.text)
+                eventually(
+                    page,
+                    lambda: bridge.current_page and "NEW_VISIBLE_FACT" in bridge.current_page.text,
+                )
             page.add_style_tag(content=".collapsed { display: none; }")
             page.locator("#article").evaluate("el => el.classList.add('collapsed')")
-            eventually(page, lambda: bridge.current_page and "NEW_VISIBLE_FACT" not in bridge.current_page.text)
+            eventually(
+                page,
+                lambda: bridge.current_page and "NEW_VISIBLE_FACT" not in bridge.current_page.text,
+            )
             page.locator("#article").evaluate("el => el.classList.remove('collapsed')")
-            eventually(page, lambda: bridge.current_page and "NEW_VISIBLE_FACT" in bridge.current_page.text)
+            eventually(
+                page, lambda: bridge.current_page and "NEW_VISIBLE_FACT" in bridge.current_page.text
+            )
             second = context.new_page()
             second.goto(website + "/two")
             second.bring_to_front()
@@ -177,6 +193,7 @@ def test_extension_focus_content_and_pause(tmp_path, website):
 
 def test_web_session_uses_native_window_viewport(tmp_path):
     from playwright.sync_api import sync_playwright
+
     from doro_app.core.web.session import WebSession
 
     session = WebSession(tmp_path / "profile", headless=True, browser_channel=None)

@@ -6,19 +6,19 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui
 
+from ...constants import (
+    PANEL_DEFAULT_HEIGHT_HINT,
+    PANEL_MAX_WIDTH,
+    PANEL_MIN_HEIGHT,
+    PANEL_MIN_WIDTH,
+    SPRITE_BOB_ALLOWANCE,
+    SPRITE_MARGIN_BOTTOM,
+    SPRITE_MARGIN_X,
+    SPRITE_MIN_SIZE,
+    SPRITE_PANEL_RESERVE_OFFSET,
+)
 from ..viewmodels.doro_viewmodel import DoroViewModel
 from .design_tokens import tokens
-from ...constants import (
-    SPRITE_MIN_SIZE,
-    SPRITE_MARGIN_X,
-    SPRITE_MARGIN_BOTTOM,
-    SPRITE_BOB_ALLOWANCE,
-    SPRITE_PANEL_RESERVE_OFFSET,
-    PANEL_DEFAULT_HEIGHT_HINT,
-    PANEL_MIN_WIDTH,
-    PANEL_MIN_HEIGHT,
-    PANEL_MAX_WIDTH,
-)
 
 if TYPE_CHECKING:
     from .sprite_renderer import SpriteRenderer
@@ -98,8 +98,7 @@ class RenderingEngine:
         margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
         max_center_y = window_size.height() - half_h - margin_bottom
-        if max_center_y < min_center_y:
-            max_center_y = min_center_y
+        max_center_y = max(max_center_y, min_center_y)
 
         # Calculate or use existing anchor
         if sprite_anchor_top is None:
@@ -190,14 +189,12 @@ class RenderingEngine:
         font = self._panel_font
         metrics = QtGui.QFontMetrics(font)
 
-        text_flags = int(
-            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
-        )
+        text_flags = int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
         text_flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
 
         available_text_width = max(60.0, panel_width - inner_padding_x * 2.0)
         text_metrics = metrics.boundingRect(
-            QtCore.QRect(0, 0, int(round(available_text_width)), int(PANEL_MAX_WIDTH)),
+            QtCore.QRect(0, 0, round(available_text_width), int(PANEL_MAX_WIDTH)),
             text_flags,
             text,
         )
@@ -205,7 +202,9 @@ class RenderingEngine:
         panel_height = max(panel_height_hint, text_height + inner_padding_y * 2.0)
 
         # Calculate panel position
-        sprite_half_h = float(max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0))
+        sprite_half_h = float(
+            max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0)
+        )
         gap = tokens.spacing.sprite_bubble_gap
         margin_top = tokens.spacing.margin_top
         margin_bottom = tokens.spacing.margin_bottom
@@ -260,9 +259,17 @@ class RenderingEngine:
         # Shadow rect
         shadow_rect = panel_rect.adjusted(
             0.0,
-            tokens.spacing.shadow_offset_below if place_below else tokens.spacing.shadow_offset_above,
+            (
+                tokens.spacing.shadow_offset_below
+                if place_below
+                else tokens.spacing.shadow_offset_above
+            ),
             0.0,
-            tokens.spacing.shadow_extend_below if place_below else tokens.spacing.shadow_extend_above
+            (
+                tokens.spacing.shadow_extend_below
+                if place_below
+                else tokens.spacing.shadow_extend_above
+            ),
         )
         corner_radius = tokens.radius.bubble
 
@@ -300,7 +307,9 @@ class RenderingEngine:
         sheen_gradient.setColorAt(0.6, QtGui.QColor(255, 255, 255, int(base_alpha * 0.12)))
         sheen_gradient.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
 
-        text_rect = panel_rect.adjusted(inner_padding_x, inner_padding_y, -inner_padding_x, -inner_padding_y)
+        text_rect = panel_rect.adjusted(
+            inner_padding_x, inner_padding_y, -inner_padding_x, -inner_padding_y
+        )
         text_option = QtGui.QTextOption(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         text_option.setWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
 

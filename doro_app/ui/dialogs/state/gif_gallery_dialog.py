@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 
 class GifThumbnail(QtWidgets.QFrame):
@@ -21,7 +20,7 @@ class GifThumbnail(QtWidgets.QFrame):
         gif_path: Path,
         gif_player: GifPlayer,
         removable: bool = True,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self.gif_path = gif_path
@@ -70,7 +69,9 @@ class GifThumbnail(QtWidgets.QFrame):
 
         # Filename label
         name_label = QtWidgets.QLabel(self.gif_path.name)
-        name_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #4a2040; border: none;")
+        name_label.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #4a2040; border: none;"
+        )
         name_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         name_label.setToolTip(self.gif_path.name)
         metrics = name_label.fontMetrics()
@@ -96,14 +97,14 @@ class GifGalleryDialog(FramelessDialog):
         state_key: str,
         state_label: str,
         gif_paths: list[Path],
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(f"GIF Gallery - {state_label}", parent)
         self.state_key = state_key
         self._gif_paths = list(gif_paths)
         self._gif_player = GifPlayer()
-        self._added: list[Path] = []       # GIFs to add
-        self._removed: list[str] = []      # filenames to remove
+        self._added: list[Path] = []  # GIFs to add
+        self._removed: list[str] = []  # filenames to remove
         self._thumbnails: list[GifThumbnail] = []
 
         self.setMinimumWidth(500)
@@ -200,7 +201,9 @@ class GifGalleryDialog(FramelessDialog):
 
         for i, (path, is_new) in enumerate(effective):
             # All existing GIFs are removable; new ones are also removable
-            thumb = GifThumbnail(path, self._gif_player, removable=True, parent=self._grid_container)
+            thumb = GifThumbnail(
+                path, self._gif_player, removable=True, parent=self._grid_container
+            )
             if is_new:
                 # Highlight new additions with a green border
                 thumb.setStyleSheet(
@@ -249,9 +252,7 @@ class GifGalleryDialog(FramelessDialog):
         total_remaining = remaining_original + remaining_new
 
         if total_remaining == 0:
-            QtWidgets.QMessageBox.warning(
-                self, "Cannot remove", "At least one GIF must remain."
-            )
+            QtWidgets.QMessageBox.warning(self, "Cannot remove", "At least one GIF must remain.")
             return
 
         self._removed.append(filename)

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import State, StateService
-from ...components.gif_player import GifPlayer
+from ....utils import paths
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 if TYPE_CHECKING:
     from ....core.action import ActionService
@@ -20,19 +20,20 @@ if TYPE_CHECKING:
 # Action Card Widget
 # ───────────────────────────────────────────────────────────
 
+
 class _ActionCard(QtWidgets.QFrame):
     """A card displaying a single movement or transition action."""
 
-    edit_clicked = QtCore.Signal(str, str)        # (action_type, key)
-    remove_clicked = QtCore.Signal(str, str)      # (action_type, key)
-    manage_gifs_clicked = QtCore.Signal(str)      # transition_key
+    edit_clicked = QtCore.Signal(str, str)  # (action_type, key)
+    remove_clicked = QtCore.Signal(str, str)  # (action_type, key)
+    manage_gifs_clicked = QtCore.Signal(str)  # transition_key
 
     CARD_WIDTH = 210
     PREVIEW_SIZE = 110
 
     def __init__(
         self,
-        action_type: str,           # "movement" | "transition" | "action"
+        action_type: str,  # "movement" | "transition" | "action"
         key: str,
         gif_paths: list[Path],
         gif_player: GifPlayer,
@@ -40,7 +41,7 @@ class _ActionCard(QtWidgets.QFrame):
         details: str = "",
         extra_info: str = "",
         removable: bool = True,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self._action_type = action_type
@@ -157,9 +158,7 @@ class _ActionCard(QtWidgets.QFrame):
         edit_btn = QtWidgets.QPushButton("Edit")
         edit_btn.setFixedHeight(26)
         edit_btn.setStyleSheet(self._small_btn_style())
-        edit_btn.clicked.connect(
-            lambda: self.edit_clicked.emit(self._action_type, self._key)
-        )
+        edit_btn.clicked.connect(lambda: self.edit_clicked.emit(self._action_type, self._key))
         btn_row.addWidget(edit_btn)
 
         if self._removable:
@@ -167,9 +166,7 @@ class _ActionCard(QtWidgets.QFrame):
             del_btn.setToolTip("Remove action")
             del_btn.setFixedHeight(26)
             del_btn.setStyleSheet(self._small_btn_danger_style())
-            del_btn.clicked.connect(
-                lambda: self.remove_clicked.emit(self._action_type, self._key)
-            )
+            del_btn.clicked.connect(lambda: self.remove_clicked.emit(self._action_type, self._key))
             btn_row.addWidget(del_btn)
 
         layout.addLayout(btn_row)
@@ -241,15 +238,16 @@ class _ActionCard(QtWidgets.QFrame):
 # Move State Manager Dialog
 # ───────────────────────────────────────────────────────────
 
+
 class MoveStateManagerDialog(FramelessDialog):
     """Dialog for managing movement and transition actions — card grid layout."""
 
     def __init__(
         self,
         service: StateService,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
-        action_service: Optional["ActionService"] = None,
+        action_service: ActionService | None = None,
     ):
         super().__init__("Action Manager", parent)
         self.service = service
@@ -316,7 +314,10 @@ class MoveStateManagerDialog(FramelessDialog):
                 gif_paths = self._get_state_gif_paths(state, move_state.state_key)
 
             card = _ActionCard(
-                "movement", key, gif_paths, self._gif_player,
+                "movement",
+                key,
+                gif_paths,
+                self._gif_player,
                 details=f"Dir: {move_state.direction}",
                 extra_info=f"Speed: {move_state.default_speed}",
                 parent=self._grid_container,
@@ -337,9 +338,16 @@ class MoveStateManagerDialog(FramelessDialog):
             ):
                 path = self._action_service.resolve_action_gif_path(action_key)
                 gif_paths = [path] if path else []
-                empty_hint = "尚未設定 GIF，點擊時保留目前外觀" if action_key == PET_CLICK_ACTION_KEY else "使用站立動畫備援"
+                empty_hint = (
+                    "尚未設定 GIF，點擊時保留目前外觀"
+                    if action_key == PET_CLICK_ACTION_KEY
+                    else "使用站立動畫備援"
+                )
                 card = _ActionCard(
-                    "action", action_key, gif_paths, self._gif_player,
+                    "action",
+                    action_key,
+                    gif_paths,
+                    self._gif_player,
                     details=description,
                     extra_info=empty_hint if not path else "",
                     removable=False,
@@ -359,7 +367,10 @@ class MoveStateManagerDialog(FramelessDialog):
             gif_paths = self._get_transition_gif_paths(transition.key)
 
             card = _ActionCard(
-                "transition", key, gif_paths, self._gif_player,
+                "transition",
+                key,
+                gif_paths,
+                self._gif_player,
                 details=f"{transition.from_state} \u2192 {transition.to_state}",
                 parent=self._grid_container,
             )
@@ -403,23 +414,33 @@ class MoveStateManagerDialog(FramelessDialog):
 
     def _on_add(self):
         from .edit_dialog import EditMoveStateDialog
+
         dialog = EditMoveStateDialog(
-            self.service, None, self, action_service=self._action_service,
+            self.service,
+            None,
+            self,
+            action_service=self._action_service,
         )
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._populate()
 
     def _on_edit(self, action_type: str, key: str):
         from .edit_dialog import EditMoveStateDialog
+
         if action_type == "action":
             dialog = EditMoveStateDialog(
-                self.service, None, self,
+                self.service,
+                None,
+                self,
                 action_service=self._action_service,
                 edit_action_key=key,
             )
         else:
             dialog = EditMoveStateDialog(
-                self.service, key, self, action_service=self._action_service,
+                self.service,
+                key,
+                self,
+                action_service=self._action_service,
             )
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._populate()
@@ -487,9 +508,9 @@ class MoveStateManagerDialog(FramelessDialog):
 
 def show_move_state_manager(
     service: StateService,
-    parent: Optional[QtWidgets.QWidget] = None,
+    parent: QtWidgets.QWidget | None = None,
     *,
-    action_service: Optional["ActionService"] = None,
+    action_service: ActionService | None = None,
 ):
     """Show movement state manager dialog."""
     dialog = MoveStateManagerDialog(service, parent, action_service=action_service)

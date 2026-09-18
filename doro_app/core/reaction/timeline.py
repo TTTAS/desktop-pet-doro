@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
 
 
 @dataclass(frozen=True)
@@ -51,7 +50,7 @@ class RestoreStep:
     force: bool = True
 
 
-Step = Union[StateStep, WaitStep, SpeakStep, MoveStep, RestoreStep]
+Step = StateStep | WaitStep | SpeakStep | MoveStep | RestoreStep
 
 
 @dataclass(frozen=True)

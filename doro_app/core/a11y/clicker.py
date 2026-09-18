@@ -13,14 +13,14 @@ Invoke() call succeeds; the manager surfaces False as
 
 from __future__ import annotations
 
-from typing import Optional, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from .service import A11yService
 
 
 class A11yClickerPort(Protocol):
-    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: int | None = None) -> bool:
         """Return True iff the UIA element under (x, y) was successfully invoked.
 
         ``hwnd`` is the OS top-level window handle the manager already
@@ -44,10 +44,10 @@ class A11yClickerAdapter:
     unconditionally even when the a11y service didn't come up.
     """
 
-    def __init__(self, a11y_service: "A11yService | None") -> None:
+    def __init__(self, a11y_service: A11yService | None) -> None:
         self._a11y = a11y_service
 
-    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: int | None = None) -> bool:
         if self._a11y is None:
             return False
         return self._a11y.invoke_at_point(int(x), int(y), hwnd=hwnd)
@@ -58,5 +58,5 @@ class NullA11yClicker:
     backend; the manager records NOT_INVOCABLE and the click is dropped
     instead of moving the cursor."""
 
-    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: int | None = None) -> bool:
         return False

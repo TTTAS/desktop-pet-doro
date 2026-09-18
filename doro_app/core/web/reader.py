@@ -110,9 +110,7 @@ class WebPageReader:
             from playwright.sync_api import sync_playwright
         except ImportError:
             logger.warning("Playwright 未安裝，無法讀網頁")
-            return WebReadResult(
-                url=url, title="", text="", error=_PLAYWRIGHT_MISSING_MSG
-            )
+            return WebReadResult(url=url, title="", text="", error=_PLAYWRIGHT_MISSING_MSG)
 
         logger.info(f"開始讀網頁：{url}")
         try:
@@ -120,7 +118,9 @@ class WebPageReader:
         except OSError as exc:
             logger.error(f"建立瀏覽器設定檔資料夾失敗：{exc}")
             return WebReadResult(
-                url=url, title="", text="",
+                url=url,
+                title="",
+                text="",
                 error=f"doro 建不出瀏覽器資料夾：{exc}",
             )
 
@@ -133,8 +133,7 @@ class WebPageReader:
                 try:
                     page = context.new_page()
                     page.set_default_timeout(self._nav_timeout_ms)
-                    page.goto(url, wait_until="domcontentloaded",
-                              timeout=self._nav_timeout_ms)
+                    page.goto(url, wait_until="domcontentloaded", timeout=self._nav_timeout_ms)
                     # 給吃 JavaScript 的頁面一點時間把內容渲染出來。
                     try:
                         page.wait_for_load_state("networkidle", timeout=5_000)
@@ -158,7 +157,9 @@ class WebPageReader:
 
         if not cleaned:
             return WebReadResult(
-                url=url, title=title, text="",
+                url=url,
+                title=title,
+                text="",
                 error="這頁 doro 讀不到內容（可能需要登入、或整頁都是圖片/影片）。",
             )
 

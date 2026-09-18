@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -22,5 +21,5 @@ class A11yElement:
     y: int
     width: int
     height: int
-    value: Optional[str] = None
+    value: str | None = None
     is_password: bool = False

@@ -101,7 +101,10 @@ class TestVerifyPipeline:
             [_r("https://a.com/1", content=_long()), _r("https://b.com/2", snippet="太短")]
         )
         session = FakeSessionProvider(
-            views=[PageView(error="blocked"), PageView(url="https://b.com/2", title="B", text=_long())]
+            views=[
+                PageView(error="blocked"),
+                PageView(url="https://b.com/2", title="B", text=_long()),
+            ]
         )
         final = []
 

@@ -171,9 +171,7 @@ class StateController(QtCore.QObject):
         """
         if not state_key:
             return False
-        return self._state_service.update_visual_config(
-            state_key, bubble_visible=visible
-        )
+        return self._state_service.update_visual_config(state_key, bubble_visible=visible)
 
     def get_state_list_text(self) -> str:
         """Get formatted state list text."""

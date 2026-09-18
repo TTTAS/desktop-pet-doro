@@ -2,26 +2,20 @@
 
 from pathlib import Path
 from unittest.mock import Mock
-import pytest
 
-from doro_app.core.state import State, MoveState, VisualConfig
 from doro_app.core.state import StateService
 
 
 class TestStateServiceInitialization:
     """Test StateService initialization and setup."""
 
-    def test_service_initializes_with_dependencies(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_service_initializes_with_dependencies(self, state_service_with_mocks: StateService):
         """Test that StateService initializes correctly with mocked dependencies."""
         assert state_service_with_mocks is not None
         assert state_service_with_mocks.on_state_changed is None
         assert state_service_with_mocks.on_states_modified is None
 
-    def test_service_event_callbacks_can_be_set(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_service_event_callbacks_can_be_set(self, state_service_with_mocks: StateService):
         """Test that event callbacks can be assigned."""
         mock_callback = Mock()
         state_service_with_mocks.on_state_changed = mock_callback
@@ -31,41 +25,30 @@ class TestStateServiceInitialization:
 class TestStateOperations:
     """Test basic state CRUD operations."""
 
-    def test_add_state_creates_new_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_add_state_creates_new_state(self, state_service_with_mocks: StateService):
         """Test adding a new state."""
-        state = state_service_with_mocks.add_state(
-            key="happy",
-            label="Happy State"
-        )
+        state = state_service_with_mocks.add_state(key="happy", label="Happy State")
 
         assert state is not None
         assert state.key == "happy"
         assert state.label == "Happy State"
         assert state_service_with_mocks.has_state("happy")
 
-    def test_add_state_with_copy_from(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_add_state_with_copy_from(self, state_service_with_mocks: StateService):
         """Test adding a state by copying from existing state."""
         # First add a base state
         state_service_with_mocks.add_state("base", "Base State")
 
         # Copy from it
         copied = state_service_with_mocks.add_state(
-            key="copy",
-            label="Copied State",
-            copy_from="base"
+            key="copy", label="Copied State", copy_from="base"
         )
 
         assert copied is not None
         assert copied.key == "copy"
         assert copied.label == "Copied State"
 
-    def test_get_state_returns_existing_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_state_returns_existing_state(self, state_service_with_mocks: StateService):
         """Test retrieving an existing state."""
         state_service_with_mocks.add_state("test", "Test State")
 
@@ -75,9 +58,7 @@ class TestStateOperations:
         assert retrieved.key == "test"
         assert retrieved.label == "Test State"
 
-    def test_get_state_returns_none_for_missing_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_state_returns_none_for_missing_state(self, state_service_with_mocks: StateService):
         """Test that get_state returns None for non-existent state."""
         result = state_service_with_mocks.get_state("nonexistent")
         assert result is None
@@ -95,16 +76,11 @@ class TestStateOperations:
         """Test has_state returns False for non-existent state."""
         assert state_service_with_mocks.has_state("missing") is False
 
-    def test_update_state_modifies_existing_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_update_state_modifies_existing_state(self, state_service_with_mocks: StateService):
         """Test updating an existing state."""
         state_service_with_mocks.add_state("update_me", "Original Label")
 
-        result = state_service_with_mocks.update_state(
-            "update_me",
-            label="Updated Label"
-        )
+        result = state_service_with_mocks.update_state("update_me", label="Updated Label")
 
         assert result is True
         updated = state_service_with_mocks.get_state("update_me")
@@ -115,15 +91,10 @@ class TestStateOperations:
         self, state_service_with_mocks: StateService
     ):
         """Test that updating non-existent state returns False."""
-        result = state_service_with_mocks.update_state(
-            "missing",
-            label="New Label"
-        )
+        result = state_service_with_mocks.update_state("missing", label="New Label")
         assert result is False
 
-    def test_remove_state_deletes_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_remove_state_deletes_state(self, state_service_with_mocks: StateService):
         """Test removing a state."""
         state_service_with_mocks.add_state("to_remove", "Remove Me")
         assert state_service_with_mocks.has_state("to_remove")
@@ -133,9 +104,7 @@ class TestStateOperations:
         assert result is True
         assert not state_service_with_mocks.has_state("to_remove")
 
-    def test_remove_protected_state_fails(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_remove_protected_state_fails(self, state_service_with_mocks: StateService):
         """Test that protected states cannot be removed."""
         # Initialize the service to create default states
         state_service_with_mocks.initialize()
@@ -146,9 +115,7 @@ class TestStateOperations:
         assert result is False
         assert state_service_with_mocks.has_state("idle")
 
-    def test_all_state_keys_returns_all_keys(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_all_state_keys_returns_all_keys(self, state_service_with_mocks: StateService):
         """Test getting all state keys."""
         state_service_with_mocks.add_state("state1", "State 1")
         state_service_with_mocks.add_state("state2", "State 2")
@@ -166,11 +133,7 @@ class TestStateOperations:
         state_service_with_mocks.add_state("walking", "Walking State")
 
         # Mark 'walking' as movement-only
-        state_service_with_mocks.add_move_state(
-            key="walk",
-            state_key="walking",
-            direction="right"
-        )
+        state_service_with_mocks.add_move_state(key="walk", state_key="walking", direction="right")
 
         visible_keys = state_service_with_mocks.visible_state_keys()
 
@@ -182,9 +145,7 @@ class TestStateOperations:
 class TestStateChanges:
     """Test state transition logic."""
 
-    def test_set_state_changes_current_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_set_state_changes_current_state(self, state_service_with_mocks: StateService):
         """Test setting the current state."""
         state_service_with_mocks.add_state("happy", "Happy")
 
@@ -194,9 +155,7 @@ class TestStateChanges:
         current = state_service_with_mocks.get_current_state_key()
         assert current == "happy"
 
-    def test_set_state_emits_event(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_set_state_emits_event(self, state_service_with_mocks: StateService):
         """Test that setting state emits state change event."""
         state_service_with_mocks.add_state("happy", "Happy")
 
@@ -215,9 +174,7 @@ class TestStateChanges:
         result = state_service_with_mocks.set_state("nonexistent")
         assert result is False
 
-    def test_get_current_state_returns_none_initially(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_current_state_returns_none_initially(self, state_service_with_mocks: StateService):
         """Test that current state is None before any state is set."""
         current = state_service_with_mocks.get_current_state()
         assert current is None
@@ -240,9 +197,7 @@ class TestVisualConfiguration:
         state_service_with_mocks.add_state("visual_test", "Visual Test")
 
         result = state_service_with_mocks.update_visual_config(
-            "visual_test",
-            bob_amplitude=10.0,
-            bubble_visible=False
+            "visual_test", bob_amplitude=10.0, bubble_visible=False
         )
 
         assert result is True
@@ -255,10 +210,7 @@ class TestVisualConfiguration:
         self, state_service_with_mocks: StateService
     ):
         """Test that updating visuals for non-existent state returns False."""
-        result = state_service_with_mocks.update_visual_config(
-            "missing",
-            bob_amplitude=5.0
-        )
+        result = state_service_with_mocks.update_visual_config("missing", bob_amplitude=5.0)
         assert result is False
 
     def test_update_state_visual_creates_modified_copy(
@@ -267,10 +219,7 @@ class TestVisualConfiguration:
         """Test that update_state_visual returns modified state."""
         state_service_with_mocks.add_state("modify_me", "Modify Me")
 
-        modified = state_service_with_mocks.update_state_visual(
-            "modify_me",
-            scale_amplitude=0.1
-        )
+        modified = state_service_with_mocks.update_state_visual("modify_me", scale_amplitude=0.1)
 
         assert modified is not None
         assert modified.visual.scale_amplitude == 0.1
@@ -279,9 +228,7 @@ class TestVisualConfiguration:
 class TestStateProtection:
     """Test protected state functionality."""
 
-    def test_is_state_protected_returns_true_for_idle(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_is_state_protected_returns_true_for_idle(self, state_service_with_mocks: StateService):
         """Test that 'idle' state is protected."""
         state_service_with_mocks.initialize()
         assert state_service_with_mocks.is_state_protected("idle") is True
@@ -356,9 +303,7 @@ class TestStateSaving:
         assert result is True
         assert mock_state_repo.save_all.called
 
-    def test_update_state_emits_modified_event(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_update_state_emits_modified_event(self, state_service_with_mocks: StateService):
         """Test that update_state emits states modified event."""
         state_service_with_mocks.add_state("test", "Test")
 

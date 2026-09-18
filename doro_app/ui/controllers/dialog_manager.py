@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 
@@ -30,7 +30,7 @@ class DialogManager:
         self,
         parent_window: QtWidgets.QWidget,
         state_service: StateService,
-        action_service: Optional["ActionService"] = None,
+        action_service: ActionService | None = None,
     ):
         """
         Initialize DialogManager.
@@ -49,11 +49,13 @@ class DialogManager:
     def show_state_manager(self) -> None:
         """Show the state manager dialog."""
         from ..dialogs.state import show_state_manager
+
         show_state_manager(self._state_service, parent=self._parent)
 
     def show_move_state_manager(self) -> None:
         """Show the move state manager dialog."""
         from ..dialogs.move_state import show_move_state_manager
+
         show_move_state_manager(
             self._state_service,
             parent=self._parent,
@@ -68,6 +70,7 @@ class DialogManager:
             New state key if created, None otherwise
         """
         from ..dialogs.state import show_add_state_dialog
+
         return show_add_state_dialog(self._state_service, parent=self._parent)
 
     def show_rename_dialog(self, current_state_key: str) -> bool:
@@ -96,10 +99,7 @@ class DialogManager:
         )
 
         if ok and text.strip():
-            self._state_service.update_state(
-                current_state_key,
-                name_tag=text.strip()
-            )
+            self._state_service.update_state(current_state_key, name_tag=text.strip())
             return True
 
         return False

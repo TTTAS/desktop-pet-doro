@@ -23,14 +23,11 @@ is recorded to a local-only audit log (never uploaded).
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from pathlib import Path
-from typing import Callable, Optional
 
-from .filters import filter_elements, is_blacklisted
-from .port import A11yBackendPort
-from .serializer import serialize
-from ..automation import window_class
 from ...constants import (
     A11Y_INVOKE_TIMEOUT_SECONDS,
     A11Y_PREVIEW_TIMEOUT_SECONDS,
@@ -39,11 +36,15 @@ from ...constants import (
 )
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
+from ..automation import window_class
+from .filters import filter_elements, is_blacklisted
+from .port import A11yBackendPort
+from .serializer import serialize
 
 logger = get_logger("doro.a11y")
 
-HandleProvider = Callable[[], Optional[int]]
-ClassProvider = Callable[[int], Optional[str]]
+HandleProvider = Callable[[], int | None]
+ClassProvider = Callable[[int], str | None]
 
 _TREE_HEADER = "[前景視窗元件樹]"
 _AUDIT_PATH = Path.home() / ".doro" / "share_audit.log"
@@ -117,7 +118,7 @@ class A11yService:
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
 
-    def invoke_at_point(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+    def invoke_at_point(self, x: int, y: int, hwnd: int | None = None) -> bool:
         """Fire the UIA InvokePattern on the element under physical (x, y).
 
         Self-gated by ``automation.a11y_enabled``: when a11y reads are
@@ -149,15 +150,15 @@ class A11yService:
                 flush=True,
             )
             return False
-        future = self._executor.submit(
-            self._backend.invoke_at_physical_point, int(x), int(y), hwnd
-        )
+        future = self._executor.submit(self._backend.invoke_at_physical_point, int(x), int(y), hwnd)
         try:
             return bool(future.result(timeout=A11Y_INVOKE_TIMEOUT_SECONDS))
         except FuturesTimeout:
             logger.warning(
                 "a11y invoke at (%d,%d) exceeded %.1fs timeout — dropping click",
-                int(x), int(y), A11Y_INVOKE_TIMEOUT_SECONDS,
+                int(x),
+                int(y),
+                A11Y_INVOKE_TIMEOUT_SECONDS,
             )
             # Mirror to stdout so the failure shows up alongside the
             # backend's uia-trace block when reading the log.
@@ -171,9 +172,7 @@ class A11yService:
             logger.debug(f"a11y backend invoke raised: {exc}")
             return False
 
-    def bounds_at_physical_point(
-        self, x: int, y: int
-    ) -> Optional[tuple[int, int, int, int]]:
+    def bounds_at_physical_point(self, x: int, y: int) -> tuple[int, int, int, int] | None:
         """Return ``(x, y, w, h)`` of the smallest cached element containing
         ``(x, y)`` in physical pixels, or None if no element covers it.
 
@@ -181,8 +180,8 @@ class A11yService:
         resolve to the inner one — that's almost always what we want to
         frame as "the thing being clicked".
         """
-        best: Optional[tuple[int, int, int, int]] = None
-        best_area: Optional[int] = None
+        best: tuple[int, int, int, int] | None = None
+        best_area: int | None = None
         for el in self._last_elements:
             if el.x <= x < el.x + el.width and el.y <= y < el.y + el.height:
                 area = el.width * el.height
@@ -230,10 +229,7 @@ class A11yService:
         body = serialize(filtered) if filtered else ""
         if not body:
             visited = getattr(self._backend, "last_visited", 0)
-            hint = (
-                "前景視窗沒有可互動元件（按鈕／連結／輸入框等）。"
-                f"（走訪了 {visited} 個節點）"
-            )
+            hint = "前景視窗沒有可互動元件（按鈕／連結／輸入框等）。" f"（走訪了 {visited} 個節點）"
             if "chrome" in (window_cls or "").lower():
                 hint += (
                     "\nChrome 預設不對外開放網頁內容的無障礙樹；請開網頁無障礙："
@@ -255,7 +251,7 @@ class A11yService:
             import importlib.util
 
             if importlib.util.find_spec("uiautomation") is None:
-                msg += "；可能未安裝 uiautomation，請執行 pip install \"doro[a11y]\""
+                msg += '；可能未安裝 uiautomation，請執行 pip install "doro[a11y]"'
         return msg
 
     def clear_session_blacklist(self) -> None:

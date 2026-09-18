@@ -3,9 +3,6 @@
 Tests the parsing of LLM action tokens into state keys.
 """
 
-from typing import Optional
-from unittest.mock import Mock
-
 import pytest
 
 from doro_app.core.state.state_parser import StateParser
@@ -35,7 +32,7 @@ class MockStateProvider:
         """Check if state is movement-only."""
         return key in self.movement_only
 
-    def find_state_by_label(self, label_query: str) -> Optional[str]:
+    def find_state_by_label(self, label_query: str) -> str | None:
         """Find state by label matching."""
         label_lower = label_query.lower()
         for key, label in self.labels.items():
@@ -196,9 +193,7 @@ class TestNormalization:
 
     def test_space_removal(self, parser, state_provider):
         """Try removing spaces if underscore doesn't work."""
-        provider = MockStateProvider(
-            states={"customstate"}, movement_only=set(), labels={}
-        )
+        provider = MockStateProvider(states={"customstate"}, movement_only=set(), labels={})
         result = parser.parse("custom state", provider)
         assert result == "customstate"
 
@@ -249,9 +244,7 @@ class TestMovementOnlyFiltering:
 
     def test_alias_to_movement_only_rejected(self, parser):
         """Alias targeting movement-only state is rejected."""
-        provider = MockStateProvider(
-            states={"walking"}, movement_only={"walking"}, labels={}
-        )
+        provider = MockStateProvider(states={"walking"}, movement_only={"walking"}, labels={})
         parser_with_alias = StateParser(action_aliases={"move": "walking"})
         result = parser_with_alias.parse("move", provider)
         assert result is None

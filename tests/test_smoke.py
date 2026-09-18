@@ -11,10 +11,10 @@ Think of smoke tests as "turn it on, does it smoke?" tests.
 """
 
 import pytest
-from pathlib import Path
 
 try:
     from PySide6 import QtCore
+
     HAS_PYSIDE6 = True
 except ImportError:
     HAS_PYSIDE6 = False
@@ -30,9 +30,9 @@ class TestStateServiceSmoke:
         """Create a StateService instance for testing."""
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
 
         # Create repositories
@@ -42,7 +42,13 @@ class TestStateServiceSmoke:
         state_list_path = tmp_path / "state_list.txt"
 
         # Create service
-        return StateService(state_repo, move_repo, gif_repo, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        return StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            state_list_path,
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
 
     def test_state_service_can_be_created(self, state_service):
         """StateService can be initialized without crashing."""
@@ -75,9 +81,9 @@ class TestStateServiceSmoke:
         """States can be persisted to disk."""
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
 
         # Create service, add state, save
@@ -86,7 +92,13 @@ class TestStateServiceSmoke:
         gif_repo = GifRepository(tmp_path / "resources")
         state_list_path = tmp_path / "state_list.txt"
 
-        service = StateService(state_repo, move_repo, gif_repo, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        service = StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            state_list_path,
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
         service.add_state("test", "Test State")
         service.save_states()
 
@@ -95,7 +107,13 @@ class TestStateServiceSmoke:
         move_repo2 = MoveStateRepository(tmp_path / "moves.json")
         gif_repo2 = GifRepository(tmp_path / "resources")
 
-        service2 = StateService(state_repo2, move_repo2, gif_repo2, state_list_path, transition_gif_repo=GifRepository(tmp_path / "transitions2"))
+        service2 = StateService(
+            state_repo2,
+            move_repo2,
+            gif_repo2,
+            state_list_path,
+            transition_gif_repo=GifRepository(tmp_path / "transitions2"),
+        )
         # Need to call initialize() to load states from disk
         service2.initialize()
 
@@ -112,9 +130,9 @@ class TestChatControllerSmoke:
         from doro_app.core.chat.controller import ChatController
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
         from doro_app.utils.config_manager import ConfigManager
 
@@ -130,7 +148,13 @@ class TestChatControllerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        state_service = StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            tmp_path / "state_list.txt",
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
 
         # This should not crash
         controller = ChatController(
@@ -147,9 +171,9 @@ class TestChatControllerSmoke:
         from doro_app.core.chat.controller import ChatController
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
         from doro_app.utils.config_manager import ConfigManager
 
@@ -163,7 +187,13 @@ class TestChatControllerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        state_service = StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            tmp_path / "state_list.txt",
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
 
         controller = ChatController(
             prompt_path=prompt_path,
@@ -189,29 +219,34 @@ class TestChatControllerSmoke:
         This test ensures the code follows the official PySide6 approach.
         """
         import inspect
-        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
 
         # Verify ChatWorker exists and is a QRunnable
-        from PySide6.QtCore import QRunnable, QObject
+        from PySide6.QtCore import QObject, QRunnable
+
+        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
+
         assert issubclass(ChatWorker, QRunnable), "ChatWorker should inherit from QRunnable"
 
         # Verify ChatWorkerSignals exists and is a QObject (needed for signals)
-        assert issubclass(ChatWorkerSignals, QObject), "ChatWorkerSignals should inherit from QObject"
+        assert issubclass(
+            ChatWorkerSignals, QObject
+        ), "ChatWorkerSignals should inherit from QObject"
 
         # Get source code of start_request method
         source = inspect.getsource(ChatController.start_request)
 
         # Verify it uses QThreadPool (official Qt pattern)
-        assert "self._pool.start" in source, \
-            "start_request should use self._pool.start (QThreadPool)"
+        assert (
+            "self._pool.start" in source
+        ), "start_request should use self._pool.start (QThreadPool)"
 
         # Verify it does NOT use QtConcurrent.run (not available in PySide6)
-        assert "QtConcurrent.run" not in source, \
-            "start_request should NOT use QtConcurrent.run (not available in PySide6)"
+        assert (
+            "QtConcurrent.run" not in source
+        ), "start_request should NOT use QtConcurrent.run (not available in PySide6)"
 
         # Verify it uses ChatWorker
-        assert "ChatWorker" in source, \
-            "start_request should create ChatWorker instances"
+        assert "ChatWorker" in source, "start_request should create ChatWorker instances"
 
 
 class TestMovementManagerSmoke:
@@ -219,14 +254,15 @@ class TestMovementManagerSmoke:
 
     def test_movement_manager_can_be_created(self, tmp_path):
         """MovementManager can be initialized."""
+        from unittest.mock import Mock
+
         from doro_app.core.movement.manager import MovementManager
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
-        from unittest.mock import Mock
 
         # Create mock window
         mock_window = Mock()
@@ -237,10 +273,17 @@ class TestMovementManagerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        state_service = StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            tmp_path / "state_list.txt",
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
 
         # This should not crash
         from doro_app.core.movement.repository import MovementRepository
+
         movement_repo = MovementRepository(tmp_path / "movements.json")
         movement_repo.load()
         manager = MovementManager(
@@ -252,14 +295,15 @@ class TestMovementManagerSmoke:
 
     def test_movement_instruction_text_loads(self, tmp_path):
         """Movement instruction text can be loaded."""
+        from unittest.mock import Mock
+
         from doro_app.core.movement.manager import MovementManager
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
-        from unittest.mock import Mock
 
         mock_window = Mock()
 
@@ -267,9 +311,16 @@ class TestMovementManagerSmoke:
         state_repo = StateRepository(tmp_path / "states.json")
         move_repo = MoveStateRepository(tmp_path / "moves.json")
         gif_repo = GifRepository(tmp_path / "resources")
-        state_service = StateService(state_repo, move_repo, gif_repo, tmp_path / "state_list.txt", transition_gif_repo=GifRepository(tmp_path / "transitions"))
+        state_service = StateService(
+            state_repo,
+            move_repo,
+            gif_repo,
+            tmp_path / "state_list.txt",
+            transition_gif_repo=GifRepository(tmp_path / "transitions"),
+        )
 
         from doro_app.core.movement.repository import MovementRepository
+
         movement_repo = MovementRepository(tmp_path / "movements.json")
         movement_repo.load()
         manager = MovementManager(mock_window, state_service, movement_repo)
@@ -288,9 +339,9 @@ class TestContextMenuSmoke:
         from doro_app.ui.theme import themed_menu
 
         # Check that key functions exist
-        assert hasattr(themed_menu, 'create_doro_menu')
-        assert hasattr(themed_menu, 'build_context_menu_content')
-        assert hasattr(themed_menu, 'DoroMenu')
+        assert hasattr(themed_menu, "create_doro_menu")
+        assert hasattr(themed_menu, "build_context_menu_content")
+        assert hasattr(themed_menu, "DoroMenu")
 
     def test_build_context_menu_uses_snapshot_callbacks(self):
         """
@@ -298,21 +349,25 @@ class TestContextMenuSmoke:
         instead of directly accessing business objects through the window.
         """
         import inspect
+
         from doro_app.ui.theme.themed_menu import build_context_menu_content
 
         source = inspect.getsource(build_context_menu_content)
 
         # After Phase 2 refactoring, the function should use snapshot/callbacks
-        assert "snapshot." in source, \
-            "Menu should read data from MenuSnapshot"
-        assert "callbacks." in source, \
-            "Menu should trigger actions via MenuCallbacks"
+        assert "snapshot." in source, "Menu should read data from MenuSnapshot"
+        assert "callbacks." in source, "Menu should trigger actions via MenuCallbacks"
 
         # Should NOT directly access business objects
-        for attr in ("state_controller", "state_service", "dialog_manager",
-                      "core_manager", "chat_ui", "default_idle_gif"):
-            assert f"window.{attr}" not in source, \
-                f"Menu should NOT access window.{attr} directly"
+        for attr in (
+            "state_controller",
+            "state_service",
+            "dialog_manager",
+            "core_manager",
+            "chat_ui",
+            "default_idle_gif",
+        ):
+            assert f"window.{attr}" not in source, f"Menu should NOT access window.{attr} directly"
 
     def test_context_menu_exec_compatibility(self):
         """
@@ -325,16 +380,19 @@ class TestContextMenuSmoke:
         This test ensures the controller handles both cases.
         """
         import inspect
+
         from doro_app.ui.components.context_menu_controller import (
             ContextMenuController,
         )
 
         source = inspect.getsource(ContextMenuController.show)
 
-        assert ("hasattr(menu, 'exec')" in source or "hasattr(menu, \"exec\")" in source), \
-            "ContextMenuController.show should check for exec availability"
-        assert ("exec_" in source), \
-            "ContextMenuController.show should fall back to exec_() for compatibility"
+        assert (
+            "hasattr(menu, 'exec')" in source or 'hasattr(menu, "exec")' in source
+        ), "ContextMenuController.show should check for exec availability"
+        assert (
+            "exec_" in source
+        ), "ContextMenuController.show should fall back to exec_() for compatibility"
 
 
 class TestMouseEventHandlingSmoke:
@@ -349,9 +407,11 @@ class TestMouseEventHandlingSmoke:
 
     def test_mouse_press_event_handles_left_button(self):
         """MouseEventHandler handles left button press."""
-        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
+
+        from PySide6 import QtCore, QtGui
+
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
 
         handler = MouseEventHandler()
 
@@ -369,9 +429,11 @@ class TestMouseEventHandlingSmoke:
 
     def test_mouse_press_event_ignores_right_button(self):
         """MouseEventHandler ignores right button (for context menu)."""
-        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
+
+        from PySide6 import QtCore, QtGui
+
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
 
         handler = MouseEventHandler()
 
@@ -392,32 +454,19 @@ class TestConstantsSmoke:
     def test_all_critical_constants_exist(self):
         """All newly added constants are importable."""
         from doro_app.constants import (
-            # Color
-            COLOR_ALPHA_MAX,
-            # Chat
-            CHAT_DEFAULT_HISTORY_TURNS,
-            CHAT_DEFAULT_TIMEOUT_SECONDS,
-            CHAT_DEFAULT_TEMPERATURE,
-            CHAT_DEFAULT_MAX_TOKENS,
-            CHAT_CONFIG_PERSIST_DELAY_MS,
-            CHAT_THREAD_CLEANUP_DELAY_MS,
-            # Movement
-            MOVEMENT_SPEED_SLOW,
-            MOVEMENT_SPEED_MEDIUM,
-            MOVEMENT_SPEED_FAST,
+            BUBBLE_SCALE_MAX,
             # Bubble
             BUBBLE_SCALE_MIN,
-            BUBBLE_SCALE_MAX,
+            # Chat
+            CHAT_DEFAULT_HISTORY_TURNS,
+            # Color
+            COLOR_ALPHA_MAX,
+            FALLBACK_SCREEN_WIDTH,
+            MOVEMENT_SPEED_FAST,
+            MOVEMENT_SPEED_MEDIUM,
+            MOVEMENT_SPEED_SLOW,
             # UI Layout
             PANEL_MIN_WIDTH,
-            PANEL_MIN_HEIGHT,
-            PANEL_PADDING,
-            PANEL_MAX_WIDTH,
-            # Screen/Window
-            FALLBACK_SCREEN_WIDTH,
-            FALLBACK_SCREEN_HEIGHT,
-            WINDOW_INITIAL_POSITION_OFFSET_X,
-            WINDOW_INITIAL_POSITION_OFFSET_Y,
         )
 
         # If any constant is missing, this test will fail at import time

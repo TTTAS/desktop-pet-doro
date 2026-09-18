@@ -1,7 +1,8 @@
 """Tests for WindowLayoutManager - pure layout calculation logic."""
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from PySide6 import QtCore, QtGui
 
 from doro_app.ui.layout.layout_manager import WindowLayoutManager
@@ -22,7 +23,7 @@ def mock_font_metrics():
         if len(args) >= 3:  # Has text argument
             text = args[2]
             # Rough estimate: ~16px per line
-            lines = max(1, len(text) // 30 + text.count('\n'))
+            lines = max(1, len(text) // 30 + text.count("\n"))
             mock_rect.height.return_value = lines * 16
         else:
             mock_rect.height.return_value = 16
@@ -30,7 +31,7 @@ def mock_font_metrics():
 
     mock_metrics.boundingRect.side_effect = mock_bounding_rect
 
-    with patch('PySide6.QtGui.QFontMetrics', return_value=mock_metrics):
+    with patch("PySide6.QtGui.QFontMetrics", return_value=mock_metrics):
         yield mock_metrics
 
 
@@ -223,9 +224,7 @@ class TestComputePanelSizeHint:
         width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, whitespace)
 
         # Should be same as empty text
-        empty_width, empty_height = WindowLayoutManager.compute_panel_size_hint(
-            sprite_size, ""
-        )
+        empty_width, empty_height = WindowLayoutManager.compute_panel_size_hint(sprite_size, "")
         assert width == empty_width
         assert height == empty_height
 
@@ -246,10 +245,10 @@ class TestComputePanelSizeHint:
         # Text with explicit newlines
         multiline = "Line 1\nLine 2\nLine 3\nLine 4"
 
-        width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, multiline)
+        _width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, multiline)
 
         # Should be taller than single line
-        single_width, single_height = WindowLayoutManager.compute_panel_size_hint(
+        _single_width, single_height = WindowLayoutManager.compute_panel_size_hint(
             sprite_size, "Single"
         )
         assert height > single_height

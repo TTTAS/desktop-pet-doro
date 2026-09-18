@@ -17,7 +17,7 @@ be unit-tested without Qt or a real Windows session.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from PySide6 import QtCore
 
@@ -25,11 +25,11 @@ from . import window_class
 
 
 def next_external_handle(
-    handle: Optional[int],
-    pid: Optional[int],
+    handle: int | None,
+    pid: int | None,
     own_pid: int,
-    previous: Optional[int],
-) -> Optional[int]:
+    previous: int | None,
+) -> int | None:
     """Return the handle to remember after sampling the foreground window.
 
     Keeps ``handle`` only when it is a valid window owned by a process other
@@ -53,8 +53,8 @@ class ForegroundTracker(QtCore.QObject):
         self,
         own_pid: int,
         *,
-        handle_provider: Callable[[], Optional[int]] = window_class.read_foreground_window_handle,
-        pid_provider: Callable[[int], Optional[int]] = window_class.pid_for_handle,
+        handle_provider: Callable[[], int | None] = window_class.read_foreground_window_handle,
+        pid_provider: Callable[[int], int | None] = window_class.pid_for_handle,
         interval_ms: int = 400,
         parent: QtCore.QObject | None = None,
     ) -> None:
@@ -63,7 +63,7 @@ class ForegroundTracker(QtCore.QObject):
         self._handle_provider = handle_provider
         self._pid_provider = pid_provider
         self._interval_ms = interval_ms
-        self._last: Optional[int] = None
+        self._last: int | None = None
         self._timer: QtCore.QTimer | None = None
 
     def _sample(self) -> None:
@@ -71,7 +71,7 @@ class ForegroundTracker(QtCore.QObject):
         pid = self._pid_provider(handle) if handle is not None else None
         self._last = next_external_handle(handle, pid, self._own_pid, self._last)
 
-    def handle(self) -> Optional[int]:
+    def handle(self) -> int | None:
         """Return the last remembered external window handle, or None."""
         return self._last
 

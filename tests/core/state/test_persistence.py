@@ -2,18 +2,14 @@
 
 from pathlib import Path
 from unittest.mock import Mock
-import pytest
 
-from doro_app.core.state import Transition
-from doro_app.core.state import StateService
+from doro_app.core.state import StateService, Transition
 
 
 class TestStateListWriting:
     """Test state list writing functionality."""
 
-    def test_write_state_list_returns_string(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_write_state_list_returns_string(self, state_service_with_mocks: StateService):
         """Test that write_state_list returns a string summary."""
         state_service_with_mocks.add_state("happy", "Happy State")
         state_service_with_mocks.add_state("sad", "Sad State")
@@ -38,9 +34,7 @@ class TestStateListWriting:
         # (exact format depends on StateListWriter implementation)
         assert isinstance(result, str)
 
-    def test_write_state_list_handles_empty_states(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_write_state_list_handles_empty_states(self, state_service_with_mocks: StateService):
         """Test write_state_list works with no custom states."""
         # Just initialize with defaults
         state_service_with_mocks.initialize()
@@ -70,18 +64,12 @@ class TestStateListWriting:
 class TestMoveStateOperations:
     """Test movement state operations."""
 
-    def test_add_move_state_creates_movement(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_add_move_state_creates_movement(self, state_service_with_mocks: StateService):
         """Test adding a movement state."""
         state_service_with_mocks.add_state("walking", "Walking")
 
         move = state_service_with_mocks.add_move_state(
-            key="walk_right",
-            state_key="walking",
-            direction="right",
-            distance=100.0,
-            speed="fast"
+            key="walk_right", state_key="walking", direction="right", distance=100.0, speed="fast"
         )
 
         assert move is not None
@@ -91,15 +79,11 @@ class TestMoveStateOperations:
         assert move.default_distance == 100.0
         assert move.default_speed == "fast"
 
-    def test_get_move_state_returns_existing_movement(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_move_state_returns_existing_movement(self, state_service_with_mocks: StateService):
         """Test retrieving a movement state."""
         state_service_with_mocks.add_state("walking", "Walking")
         state_service_with_mocks.add_move_state(
-            key="walk_left",
-            state_key="walking",
-            direction="left"
+            key="walk_left", state_key="walking", direction="left"
         )
 
         move = state_service_with_mocks.get_move_state("walk_left")
@@ -121,9 +105,7 @@ class TestMoveStateOperations:
         assert "move1" in keys
         assert "move2" in keys
 
-    def test_find_move_states_by_direction(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_find_move_states_by_direction(self, state_service_with_mocks: StateService):
         """Test finding movement states by direction."""
         state_service_with_mocks.add_state("walking", "Walking")
         state_service_with_mocks.add_move_state("walk_right", "walking", "right")
@@ -134,9 +116,7 @@ class TestMoveStateOperations:
         assert len(right_moves) >= 1
         assert any(m.key == "walk_right" for m in right_moves)
 
-    def test_remove_move_state_deletes_movement(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_remove_move_state_deletes_movement(self, state_service_with_mocks: StateService):
         """Test removing a movement state."""
         state_service_with_mocks.add_state("walking", "Walking")
         state_service_with_mocks.add_move_state("to_remove", "walking", "up")
@@ -146,9 +126,7 @@ class TestMoveStateOperations:
         assert result is True
         assert state_service_with_mocks.get_move_state("to_remove") is None
 
-    def test_is_movement_only_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_is_movement_only_state(self, state_service_with_mocks: StateService):
         """Test checking if a state is movement-only."""
         state_service_with_mocks.add_state("walking", "Walking")
         state_service_with_mocks.add_move_state("walk", "walking", "any")
@@ -159,9 +137,7 @@ class TestMoveStateOperations:
         # This depends on implementation details
         assert isinstance(is_movement, bool)
 
-    def test_get_default_movement_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_get_default_movement_state(self, state_service_with_mocks: StateService):
         """Test getting the default movement state."""
         state_service_with_mocks.initialize()
 
@@ -174,9 +150,7 @@ class TestMoveStateOperations:
 class TestTransitionOperations:
     """Test transition state operations."""
 
-    def test_add_transition_creates_transition(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_add_transition_creates_transition(self, state_service_with_mocks: StateService):
         """Test adding a transition state."""
         state_service_with_mocks.add_state("idle", "Idle")
         state_service_with_mocks.add_state("happy", "Happy")
@@ -185,7 +159,7 @@ class TestTransitionOperations:
             key="idle_to_happy",
             from_state="idle",
             to_state="happy",
-            transition_gif_id="transition_gif"
+            transition_gif_id="transition_gif",
         )
         result = state_service_with_mocks.add_transition(transition)
 
@@ -212,9 +186,7 @@ class TestTransitionOperations:
         assert transition.from_state == "a"
         assert transition.to_state == "b"
 
-    def test_find_transition_by_states(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_find_transition_by_states(self, state_service_with_mocks: StateService):
         """Test finding a transition by from/to states."""
         state_service_with_mocks.add_state("idle", "Idle")
         state_service_with_mocks.add_state("happy", "Happy")
@@ -245,9 +217,7 @@ class TestTransitionOperations:
         assert "t1" in keys
         assert "t2" in keys
 
-    def test_remove_transition_deletes_transition(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_remove_transition_deletes_transition(self, state_service_with_mocks: StateService):
         """Test removing a transition."""
         state_service_with_mocks.add_state("x", "X")
         state_service_with_mocks.add_state("y", "Y")

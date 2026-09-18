@@ -48,7 +48,7 @@ class TestMaxRetryGate:
         assert policy.next_retry(_invalid()) is not None  # attempt 1
         assert policy.next_retry(_invalid()) is not None  # attempt 2
         assert policy.next_retry(_invalid()) is not None  # attempt 3
-        assert policy.next_retry(_invalid()) is None       # gate trips
+        assert policy.next_retry(_invalid()) is None  # gate trips
         assert policy.attempt == 3
 
     def test_zero_max_retries_never_retries(self):

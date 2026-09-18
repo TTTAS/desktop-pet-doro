@@ -3,7 +3,7 @@
 Extracts and normalizes state keys from LLM responses.
 """
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 class StateProvider(Protocol):
@@ -17,7 +17,7 @@ class StateProvider(Protocol):
         """Check if state is movement-only."""
         ...
 
-    def find_state_by_label(self, label_query: str) -> Optional[str]:
+    def find_state_by_label(self, label_query: str) -> str | None:
         """Find state by label matching."""
         ...
 
@@ -39,7 +39,7 @@ class StateParser:
     - Know about Qt or UI
     """
 
-    def __init__(self, action_aliases: Optional[dict[str, str]] = None):
+    def __init__(self, action_aliases: dict[str, str] | None = None):
         """
         Initialize parser.
 
@@ -53,7 +53,7 @@ class StateParser:
             action_aliases = ACTION_ALIASES
         self._action_aliases = action_aliases
 
-    def parse(self, action: str, state_provider: StateProvider) -> Optional[str]:
+    def parse(self, action: str, state_provider: StateProvider) -> str | None:
         """
         Parse state key from action token.
 
@@ -102,9 +102,12 @@ class StateParser:
 
         # Check aliases (e.g., "sleep" -> "idle")
         alias_target = self._action_aliases.get(normalized)
-        if alias_target and state_provider.get_state(alias_target):
-            if not state_provider.is_movement_only_state(alias_target):
-                return alias_target
+        if (
+            alias_target
+            and state_provider.get_state(alias_target)
+            and not state_provider.is_movement_only_state(alias_target)
+        ):
+            return alias_target
 
         # Try various normalized forms
         candidates = {
@@ -119,9 +122,10 @@ class StateParser:
             candidates.add(sanitized)
 
         for candidate in candidates:
-            if state_provider.get_state(candidate):
-                if not state_provider.is_movement_only_state(candidate):
-                    return candidate
+            if state_provider.get_state(candidate) and not state_provider.is_movement_only_state(
+                candidate
+            ):
+                return candidate
 
         # Try matching by label
         result = state_provider.find_state_by_label(normalized)

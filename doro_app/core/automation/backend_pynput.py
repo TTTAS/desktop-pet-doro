@@ -17,7 +17,7 @@ missing class as "not in allowlist" and refuses to fire.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from ...utils.logger import get_logger
 
@@ -31,8 +31,8 @@ class PynputBackend:
         # Defer the pynput import so importing this module on a system
         # without pynput doesn't break (Doro can run without automation).
         try:
-            from pynput import mouse as _mouse
             from pynput import keyboard as _keyboard
+            from pynput import mouse as _mouse
         except ImportError as exc:  # pragma: no cover - install-time path
             raise RuntimeError(
                 "pynput is required for automation; install with: pip install pynput"
@@ -45,29 +45,29 @@ class PynputBackend:
         self._Key = _keyboard.Key
         self._Listener = _keyboard.Listener
 
-        self._listener: Optional[_keyboard.Listener] = None
+        self._listener: _keyboard.Listener | None = None
         self._left_pressed = False
-        self._mouse_listener: Optional[_mouse.Listener] = None
+        self._mouse_listener: _mouse.Listener | None = None
         self._install_mouse_state_listener(_mouse)
 
     # ------------------------------------------------------------------ InputBackendPort
 
-    def read_window_class_at(self, x: int, y: int) -> Optional[str]:
+    def read_window_class_at(self, x: int, y: int) -> str | None:
         from .window_class import read_at
 
         return read_at(x, y)
 
-    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+    def read_handle_at(self, x: int, y: int) -> int | None:
         from .window_class import read_handle_at
 
         return read_handle_at(x, y)
 
-    def read_foreground_window_handle(self) -> Optional[int]:
+    def read_foreground_window_handle(self) -> int | None:
         from .window_class import read_foreground_window_handle
 
         return read_foreground_window_handle()
 
-    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+    def read_pid_of_handle(self, handle: int) -> int | None:
         from .window_class import pid_for_handle
 
         try:
@@ -75,7 +75,7 @@ class PynputBackend:
         except Exception:
             return None
 
-    def read_class_of_handle(self, handle: int) -> Optional[str]:
+    def read_class_of_handle(self, handle: int) -> str | None:
         from .window_class import window_class_for_handle
 
         try:

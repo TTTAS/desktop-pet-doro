@@ -10,13 +10,13 @@ BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
 # Bubble chunking: long replies (web summaries, verify results) are split into
 # several short bubbles shown one after another, so a single bubble never grows
 # tall enough to push the sprite up or spill off-screen. Doro "speaks" in parts.
-BUBBLE_CHUNK_MAX_CHARS = 70       # split once a message is longer than this
-BUBBLE_CHUNK_MIN_READ_MS = 2200   # shortest time a mid-sequence chunk stays up
-BUBBLE_CHUNK_MAX_READ_MS = 9000   # longest time a mid-sequence chunk stays up
-BUBBLE_CHUNK_PER_CHAR_MS = 80     # added reading time per character in a chunk
+BUBBLE_CHUNK_MAX_CHARS = 70  # split once a message is longer than this
+BUBBLE_CHUNK_MIN_READ_MS = 2200  # shortest time a mid-sequence chunk stays up
+BUBBLE_CHUNK_MAX_READ_MS = 9000  # longest time a mid-sequence chunk stays up
+BUBBLE_CHUNK_PER_CHAR_MS = 80  # added reading time per character in a chunk
 
 # Idle behavior timing (seconds)
-IDLE_BEHAVIOR_MIN_INTERVAL = 60.0   # 1 minute minimum between idle actions
+IDLE_BEHAVIOR_MIN_INTERVAL = 60.0  # 1 minute minimum between idle actions
 IDLE_BEHAVIOR_MAX_INTERVAL = 180.0  # 3 minutes maximum between idle actions
 
 # ═══════════════════════════════════════════════════════════
@@ -154,10 +154,10 @@ KILL_SWITCH_ESC_WINDOW_MS = 800
 # `Chrome` covers Windows-side `Chrome_WidgetWin_1`, `Chrome_RenderWidget
 # HostHWND`, etc. without one entry per variant.
 DEFAULT_MOUSE_TARGET_ALLOWLIST: tuple[str, ...] = (
-    "Firefox",             # Linux / older builds
+    "Firefox",  # Linux / older builds
     "MozillaWindowClass",  # Firefox on Windows
     "Chromium",
-    "Chrome",              # Windows Chrome / Edge / Brave family → Chrome_WidgetWin_*
+    "Chrome",  # Windows Chrome / Edge / Brave family → Chrome_WidgetWin_*
     "Navigator",
     "Google-chrome",
 )

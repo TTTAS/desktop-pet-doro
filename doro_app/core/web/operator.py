@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Callable, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from ...utils.logger import get_logger
 from .session import PageView
@@ -37,6 +38,7 @@ _DEBUG = os.environ.get("DORO_WEB_DEBUG", "").strip().lower() in ("1", "true", "
 def _dbg(msg: str) -> None:
     if _DEBUG:
         print(f"[doro web-op] {msg}", flush=True)
+
 
 # 一次操作任務最多做幾步，避免模型鬼打牆一直點。
 DEFAULT_MAX_STEPS = 12
@@ -56,6 +58,7 @@ def _short_url(url: str) -> str:
     u = (url or "").strip()
     return u if len(u) <= _MAX_URL_LEN else u[:_MAX_URL_LEN] + "…"
 
+
 _TOKEN_RE = re.compile(r"[\[\(][^\[\]\(\)]*[\]\)]")
 # 保險用：模型只丟了網址、忘了包成 [web:goto]，也認得出來去開。
 _BARE_URL_RE = re.compile(r"https?://[^\s\]）)」』]+", re.IGNORECASE)
@@ -63,28 +66,57 @@ _BARE_URL_RE = re.compile(r"https?://[^\s\]）)」』]+", re.IGNORECASE)
 # 人機驗證（CAPTCHA）/ 機器人偵測 的特徵字。碰到這些 doro 要停手交給人——
 # 安全底線：doro 不解驗證碼、不繞過機器人偵測。
 _CAPTCHA_MARKERS = (
-    "recaptcha", "captcha", "hcaptcha", "/sorry/", "unusual traffic",
-    "not a robot", "are you human", "verify you are human", "verifying you are human",
-    "cf-challenge", "just a moment", "attention required",
-    "我不是機器人", "異常流量", "人機驗證", "驗證你是真人", "請完成驗證", "安全驗證",
+    "recaptcha",
+    "captcha",
+    "hcaptcha",
+    "/sorry/",
+    "unusual traffic",
+    "not a robot",
+    "are you human",
+    "verify you are human",
+    "verifying you are human",
+    "cf-challenge",
+    "just a moment",
+    "attention required",
+    "我不是機器人",
+    "異常流量",
+    "人機驗證",
+    "驗證你是真人",
+    "請完成驗證",
+    "安全驗證",
 )
 
 
 # 「被網站擋下來 / 需要登入」的特徵：像蝦皮 verify/traffic、強制登入頁、拒絕存取。
 # 這類頁面代表「任務沒成功、doro 自己過不去」，要停手誠實回報，別謊報成功。
 _BLOCK_MARKERS = (
-    "verify/traffic", "/verify/", "/sorry/", "尚未登入", "登入以繼續", "請先登入",
-    "please log in", "please sign in", "sign in to continue", "log in to continue",
-    "access denied", "forbidden", "403 forbidden", "拒絕存取", "沒有權限", "無法存取",
+    "verify/traffic",
+    "/verify/",
+    "/sorry/",
+    "尚未登入",
+    "登入以繼續",
+    "請先登入",
+    "please log in",
+    "please sign in",
+    "sign in to continue",
+    "log in to continue",
+    "access denied",
+    "forbidden",
+    "403 forbidden",
+    "拒絕存取",
+    "沒有權限",
+    "無法存取",
 )
 
 
 def _haystack(view: PageView) -> str:
-    return " ".join([
-        (view.url or ""),
-        (view.title or ""),
-        (view.text or "")[:600],
-    ]).lower()
+    return " ".join(
+        [
+            (view.url or ""),
+            (view.title or ""),
+            (view.text or "")[:600],
+        ]
+    ).lower()
 
 
 def looks_like_captcha(view: PageView) -> bool:
@@ -188,7 +220,9 @@ def build_operate_prompt(
             lines.append(f"  - {h}")
 
     lines.append("")
-    lines.append(f"這是第 {step + 1} / {max_steps} 步。請只輸出「一個」下一步動作，格式如下（擇一）：")
+    lines.append(
+        f"這是第 {step + 1} / {max_steps} 步。請只輸出「一個」下一步動作，格式如下（擇一）："
+    )
     lines.append("  [web:goto;url=網址]        打開某網址")
     lines.append("  [web:click;n=編號]         點某個元件")
     lines.append("  [web:type;n=編號;text=文字] 在某輸入框打字")
@@ -198,17 +232,27 @@ def build_operate_prompt(
     lines.append("  [web:done]                 目標已達成，並用一句話告訴使用者結果")
     lines.append("")
     lines.append("重要：")
-    lines.append("- 你【一定】要輸出一個上面的 [web:...] 動作來推進，除非真的完成了才用 [web:done]。")
-    lines.append("- 如果現在是空白頁 / 還沒開始，第一步幾乎一定是 [web:goto;url=...] 打開要用的網站。")
+    lines.append(
+        "- 你【一定】要輸出一個上面的 [web:...] 動作來推進，除非真的完成了才用 [web:done]。"
+    )
+    lines.append(
+        "- 如果現在是空白頁 / 還沒開始，第一步幾乎一定是 [web:goto;url=...] 打開要用的網站。"
+    )
     lines.append("- 要用搜尋引擎，就直接開搜尋結果頁。優先用 Bing（比較不會跳人機驗證）：")
-    lines.append("  [web:goto;url=https://www.bing.com/search?q=關鍵字]（關鍵字換成要搜尋的內容，空白用 + 連接）")
-    lines.append("- 在搜尋結果頁只點『真正的外部網站結果連結』（通常是標題連結）；不要點圖片結果、相關搜尋、篩選或廣告，"
-                 "也不要點會停在 bing.com 自己頁面的東西（例如圖片檢視），那會卡住。")
+    lines.append(
+        "  [web:goto;url=https://www.bing.com/search?q=關鍵字]（關鍵字換成要搜尋的內容，空白用 + 連接）"
+    )
+    lines.append(
+        "- 在搜尋結果頁只點『真正的外部網站結果連結』（通常是標題連結）；不要點圖片結果、相關搜尋、篩選或廣告，"
+        "也不要點會停在 bing.com 自己頁面的東西（例如圖片檢視），那會卡住。"
+    )
     lines.append("- 一次只給一個動作；用純文字不要 Markdown；編號只能用上面列出的。")
-    lines.append("- 【誠實很重要】用 [web:done] 收尾前，先確認頁面上『真的』出現了目標結果"
-                 "（例如真的看到搜尋結果清單、真的完成了那件事）。如果現在是登入頁、驗證頁、"
-                 "錯誤頁、或根本沒看到預期結果，就【不要謊稱成功】——用一句話老實說卡在哪"
-                 "（例如「被要求登入」「沒找到結果」），再 [web:done]。")
+    lines.append(
+        "- 【誠實很重要】用 [web:done] 收尾前，先確認頁面上『真的』出現了目標結果"
+        "（例如真的看到搜尋結果清單、真的完成了那件事）。如果現在是登入頁、驗證頁、"
+        "錯誤頁、或根本沒看到預期結果，就【不要謊稱成功】——用一句話老實說卡在哪"
+        "（例如「被要求登入」「沒找到結果」），再 [web:done]。"
+    )
     return "\n".join(lines)
 
 
@@ -250,8 +294,8 @@ class WebOperator:
         logger.info(f"開始網頁操作任務：{goal}")
         history: list[str] = []
         prev_sig: tuple | None = None
-        nudge_count = 0        # 偵測到打轉後、已經提醒模型換做法幾次
-        warning = ""           # 下一輪要塞給模型的「你在重複、換做法」提醒
+        nudge_count = 0  # 偵測到打轉後、已經提醒模型換做法幾次
+        warning = ""  # 下一輪要塞給模型的「你在重複、換做法」提醒
 
         for step in range(self._max_steps):
             if self._should_cancel():
@@ -322,10 +366,9 @@ class WebOperator:
             sig = _action_signature(action)
             is_repeat = False
             if action.verb in ("goto", "click"):
-                same_page_goto = (
-                    action.verb == "goto"
-                    and _norm_url(action.params.get("url", "")) == _norm_url(view.url)
-                )
+                same_page_goto = action.verb == "goto" and _norm_url(
+                    action.params.get("url", "")
+                ) == _norm_url(view.url)
                 is_repeat = same_page_goto or (sig == prev_sig)
 
             if is_repeat:
@@ -359,7 +402,9 @@ class WebOperator:
                 self._emit("密碼或驗證碼請人自己輸入，doro不代填喔。")
                 return
             if needs_confirmation(action, names, page_context, view.elements):
-                confirm_text = f"doro 要{describe_action(action, names)}，可以嗎？回「好」或「不要」～"
+                confirm_text = (
+                    f"doro 要{describe_action(action, names)}，可以嗎？回「好」或「不要」～"
+                )
                 if not self._confirm(confirm_text):
                     self._emit("好，那這一步doro就不動囉～")
                     return

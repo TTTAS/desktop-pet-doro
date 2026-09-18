@@ -91,7 +91,8 @@ class MouseEventHandler(QtCore.QObject):
             if (
                 self._click_press_pos is not None
                 and not self._click_was_dragging
-                and (event.globalPosition() - self._click_press_pos).manhattanLength() > self._click_threshold
+                and (event.globalPosition() - self._click_press_pos).manhattanLength()
+                > self._click_threshold
             ):
                 self._click_was_dragging = True
                 # One-shot: fires only on the false→true transition so
@@ -124,7 +125,8 @@ class MouseEventHandler(QtCore.QObject):
             was_click = (
                 not self._click_was_dragging
                 and self._click_press_pos is not None
-                and (event.globalPosition() - self._click_press_pos).manhattanLength() <= self._click_threshold
+                and (event.globalPosition() - self._click_press_pos).manhattanLength()
+                <= self._click_threshold
             )
 
             # Reset state

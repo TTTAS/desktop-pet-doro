@@ -43,7 +43,9 @@ class ChatRequestWorker(QtCore.QObject):
                 self.error.emit(error_msg)
                 return
 
-            logger.info(f"ChatRequestWorker emitting finished signal, response length: {len(assistant_text)}")
+            logger.info(
+                f"ChatRequestWorker emitting finished signal, response length: {len(assistant_text)}"
+            )
             self.finished.emit(assistant_text)
 
         except Exception as e:

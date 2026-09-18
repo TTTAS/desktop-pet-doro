@@ -8,7 +8,6 @@ list and can simulate a hanging read via ``delay``.
 from __future__ import annotations
 
 import time
-from typing import Optional
 
 from .models import A11yElement
 
@@ -18,7 +17,7 @@ class FakeA11yBackend:
 
     def __init__(
         self,
-        elements: Optional[list[A11yElement]] = None,
+        elements: list[A11yElement] | None = None,
         *,
         delay: float = 0.0,
         invoke_delay: float = 0.0,
@@ -35,9 +34,9 @@ class FakeA11yBackend:
         # Parallel list — the hwnd the service forwarded for each call so
         # tests can assert UIA subtree scoping happened, without
         # disturbing the (x, y) tuple shape older assertions rely on.
-        self.invoke_hwnds: list[Optional[int]] = []
+        self.invoke_hwnds: list[int | None] = []
 
-    def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
+    def read_elements(self, handle: int) -> list[A11yElement] | None:
         self.read_calls.append(int(handle))
         if self.delay:
             time.sleep(self.delay)
@@ -46,7 +45,10 @@ class FakeA11yBackend:
         return list(self.elements)
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: int | None = None,
     ) -> bool:
         self.invoke_calls.append((int(x), int(y)))
         self.invoke_hwnds.append(hwnd)

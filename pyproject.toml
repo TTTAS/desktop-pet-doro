@@ -5,7 +5,6 @@ description = "Desktop pet application with state management and chat functional
 requires-python = ">=3.10"
 dependencies = [
     "PySide6>=6.5.0",
-    "anthropic>=0.18.0",
 ]
 
 [project.optional-dependencies]
@@ -30,8 +29,11 @@ dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "pytest-qt>=4.2.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
+    # Pin the formatter/linter exactly so local and CI always agree. An
+    # unpinned ruff silently upgraded (0.15 -> 0.16) and its expanded default
+    # rule set turned CI red with no code change; bump these deliberately.
+    "black==26.3.1",
+    "ruff==0.16.8",
 ]
 
 [build-system]
@@ -86,3 +88,21 @@ target-version = ['py310']
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# Ruff 0.16 enabled several opinionated families by default. This is a
+# defensive Qt desktop app that deliberately uses broad `except Exception`
+# guards (many marked "defensive") and best-effort try/except paths, so the
+# behavioral rules below are noise here, not bugs. Everything else in the
+# default set (import sorting, dead-code, simplifications, RUF cleanups, ...)
+# stays enforced.
+ignore = [
+    "BLE001",  # blind-except: broad Exception guards are intentional
+    "S110",    # try-except-pass: intentional best-effort / optional paths
+    "S112",    # try-except-continue: same
+    "TRY002",  # raise vanilla Exception (test helper)
+    "TRY004",  # prefer TypeError: the existing ValueError style is deliberate
+    "G201",    # logging exc_info style choice
+    "EXE001",  # shebang without +x on manual scripts (run via `python`)
+    "DTZ005",  # naive local datetime is fine for this desktop app
+]

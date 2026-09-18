@@ -14,7 +14,7 @@ addresses.
 
 from __future__ import annotations
 
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 
 import pytest
 
@@ -23,7 +23,7 @@ from doro_app.core.action import ActionDispatcher, make_movement_action
 
 class ManualScheduler:
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))
@@ -89,9 +89,11 @@ class FakeMovementAnimates:
 
     def add_completion_listener(self, cb):
         self.listeners.append(cb)
+
         def _unsub():
             if cb in self.listeners:
                 self.listeners.remove(cb)
+
         return _unsub
 
     def finish(self):
@@ -120,7 +122,9 @@ class TestMovementWaitPhaseShortCircuit:
         clicked without walking'."""
         movement = FakeMovementNoOp()
         action = make_movement_action(
-            movement, scheduler, bracket_token="move:to;x=100;y=100",
+            movement,
+            scheduler,
+            bracket_token="move:to;x=100;y=100",
         )
         dispatcher.dispatch(action)
 
@@ -135,13 +139,17 @@ class TestMovementWaitPhaseShortCircuit:
         assert dispatcher.is_idle
 
     def test_active_movement_waits_for_completion_signal(
-        self, dispatcher, scheduler,
+        self,
+        dispatcher,
+        scheduler,
     ):
         """When kick-off DOES start a movement, the WaitPhase subscribes
         normally and only advances when `add_completion_listener` fires."""
         movement = FakeMovementAnimates()
         action = make_movement_action(
-            movement, scheduler, bracket_token="move:to;x=400;y=300",
+            movement,
+            scheduler,
+            bracket_token="move:to;x=400;y=300",
         )
         dispatcher.dispatch(action)
 
@@ -189,9 +197,7 @@ class TestBracketReportForwarding:
     def test_no_on_report_does_not_crash(self, dispatcher, scheduler):
         """Backwards-compat: callers that don't pass on_report still work."""
         movement = FakeMovementNoOp()
-        action = make_movement_action(
-            movement, scheduler, bracket_token="move:to;x=1;y=1"
-        )
+        action = make_movement_action(movement, scheduler, bracket_token="move:to;x=1;y=1")
         dispatcher.dispatch(action)
         scheduler.flush()  # should not raise
 
@@ -201,11 +207,13 @@ class TestMovementThenClickOrdering:
     promptly (the bug fix scenario)."""
 
     def test_queued_click_fires_after_no_op_movement(
-        self, dispatcher, scheduler,
+        self,
+        dispatcher,
+        scheduler,
     ):
         from doro_app.core.action import (
-            EffectPhase,
             Action,
+            EffectPhase,
         )
 
         movement = FakeMovementNoOp()
@@ -215,9 +223,13 @@ class TestMovementThenClickOrdering:
             phases=[EffectPhase(lambda: click_fired.append(True))],
         )
 
-        dispatcher.dispatch(make_movement_action(
-            movement, scheduler, bracket_token="move:to;x=100;y=100",
-        ))
+        dispatcher.dispatch(
+            make_movement_action(
+                movement,
+                scheduler,
+                bracket_token="move:to;x=100;y=100",
+            )
+        )
         dispatcher.dispatch(click)
 
         # Click should be waiting behind the movement action.

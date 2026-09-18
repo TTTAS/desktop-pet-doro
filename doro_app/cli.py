@@ -7,8 +7,8 @@ import sys
 
 
 def run_chat_test(message: str | None) -> int:
-    from .utils.actions import parse_actions_from_text
     from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
+    from .utils.actions import parse_actions_from_text
     from .utils.config_manager import ConfigManager
     from .utils.paths import PROMPT_PATH
     from .utils.prompts import load_prompt_text
@@ -105,8 +105,8 @@ def main():
 
     from PySide6 import QtWidgets
 
-    from .bootstrap import BootstrapError, bootstrap_environment
     from .app import DoroApp
+    from .bootstrap import BootstrapError, bootstrap_environment
 
     qt_app = QtWidgets.QApplication(sys.argv)
     try:

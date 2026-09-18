@@ -1,8 +1,9 @@
 """Tests for CoreManager - the business logic layer coordinator."""
 
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock
+
 import pytest
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject
 
 from doro_app.core.core_manager import CoreManager
 
@@ -262,9 +263,7 @@ class TestChatOperations:
         """Silent chat messages suppress notifications."""
         core_manager.send_chat_message("Test", silent=True, is_auto=False)
 
-        mock_chat_orchestrator.send_message.assert_called_with(
-            "Test", silent=True, is_auto=False
-        )
+        mock_chat_orchestrator.send_message.assert_called_with("Test", silent=True, is_auto=False)
 
     def test_send_chat_message_auto(self, core_manager, mock_chat_orchestrator):
         """Auto chat messages are marked as automatic."""

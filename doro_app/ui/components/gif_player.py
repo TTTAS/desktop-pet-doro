@@ -7,9 +7,9 @@ and prevent memory leaks.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui
+from typing_extensions import Self
 
 
 class GifPlayer:
@@ -41,9 +41,9 @@ class GifPlayer:
     def load(
         self,
         path: Path | str,
-        size: Optional[QtCore.QSize] = None,
+        size: QtCore.QSize | None = None,
         cache_mode: QtGui.QMovie.CacheMode = QtGui.QMovie.CacheMode.CacheAll,
-    ) -> Optional[QtGui.QMovie]:
+    ) -> QtGui.QMovie | None:
         """
         Load and start playing a GIF.
 
@@ -111,7 +111,7 @@ class GifPlayer:
         """Get number of active movies."""
         return len(self._movies)
 
-    def __enter__(self) -> GifPlayer:
+    def __enter__(self) -> Self:
         """Context manager entry."""
         return self
 

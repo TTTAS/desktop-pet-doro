@@ -7,8 +7,13 @@ from pathlib import Path
 
 from .core.action import ActionRepository, ActionService
 from .core.movement.repository import MovementRepository
-from .core.state import GifRepository, MoveStateRepository, StateRepository, StateService
-from .core.state import TransitionRepository
+from .core.state import (
+    GifRepository,
+    MoveStateRepository,
+    StateRepository,
+    StateService,
+    TransitionRepository,
+)
 from .utils.config_manager import ConfigManager
 from .utils.paths import (
     ACTION_MOVE_DIR,

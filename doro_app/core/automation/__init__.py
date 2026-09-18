@@ -7,17 +7,17 @@ LLM-supplied coordinate can only influence the landing spot via a preceding
 the requested target is farther than Doro visibly reached.
 """
 
+from .fakes import FakeAutomationWindow, FakeInputBackend
 from .manager import AutomationManager, ClickOutcome
 from .parser import parse_mouse_bracket
-from .port import InputBackendPort, AutomationWindowPort
-from .fakes import FakeInputBackend, FakeAutomationWindow
+from .port import AutomationWindowPort, InputBackendPort
 
 __all__ = [
     "AutomationManager",
-    "ClickOutcome",
-    "parse_mouse_bracket",
-    "InputBackendPort",
     "AutomationWindowPort",
-    "FakeInputBackend",
+    "ClickOutcome",
     "FakeAutomationWindow",
+    "FakeInputBackend",
+    "InputBackendPort",
+    "parse_mouse_bracket",
 ]

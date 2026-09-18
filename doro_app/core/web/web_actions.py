@@ -24,12 +24,52 @@ from dataclasses import dataclass, field
 
 # 「送出類 / 不可逆」關鍵字：點到名稱含這些字的按鈕，或按 Enter，都要先問使用者。
 COMMIT_KEYWORDS = (
-    "送出", "提交", "購買", "下單", "付款", "結帳", "刪除", "移除", "清空",
-    "登入", "登出", "註冊", "發布", "發佈", "發表", "發送", "傳送", "確認",
-    "同意", "接受", "訂閱", "儲存", "保存", "轉帳", "匯款", "捐款",
-    "submit", "buy", "pay", "checkout", "order", "delete", "remove",
-    "sign in", "log in", "login", "sign up", "signup", "register",
-    "post", "send", "confirm", "agree", "accept", "subscribe", "save",
+    "送出",
+    "提交",
+    "購買",
+    "下單",
+    "付款",
+    "結帳",
+    "刪除",
+    "移除",
+    "清空",
+    "登入",
+    "登出",
+    "註冊",
+    "發布",
+    "發佈",
+    "發表",
+    "發送",
+    "傳送",
+    "確認",
+    "同意",
+    "接受",
+    "訂閱",
+    "儲存",
+    "保存",
+    "轉帳",
+    "匯款",
+    "捐款",
+    "submit",
+    "buy",
+    "pay",
+    "checkout",
+    "order",
+    "delete",
+    "remove",
+    "sign in",
+    "log in",
+    "login",
+    "sign up",
+    "signup",
+    "register",
+    "post",
+    "send",
+    "confirm",
+    "agree",
+    "accept",
+    "subscribe",
+    "save",
 )
 
 _KV_PATTERN = re.compile(r"([a-zA-Z_]+)\s*=\s*(.*?)(?:;|$)")
@@ -99,9 +139,28 @@ def _looks_like_commit(name: str) -> bool:
 # 「敏感頁」特徵：在這種頁面上，連按 Enter 都要先問（可能真的送出訂單/付款/登入）。
 # 一般頁（搜尋、逛網頁）按 Enter 只是搜尋/換頁，無害又可逆，就不用問。
 _SENSITIVE_PAGE_MARKERS = (
-    "checkout", "payment", "/pay", "cart", "order", "billing", "purchase",
-    "login", "signin", "sign-in", "logon",
-    "結帳", "付款", "購物車", "下單", "訂單", "登入", "信用卡", "刷卡", "帳單", "轉帳", "匯款",
+    "checkout",
+    "payment",
+    "/pay",
+    "cart",
+    "order",
+    "billing",
+    "purchase",
+    "login",
+    "signin",
+    "sign-in",
+    "logon",
+    "結帳",
+    "付款",
+    "購物車",
+    "下單",
+    "訂單",
+    "登入",
+    "信用卡",
+    "刷卡",
+    "帳單",
+    "轉帳",
+    "匯款",
 )
 
 
@@ -127,14 +186,29 @@ def needs_confirmation(
     verb = action.verb
     if verb == "press":
         key = action.params.get("key", "").strip().lower()
-        if key in {"tab", "shift+tab", "escape", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown", "home", "end"}:
+        if key in {
+            "tab",
+            "shift+tab",
+            "escape",
+            "arrowup",
+            "arrowdown",
+            "arrowleft",
+            "arrowright",
+            "pageup",
+            "pagedown",
+            "home",
+            "end",
+        }:
             return False
         # Only a plain Enter in an explicitly focused search input is known
         # to be a search. URL/title guesses cannot distinguish chat/form submit.
         ctx = (page_context or "").lower()
         focused = next((el for el in (elements or []) if el.get("focused")), {})
-        return not (key == "enter" and focused.get("input_type") == "search"
-                    and not any(m in ctx for m in _SENSITIVE_PAGE_MARKERS))
+        return not (
+            key == "enter"
+            and focused.get("input_type") == "search"
+            and not any(m in ctx for m in _SENSITIVE_PAGE_MARKERS)
+        )
     if verb == "click":
         idx = action.index()
         if idx is None:

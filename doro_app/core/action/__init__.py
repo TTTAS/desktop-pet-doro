@@ -24,12 +24,12 @@ from .service import ActionService
 from .walk_and_speak_action import make_walk_and_speak_action
 
 __all__ = [
+    "CLICK_FAILED_STATE_KEY",
     "Action",
     "ActionDispatcher",
     "ActionEntry",
     "ActionRepository",
     "ActionService",
-    "CLICK_FAILED_STATE_KEY",
     "EffectPhase",
     "Phase",
     "VisualPhase",

@@ -17,8 +17,6 @@ validate.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .validator import ValidationResult
 
 
@@ -29,10 +27,9 @@ def _should_retry(result: ValidationResult) -> bool:
     an empty response — that's usually a model/transport error a re-ask
     won't fix.
     """
-    if not result.valid:
-        if result.error_message and "empty" not in result.error_message.lower():
-            return True
-    return False
+    return bool(
+        not result.valid and result.error_message and "empty" not in result.error_message.lower()
+    )
 
 
 def _build_retry_prompt(result: ValidationResult, original_message: str) -> str:
@@ -83,7 +80,7 @@ class ChatRetryPolicy:
         if self._count == 0:
             self._original_message = message
 
-    def next_retry(self, validation: ValidationResult) -> Optional[str]:
+    def next_retry(self, validation: ValidationResult) -> str | None:
         """Return the next retry prompt, or ``None`` to stop.
 
         ``None`` means "don't retry": either the failure isn't retryable,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 
@@ -13,7 +11,7 @@ class _TitleBar(QtWidgets.QWidget):
     def __init__(self, title: str, parent: QtWidgets.QWidget):
         super().__init__(parent)
         self._parent_dialog = parent
-        self._drag_pos: Optional[QtCore.QPoint] = None
+        self._drag_pos: QtCore.QPoint | None = None
         self.setFixedHeight(36)
 
         layout = QtWidgets.QHBoxLayout(self)
@@ -71,12 +69,9 @@ class FramelessDialog(QtWidgets.QDialog):
     Subclasses should add their content to self.content_layout.
     """
 
-    def __init__(self, title: str = "", parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(self, title: str = "", parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.FramelessWindowHint
-            | QtCore.Qt.WindowType.Dialog
-        )
+        self.setWindowFlags(QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Dialog)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         # Outer layout (holds the painted card)

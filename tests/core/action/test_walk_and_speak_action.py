@@ -9,7 +9,7 @@ walk that never completes (safety timeout) must not.
 
 from __future__ import annotations
 
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 
 import pytest
 
@@ -18,7 +18,7 @@ from doro_app.core.action import ActionDispatcher, make_walk_and_speak_action
 
 class ManualScheduler:
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))

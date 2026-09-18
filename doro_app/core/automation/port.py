@@ -15,7 +15,8 @@ provide a stand-in.
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 
 class InputBackendPort(Protocol):
@@ -26,14 +27,14 @@ class InputBackendPort(Protocol):
     has moved to `A11yClickerPort` (UIA InvokePattern, cursor-free).
     """
 
-    def read_window_class_at(self, x: int, y: int) -> Optional[str]:
+    def read_window_class_at(self, x: int, y: int) -> str | None:
         """Return the window-class string at the given screen point, or None.
 
         Must NOT read window title, content, pixels, or any other private data.
         Only the class (X11 `WM_CLASS` / Win32 `GetClassName`).
         """
 
-    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+    def read_handle_at(self, x: int, y: int) -> int | None:
         """Return the OS top-level window handle at the given point, or None.
 
         Used in tandem with :meth:`read_foreground_window_handle` so the
@@ -43,10 +44,10 @@ class InputBackendPort(Protocol):
         the safe fallback on platforms without a real implementation.
         """
 
-    def read_foreground_window_handle(self) -> Optional[int]:
+    def read_foreground_window_handle(self) -> int | None:
         """Return the OS top-level handle of the focused window, or None."""
 
-    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+    def read_pid_of_handle(self, handle: int) -> int | None:
         """Return the PID owning ``handle``, or None when unavailable.
 
         Lets the manager treat any Doro-owned top-level window (sprite,
@@ -55,7 +56,7 @@ class InputBackendPort(Protocol):
         the foreground.
         """
 
-    def read_class_of_handle(self, handle: int) -> Optional[str]:
+    def read_class_of_handle(self, handle: int) -> str | None:
         """Return the window class for ``handle``, or None.
 
         Diagnostic-only: identifies which window blocked a
@@ -155,7 +156,7 @@ class ClickWarningOverlayPort(Protocol):
     every wind-up exit path.
     """
 
-    def begin(self, bounds_physical: Optional[tuple[int, int, int, int]]) -> None:
+    def begin(self, bounds_physical: tuple[int, int, int, int] | None) -> None:
         """Show the warning frame at the given physical-pixel bounds.
 
         ``None`` means no a11y element was resolved for this click; the

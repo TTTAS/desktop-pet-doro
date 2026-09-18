@@ -20,7 +20,8 @@ downstream waiter raised.
 
 from __future__ import annotations
 
-from typing import Callable, Generic, List, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 from ..utils.logger import get_logger
 
@@ -49,7 +50,7 @@ class ListenerRegistry(Generic[_Listener]):
         # so a mixed log still says *which* registry (e.g. "click-outcome"
         # vs "movement-completion") the failing callback belonged to.
         self._name = name
-        self._listeners: List[_Listener] = []
+        self._listeners: list[_Listener] = []
 
     def subscribe(self, callback: _Listener) -> Callable[[], None]:
         """Register *callback* and return an idempotent unsubscribe handle.

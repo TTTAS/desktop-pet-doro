@@ -71,15 +71,43 @@ def draw_fallback_sprite(
 
     # Draw face outline (rounded shape using cubic bezier curves)
     path = QtGui.QPainterPath(QtCore.QPointF(_FACE_CENTER_X, _FACE_CENTER_Y_TOP))
-    path.cubicTo(_FACE_CONTROL_X_LEFT, _FACE_CENTER_Y_TOP, _FACE_LEFT_X, _FACE_CONTROL_X_LEFT, _FACE_LEFT_X, _FACE_CENTER_X)
-    path.cubicTo(_FACE_LEFT_X, 130, _FACE_CONTROL_X_LEFT, _FACE_CENTER_Y_BOTTOM, _FACE_CENTER_X, _FACE_CENTER_Y_BOTTOM)
-    path.cubicTo(_FACE_CONTROL_X_RIGHT, _FACE_CENTER_Y_BOTTOM, _FACE_RIGHT_X, 130, _FACE_RIGHT_X, _FACE_CENTER_X)
-    path.cubicTo(_FACE_RIGHT_X, _FACE_CONTROL_X_LEFT, _FACE_CONTROL_X_RIGHT, _FACE_CENTER_Y_TOP, _FACE_CENTER_X, _FACE_CENTER_Y_TOP)
+    path.cubicTo(
+        _FACE_CONTROL_X_LEFT,
+        _FACE_CENTER_Y_TOP,
+        _FACE_LEFT_X,
+        _FACE_CONTROL_X_LEFT,
+        _FACE_LEFT_X,
+        _FACE_CENTER_X,
+    )
+    path.cubicTo(
+        _FACE_LEFT_X,
+        130,
+        _FACE_CONTROL_X_LEFT,
+        _FACE_CENTER_Y_BOTTOM,
+        _FACE_CENTER_X,
+        _FACE_CENTER_Y_BOTTOM,
+    )
+    path.cubicTo(
+        _FACE_CONTROL_X_RIGHT,
+        _FACE_CENTER_Y_BOTTOM,
+        _FACE_RIGHT_X,
+        130,
+        _FACE_RIGHT_X,
+        _FACE_CENTER_X,
+    )
+    path.cubicTo(
+        _FACE_RIGHT_X,
+        _FACE_CONTROL_X_LEFT,
+        _FACE_CONTROL_X_RIGHT,
+        _FACE_CENTER_Y_TOP,
+        _FACE_CENTER_X,
+        _FACE_CENTER_Y_TOP,
+    )
 
     # Create gradient fill for face
     fill = QtGui.QLinearGradient(
         QtCore.QPointF(_FACE_CENTER_X, _FACE_CENTER_Y_TOP),
-        QtCore.QPointF(_FACE_CENTER_X, _FACE_CENTER_Y_BOTTOM)
+        QtCore.QPointF(_FACE_CENTER_X, _FACE_CENTER_Y_BOTTOM),
     )
     fill.setColorAt(0.0, fill_colors[0])
     fill.setColorAt(0.4, fill_colors[1])
@@ -118,5 +146,12 @@ def _draw_mouth(painter: QtGui.QPainter) -> None:
 
     mouth = QtGui.QPainterPath()
     mouth.moveTo(_MOUTH_START_X, _MOUTH_START_Y)
-    mouth.cubicTo(_MOUTH_CONTROL1_X, _MOUTH_CONTROL1_Y, _MOUTH_CONTROL2_X, _MOUTH_CONTROL2_Y, _MOUTH_END_X, _MOUTH_END_Y)
+    mouth.cubicTo(
+        _MOUTH_CONTROL1_X,
+        _MOUTH_CONTROL1_Y,
+        _MOUTH_CONTROL2_X,
+        _MOUTH_CONTROL2_Y,
+        _MOUTH_END_X,
+        _MOUTH_END_Y,
+    )
     painter.drawPath(mouth)

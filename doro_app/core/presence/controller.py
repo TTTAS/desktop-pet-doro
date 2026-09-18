@@ -164,8 +164,10 @@ class PresenceController(QtCore.QObject):
                 self._orchestrator.present_character_reply(
                     answer,
                     should_present=lambda event=event, epoch=epoch: (
-                        not self._closed and self.settings["react"]
-                        and epoch == self._epoch and event == self.current_page
+                        not self._closed
+                        and self.settings["react"]
+                        and epoch == self._epoch
+                        and event == self.current_page
                     ),
                     on_present=self._remember_reaction,
                 )
@@ -178,7 +180,7 @@ class PresenceController(QtCore.QObject):
         event = self._gate.take()
         try:
             ask = self._orchestrator.make_presence_request(event, self._last_reaction)
-        except Exception as exc:  # noqa: BLE001 - isolate optional context model failures
+        except Exception as exc:
             self._gate.finish(False)
             logger.warning("Presence settings unavailable (%s)", type(exc).__name__)
             self.status = "模型設定暫時無法使用，基本陪伴繼續"
@@ -191,7 +193,7 @@ class PresenceController(QtCore.QObject):
             try:
                 answer = ask() or ""
                 ok = bool(answer.strip())
-            except Exception as exc:  # noqa: BLE001 - keep basic companion alive
+            except Exception as exc:
                 # Exception messages/tracebacks can contain page or credential data.
                 logger.warning("Presence model unavailable (%s)", type(exc).__name__)
             if not self._closed:

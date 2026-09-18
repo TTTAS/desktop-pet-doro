@@ -13,10 +13,9 @@ from __future__ import annotations
 
 import contextlib
 import os
-from typing import Optional
 
-from .models import A11yElement
 from ...utils.logger import get_logger
+from .models import A11yElement
 
 logger = get_logger("doro.a11y")
 
@@ -66,7 +65,7 @@ class _Trace:
     def add(self, line: str) -> None:
         self.lines.append(line)
 
-    def emit(self, x: int, y: int, hwnd: Optional[int], reason: str) -> None:
+    def emit(self, x: int, y: int, hwnd: int | None, reason: str) -> None:
         if not _diag_enabled():
             return
         header = f"[doro click] uia-trace ({x},{y}) hwnd={hwnd} reason={reason}"
@@ -150,6 +149,7 @@ def _has_invoke_action(node) -> bool:
             return True
     return False
 
+
 # UIA ControlTypeName -> our normalized role vocabulary.
 _ROLE_MAP = {
     "ButtonControl": "button",
@@ -169,11 +169,11 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
     def __init__(self) -> None:
         # Populated on every read_elements() call so the preview/diagnostic can
         # explain *why* a read came back empty instead of a vague message.
-        self.last_error: Optional[str] = None
+        self.last_error: str | None = None
         self.last_visited: int = 0
         self.last_found: int = 0
 
-    def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
+    def read_elements(self, handle: int) -> list[A11yElement] | None:
         self.last_error = None
         self.last_visited = 0
         self.last_found = 0
@@ -233,7 +233,10 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
             self._walk(child, out, counter)
 
     def invoke_at_physical_point(
-        self, x: int, y: int, hwnd: Optional[int] = None,
+        self,
+        x: int,
+        y: int,
+        hwnd: int | None = None,
     ) -> bool:
         """UIA InvokePattern fire-and-forget at the screen point.
 
@@ -276,7 +279,11 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         try:
             with ctx:
                 target = self._resolve_invoke_target(
-                    auto, int(x), int(y), hwnd, trace,
+                    auto,
+                    int(x),
+                    int(y),
+                    hwnd,
+                    trace,
                 )
                 if target is None:
                     trace.emit(int(x), int(y), hwnd, "no_target_resolved")
@@ -292,7 +299,12 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
             return False
 
     def _resolve_invoke_target(
-        self, auto, x: int, y: int, hwnd: Optional[int], trace: _Trace,
+        self,
+        auto,
+        x: int,
+        y: int,
+        hwnd: int | None,
+        trace: _Trace,
     ):
         """Pick a UIA control to Invoke at (x, y).
 
@@ -343,7 +355,11 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         return fallback
 
     def _find_invocable_in_subtree(
-        self, root, x: int, y: int, trace: _Trace,
+        self,
+        root,
+        x: int,
+        y: int,
+        trace: _Trace,
     ):
         """DFS ``root``'s subtree for the smallest-area descendant that
         contains (x, y) and exposes an invoke-style pattern. None if no
@@ -385,16 +401,12 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
                 visit(child, depth + 1)
 
         visit(root, 0)
-        trace.add(
-            f"DFS visited={visited[0]} invocable_candidates={len(candidates)}"
-        )
+        trace.add(f"DFS visited={visited[0]} invocable_candidates={len(candidates)}")
         if not candidates:
             return None
         candidates.sort(key=lambda c: c[0])
         area, ctrl, depth = candidates[0]
-        trace.add(
-            f"DFS picked area={area} depth={depth} → {_describe_control(ctrl)}"
-        )
+        trace.add(f"DFS picked area={area} depth={depth} → {_describe_control(ctrl)}")
         return ctrl
 
     def _fire_invoke(self, target, trace: _Trace) -> bool:
@@ -438,7 +450,7 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
                 trace.add(f"DoDefaultAction() raised: {exc}")
         return False
 
-    def _to_element(self, control, role: str) -> Optional[A11yElement]:
+    def _to_element(self, control, role: str) -> A11yElement | None:
         try:
             rect = control.BoundingRectangle
             x, y = int(rect.left), int(rect.top)
@@ -462,7 +474,7 @@ class UIAutomationBackend:  # pragma: no cover - needs Windows + uiautomation
         except Exception:
             is_password = False
 
-        value: Optional[str] = None
+        value: str | None = None
         if role == "input":
             try:
                 pattern = control.GetValuePattern()

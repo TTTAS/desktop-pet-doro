@@ -126,8 +126,14 @@ class TestParseReadCurrentCommand:
     """讀 doro 目前開著的那頁（無網址）。"""
 
     def test_referent_plus_intent(self):
-        for text in ["讀你剛剛開的網頁", "這頁在說什麼", "幫我讀這頁", "這個網頁的重點是什麼",
-                     "唸一下目前這頁", "摘要這篇"]:
+        for text in [
+            "讀你剛剛開的網頁",
+            "這頁在說什麼",
+            "幫我讀這頁",
+            "這個網頁的重點是什麼",
+            "唸一下目前這頁",
+            "摘要這篇",
+        ]:
             assert parse_read_current_command(text) == text.strip()
 
     def test_with_url_goes_to_normal_read(self):
@@ -161,7 +167,9 @@ class TestParseOperateAction:
 
 class TestParseLoginAction:
     def test_extracts_url(self):
-        assert parse_login_action("(高) 幫你開好～ [login:https://shopee.tw]") == "https://shopee.tw"
+        assert (
+            parse_login_action("(高) 幫你開好～ [login:https://shopee.tw]") == "https://shopee.tw"
+        )
 
     def test_fullwidth_colon(self):
         assert parse_login_action("[login：https://a.test]") == "https://a.test"

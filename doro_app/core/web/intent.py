@@ -37,9 +37,7 @@ _READ_INTENT_PATTERN = re.compile(
 # AI 主動要求讀網頁的動作標記：``[read:https://...]``。
 # 這是「讓 LLM 自己判斷要不要讀」的路：模型看完使用者訊息後，如果覺得需要看某個
 # 網頁才能回答，就在回覆結尾吐這個標記，doro 讀完再把內容餵回去讓它作答。
-_READ_ACTION_PATTERN = re.compile(
-    r"\[\s*read\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE
-)
+_READ_ACTION_PATTERN = re.compile(r"\[\s*read\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE)
 
 
 def parse_read_action(text: str) -> str | None:
@@ -133,9 +131,7 @@ _OPERATE_ACTION_PATTERN = re.compile(r"\[\s*operate\s*[:：]\s*([^\]]*)\]", re.I
 
 # 登入助手動作標記：``[login:網址]``。使用者想自己登入某站時，模型吐這個，doro
 # 只把站開著停在那讓使用者本人登入（不操作），登入狀態存進專屬設定檔。
-_LOGIN_ACTION_PATTERN = re.compile(
-    r"\[\s*login\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE
-)
+_LOGIN_ACTION_PATTERN = re.compile(r"\[\s*login\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE)
 
 
 def parse_login_action(text: str) -> str | None:

@@ -3,26 +3,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import State, StateService
-from ...components.gif_player import GifPlayer
+from ....utils import paths
 from ...components.frameless_dialog import FramelessDialog
-
+from ...components.gif_player import GifPlayer
 
 # ───────────────────────────────────────────────────────────
 # State Card Widget
 # ───────────────────────────────────────────────────────────
 
+
 class _StateCard(QtWidgets.QFrame):
     """A card displaying a single state with GIF preview and actions."""
 
-    edit_gif_clicked = QtCore.Signal(str)   # state_key
-    edit_clicked = QtCore.Signal(str)       # state_key
-    remove_clicked = QtCore.Signal(str)     # state_key
+    edit_gif_clicked = QtCore.Signal(str)  # state_key
+    edit_clicked = QtCore.Signal(str)  # state_key
+    remove_clicked = QtCore.Signal(str)  # state_key
 
     CARD_WIDTH = 200
     PREVIEW_SIZE = 128
@@ -33,7 +32,7 @@ class _StateCard(QtWidgets.QFrame):
         key: str,
         gif_paths: list[Path],
         gif_player: GifPlayer,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self._key = key
@@ -68,9 +67,7 @@ class _StateCard(QtWidgets.QFrame):
         self._preview = QtWidgets.QLabel()
         self._preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._preview.setFixedSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE)
-        self._preview.setStyleSheet(
-            "background: #fff5fa; border-radius: 8px;"
-        )
+        self._preview.setStyleSheet("background: #fff5fa; border-radius: 8px;")
         preview_row.addWidget(self._preview, 1, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self._right_btn = self._arrow_button("right")
@@ -81,9 +78,7 @@ class _StateCard(QtWidgets.QFrame):
 
         # Counter
         count = len(self._gif_paths)
-        self._counter = QtWidgets.QLabel(
-            f"1/{count}" if count > 0 else "No GIF"
-        )
+        self._counter = QtWidgets.QLabel(f"1/{count}" if count > 0 else "No GIF")
         self._counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._counter.setStyleSheet("font-size: 12px; color: #e8609c; font-weight: 600;")
         layout.addWidget(self._counter)
@@ -201,10 +196,11 @@ class _StateCard(QtWidgets.QFrame):
 # State Manager Dialog
 # ───────────────────────────────────────────────────────────
 
+
 class StateManagerDialog(FramelessDialog):
     """Dialog for managing states — card grid layout."""
 
-    def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(self, service: StateService, parent: QtWidgets.QWidget | None = None):
         super().__init__("State Manager", parent)
         self.service = service
         self.setMinimumWidth(660)
@@ -221,9 +217,7 @@ class StateManagerDialog(FramelessDialog):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            "QScrollArea { border: none; background: transparent; }"
-        )
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         self._grid_container = QtWidgets.QWidget()
         self._grid_container.setStyleSheet("background: transparent;")
@@ -298,6 +292,7 @@ class StateManagerDialog(FramelessDialog):
 
     def _on_add(self):
         from .add_dialog import AddStateDialog
+
         dialog = AddStateDialog(self.service, self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             self._populate()
@@ -313,19 +308,30 @@ class StateManagerDialog(FramelessDialog):
         label = state.label or state_key
 
         dialog = GifGalleryDialog(state_key, label, gif_paths, parent=self)
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        try:
+            accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+        finally:
+            # accept()/reject() call hide(), not close(), so the dialog's
+            # closeEvent (and the cleanup it runs) never fires. Release the
+            # preview QMovies' file handles now — before we try to delete any
+            # GIF file — or Windows refuses the unlink with WinError 32.
+            dialog.cleanup()
+
+        if not accepted:
             return
 
-        changed = False
-        for filename in dialog.removed_filenames:
-            if self.service.remove_gif(state_key, filename):
-                changed = True
-        for path in dialog.added_paths:
-            if self.service.add_gif(state_key, path):
-                changed = True
+        # Our own state cards stream these same GIFs via QMovie (a shared
+        # GifPlayer), which keeps the files open and would block the unlink
+        # below on Windows (WinError 32). Release those handles before touching
+        # the files; _populate() at the end rebuilds the previews afresh.
+        self._gif_player.clear()
 
-        if changed:
-            self._populate()
+        for filename in dialog.removed_filenames:
+            self.service.remove_gif(state_key, filename)
+        for path in dialog.added_paths:
+            self.service.add_gif(state_key, path)
+
+        self._populate()
 
     def _on_remove(self, key: str):
         if self.service.is_state_protected(key):
@@ -359,7 +365,7 @@ class StateManagerDialog(FramelessDialog):
         super().closeEvent(event)
 
 
-def show_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+def show_state_manager(service: StateService, parent: QtWidgets.QWidget | None = None):
     """Show state manager dialog."""
     dialog = StateManagerDialog(service, parent)
     dialog.exec()

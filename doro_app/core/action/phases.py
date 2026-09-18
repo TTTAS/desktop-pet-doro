@@ -19,7 +19,8 @@ code mostly uses these three.
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from ...utils.logger import get_logger
 
@@ -105,7 +106,7 @@ class EffectPhase:
     ) -> None:
         try:
             self._callback()
-        except Exception as exc:  # noqa: BLE001 - bubble up to dispatcher
+        except Exception as exc:
             logger.exception("EffectPhase callback raised")
             on_fail(f"effect raised: {exc}")
             return
@@ -157,9 +158,9 @@ class WaitPhase:
         schedule: ScheduleFn,
         safety_timeout_ms: int = 30_000,
         *,
-        resolve: Optional[Callable[..., Optional[str]]] = None,
+        resolve: Callable[..., str | None] | None = None,
         timeout_reason: str = "wait-timeout",
-        precondition: Optional[Callable[[], bool]] = None,
+        precondition: Callable[[], bool] | None = None,
     ) -> None:
         self._subscribe = subscribe
         self._schedule = schedule
@@ -167,7 +168,7 @@ class WaitPhase:
         self._resolve = resolve
         self._timeout_reason = timeout_reason
         self._precondition = precondition
-        self._unsubscribe: Optional[Callable[[], None]] = None
+        self._unsubscribe: Callable[[], None] | None = None
         self._cancelled = False
         self._fired = False
 

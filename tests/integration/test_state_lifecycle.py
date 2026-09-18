@@ -1,15 +1,15 @@
 """Integration tests for complete state lifecycle."""
 
-import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
 
-from doro_app.core.state import State, StateService, MoveState, Transition
+import pytest
+
+from doro_app.core.state import StateService, Transition
 from doro_app.core.state.repository import (
-    StateRepository,
-    MoveStateRepository,
     GifRepository,
+    MoveStateRepository,
+    StateRepository,
     TransitionRepository,
 )
 
