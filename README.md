@@ -22,7 +22,7 @@ A desktop pet (shimeji-style) application built with PySide6. Doro is a cute chi
 - A display server (X11 or Wayland on Linux)
 
 Optional:
-- `anthropic` package for chat functionality
+- A local OpenAI-compatible LLM server (e.g. LM Studio at `http://127.0.0.1:1234`) for chat functionality
 
 ## Installation
 

@@ -39,11 +39,6 @@ def preflight_check() -> tuple[list[str], list[str]]:
     except (ImportError, PackageNotFoundError):
         errors.append("PySide6 未安裝 — pip install PySide6")
 
-    try:
-        import anthropic  # noqa: F401
-    except ImportError:
-        warnings.append("anthropic 未安裝，聊天功能將無法使用 — pip install anthropic")
-
     # Phase 1c automation: pynput is only required when DORO_MOUSE=true (or
     # the user enabled mouse_enabled in settings). Don't penalize default users.
     if os.environ.get("DORO_MOUSE", "").strip().lower() in ("1", "true", "yes", "on"):
