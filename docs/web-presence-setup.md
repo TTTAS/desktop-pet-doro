@@ -12,6 +12,8 @@ python doro.py
 
 如果只用擴充讀頁，WS 依賴仍需要安裝；Playwright 用於 Doro 自己的指令上網。
 
+Windows 使用者直接跑 `run_doro.bat`（或 `run_doro_debug.bat`）即可，它會建立 `.venv` 並安裝 `[web,automation,a11y]`。安裝與執行務必用**同一個** Python（腳本已用 `python -m pip` 確保）；否則 App 端會出現 `No module named 'websockets'`。腳本會記錄 `pyproject.toml` 的雜湊，**依賴清單有變動時自動重裝**；若仍缺套件，刪掉 `.venv\.doro_setup_done`（或整個 `.venv`）再跑一次即可強制重裝。
+
 ## 配對一般瀏覽器
 
 1. Chrome／Edge 的擴充管理頁開啟開發人員模式，選「載入未封裝項目」，選 `extensions/doro-presence`。
