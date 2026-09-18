@@ -4,6 +4,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+
 import pytest
 
 # Save original sys.modules state for cleanup
@@ -84,10 +85,9 @@ def cleanup_sys_modules():
 
     # After all tests in this module complete, clean up dummy modules
     for module_name in _dummy_modules_created:
-        if module_name in sys.modules:
-            # Only remove if it's still the dummy module we created
-            if not hasattr(sys.modules[module_name], "__file__"):
-                del sys.modules[module_name]
+        # Only remove if it's still the dummy module we created
+        if module_name in sys.modules and not hasattr(sys.modules[module_name], "__file__"):
+            del sys.modules[module_name]
 
     # Also clean up the validator module we manually loaded
     if "doro_app.core.chat.validator" in sys.modules:

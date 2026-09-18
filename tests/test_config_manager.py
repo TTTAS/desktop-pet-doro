@@ -10,7 +10,7 @@ except ImportError:
     HAS_PYSIDE6 = False
 
 from doro_app.utils.config_manager import ConfigManager
-from doro_app.utils.config_schema import ChatConfig, UIConfig, AppConfig
+from doro_app.utils.config_schema import AppConfig, ChatConfig, UIConfig
 
 pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 

@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Callable, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from ...utils.logger import get_logger
 from .session import PageView

@@ -7,8 +7,8 @@ callbacks and lets the test fire them in order.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,7 +25,7 @@ class ManualScheduler:
     """Records (delay_ms, callback) and runs them on demand."""
 
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))

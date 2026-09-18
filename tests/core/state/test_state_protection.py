@@ -11,7 +11,7 @@ This is a TDD approach: tests are written first, then the implementation follows
 
 from unittest.mock import Mock
 
-from doro_app.core.state import StateService, StateChangeEvent
+from doro_app.core.state import StateChangeEvent, StateService
 
 
 class TestTransitionProtection:

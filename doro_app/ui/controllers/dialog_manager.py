@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets
 
@@ -30,7 +30,7 @@ class DialogManager:
         self,
         parent_window: QtWidgets.QWidget,
         state_service: StateService,
-        action_service: Optional["ActionService"] = None,
+        action_service: ActionService | None = None,
     ):
         """
         Initialize DialogManager.

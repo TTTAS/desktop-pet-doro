@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtWidgets
 
@@ -14,7 +13,7 @@ from ...components.frameless_dialog import FramelessDialog
 class AddStateDialog(FramelessDialog):
     """Dialog for creating a new state."""
 
-    def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(self, service: StateService, parent: QtWidgets.QWidget | None = None):
         super().__init__("Add new state", parent)
         self.service = service
         self.selected_gif_paths: list[Path] = []
@@ -108,8 +107,8 @@ class AddStateDialog(FramelessDialog):
 
 
 def show_add_state_dialog(
-    service: StateService, parent: Optional[QtWidgets.QWidget] = None
-) -> Optional[str]:
+    service: StateService, parent: QtWidgets.QWidget | None = None
+) -> str | None:
     """
     Show add state dialog.
 

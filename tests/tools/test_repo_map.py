@@ -2,10 +2,10 @@
 
 import importlib.util
 import json
-from pathlib import Path
-import tempfile
 import re
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]

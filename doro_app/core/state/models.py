@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Generic, Optional, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 # Transition wildcard constant (also defined in constants.py for UI usage)
 TRANSITION_WILDCARD = "*"
@@ -49,7 +49,7 @@ class State:
     visual: VisualConfig = field(default_factory=VisualConfig)
 
     # Resource references (managed by Repository)
-    gif_id: Optional[str] = None  # Reference to GIF, not path
+    gif_id: str | None = None  # Reference to GIF, not path
 
     def with_changes(self, **changes: Any) -> State:
         """Return a new State with specified changes."""
@@ -72,7 +72,7 @@ class MoveState:
     key: str
     state_key: str  # Reference to the State to use
     direction: str = "any"  # "left", "right", "up|down", etc.
-    default_distance: Optional[float] = None
+    default_distance: float | None = None
     default_speed: str = "med"  # "slow", "med", "fast"
 
     def with_changes(self, **changes: Any) -> MoveState:
@@ -134,7 +134,7 @@ class BaseCollection(Generic[T]):
         del self._items[key]
         return True
 
-    def get(self, key: str) -> Optional[T]:
+    def get(self, key: str) -> T | None:
         """Get an item by key (key is normalized)."""
         return self._items.get(normalize_state_key(key))
 
@@ -169,19 +169,19 @@ class StateCollection(BaseCollection[State]):
     - Visibility filtering
     """
 
-    def __init__(self, states: Optional[dict[str, State]] = None) -> None:
+    def __init__(self, states: dict[str, State] | None = None) -> None:
         super().__init__()
         if states:
             for state in states.values():
                 self.add(state)
-        self._current_key: Optional[str] = None
+        self._current_key: str | None = None
         self._protected_keys: set[str] = {"idle"}  # Cannot be deleted
         # States registered for internal (non-personality) use such as the
         # Phase 1c click action — kept playable via set_state() but hidden
         # from menus, idle picks, and the LLM-facing state list.
         self._hidden_keys: set[str] = set()
 
-    def current_key(self) -> Optional[str]:
+    def current_key(self) -> str | None:
         """Public read of the active state key."""
         return self._current_key
 
@@ -211,7 +211,7 @@ class StateCollection(BaseCollection[State]):
         self._hidden_keys.discard(key)
         return super().remove(key)
 
-    def current(self) -> Optional[State]:
+    def current(self) -> State | None:
         """Get the currently active state."""
         if self._current_key is None:
             return None
@@ -233,7 +233,7 @@ class StateCollection(BaseCollection[State]):
     def visible_keys(self, movement_only_keys: set[str]) -> list[str]:
         """Get keys for states that should appear in UI menus."""
         blocked = {normalize_state_key(k) for k in movement_only_keys}
-        return [k for k in self._items.keys() if k not in blocked and k not in self._hidden_keys]
+        return [k for k in self._items if k not in blocked and k not in self._hidden_keys]
 
     def protect(self, key: str) -> None:
         """Mark a state as protected (cannot be deleted)."""
@@ -322,7 +322,7 @@ class MoveStateCollection(BaseCollection[MoveState]):
 class StateChangeEvent:
     """Event emitted when state changes."""
 
-    old_key: Optional[str]
+    old_key: str | None
     new_key: str
     new_state: State
 
@@ -340,7 +340,7 @@ class Transition:
     key: str  # Unique identifier for this transition
     from_state: str  # Starting state key
     to_state: str  # Target state key
-    transition_gif_id: Optional[str] = None  # Reference to transition GIF
+    transition_gif_id: str | None = None  # Reference to transition GIF
 
     def with_changes(self, **changes: Any) -> Transition:
         """Return a new Transition with specified changes."""
@@ -396,7 +396,7 @@ class TransitionCollection(BaseCollection[Transition]):
             self._transition_map.pop(pair, None)
         return super().remove(key)
 
-    def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
+    def find_transition(self, from_state: str, to_state: str) -> Transition | None:
         """
         Find a transition between two states with priority-based matching.
 

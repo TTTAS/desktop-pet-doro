@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from doro_app.utils.actions import extract_inline_move_commands, INLINE_MOVE_PATTERN
+from doro_app.utils.actions import INLINE_MOVE_PATTERN, extract_inline_move_commands
 
 
 class TestInlineMovePattern:
@@ -60,7 +60,7 @@ class TestExtractInlineMoveCommands:
         assert "走" not in cleaned
 
     def test_multiple_commands(self):
-        cleaned, dirs = extract_inline_move_commands("move left 你好 walk right")
+        _cleaned, dirs = extract_inline_move_commands("move left 你好 walk right")
         assert len(dirs) == 2
         assert "left" in dirs
         assert "right" in dirs

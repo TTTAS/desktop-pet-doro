@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
-from .retry import ChatRetryPolicy
-from .settings import ChatSettings
-from .validator import ResponseValidator
 from ...constants import (
     CHAT_DEFAULT_HISTORY_TURNS,
     CHAT_THREAD_CLEANUP_DELAY_MS,
 )
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
+from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .retry import ChatRetryPolicy
+from .settings import ChatSettings
+from .validator import ResponseValidator
 
 if TYPE_CHECKING:
     from ..state import StateService

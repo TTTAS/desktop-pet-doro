@@ -15,8 +15,8 @@ import pytest
 
 from doro_app.core.chat.settings import ChatSettings
 from doro_app.utils.config_defaults import (
-    DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_CHAT_STOP_TOKENS,
 )
 
 

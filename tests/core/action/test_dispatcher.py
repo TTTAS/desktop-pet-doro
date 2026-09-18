@@ -10,7 +10,7 @@ purely synchronously through a manual scheduler.
 
 from __future__ import annotations
 
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 
 import pytest
 
@@ -29,7 +29,7 @@ class ManualScheduler:
     without spinning a Qt event loop."""
 
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))
@@ -59,7 +59,7 @@ class FakeStateService:
 
     def __init__(self, initial: str = "idle"):
         self.current = FakeState(initial)
-        self.calls: list[Tuple[str, bool]] = []
+        self.calls: list[tuple[str, bool]] = []
         self.refuse_keys: set[str] = set()
 
     def get_current_state(self):
@@ -219,7 +219,7 @@ class TestSerialization:
         assert dispatcher.current is movement
 
         # Movement completes — listener fires, dispatcher pumps to click.
-        for listener in list(movement_listeners):
+        for listener in movement_listeners:
             listener()
         assert click_fired["v"] is True
         assert dispatcher.is_idle

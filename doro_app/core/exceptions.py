@@ -6,13 +6,11 @@ and user feedback.
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 class DoroError(Exception):
     """Base exception for all Doro application errors."""
 
-    def __init__(self, message: str, user_message: Optional[str] = None):
+    def __init__(self, message: str, user_message: str | None = None):
         """
         Initialize Doro error.
 
@@ -26,8 +24,6 @@ class DoroError(Exception):
 
 class StateError(DoroError):
     """Errors related to state operations."""
-
-    pass
 
 
 class StateNotFoundError(StateError):
@@ -66,8 +62,6 @@ class DuplicateStateError(StateError):
 class GifError(DoroError):
     """Errors related to GIF operations."""
 
-    pass
-
 
 class GifNotFoundError(GifError):
     """GIF file not found."""
@@ -103,8 +97,6 @@ class GifStorageError(GifError):
 
 class ChatError(DoroError):
     """Errors related to chat/LLM operations."""
-
-    pass
 
 
 class ChatConnectionError(ChatError):
@@ -142,8 +134,6 @@ class ChatInvalidResponseError(ChatError):
 class ConfigError(DoroError):
     """Errors related to configuration."""
 
-    pass
-
 
 class ConfigLoadError(ConfigError):
     """Failed to load configuration."""
@@ -170,8 +160,6 @@ class ConfigSaveError(ConfigError):
 class MovementError(DoroError):
     """Errors related to movement operations."""
 
-    pass
-
 
 class InvalidDirectionError(MovementError):
     """Invalid movement direction."""
@@ -186,8 +174,6 @@ class InvalidDirectionError(MovementError):
 
 class TransitionError(DoroError):
     """Errors related to state transitions."""
-
-    pass
 
 
 class TransitionNotFoundError(TransitionError):

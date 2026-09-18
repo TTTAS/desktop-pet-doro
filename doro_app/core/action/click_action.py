@@ -19,7 +19,7 @@ matches `_pre_action_state`.
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from .dispatcher import Action
 from .phases import EffectPhase, Phase, ScheduleFn, WaitPhase
@@ -37,7 +37,7 @@ __all__ = ["CLICK_FAILED_STATE_KEY", "make_click_action"]
 CLICK_SAFETY_TIMEOUT_MS = 30_000
 
 
-def _resolve_click_outcome(outcome: "ClickOutcome", detail: str) -> Optional[str]:
+def _resolve_click_outcome(outcome: ClickOutcome, detail: str) -> str | None:
     """Map a terminal `ClickOutcome` to a `WaitPhase` result.
 
     Click-specific and therefore local to this module: only
@@ -54,7 +54,7 @@ def _resolve_click_outcome(outcome: "ClickOutcome", detail: str) -> Optional[str
 
 
 def make_click_action(
-    automation: "AutomationManager",
+    automation: AutomationManager,
     schedule: ScheduleFn,
     *,
     safety_timeout_ms: int = CLICK_SAFETY_TIMEOUT_MS,

@@ -15,7 +15,7 @@ from doro_app.core.automation.fakes import FakeAutomationWindow, FakeInputBacken
 from doro_app.core.automation.manager import AutomationManager, ClickOutcome
 from doro_app.core.chat.orchestrator import ChatOrchestrator
 
-from .conftest import ConfigManagerStub, ManualScheduler, ClockStub
+from .conftest import ClockStub, ConfigManagerStub, ManualScheduler
 
 
 @pytest.fixture

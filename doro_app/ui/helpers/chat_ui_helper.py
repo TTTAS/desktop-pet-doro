@@ -9,8 +9,8 @@ from PySide6 import QtWidgets
 from ..dialogs.chat_dialog import DoroChatDialog
 
 if TYPE_CHECKING:
-    from ..components.bubble_controller import BubbleController
     from ...core.core_manager import CoreManager
+    from ..components.bubble_controller import BubbleController
     from ..window import DoroWindow
 
 _PROVIDER_PRESETS = {

@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import re
 import urllib.parse
-from typing import Callable, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from ...utils.logger import get_logger
 from .operator import looks_like_captcha, looks_like_login_wall
@@ -83,7 +84,7 @@ def _domain(url: str) -> str:
         net = urllib.parse.urlparse(url).netloc.lower()
     except ValueError:
         return ""
-    return net[4:] if net.startswith("www.") else net
+    return net.removeprefix("www.")
 
 
 def _is_skipped(dom: str) -> bool:

@@ -7,21 +7,19 @@ reports "no tree available" so nothing is injected into the prompt.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .models import A11yElement
 
 
 class NullA11yBackend:
     """Always returns None — no accessibility tree is available."""
 
-    def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
+    def read_elements(self, handle: int) -> list[A11yElement] | None:
         return None
 
     def invoke_at_physical_point(
         self,
         x: int,
         y: int,
-        hwnd: Optional[int] = None,
+        hwnd: int | None = None,
     ) -> bool:
         return False

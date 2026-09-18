@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 
 class MovementRequest(NamedTuple):
     direction: tuple[float, float]
     distance_px: float
     speed_px_per_s: float
-    state_key: Optional[str]
-    move_state: Optional[str] = None
+    state_key: str | None
+    move_state: str | None = None
 
 
 @dataclass

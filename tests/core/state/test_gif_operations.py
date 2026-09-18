@@ -3,8 +3,8 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from doro_app.core.state import StateService
 from doro_app.core.exceptions import GifNotFoundError, GifStorageError
+from doro_app.core.state import StateService
 
 
 class TestGifOperations:

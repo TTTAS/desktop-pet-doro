@@ -193,6 +193,7 @@ def test_extension_focus_content_and_pause(tmp_path, website):
 
 def test_web_session_uses_native_window_viewport(tmp_path):
     from playwright.sync_api import sync_playwright
+
     from doro_app.core.web.session import WebSession
 
     session = WebSession(tmp_path / "profile", headless=True, browser_channel=None)

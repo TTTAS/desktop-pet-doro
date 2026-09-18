@@ -8,7 +8,7 @@ no backend yet, and ``FakeA11yBackend`` substitutes in tests.
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 from .models import A11yElement
 
@@ -17,7 +17,7 @@ class A11yBackendPort(Protocol):
     """Reads interactable elements from a single focused window, and fires
     UI Automation InvokePattern actions for cursor-free clicks."""
 
-    def read_elements(self, handle: int) -> Optional[list[A11yElement]]:
+    def read_elements(self, handle: int) -> list[A11yElement] | None:
         """Return the window's interactable elements, or None if unavailable.
 
         Returning None means "no tree could be read" (backend missing,
@@ -31,7 +31,7 @@ class A11yBackendPort(Protocol):
         self,
         x: int,
         y: int,
-        hwnd: Optional[int] = None,
+        hwnd: int | None = None,
     ) -> bool:
         """Fire the UIA InvokePattern on the element under (x, y).
 

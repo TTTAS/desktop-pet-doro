@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -47,9 +47,9 @@ class TransitionPlayer(QtCore.QObject):
         super().__init__()
         self._state_service = state_service
         self._is_playing = False
-        self._target_state_key: Optional[str] = None
+        self._target_state_key: str | None = None
         self._gif_player = GifPlayer()
-        self._transition_movie: Optional[QtGui.QMovie] = None
+        self._transition_movie: QtGui.QMovie | None = None
         self._last_frame_number = -1
         self._has_played_once = False
         self._quit_hooked = False
@@ -127,7 +127,7 @@ class TransitionPlayer(QtCore.QObject):
         self._state_service.is_transitioning()
         self._state_service.end_transition()
 
-    def _get_transition_gif_path(self, gif_id: str) -> Optional[Path]:
+    def _get_transition_gif_path(self, gif_id: str) -> Path | None:
         """
         Get full path to transition GIF.
 

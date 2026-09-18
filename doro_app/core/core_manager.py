@@ -13,13 +13,13 @@ from PySide6 import QtCore
 from ..utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from ..utils.config_manager import ConfigManager
     from .chat.controller import ChatController
     from .chat.orchestrator import ChatOrchestrator
     from .movement.manager import MovementManager
     from .reaction import ReactionRunner
     from .state import StateService
     from .state.transition_player import TransitionPlayer
-    from ..utils.config_manager import ConfigManager
 
 logger = get_logger(__name__)
 
@@ -74,7 +74,7 @@ class CoreManager(QtCore.QObject):
         config_manager: ConfigManager,
         a11y_service=None,
         automation_manager=None,
-        reaction_runner: "ReactionRunner | None" = None,
+        reaction_runner: ReactionRunner | None = None,
     ):
         """
         Initialize CoreManager with all business logic components.
@@ -240,7 +240,7 @@ class CoreManager(QtCore.QObject):
         return self._chat_orchestrator
 
     @property
-    def config_manager(self) -> "ConfigManager":
+    def config_manager(self) -> ConfigManager:
         """Get ConfigManager (read-only access)."""
         return self._config_manager
 

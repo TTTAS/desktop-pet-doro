@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import random
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
 from ...utils.actions import (
     ACTION_PATTERN,
     BRACKET_PATTERN,
-    parse_actions_from_text,
     extract_inline_move_commands,
+    parse_actions_from_text,
 )
+from ...utils.logger import get_logger
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from ..web import (
     WebReadResult,
@@ -35,7 +37,6 @@ from .chat import (
 )
 from .controller import ChatController
 from .presentation import character_instructions, parse_character_reply
-from ...utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -93,10 +94,10 @@ class ChatOrchestrator(QtCore.QObject):
         movement: MovementManager,
         state_service: StateService,
         *,
-        automation: "AutomationManager | None" = None,
-        action_dispatcher: "ActionDispatcher | None" = None,
-        schedule: "ScheduleFn | None" = None,
-        web_runtime: "WebRuntime | None" = None,
+        automation: AutomationManager | None = None,
+        action_dispatcher: ActionDispatcher | None = None,
+        schedule: ScheduleFn | None = None,
+        web_runtime: WebRuntime | None = None,
         config_manager=None,
     ):
         super().__init__()  # No parent
@@ -184,7 +185,9 @@ class ChatOrchestrator(QtCore.QObject):
                 return self._begin_web_read(web_request.url, web_request.question)
             read_current_q = parse_read_current_command(user_message)
             if read_current_q is not None:
-                own_page = re.search(r"你.*(?:開|打開)|doro.*(?:開|打開)", user_message, re.I)
+                own_page = re.search(
+                    r"你.*(?:開|打開)|doro.*(?:開|打開)", user_message, re.IGNORECASE
+                )
                 if self._presence is not None and not own_page:
                     page = self._presence.current_page
                     if page is not None:
@@ -1058,9 +1061,9 @@ class ChatOrchestrator(QtCore.QObject):
             normalized = line.lstrip()
             ascii_line = normalized.replace("：", ":")
             lower = ascii_line.lower()
-            if ascii_line.startswith("使用者說") or ascii_line.startswith("使用者:"):
+            if ascii_line.startswith(("使用者說", "使用者:")):
                 continue
-            if lower.startswith("user said") or lower.startswith("user:"):
+            if lower.startswith(("user said", "user:")):
                 continue
             filtered.append(line)
         target = filtered if filtered else lines

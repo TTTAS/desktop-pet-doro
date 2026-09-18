@@ -5,12 +5,10 @@ Kept free of Qt so unit tests can import it without PySide6.
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 def should_emit_completed_target(
-    target_key: Optional[str],
-    committed_key: Optional[str],
+    target_key: str | None,
+    committed_key: str | None,
 ) -> bool:
     """True when the finished clip's target is still the committed state.
 

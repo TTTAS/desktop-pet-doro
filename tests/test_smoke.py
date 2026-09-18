@@ -30,9 +30,9 @@ class TestStateServiceSmoke:
         """Create a StateService instance for testing."""
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
 
         # Create repositories
@@ -81,9 +81,9 @@ class TestStateServiceSmoke:
         """States can be persisted to disk."""
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
 
         # Create service, add state, save
@@ -130,9 +130,9 @@ class TestChatControllerSmoke:
         from doro_app.core.chat.controller import ChatController
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
         from doro_app.utils.config_manager import ConfigManager
 
@@ -171,9 +171,9 @@ class TestChatControllerSmoke:
         from doro_app.core.chat.controller import ChatController
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
         from doro_app.utils.config_manager import ConfigManager
 
@@ -219,10 +219,11 @@ class TestChatControllerSmoke:
         This test ensures the code follows the official PySide6 approach.
         """
         import inspect
-        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
 
         # Verify ChatWorker exists and is a QRunnable
-        from PySide6.QtCore import QRunnable, QObject
+        from PySide6.QtCore import QObject, QRunnable
+
+        from doro_app.core.chat.controller import ChatController, ChatWorker, ChatWorkerSignals
 
         assert issubclass(ChatWorker, QRunnable), "ChatWorker should inherit from QRunnable"
 
@@ -253,14 +254,15 @@ class TestMovementManagerSmoke:
 
     def test_movement_manager_can_be_created(self, tmp_path):
         """MovementManager can be initialized."""
+        from unittest.mock import Mock
+
         from doro_app.core.movement.manager import MovementManager
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
-        from unittest.mock import Mock
 
         # Create mock window
         mock_window = Mock()
@@ -293,14 +295,15 @@ class TestMovementManagerSmoke:
 
     def test_movement_instruction_text_loads(self, tmp_path):
         """Movement instruction text can be loaded."""
+        from unittest.mock import Mock
+
         from doro_app.core.movement.manager import MovementManager
         from doro_app.core.state import StateService
         from doro_app.core.state.repository import (
-            StateRepository,
-            MoveStateRepository,
             GifRepository,
+            MoveStateRepository,
+            StateRepository,
         )
-        from unittest.mock import Mock
 
         mock_window = Mock()
 
@@ -346,6 +349,7 @@ class TestContextMenuSmoke:
         instead of directly accessing business objects through the window.
         """
         import inspect
+
         from doro_app.ui.theme.themed_menu import build_context_menu_content
 
         source = inspect.getsource(build_context_menu_content)
@@ -376,6 +380,7 @@ class TestContextMenuSmoke:
         This test ensures the controller handles both cases.
         """
         import inspect
+
         from doro_app.ui.components.context_menu_controller import (
             ContextMenuController,
         )
@@ -402,9 +407,11 @@ class TestMouseEventHandlingSmoke:
 
     def test_mouse_press_event_handles_left_button(self):
         """MouseEventHandler handles left button press."""
-        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
+
+        from PySide6 import QtCore, QtGui
+
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
 
         handler = MouseEventHandler()
 
@@ -422,9 +429,11 @@ class TestMouseEventHandlingSmoke:
 
     def test_mouse_press_event_ignores_right_button(self):
         """MouseEventHandler ignores right button (for context menu)."""
-        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
-        from PySide6 import QtCore, QtGui
         from unittest.mock import Mock
+
+        from PySide6 import QtCore, QtGui
+
+        from doro_app.ui.events.mouse_event_handler import MouseEventHandler
 
         handler = MouseEventHandler()
 
@@ -445,19 +454,19 @@ class TestConstantsSmoke:
     def test_all_critical_constants_exist(self):
         """All newly added constants are importable."""
         from doro_app.constants import (
-            # Color
-            COLOR_ALPHA_MAX,
-            # Chat
-            CHAT_DEFAULT_HISTORY_TURNS,
-            MOVEMENT_SPEED_SLOW,
-            MOVEMENT_SPEED_MEDIUM,
-            MOVEMENT_SPEED_FAST,
+            BUBBLE_SCALE_MAX,
             # Bubble
             BUBBLE_SCALE_MIN,
-            BUBBLE_SCALE_MAX,
+            # Chat
+            CHAT_DEFAULT_HISTORY_TURNS,
+            # Color
+            COLOR_ALPHA_MAX,
+            FALLBACK_SCREEN_WIDTH,
+            MOVEMENT_SPEED_FAST,
+            MOVEMENT_SPEED_MEDIUM,
+            MOVEMENT_SPEED_SLOW,
             # UI Layout
             PANEL_MIN_WIDTH,
-            FALLBACK_SCREEN_WIDTH,
         )
 
         # If any constant is missing, this test will fail at import time

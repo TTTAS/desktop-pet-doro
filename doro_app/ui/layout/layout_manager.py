@@ -9,12 +9,12 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...constants import (
-    PANEL_MIN_WIDTH,
-    PANEL_MIN_HEIGHT,
-    PANEL_PADDING,
-    PANEL_MAX_WIDTH,
-    FALLBACK_SCREEN_WIDTH,
     FALLBACK_SCREEN_HEIGHT,
+    FALLBACK_SCREEN_WIDTH,
+    PANEL_MAX_WIDTH,
+    PANEL_MIN_HEIGHT,
+    PANEL_MIN_WIDTH,
+    PANEL_PADDING,
 )
 
 
@@ -129,7 +129,7 @@ class WindowLayoutManager:
             flags = int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
             flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
             text_rect = metrics.boundingRect(
-                QtCore.QRect(0, 0, int(round(available_text_width)), int(PANEL_MAX_WIDTH)),
+                QtCore.QRect(0, 0, round(available_text_width), int(PANEL_MAX_WIDTH)),
                 flags,
                 text,
             )
@@ -167,15 +167,15 @@ class WindowLayoutManager:
         sprite_h = max(120.0, float(sprite_size.height()))
 
         if compact:
-            return int(round(sprite_w)), int(round(sprite_h))
+            return round(sprite_w), round(sprite_h)
 
         desired_w = max(
             380,
-            int(round(max(sprite_w + 120.0, panel_width_hint + 48.0))),
+            round(max(sprite_w + 120.0, panel_width_hint + 48.0)),
         )
         desired_h = max(
             320,
-            int(round(sprite_h + panel_height_hint + 120.0)),
+            round(sprite_h + panel_height_hint + 120.0),
         )
 
         return desired_w, desired_h

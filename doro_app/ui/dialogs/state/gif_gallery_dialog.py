@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 
 class GifThumbnail(QtWidgets.QFrame):
@@ -21,7 +20,7 @@ class GifThumbnail(QtWidgets.QFrame):
         gif_path: Path,
         gif_player: GifPlayer,
         removable: bool = True,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self.gif_path = gif_path
@@ -98,7 +97,7 @@ class GifGalleryDialog(FramelessDialog):
         state_key: str,
         state_label: str,
         gif_paths: list[Path],
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(f"GIF Gallery - {state_label}", parent)
         self.state_key = state_key

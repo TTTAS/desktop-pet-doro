@@ -12,7 +12,8 @@ per-action state to carry — all the work happens inside the phases.
 
 from __future__ import annotations
 
-from typing import Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from .dispatcher import Action
 from .phases import EffectPhase, ScheduleFn, WaitPhase
@@ -29,14 +30,14 @@ MOVEMENT_SAFETY_TIMEOUT_MS = 30_000
 
 
 def make_movement_action(
-    movement: "MovementManager",
+    movement: MovementManager,
     schedule: ScheduleFn,
     *,
-    direction: Optional[tuple[int, int]] = None,
-    target: Optional[tuple[int, int]] = None,
-    bracket_token: Optional[str] = None,
+    direction: tuple[int, int] | None = None,
+    target: tuple[int, int] | None = None,
+    bracket_token: str | None = None,
     safety_timeout_ms: int = MOVEMENT_SAFETY_TIMEOUT_MS,
-    on_report: Optional[Callable[[str], None]] = None,
+    on_report: Callable[[str], None] | None = None,
 ) -> Action:
     """Build an Action that drives one movement to completion.
 

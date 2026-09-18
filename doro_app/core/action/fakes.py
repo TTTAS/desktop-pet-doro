@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from .repository import CLICK_ACTION_KEY, ActionEntry
 
@@ -16,7 +15,7 @@ class FakeActionRepository:
     filesystem.
     """
 
-    def __init__(self, entries: Optional[list[ActionEntry]] = None) -> None:
+    def __init__(self, entries: list[ActionEntry] | None = None) -> None:
         self._entries: dict[str, ActionEntry] = {}
         for entry in entries or []:
             self._entries[entry.key] = entry
@@ -39,7 +38,7 @@ class FakeActionRepository:
         self.save_calls += 1
         return True
 
-    def get(self, key: str) -> Optional[ActionEntry]:
+    def get(self, key: str) -> ActionEntry | None:
         return self._entries.get(key)
 
     def all_keys(self) -> list[str]:
@@ -48,7 +47,7 @@ class FakeActionRepository:
     def all_entries(self) -> list[ActionEntry]:
         return list(self._entries.values())
 
-    def update_gif_id(self, key: str, gif_id: Optional[str]) -> bool:
+    def update_gif_id(self, key: str, gif_id: str | None) -> bool:
         entry = self._entries.get(key)
         if entry is None:
             return False

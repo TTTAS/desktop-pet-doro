@@ -2,8 +2,8 @@
 """Test script to verify LM Studio API response format."""
 
 import json
-import urllib.request
 import sys
+import urllib.request
 
 # Configuration
 LM_STUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"  # Default LM Studio URL
@@ -46,7 +46,7 @@ def test_lmstudio_response():
         # Analyze structure
         print("\n🔍 Structure Analysis:")
         print(f"  - Has 'choices' field: {('choices' in response_data)}")
-        if "choices" in response_data and response_data["choices"]:
+        if response_data.get("choices"):
             first_choice = response_data["choices"][0]
             print(f"  - choices[0] has 'message': {('message' in first_choice)}")
             if "message" in first_choice:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from doro_app.utils.config_schema import ChatConfig, UIConfig, AppConfig, DoroConfig
+from doro_app.utils.config_schema import AppConfig, ChatConfig, DoroConfig, UIConfig
 
 
 class TestChatConfig:

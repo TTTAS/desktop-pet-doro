@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import re
 import sys
-from importlib.metadata import version as pkg_version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 
 _MIN_PYTHON = (3, 10)
 _MIN_PYSIDE6 = "6.5.0"
@@ -65,15 +66,17 @@ def preflight_check() -> tuple[list[str], list[str]]:
     # Phase 1d a11y: the Windows backend needs the optional `uiautomation`
     # package. Warn (don't fail) when a11y is requested via env but it's
     # missing, so the tree-read doesn't silently return nothing.
-    if os.environ.get("DORO_A11Y", "").strip().lower() in ("1", "true", "yes", "on"):
-        if sys.platform == "win32":
-            import importlib.util
+    if (
+        os.environ.get("DORO_A11Y", "").strip().lower() in ("1", "true", "yes", "on")
+        and sys.platform == "win32"
+    ):
+        import importlib.util
 
-            if importlib.util.find_spec("uiautomation") is None:
-                warnings.append(
-                    "DORO_A11Y 已設為 true 但 uiautomation 未安裝；無障礙樹讀取將回傳空白 — "
-                    "pip install 'doro[a11y]'"
-                )
+        if importlib.util.find_spec("uiautomation") is None:
+            warnings.append(
+                "DORO_A11Y 已設為 true 但 uiautomation 未安裝；無障礙樹讀取將回傳空白 — "
+                "pip install 'doro[a11y]'"
+            )
 
     if sys.platform.startswith("linux"):
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):

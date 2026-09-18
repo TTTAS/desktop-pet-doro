@@ -15,12 +15,12 @@ from ..theme.themed_menu import (
 )
 
 if TYPE_CHECKING:
-    from ..components.bubble_controller import BubbleController
-    from ..helpers import ChatUIHelper
-    from ..window import DoroWindow
     from ...core.core_manager import CoreManager
     from ...core.state import StateService
+    from ..components.bubble_controller import BubbleController
     from ..controllers import DialogManager, StateController
+    from ..helpers import ChatUIHelper
+    from ..window import DoroWindow
 
 
 class ContextMenuController:

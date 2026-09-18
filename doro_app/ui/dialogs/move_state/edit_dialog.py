@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....core.action import ActionService
 from ....core.action.repository import CLICK_ACTION_KEY
 from ....core.state import StateService, Transition
-from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 
 class EditMoveStateDialog(FramelessDialog):
@@ -20,11 +19,11 @@ class EditMoveStateDialog(FramelessDialog):
     def __init__(
         self,
         service: StateService,
-        move_state_key: Optional[str],
-        parent: Optional[QtWidgets.QWidget] = None,
+        move_state_key: str | None,
+        parent: QtWidgets.QWidget | None = None,
         *,
-        action_service: Optional[ActionService] = None,
-        edit_action_key: Optional[str] = None,
+        action_service: ActionService | None = None,
+        edit_action_key: str | None = None,
     ):
         # action edit mode wins over move_state edit semantics.
         self._edit_action_key = edit_action_key
@@ -44,7 +43,7 @@ class EditMoveStateDialog(FramelessDialog):
         self._gif_player = GifPlayer()
 
         # Track selected GIF for upload
-        self.selected_gif_path: Optional[Path] = None
+        self.selected_gif_path: Path | None = None
 
         self._setup_ui()
 
@@ -449,11 +448,10 @@ class EditMoveStateDialog(FramelessDialog):
         default_speed = self.speed_combo.currentText()
 
         # If user selected a GIF, upload it for the associated state
-        if self.selected_gif_path:
-            if not self.service.set_gif(state_key, self.selected_gif_path):
-                QtWidgets.QMessageBox.warning(
-                    self, "Warning", "Movement state will be saved, but failed to upload GIF."
-                )
+        if self.selected_gif_path and not self.service.set_gif(state_key, self.selected_gif_path):
+            QtWidgets.QMessageBox.warning(
+                self, "Warning", "Movement state will be saved, but failed to upload GIF."
+            )
 
         # Save movement state (service.add_move_state takes individual parameters, not MoveState object)
         try:

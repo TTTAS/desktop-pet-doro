@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from doro_app.core.state.repository import GifRepository
 from doro_app.core.exceptions import GifNotFoundError
+from doro_app.core.state.repository import GifRepository
 
 # ═══════════════════════════════════════════════════════════
 # GifRepository — multi-GIF operations

@@ -12,12 +12,12 @@ balloon.
 
 from __future__ import annotations
 
-from .models import A11yElement
 from ...constants import (
     A11Y_MAX_SERIALIZED_BYTES,
     A11Y_NAME_MAX_CHARS,
     A11Y_VALUE_MAX_CHARS,
 )
+from .models import A11yElement
 
 # Reserve room so the truncation marker itself always fits under the cap.
 _MARKER_RESERVE_BYTES = 80

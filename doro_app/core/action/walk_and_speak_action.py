@@ -20,7 +20,8 @@ arrives, optionally says a line. Two properties make this work:
 
 from __future__ import annotations
 
-from typing import Callable, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from .dispatcher import Action
 from .phases import EffectPhase, ScheduleFn, WaitPhase
@@ -34,12 +35,12 @@ WALK_SAFETY_TIMEOUT_MS = 30_000
 
 
 def make_walk_and_speak_action(
-    movement: "MovementManager",
+    movement: MovementManager,
     schedule: ScheduleFn,
     *,
     direction: tuple[int, int],
-    speak: Optional[Callable[[], None]] = None,
-    distance: Optional[float] = None,
+    speak: Callable[[], None] | None = None,
+    distance: float | None = None,
     safety_timeout_ms: int = WALK_SAFETY_TIMEOUT_MS,
 ) -> Action:
     """Build an Action that walks `direction` (animated), then calls `speak`.

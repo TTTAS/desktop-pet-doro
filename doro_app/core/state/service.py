@@ -8,13 +8,12 @@ This one has clear responsibilities and no Window dependency.
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...utils.logger import get_logger
 from ..exceptions import ConfigSaveError, GifNotFoundError, GifStorageError
-from .state_parser import StateParser
-from .transition_coordinator import TransitionCoordinator
 from .models import (
     MoveState,
     MoveStateCollection,
@@ -31,6 +30,8 @@ from .repository import (
     StateRepository,
     TransitionRepository,
 )
+from .state_parser import StateParser
+from .transition_coordinator import TransitionCoordinator
 
 if TYPE_CHECKING:
     from ..movement.repository import MovementRepository
@@ -60,10 +61,10 @@ class StateService:
         move_repo: MoveStateRepository,
         gif_repo: GifRepository,
         state_list_path: Path,
-        transition_repo: Optional[TransitionRepository] = None,
+        transition_repo: TransitionRepository | None = None,
         *,
         transition_gif_repo: GifRepository,
-        movement_repo: Optional[MovementRepository] = None,
+        movement_repo: MovementRepository | None = None,
     ):
         # Private - encapsulated repositories
         self._state_repo = state_repo
@@ -84,17 +85,17 @@ class StateService:
 
         # Last intended state key. Equals the committed key unless a
         # request arrived while the transition lock was held (queued).
-        self._requested_key: Optional[str] = None
+        self._requested_key: str | None = None
 
         # Event callbacks (public - set by Window or controller)
-        self.on_state_changed: Optional[Callable[[StateChangeEvent], None]] = None
-        self.on_states_modified: Optional[Callable[[], None]] = None
+        self.on_state_changed: Callable[[StateChangeEvent], None] | None = None
+        self.on_states_modified: Callable[[], None] | None = None
 
     # ═══════════════════════════════════════════════════════════
     # Private - GIF storage error handling
     # ═══════════════════════════════════════════════════════════
 
-    def _store_gif(self, source_path: Path, context_key: str) -> Optional[str]:
+    def _store_gif(self, source_path: Path, context_key: str) -> str | None:
         """Store a GIF into the state store, swallowing storage errors.
 
         Returns the resource ID, or None if the source is missing or the
@@ -106,7 +107,7 @@ class StateService:
             logger.error(f"Failed to store GIF for '{context_key}': {e}")
             return None
 
-    def _add_gif(self, repo: GifRepository, source_path: Path, key: str) -> Optional[str]:
+    def _add_gif(self, repo: GifRepository, source_path: Path, key: str) -> str | None:
         """Add a GIF to a repo's multi-GIF collection, swallowing storage errors.
 
         Returns the resource ID, or None if the source is missing or the
@@ -122,7 +123,7 @@ class StateService:
     # Public API - GIF Operations (Encapsulated)
     # ═══════════════════════════════════════════════════════════
 
-    def get_gif_path(self, state_key: str) -> Optional[Path]:
+    def get_gif_path(self, state_key: str) -> Path | None:
         """
         Get a sprite path for a state.
 
@@ -162,7 +163,7 @@ class StateService:
 
         return None
 
-    def get_gif_path_by_id(self, gif_id: str) -> Optional[Path]:
+    def get_gif_path_by_id(self, gif_id: str) -> Path | None:
         """
         Get the file path for a GIF resource ID.
 
@@ -174,7 +175,7 @@ class StateService:
         """
         return self._gif_repo.get_path(gif_id)
 
-    def store_gif(self, source_path: Path, state_key: str) -> Optional[str]:
+    def store_gif(self, source_path: Path, state_key: str) -> str | None:
         """
         Store a GIF file for a state.
 
@@ -239,7 +240,7 @@ class StateService:
     # Public API - Query Methods
     # ═══════════════════════════════════════════════════════════
 
-    def get_state(self, key: str) -> Optional[State]:
+    def get_state(self, key: str) -> State | None:
         """Get a state by key."""
         return self._states.get(key)
 
@@ -247,11 +248,11 @@ class StateService:
         """Check if a state exists."""
         return self._states.get(key) is not None
 
-    def get_current_state(self) -> Optional[State]:
+    def get_current_state(self) -> State | None:
         """Get the currently active state."""
         return self._states.current()
 
-    def get_current_state_key(self) -> Optional[str]:
+    def get_current_state_key(self) -> str | None:
         """Get the key of the currently active state."""
         return self._states.current_key()
 
@@ -271,7 +272,7 @@ class StateService:
         """Check if a state key is reserved for movement only."""
         return self._move_states.is_movement_only(key)
 
-    def get_move_state(self, key: str) -> Optional[MoveState]:
+    def get_move_state(self, key: str) -> MoveState | None:
         """Get a movement state by key."""
         return self._move_states.get(key)
 
@@ -283,7 +284,7 @@ class StateService:
         """Find all movement states that support the given direction."""
         return self._move_states.find_by_direction(direction_slug)
 
-    def get_default_movement_state(self) -> Optional[str]:
+    def get_default_movement_state(self) -> str | None:
         """Get the default movement state key (usually 'walking')."""
         # Try to find 'walking' state
         if self.get_state("walking"):
@@ -294,7 +295,7 @@ class StateService:
                 return move_state.state_key
         return None
 
-    def find_state_by_label(self, label_query: str) -> Optional[str]:
+    def find_state_by_label(self, label_query: str) -> str | None:
         """Find a state key by searching labels (case-insensitive)."""
         query_lower = label_query.lower().strip()
         for key in self._states.all_keys():
@@ -307,7 +308,7 @@ class StateService:
     # Public API - Transition Query Methods
     # ═══════════════════════════════════════════════════════════
 
-    def get_transition(self, key: str) -> Optional[Transition]:
+    def get_transition(self, key: str) -> Transition | None:
         """Get a transition by key."""
         return self._transition_coordinator.get(key)
 
@@ -315,7 +316,7 @@ class StateService:
         """Get all transition keys."""
         return self._transition_coordinator.all_keys()
 
-    def find_transition(self, from_state: str, to_state: str) -> Optional[Transition]:
+    def find_transition(self, from_state: str, to_state: str) -> Transition | None:
         """Find a transition between two states."""
         return self._transition_coordinator.find(from_state, to_state)
 
@@ -323,7 +324,7 @@ class StateService:
     # Public API - Transition GIF Operations
     # ═══════════════════════════════════════════════════════════
 
-    def get_transition_gif_path(self, transition_key: str) -> Optional[Path]:
+    def get_transition_gif_path(self, transition_key: str) -> Path | None:
         """Pick a random transition GIF (subfolder first, single file fallback)."""
         return self._transition_gif_repo.pick_random_gif(transition_key)
 
@@ -348,7 +349,7 @@ class StateService:
         self,
         key: str,
         label: str,
-        gif_id: Optional[str] = None,
+        gif_id: str | None = None,
     ) -> None:
         """Idempotently register a protected, hidden internal state.
 
@@ -436,7 +437,7 @@ class StateService:
     # Initialization
     # ═══════════════════════════════════════════════════════════
 
-    def initialize(self, default_gif_path: Optional[Path] = None) -> None:
+    def initialize(self, default_gif_path: Path | None = None) -> None:
         """
         Initialize state system with defaults and load user customizations.
 
@@ -542,11 +543,11 @@ class StateService:
     # lock immediately.
     # ═══════════════════════════════════════════════════════════
 
-    def get_committed_state_key(self) -> Optional[str]:
+    def get_committed_state_key(self) -> str | None:
         """Key that is actually current (the sprite should match this)."""
         return self._states.current_key()
 
-    def get_requested_state_key(self) -> Optional[str]:
+    def get_requested_state_key(self) -> str | None:
         """Last intended key. Equals committed unless a request is queued."""
         return self._requested_key
 
@@ -669,7 +670,7 @@ class StateService:
         self._release_expired_lock()
         return self._transition_coordinator.is_active()
 
-    def parse_state_from_action(self, action: str) -> Optional[str]:
+    def parse_state_from_action(self, action: str) -> str | None:
         """
         Parse state key from action token in LLM responses.
 
@@ -693,7 +694,7 @@ class StateService:
         """
         return self._state_parser.parse(action, self)
 
-    def add_state(self, key: str, label: str, copy_from: Optional[str] = None) -> Optional[State]:
+    def add_state(self, key: str, label: str, copy_from: str | None = None) -> State | None:
         """
         Create a new custom state.
 
@@ -774,7 +775,7 @@ class StateService:
 
         return True
 
-    def update_state_visual(self, key: str, **visual_changes: Any) -> Optional[State]:
+    def update_state_visual(self, key: str, **visual_changes: Any) -> State | None:
         """
         Update visual config for a state.
 
@@ -834,7 +835,7 @@ class StateService:
 
         return True
 
-    def get_gif_id(self, state_key: str) -> Optional[str]:
+    def get_gif_id(self, state_key: str) -> str | None:
         """
         Get GIF resource ID for a state.
 
@@ -907,7 +908,7 @@ class StateService:
         key: str,
         state_key: str,
         direction: str = "any",
-        distance: Optional[float] = None,
+        distance: float | None = None,
         speed: str = "med",
     ) -> MoveState:
         """Create or update a movement state."""
@@ -975,7 +976,7 @@ class StateService:
 
         return True
 
-    def find_move_state_by_direction(self, direction: str) -> Optional[str]:
+    def find_move_state_by_direction(self, direction: str) -> str | None:
         """
         Find a random movement state matching direction.
 
@@ -1002,7 +1003,7 @@ class StateService:
     def write_state_list(self) -> str:
         """Write state summary for LLM context."""
         # Collect GIF path and count information
-        gif_paths: dict[str, Optional[Path]] = {}
+        gif_paths: dict[str, Path | None] = {}
         gif_counts: dict[str, int] = {}
         for key, state in self._states.items().items():
             # Check multi-GIF subfolder first

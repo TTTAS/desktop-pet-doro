@@ -3,8 +3,7 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from doro_app.core.state import Transition
-from doro_app.core.state import StateService
+from doro_app.core.state import StateService, Transition
 
 
 class TestStateListWriting:

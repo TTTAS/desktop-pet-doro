@@ -1,6 +1,7 @@
 """Tests for CoreManager - the business logic layer coordinator."""
 
 from unittest.mock import Mock
+
 import pytest
 from PySide6.QtCore import QObject
 

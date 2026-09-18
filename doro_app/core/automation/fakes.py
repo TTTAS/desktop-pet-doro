@@ -8,7 +8,7 @@ deterministically.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 
 class FakeInputBackend:
@@ -21,52 +21,52 @@ class FakeInputBackend:
 
     def __init__(self) -> None:
         self.window_class_at: dict[tuple[int, int], str] = {}
-        self.window_class_default: Optional[str] = None
+        self.window_class_default: str | None = None
         self.left_button_pressed: bool = False
-        self.esc_callback: Optional[Callable[[], None]] = None
+        self.esc_callback: Callable[[], None] | None = None
         self.shutdown_called: bool = False
         # Foreground-verification hooks (M2). Defaults to None on both
         # sides — the manager treats "any None" as "can't check" and
         # skips the gate. Existing tests therefore see no behaviour
         # change; tests that want to exercise the gate set both fields.
-        self.handle_at_default: Optional[int] = None
+        self.handle_at_default: int | None = None
         self.handle_at_map: dict[tuple[int, int], int] = {}
-        self.foreground_handle: Optional[int] = None
+        self.foreground_handle: int | None = None
         # PID owning each known handle; the manager's M2 gate looks up
         # the foreground handle's PID and compares it against its own
         # ``os.getpid()`` to recognise Doro's own top-level windows.
         # ``pid_of_handle_default`` lets a test cover every handle with
         # one value without enumerating each one.
         self.pid_of_handle_map: dict[int, int] = {}
-        self.pid_of_handle_default: Optional[int] = None
+        self.pid_of_handle_default: int | None = None
         # Diagnostic only: window class for a given handle, used in the
         # reject-detail string.
         self.class_of_handle_map: dict[int, str] = {}
 
     # InputBackendPort ---------------------------------------------------
 
-    def read_window_class_at(self, x: int, y: int) -> Optional[str]:
+    def read_window_class_at(self, x: int, y: int) -> str | None:
         key = (int(x), int(y))
         if key in self.window_class_at:
             return self.window_class_at[key]
         return self.window_class_default
 
-    def read_handle_at(self, x: int, y: int) -> Optional[int]:
+    def read_handle_at(self, x: int, y: int) -> int | None:
         key = (int(x), int(y))
         if key in self.handle_at_map:
             return self.handle_at_map[key]
         return self.handle_at_default
 
-    def read_foreground_window_handle(self) -> Optional[int]:
+    def read_foreground_window_handle(self) -> int | None:
         return self.foreground_handle
 
-    def read_pid_of_handle(self, handle: int) -> Optional[int]:
+    def read_pid_of_handle(self, handle: int) -> int | None:
         key = int(handle)
         if key in self.pid_of_handle_map:
             return self.pid_of_handle_map[key]
         return self.pid_of_handle_default
 
-    def read_class_of_handle(self, handle: int) -> Optional[str]:
+    def read_class_of_handle(self, handle: int) -> str | None:
         return self.class_of_handle_map.get(int(handle))
 
     def is_left_button_pressed(self) -> bool:
@@ -80,7 +80,7 @@ class FakeInputBackend:
 
     # Test conveniences --------------------------------------------------
 
-    def set_window_class(self, class_name: Optional[str]) -> None:
+    def set_window_class(self, class_name: str | None) -> None:
         """Set the class returned for any point not otherwise mapped."""
         self.window_class_default = class_name
 
@@ -104,10 +104,10 @@ class FakeA11yClicker:
         # Parallel list — the hwnd the manager passed for each call so
         # tests can assert the UIA subtree scoping happened, without
         # changing the (x, y) tuple shape that older assertions rely on.
-        self.invoke_hwnds: list[Optional[int]] = []
+        self.invoke_hwnds: list[int | None] = []
         self.should_succeed = bool(should_succeed)
 
-    def try_invoke_at(self, x: int, y: int, hwnd: Optional[int] = None) -> bool:
+    def try_invoke_at(self, x: int, y: int, hwnd: int | None = None) -> bool:
         self.invoke_calls.append((int(x), int(y)))
         self.invoke_hwnds.append(hwnd)
         return self.should_succeed
@@ -120,7 +120,7 @@ class FakeAutomationWindow:
         self,
         *,
         foot_logical: tuple[int, int] = (100, 100),
-        foot_physical: Optional[tuple[int, int]] = None,
+        foot_physical: tuple[int, int] | None = None,
         screen_size: tuple[int, int] = (1920, 1080),
         screen_origin: tuple[int, int] = (0, 0),
         dpr: float = 1.0,
@@ -163,7 +163,7 @@ class FakeAutomationWindow:
     # Test conveniences --------------------------------------------------
 
     def move_foot_to(
-        self, logical: tuple[int, int], physical: Optional[tuple[int, int]] = None
+        self, logical: tuple[int, int], physical: tuple[int, int] | None = None
     ) -> None:
         """Simulate the user dragging Doro to a new position during wind-up."""
         self._foot_logical = logical

@@ -15,10 +15,9 @@ in allowlist".
 from __future__ import annotations
 
 import sys
-from typing import Optional
 
 
-def read_at(x: int, y: int) -> Optional[str]:
+def read_at(x: int, y: int) -> str | None:
     """Return the class string of the window under physical pixel (x, y), or None."""
     if sys.platform.startswith("linux"):
         return _read_window_class_x11(int(x), int(y))
@@ -29,9 +28,9 @@ def read_at(x: int, y: int) -> Optional[str]:
     return None
 
 
-def _read_window_class_x11(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs X server
+def _read_window_class_x11(x: int, y: int) -> str | None:  # pragma: no cover - needs X server
     try:
-        from Xlib import display, X  # type: ignore[import-not-found]
+        from Xlib import X, display  # type: ignore[import-not-found]
     except ImportError:
         return None
     d = None
@@ -128,7 +127,7 @@ def _resolve_hwnd_at_win32(x: int, y: int):  # pragma: no cover - needs Windows
         return None, None
 
 
-def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cover - needs Windows
+def _read_window_class_win32(x: int, y: int) -> str | None:  # pragma: no cover - needs Windows
     hwnd, user32 = _resolve_hwnd_at_win32(x, y)
     if not hwnd or user32 is None:
         return None
@@ -142,7 +141,7 @@ def _read_window_class_win32(x: int, y: int) -> Optional[str]:  # pragma: no cov
         return None
 
 
-def _read_handle_at_win32(x: int, y: int) -> Optional[int]:  # pragma: no cover - needs Windows
+def _read_handle_at_win32(x: int, y: int) -> int | None:  # pragma: no cover - needs Windows
     hwnd, _ = _resolve_hwnd_at_win32(x, y)
     if not hwnd:
         return None
@@ -150,18 +149,14 @@ def _read_handle_at_win32(x: int, y: int) -> Optional[int]:  # pragma: no cover 
         return int(hwnd)
     except Exception:
         return None
-    except Exception:
-        return None
 
 
-def _read_window_class_macos(
-    x: int, y: int
-) -> Optional[str]:  # pragma: no cover - not on dev target
+def _read_window_class_macos(x: int, y: int) -> str | None:  # pragma: no cover - not on dev target
     # Out of scope for Phase 1c — return None so the allowlist check refuses.
     return None
 
 
-def read_handle_at(x: int, y: int) -> Optional[int]:
+def read_handle_at(x: int, y: int) -> int | None:
     """Return the OS top-level window handle at physical (x, y), or None.
 
     Same z-order walk as :func:`read_at`; returns the hwnd integer so
@@ -176,7 +171,7 @@ def read_handle_at(x: int, y: int) -> Optional[int]:
     return None
 
 
-def read_foreground_window_handle() -> Optional[int]:
+def read_foreground_window_handle() -> int | None:
     """Return the OS handle of the focused (foreground) window, or None.
 
     Phase 1d: the a11y backend needs a handle to anchor its subtree read.
@@ -189,7 +184,7 @@ def read_foreground_window_handle() -> Optional[int]:
     return None
 
 
-def pid_for_handle(handle: int) -> Optional[int]:
+def pid_for_handle(handle: int) -> int | None:
     """Return the process id that owns ``handle``, or None.
 
     Used by the foreground tracker to skip Doro's own windows when remembering
@@ -201,7 +196,7 @@ def pid_for_handle(handle: int) -> Optional[int]:
     return None
 
 
-def window_class_for_handle(handle: int) -> Optional[str]:
+def window_class_for_handle(handle: int) -> str | None:
     """Return the class string of the window identified by ``handle``, or None.
 
     Used to gate a11y reads against the sensitive-app blacklist without a
@@ -212,7 +207,7 @@ def window_class_for_handle(handle: int) -> Optional[str]:
     return None
 
 
-def _get_foreground_window_handle_win32() -> Optional[int]:  # pragma: no cover - needs Windows
+def _get_foreground_window_handle_win32() -> int | None:  # pragma: no cover - needs Windows
     try:
         import ctypes
         from ctypes import wintypes
@@ -229,7 +224,7 @@ def _get_foreground_window_handle_win32() -> Optional[int]:  # pragma: no cover 
         return None
 
 
-def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - needs Windows
+def _pid_for_handle_win32(handle: int) -> int | None:  # pragma: no cover - needs Windows
     try:
         import ctypes
         from ctypes import wintypes
@@ -253,7 +248,7 @@ def _pid_for_handle_win32(handle: int) -> Optional[int]:  # pragma: no cover - n
 
 def _window_class_for_handle_win32(
     handle: int,
-) -> Optional[str]:  # pragma: no cover - needs Windows
+) -> str | None:  # pragma: no cover - needs Windows
     try:
         import ctypes
         from ctypes import wintypes

@@ -9,8 +9,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6 import QtCore
 
 from .port import MovementWindowPort
@@ -27,11 +25,11 @@ class MovementWindowFake(MovementWindowPort):
     def __init__(
         self,
         *,
-        origin: Optional[QtCore.QPoint] = None,
-        size: Optional[QtCore.QSize] = None,
-        clamp_rect: Optional[QtCore.QRect] = None,
-        bubble_offset: Optional[QtCore.QPointF] = None,
-        sprite_foot_offset: Optional[QtCore.QPoint] = None,
+        origin: QtCore.QPoint | None = None,
+        size: QtCore.QSize | None = None,
+        clamp_rect: QtCore.QRect | None = None,
+        bubble_offset: QtCore.QPointF | None = None,
+        sprite_foot_offset: QtCore.QPoint | None = None,
     ):
         self._rect = QtCore.QRect(origin or QtCore.QPoint(0, 0), size or QtCore.QSize(100, 100))
         self._clamp_rect = clamp_rect

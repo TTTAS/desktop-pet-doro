@@ -1,7 +1,8 @@
 """Tests for WindowLayoutManager - pure layout calculation logic."""
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from PySide6 import QtCore, QtGui
 
 from doro_app.ui.layout.layout_manager import WindowLayoutManager
@@ -244,10 +245,10 @@ class TestComputePanelSizeHint:
         # Text with explicit newlines
         multiline = "Line 1\nLine 2\nLine 3\nLine 4"
 
-        width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, multiline)
+        _width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, multiline)
 
         # Should be taller than single line
-        single_width, single_height = WindowLayoutManager.compute_panel_size_hint(
+        _single_width, single_height = WindowLayoutManager.compute_panel_size_hint(
             sprite_size, "Single"
         )
         assert height > single_height

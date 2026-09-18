@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from PySide6 import QtCore
 
 from ...constants import (
-    BUBBLE_SCALE_MIN,
-    BUBBLE_SCALE_MAX,
     BUBBLE_CHUNK_MAX_CHARS,
-    BUBBLE_CHUNK_MIN_READ_MS,
     BUBBLE_CHUNK_MAX_READ_MS,
+    BUBBLE_CHUNK_MIN_READ_MS,
     BUBBLE_CHUNK_PER_CHAR_MS,
+    BUBBLE_SCALE_MAX,
+    BUBBLE_SCALE_MIN,
 )
 from ...utils.config_manager import ConfigManager
 

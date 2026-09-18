@@ -1,6 +1,7 @@
 """Tests for ChatOrchestrator - chat coordination layer."""
 
 from unittest.mock import Mock
+
 import pytest
 
 from doro_app.core.chat.orchestrator import ChatOrchestrator

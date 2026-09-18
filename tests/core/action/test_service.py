@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 from doro_app.core.action.fakes import FakeActionRepository
-from doro_app.core.action.repository import ActionEntry, CLICK_ACTION_KEY
+from doro_app.core.action.repository import CLICK_ACTION_KEY, ActionEntry
 from doro_app.core.action.service import (
     CLICK_ACTION_STATE_KEY,
     CLICK_ACTION_STATE_LABEL,

@@ -108,17 +108,17 @@ class WebSession:
         self._page = None
 
     def _launch_context(self, channel: str | None):
-        kwargs = dict(
-            user_data_dir=str(self._user_data_dir),
-            headless=self._headless,
-            no_viewport=True,
-            args=[
+        kwargs = {
+            "user_data_dir": str(self._user_data_dir),
+            "headless": self._headless,
+            "no_viewport": True,
+            "args": [
                 "--hide-crash-restore-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--start-maximized",
             ],
-        )
+        }
         if channel:
             kwargs["channel"] = channel
         return self._pw.chromium.launch_persistent_context(**kwargs)

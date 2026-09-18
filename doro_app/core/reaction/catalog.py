@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .timeline import RestoreStep, SpeakStep, StateStep, Timeline, WaitStep
 
 # Idle must not cancel a click or an in-flight chat reaction.
@@ -21,7 +19,7 @@ class ReactionCatalog:
     def register(self, timeline: Timeline) -> None:
         self._items[timeline.name] = timeline
 
-    def get(self, name: str) -> Optional[Timeline]:
+    def get(self, name: str) -> Timeline | None:
         return self._items.get(name)
 
     def names(self) -> list[str]:

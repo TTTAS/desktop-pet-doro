@@ -2,8 +2,8 @@
 
 from unittest.mock import Mock
 
-from doro_app.core.state.transition_coordinator import TransitionCoordinator
 from doro_app.core.state.models import Transition
+from doro_app.core.state.transition_coordinator import TransitionCoordinator
 
 
 class TestTransitionCoordinatorFinding:

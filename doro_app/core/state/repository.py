@@ -7,7 +7,7 @@ import random
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ...utils.logger import get_logger
 from ..exceptions import (
@@ -78,7 +78,7 @@ class GifRepository:
         except OSError as e:
             raise GifStorageError(f"Failed to copy GIF: {e}")
 
-    def get_path(self, resource_id: str) -> Optional[Path]:
+    def get_path(self, resource_id: str) -> Path | None:
         """
         Resolve resource ID to actual file path.
 
@@ -194,7 +194,7 @@ class GifRepository:
             return []
         return sorted(p for p in state_dir.iterdir() if _is_animated_file(p))
 
-    def pick_random_gif(self, state_key: str) -> Optional[Path]:
+    def pick_random_gif(self, state_key: str) -> Path | None:
         """
         Pick a random GIF for a state.
 
@@ -690,9 +690,9 @@ class StateListWriter:
         self,
         states: dict[str, State],
         move_states: dict[str, MoveState],
-        gif_paths: dict[str, Optional[Path]],
+        gif_paths: dict[str, Path | None],
         movement_only_keys: set[str],
-        gif_counts: Optional[dict[str, int]] = None,
+        gif_counts: dict[str, int] | None = None,
     ) -> str:
         """
         Generate and write state list summary.
@@ -710,7 +710,7 @@ class StateListWriter:
         lines = [f"[{timestamp}] 可使用的狀態為:"]
 
         # Regular states
-        visible_keys = sorted(k for k in states.keys() if k not in movement_only_keys)
+        visible_keys = sorted(k for k in states if k not in movement_only_keys)
         for key in visible_keys:
             state: State = states[key]
             gif_info = self._gif_summary(key, gif_paths, gif_counts)
@@ -723,7 +723,7 @@ class StateListWriter:
             lines.append("")
             lines.append("移動專用狀態:")
             for key in movement_keys:
-                move_state: Optional[State] = states.get(key)
+                move_state: State | None = states.get(key)
                 if not move_state:
                     continue
                 gif_info = self._gif_summary(key, gif_paths, gif_counts)
@@ -744,8 +744,8 @@ class StateListWriter:
     def _gif_summary(
         self,
         state_key: str,
-        gif_paths: dict[str, Optional[Path]],
-        gif_counts: Optional[dict[str, int]] = None,
+        gif_paths: dict[str, Path | None],
+        gif_counts: dict[str, int] | None = None,
     ) -> str:
         """Generate GIF summary string."""
         count = (gif_counts or {}).get(state_key, 0)

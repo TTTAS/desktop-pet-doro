@@ -55,8 +55,8 @@ def test_chunks_preserve_all_characters_for_punctuated_text():
 
 def test_reading_delay_scales_and_is_bounded():
     from doro_app.constants import (
-        BUBBLE_CHUNK_MIN_READ_MS,
         BUBBLE_CHUNK_MAX_READ_MS,
+        BUBBLE_CHUNK_MIN_READ_MS,
     )
 
     short = BubbleController._reading_delay_ms("短")

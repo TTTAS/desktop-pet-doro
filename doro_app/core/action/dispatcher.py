@@ -27,7 +27,6 @@ The implementation is intentionally Qt-agnostic. `schedule` is a
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ...utils.logger import get_logger
 from .phases import Phase, ScheduleFn
@@ -52,7 +51,7 @@ class Action:
 
     kind: str
     phases: list[Phase]
-    failure_state_key: Optional[str] = None
+    failure_state_key: str | None = None
     # Optional opaque tag callers can read off `dispatcher.current` for
     # introspection (which target a click is for, etc.). Not used by the
     # dispatcher itself.
@@ -83,9 +82,9 @@ class ActionDispatcher:
         self._failure_display_ms = int(failure_display_ms)
 
         self._queue: list[Action] = []
-        self._current: Optional[Action] = None
+        self._current: Action | None = None
         self._phase_index: int = 0
-        self._pre_action_state: Optional[str] = None
+        self._pre_action_state: str | None = None
         # Monotonically increments every time an action starts. Captured
         # by deferred callbacks (the failure-GIF hold timer) so a stale
         # callback whose action was cancelled and replaced can detect it
@@ -99,7 +98,7 @@ class ActionDispatcher:
         return self._current is None
 
     @property
-    def current(self) -> Optional[Action]:
+    def current(self) -> Action | None:
         return self._current
 
     @property
@@ -161,7 +160,7 @@ class ActionDispatcher:
         )
         self._run_next_phase()
 
-    def _current_phase(self) -> Optional[Phase]:
+    def _current_phase(self) -> Phase | None:
         if self._current is None:
             return None
         if 0 <= self._phase_index < len(self._current.phases):

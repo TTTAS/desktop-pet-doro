@@ -3,12 +3,11 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logger(
     name: str = "doro",
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     level: int = logging.DEBUG,
     console: bool = True,
 ) -> logging.Logger:
@@ -63,7 +62,7 @@ def setup_logger(
 
 
 # Module-level convenience function
-_default_logger: Optional[logging.Logger] = None
+_default_logger: logging.Logger | None = None
 
 
 def get_logger(name: str = "doro") -> logging.Logger:

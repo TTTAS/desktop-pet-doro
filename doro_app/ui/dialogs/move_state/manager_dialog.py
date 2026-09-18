@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import State, StateService
-from ...components.gif_player import GifPlayer
+from ....utils import paths
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 if TYPE_CHECKING:
     from ....core.action import ActionService
@@ -41,7 +41,7 @@ class _ActionCard(QtWidgets.QFrame):
         details: str = "",
         extra_info: str = "",
         removable: bool = True,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self._action_type = action_type
@@ -245,9 +245,9 @@ class MoveStateManagerDialog(FramelessDialog):
     def __init__(
         self,
         service: StateService,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
-        action_service: Optional["ActionService"] = None,
+        action_service: ActionService | None = None,
     ):
         super().__init__("Action Manager", parent)
         self.service = service
@@ -499,9 +499,9 @@ class MoveStateManagerDialog(FramelessDialog):
 
 def show_move_state_manager(
     service: StateService,
-    parent: Optional[QtWidgets.QWidget] = None,
+    parent: QtWidgets.QWidget | None = None,
     *,
-    action_service: Optional["ActionService"] = None,
+    action_service: ActionService | None = None,
 ):
     """Show movement state manager dialog."""
     dialog = MoveStateManagerDialog(service, parent, action_service=action_service)

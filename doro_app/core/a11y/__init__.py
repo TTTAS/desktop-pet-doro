@@ -8,18 +8,18 @@ asking the user for coordinates. Gated behind `automation.a11y_enabled`
 `/root/.claude/plans/velvet-pondering-ullman.md` for the full rationale.
 """
 
+from .backend_null import NullA11yBackend
 from .clicker import A11yClickerAdapter, A11yClickerPort, NullA11yClicker
+from .fakes import FakeA11yBackend
 from .models import A11yElement
 from .port import A11yBackendPort
 from .service import A11yService
-from .backend_null import NullA11yBackend
-from .fakes import FakeA11yBackend
 
 __all__ = [
+    "A11yBackendPort",
     "A11yClickerAdapter",
     "A11yClickerPort",
     "A11yElement",
-    "A11yBackendPort",
     "A11yService",
     "FakeA11yBackend",
     "NullA11yBackend",

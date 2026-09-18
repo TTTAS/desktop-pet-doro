@@ -1,13 +1,14 @@
 """Tests for ChatController - chat settings and request handling."""
 
 from unittest.mock import Mock
+
 import pytest
 from PySide6 import QtCore
 
 from doro_app.core.chat.controller import ChatController
 from doro_app.utils.config_defaults import (
-    DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
+    DEFAULT_CHAT_STOP_TOKENS,
 )
 
 

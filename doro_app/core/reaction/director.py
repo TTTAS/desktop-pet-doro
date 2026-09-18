@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from .timeline import (
     MoveStep,
@@ -32,7 +33,7 @@ class MovePort(Protocol):
 
 
 class CurrentKeyPort(Protocol):
-    def __call__(self) -> Optional[str]: ...
+    def __call__(self) -> str | None: ...
 
 
 class ReactionDirector:
@@ -49,25 +50,25 @@ class ReactionDirector:
         request_state: Callable[..., bool],
         speak: Callable[[str], None],
         schedule: SchedulePort,
-        move: Optional[Callable[[str, float], None]] = None,
-        current_key: Optional[Callable[[], Optional[str]]] = None,
+        move: Callable[[str, float], None] | None = None,
+        current_key: Callable[[], str | None] | None = None,
     ) -> None:
         self._request_state = request_state
         self._speak = speak
         self._schedule = schedule
         self._move = move
         self._current_key = current_key
-        self._current: Optional[Timeline] = None
+        self._current: Timeline | None = None
         self._index: int = 0
         self._generation: int = 0
-        self._restore_key: Optional[str] = None
+        self._restore_key: str | None = None
 
     @property
     def is_playing(self) -> bool:
         return self._current is not None
 
     @property
-    def current_name(self) -> Optional[str]:
+    def current_name(self) -> str | None:
         return None if self._current is None else self._current.name
 
     def play(self, timeline: Timeline) -> bool:

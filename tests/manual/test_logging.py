@@ -2,6 +2,7 @@
 """Quick test script to verify logging system works."""
 
 from pathlib import Path
+
 from doro_app.utils.logger import setup_logger
 
 # Test 1: Basic logger setup
@@ -29,11 +30,11 @@ else:
 # Test 3: Module-level logger
 print("\n" + "=" * 60)
 print("Test 3: Testing module-level logger...")
-from doro_app.core.state.service import logger as state_logger  # noqa: E402
+from doro_app.core.state.service import logger as state_logger
 
 state_logger.info("Test message from state_service logger")
 
-from doro_app.core.state.repository import logger as repo_logger  # noqa: E402
+from doro_app.core.state.repository import logger as repo_logger
 
 repo_logger.warning("Test message from state_repository logger")
 

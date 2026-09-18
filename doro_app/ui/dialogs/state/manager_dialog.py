@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ....utils import paths
 from ....core.state import State, StateService
-from ...components.gif_player import GifPlayer
+from ....utils import paths
 from ...components.frameless_dialog import FramelessDialog
+from ...components.gif_player import GifPlayer
 
 # ───────────────────────────────────────────────────────────
 # State Card Widget
@@ -33,7 +32,7 @@ class _StateCard(QtWidgets.QFrame):
         key: str,
         gif_paths: list[Path],
         gif_player: GifPlayer,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self._key = key
@@ -201,7 +200,7 @@ class _StateCard(QtWidgets.QFrame):
 class StateManagerDialog(FramelessDialog):
     """Dialog for managing states — card grid layout."""
 
-    def __init__(self, service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(self, service: StateService, parent: QtWidgets.QWidget | None = None):
         super().__init__("State Manager", parent)
         self.service = service
         self.setMinimumWidth(660)
@@ -355,7 +354,7 @@ class StateManagerDialog(FramelessDialog):
         super().closeEvent(event)
 
 
-def show_state_manager(service: StateService, parent: Optional[QtWidgets.QWidget] = None):
+def show_state_manager(service: StateService, parent: QtWidgets.QWidget | None = None):
     """Show state manager dialog."""
     dialog = StateManagerDialog(service, parent)
     dialog.exec()

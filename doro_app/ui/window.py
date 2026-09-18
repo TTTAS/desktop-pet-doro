@@ -3,37 +3,38 @@
 from __future__ import annotations
 
 import time
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
-    TIMER_INTERVAL_MS,
-    WINDOW_INITIAL_WIDTH,
-    WINDOW_INITIAL_HEIGHT,
-    WINDOW_MIN_WIDTH,
-    WINDOW_MIN_HEIGHT,
-    SPRITE_DEFAULT_WIDTH,
-    SPRITE_DEFAULT_HEIGHT,
-    SPRITE_OFFSET_X,
-    PANEL_DEFAULT_WIDTH_HINT,
-    PANEL_DEFAULT_HEIGHT_HINT,
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
     DEFAULT_MOVE_STATE_KEY,
+    PANEL_DEFAULT_HEIGHT_HINT,
+    PANEL_DEFAULT_WIDTH_HINT,
+    SPRITE_DEFAULT_HEIGHT,
+    SPRITE_DEFAULT_WIDTH,
+    SPRITE_OFFSET_X,
+    TIMER_INTERVAL_MS,
+    WINDOW_INITIAL_HEIGHT,
     WINDOW_INITIAL_POSITION_OFFSET_X,
     WINDOW_INITIAL_POSITION_OFFSET_Y,
+    WINDOW_INITIAL_WIDTH,
+    WINDOW_MIN_HEIGHT,
+    WINDOW_MIN_WIDTH,
 )
+from ..core.state import StateService
+from ..utils.config_manager import ConfigManager
+from ..utils.logger import get_logger
 from .components.bubble_controller import BubbleController
-from .rendering.design_tokens import tokens
-from .rendering.gif_sprite_renderer import GifSpriteRenderer
-from .rendering.sprite_renderer import SpriteRenderer
-from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
-from .viewmodels.doro_viewmodel import DoroViewModel
-from ..utils.logger import get_logger
-from ..core.state import StateService
+from .rendering.design_tokens import tokens
+from .rendering.gif_sprite_renderer import GifSpriteRenderer
+from .rendering.rendering_engine import RenderingEngine
+from .rendering.sprite_renderer import SpriteRenderer
 from .theme.theme import ensure_application_theme
-from ..utils.config_manager import ConfigManager
+from .viewmodels.doro_viewmodel import DoroViewModel
 
 logger = get_logger(__name__)
 
@@ -240,8 +241,7 @@ class DoroWindow(QtWidgets.QWidget):
         now = time.monotonic()
         dt = now - getattr(self, "_last_tick_time", now)
         self._last_tick_time = now
-        if dt < 0.0:
-            dt = 0.0
+        dt = max(dt, 0.0)
         dt = min(dt, tokens.animation.max_delta_time)
 
         # Signal business layer to process movement
@@ -441,8 +441,8 @@ class DoroWindow(QtWidgets.QWidget):
         if new_anchor is not None:
             self._sprite_anchor_top = new_anchor
         new_top_left = QtCore.QPoint(
-            int(round(target_screen_center.x() - new_local_center.x())),
-            int(round(target_screen_center.y() - new_local_center.y())),
+            round(target_screen_center.x() - new_local_center.x()),
+            round(target_screen_center.y() - new_local_center.y()),
         )
         clamped = WindowLayoutManager.clamp_position(
             new_top_left, self.size(), self._available_screen_geometry()
@@ -538,8 +538,8 @@ class DoroWindow(QtWidgets.QWidget):
         )
         half_h = self._view_model.sprite_size.height() / 2.0
         return QtCore.QPoint(
-            int(round(sprite_center.x())),
-            int(round(sprite_center.y() + half_h)) - 1,
+            round(sprite_center.x()),
+            round(sprite_center.y() + half_h) - 1,
         )
 
     def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:

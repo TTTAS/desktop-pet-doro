@@ -22,11 +22,11 @@ class MouseBracketParse:
     reason: str = ""
 
     @classmethod
-    def ok(cls) -> "MouseBracketParse":
+    def ok(cls) -> MouseBracketParse:
         return cls(accepted=True, reason="")
 
     @classmethod
-    def reject(cls, reason: str) -> "MouseBracketParse":
+    def reject(cls, reason: str) -> MouseBracketParse:
         return cls(accepted=False, reason=reason)
 
 

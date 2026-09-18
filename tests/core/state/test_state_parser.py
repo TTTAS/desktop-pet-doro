@@ -3,8 +3,6 @@
 Tests the parsing of LLM action tokens into state keys.
 """
 
-from typing import Optional
-
 import pytest
 
 from doro_app.core.state.state_parser import StateParser
@@ -34,7 +32,7 @@ class MockStateProvider:
         """Check if state is movement-only."""
         return key in self.movement_only
 
-    def find_state_by_label(self, label_query: str) -> Optional[str]:
+    def find_state_by_label(self, label_query: str) -> str | None:
         """Find state by label matching."""
         label_lower = label_query.lower()
         for key, label in self.labels.items():

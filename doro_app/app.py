@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import random
-from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
 
@@ -510,7 +509,7 @@ class DoroApp:
     # Automation (Phase 1c) construction
     # ═════════════════════════════════════════════════════════════════
 
-    def _maybe_build_automation(self) -> "AutomationManager | None":
+    def _maybe_build_automation(self) -> AutomationManager | None:
         """Build the AutomationManager whenever pynput is importable.
 
         The manager self-gates on ``automation.mouse_enabled`` at every
@@ -572,8 +571,9 @@ class DoroApp:
         # service runs against the NullA11yBackend) the clicker returns
         # False and clicks surface as NOT_INVOCABLE rather than moving
         # the user's cursor.
-        from .core.a11y import A11yClickerAdapter, NullA11yClicker
         import sys as _sys
+
+        from .core.a11y import A11yClickerAdapter, NullA11yClicker
 
         if _sys.platform == "win32" and self._a11y is not None:
             a11y_clicker = A11yClickerAdapter(self._a11y)
@@ -754,7 +754,7 @@ class _QtWindUpAnimatorAdapter:
     def __init__(self, state_service, click_state_key: str) -> None:
         self._state_service = state_service
         self._click_state_key = click_state_key
-        self._prev_state_key: Optional[str] = None
+        self._prev_state_key: str | None = None
 
     def begin(self) -> None:
         self._prev_state_key = self._state_service.get_current_state_key()
@@ -932,7 +932,7 @@ class _QtAutomationWindowAdapter:
             return (1920, 1080)
 
     def screen_size_physical(self) -> tuple[int, int]:
-        left, top, w, h = self.screen_geometry_physical()
+        _left, _top, w, h = self.screen_geometry_physical()
         return (w, h)
 
     def screen_geometry_physical(self) -> tuple[int, int, int, int]:

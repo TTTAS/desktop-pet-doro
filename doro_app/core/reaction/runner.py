@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .catalog import ReactionCatalog
 from .director import ReactionDirector
 
@@ -34,7 +32,7 @@ class ReactionRunner:
         return self._director.is_playing
 
     @property
-    def current_name(self) -> Optional[str]:
+    def current_name(self) -> str | None:
         return self._director.current_name
 
     @property

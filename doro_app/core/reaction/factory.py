@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from .catalog import ReactionCatalog
 from .director import ReactionDirector
@@ -14,8 +14,8 @@ def build_default_runner(
     request_state: Callable[..., bool],
     speak: Callable[[str], None],
     schedule: Callable[[int, Callable[[], None]], None],
-    move: Optional[Callable[[str, float], None]] = None,
-    current_key: Optional[Callable[[], Optional[str]]] = None,
+    move: Callable[[str, float], None] | None = None,
+    current_key: Callable[[], str | None] | None = None,
 ) -> ReactionRunner:
     """Catalog with built-ins + a director wired to the given ports."""
     catalog = ReactionCatalog()
