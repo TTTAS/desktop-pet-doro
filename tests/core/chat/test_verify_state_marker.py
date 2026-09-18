@@ -114,6 +114,20 @@ def test_bracket_leading_state_is_applied_and_stripped():
     state.set_state.assert_called_once_with("idle")
 
 
+def test_angle_and_curly_leading_state_are_applied_and_stripped():
+    for text in ("<idle> 你好呀", "{idle} 你好呀", "【idle】 你好呀"):
+        state = MagicMock()
+        state.parse_state_from_action.return_value = "idle"
+        state.is_movement_only_state.return_value = False
+        current = MagicMock()
+        current.key = "happy"
+        state.get_current_state.return_value = current
+        orch = _make_orchestrator(state)
+
+        assert orch._apply_leading_state_marker(text) == "你好呀"
+        state.set_state.assert_called_once_with("idle")
+
+
 def test_bracket_leading_non_state_is_left_untouched():
     # A leading "[1]" citation is not a state, so it must survive verbatim.
     state = MagicMock()

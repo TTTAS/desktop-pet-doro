@@ -9,6 +9,12 @@ from dataclasses import dataclass
 _CONTROL = re.compile(
     r"\[\s*(move|mouse|web|operate|read|login|verify)\s*[:：][^\]]*\]", re.IGNORECASE
 )
+# A control token whose closing ``]`` never arrived (truncated reply) would
+# otherwise leak into the bubble as e.g. "[MOVE:dir=right;". Strip such a
+# dangling token that runs to the end of the text.
+_CONTROL_UNCLOSED = re.compile(
+    r"\[\s*(?:move|mouse|web|operate|read|login|verify)\b[^\]]*$", re.IGNORECASE
+)
 _MOVE = re.compile(
     r"\[\s*move\s*:\s*dir=(left|right|up|down);\s*distance=([0-9.]+)\s*\]", re.IGNORECASE
 )
@@ -32,7 +38,8 @@ def parse_character_reply(text: str) -> CharacterReply:
                 direction, distance = _VECTORS[match.group(1).lower()], value
         except ValueError:
             pass
-    return CharacterReply(_CONTROL.sub("", text or "").strip(), direction, distance)
+    cleaned = _CONTROL_UNCLOSED.sub("", _CONTROL.sub("", text or ""))
+    return CharacterReply(cleaned.strip(), direction, distance)
 
 
 def character_instructions(state_keys: list[str]) -> str:

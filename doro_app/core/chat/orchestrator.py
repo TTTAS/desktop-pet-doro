@@ -60,10 +60,10 @@ _LEADING_STATE_MARKER_RE = re.compile(r"^\s*[(（]\s*([^()（）\n]{1,24})\s*[)�
 # 一般開頭是中文或普通字詞的回覆不受影響。
 _LEADING_BARE_STATE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]{0,23})[ \t　]+")
 
-# 也有模型把開頭狀態寫成方括號（例如 gemini 回「[idle] ...」）。控制指令如
-# [MOVE:...] 在這步之前已被 parse_character_reply 清掉，所以這裡看到的方括號
+# 也有模型把開頭狀態寫成別種括號（gemini 回過「[idle] ...」，也可能是 {}、<>、【】）。
+# 控制指令如 [MOVE:...] 在這步之前已被 parse_character_reply 清掉，所以這裡看到的括號
 # 只會是狀態字或引用標記；只有剛好是已知狀態 key 時才拆掉。
-_LEADING_BRACKET_STATE_RE = re.compile(r"^\s*\[\s*([^\[\]\n]{1,24})\s*\]\s*")
+_LEADING_BRACKET_STATE_RE = re.compile(r"^\s*[\[{<【]\s*([^\[\]{}<>【】\n]{1,24})\s*[\]}>】]\s*")
 
 # 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
 # [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
