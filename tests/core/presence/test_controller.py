@@ -133,6 +133,9 @@ def test_presence_revalidates_when_walk_finishes(qapp, tmp_path, change):
 
     state = Mock()
     state.get_current_state.return_value.key = "idle"
+    # The sample reply starts with "Article ..."; a real state service returns
+    # None for a non-state leading word, so it is not stripped as a state key.
+    state.parse_state_from_action.return_value = None
     movement = Mock()
     movement.has_active_movement = True
     completions = []

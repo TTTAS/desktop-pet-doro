@@ -82,6 +82,32 @@ def test_text_without_leading_marker_is_unchanged():
     state.parse_state_from_action.assert_not_called()
 
 
+def test_bare_leading_state_without_parens_is_applied_and_stripped():
+    # Some models (e.g. Gemini) drop the parentheses and write "stand ...".
+    state = MagicMock()
+    state.parse_state_from_action.return_value = "stand"
+    state.is_movement_only_state.return_value = False
+    current = MagicMock()
+    current.key = "idle"
+    state.get_current_state.return_value = current
+    orch = _make_orchestrator(state)
+
+    out = orch._apply_leading_state_marker("stand 這篇爭議很大喔")
+
+    assert out == "這篇爭議很大喔"
+    state.set_state.assert_called_once_with("stand")
+
+
+def test_bare_leading_word_that_is_not_a_state_is_left_untouched():
+    state = MagicMock()
+    state.parse_state_from_action.return_value = None
+    orch = _make_orchestrator(state)
+
+    text = "OK 我看看這個"
+    assert orch._apply_leading_state_marker(text) == text
+    state.set_state.assert_not_called()
+
+
 def test_full_width_leading_marker_is_stripped():
     state = MagicMock()
     state.parse_state_from_action.return_value = None
