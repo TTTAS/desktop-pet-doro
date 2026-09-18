@@ -416,12 +416,7 @@ class DoroApp:
         mouse_handler.window_drag_requested.connect(self.window.move)
         mouse_handler.drag_started.connect(self._on_doro_dragged)
         mouse_handler.drag_finished.connect(self._sprite_controller.end_drag_animation)
-        mouse_handler.click_detected.connect(
-            lambda: (
-                self.window.mark_user_activity(),
-                self._click_action_controller.trigger_random_action(),
-            )
-        )
+        mouse_handler.click_detected.connect(self._on_doro_clicked)
         mouse_handler.user_activity_detected.connect(
             self.window.mark_user_activity
         )
@@ -624,6 +619,16 @@ class DoroApp:
         )
         return manager
 
+    def _on_doro_clicked(self) -> None:
+        """A click on the pet plays its optional gesture, even if chat is busy."""
+        from .core.action.repository import PET_CLICK_ACTION_KEY
+
+        self.window.mark_user_activity()
+        path = self._action_service.resolve_action_gif_path(PET_CLICK_ACTION_KEY)
+        if path is not None:
+            self._sprite_controller.start_pet_click_animation(path)
+        self._click_action_controller.trigger_random_action()
+
     def _on_doro_dragged(self) -> None:
         """User dragged Doro — kill any in-flight click, active movement,
         and queued click.
@@ -646,6 +651,7 @@ class DoroApp:
         listeners during shutdown, no one is subscribed any more — that
         prevents the cancelled action from being inadvertently advanced.
         """
+        self._sprite_controller.end_pet_click_animation()
         if self._automation is not None:
             self._automation.cancel_pending_click("drag")
         dispatcher = getattr(self, "_action_dispatcher", None)

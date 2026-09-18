@@ -8,7 +8,7 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....core.action import ActionService
-from ....core.action.repository import CLICK_ACTION_KEY
+from ....core.action.repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY
 from ....core.state import StateService, Transition
 from ...components.gif_player import GifPlayer
 from ...components.frameless_dialog import FramelessDialog
@@ -45,6 +45,7 @@ class EditMoveStateDialog(FramelessDialog):
 
         # Track selected GIF for upload
         self.selected_gif_path: Optional[Path] = None
+        self._clear_pet_click_gif = False
 
         self._setup_ui()
 
@@ -90,6 +91,18 @@ class EditMoveStateDialog(FramelessDialog):
         self.key_label = QtWidgets.QLabel("Key (identifier):")
         self.key_label.setStyleSheet("color: #4a2040;")
         self.form_layout.addRow(self.key_label, self.key_edit)
+
+        self.named_action_label = QtWidgets.QLabel("觸發方式：")
+        self.named_action_combo = QtWidgets.QComboBox()
+        self.named_action_combo.addItem("Doro 幫你點畫面", CLICK_ACTION_KEY)
+        self.named_action_combo.addItem("Doro 被點擊", PET_CLICK_ACTION_KEY)
+        self.named_action_combo.setEnabled(not self.is_edit)
+        if self._edit_action_key:
+            self.named_action_combo.setCurrentIndex(
+                self.named_action_combo.findData(self._edit_action_key)
+            )
+        self.named_action_combo.currentIndexChanged.connect(self._on_named_action_changed)
+        self.form_layout.addRow(self.named_action_label, self.named_action_combo)
 
         # Movement-specific fields
         self.state_label = QtWidgets.QLabel("Associated state:")
@@ -145,6 +158,10 @@ class EditMoveStateDialog(FramelessDialog):
         self.select_gif_btn = QtWidgets.QPushButton("Select GIF")
         self.select_gif_btn.clicked.connect(self._on_select_gif)
         gif_upload_layout.addWidget(self.select_gif_btn)
+
+        self.clear_pet_gif_btn = QtWidgets.QPushButton("清除 GIF")
+        self.clear_pet_gif_btn.clicked.connect(self._on_clear_pet_gif)
+        gif_upload_layout.addWidget(self.clear_pet_gif_btn)
 
         self.manage_gifs_btn = QtWidgets.QPushButton("Manage GIFs...")
         self.manage_gifs_btn.setToolTip("Open gallery to add/remove multiple GIFs")
@@ -211,11 +228,13 @@ class EditMoveStateDialog(FramelessDialog):
 
         # Show manage GIFs button only for transitions
         self.manage_gifs_btn.setVisible(is_transition)
+        self.named_action_label.setVisible(is_action)
+        self.named_action_combo.setVisible(is_action)
+        self.clear_pet_gif_btn.setVisible(is_action and self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY)
 
-        # Named-action edits pin the key — Phase 1c only opens this slot
-        # for the builtin "click" entry.
+        # Each builtin keeps its own key and asset binding.
         if is_action:
-            self.key_edit.setText(CLICK_ACTION_KEY)
+            self.key_edit.setText(self.named_action_combo.currentData())
             self.key_edit.setEnabled(False)
             self.key_label.setText("Action key:")
         elif not self.is_edit:
@@ -230,15 +249,36 @@ class EditMoveStateDialog(FramelessDialog):
                 "💡 Movement: LLM determines distance at runtime. Direction can be 'any', 'left', 'right', etc."
             )
         elif is_action:
-            self.info_label.setText(
-                "💡 Action: Bind the GIF that plays during a click wind-up. "
-                "Leaving this empty falls back to a random stand pose at runtime."
-            )
+            self._update_action_info()
         else:
             self.info_label.setText(
                 "💡 Transition: Animation plays when changing from one state to another. "
                 "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
+
+    def _update_action_info(self):
+        is_pet = self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY
+        self.info_label.setText(
+            "點擊 Doro 本體時播放一次；拖曳不觸發。還沒準備 GIF 也可以保留空白，之後再設定。"
+            if is_pet else
+            "Doro 幫你點畫面前播放的動作；未綁定時使用站立動畫備援。"
+        )
+
+    def _on_named_action_changed(self, _index: int):
+        self.selected_gif_path = None
+        self._clear_pet_click_gif = False
+        self.key_edit.setText(self.named_action_combo.currentData())
+        self.clear_pet_gif_btn.setVisible(self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY)
+        self._update_action_info()
+        self._load_action_data()
+
+    def _on_clear_pet_gif(self):
+        self.selected_gif_path = None
+        self._clear_pet_click_gif = True
+        self._gif_player.clear()
+        self.preview_label.setMovie(None)
+        self.preview_label.setText("點擊時保留目前外觀")
+        self.gif_status_label.setText("儲存後清除 GIF")
 
     def _on_state_changed(self, state_key: str):
         """Update GIF preview when state selection changes."""
@@ -251,6 +291,7 @@ class EditMoveStateDialog(FramelessDialog):
         )
 
         if file_path:
+            self._clear_pet_click_gif = False
             self.selected_gif_path = Path(file_path)
             self.gif_status_label.setText(self.selected_gif_path.name)
             self.gif_status_label.setStyleSheet("color: #2e7d32;")  # Green color
@@ -344,18 +385,25 @@ class EditMoveStateDialog(FramelessDialog):
 
     def _load_action_data(self) -> None:
         """Populate the dialog with an existing named action's GIF preview."""
-        if self._action_service is None or not self._edit_action_key:
+        if self._action_service is None:
             return
 
         # Resolve via the same fallback chain the runtime uses, so what
         # the user sees here is what the next click will actually render.
-        path = self._action_service.resolve_action_gif_path(self._edit_action_key)
+        action_key = self.named_action_combo.currentData()
+        self._gif_player.clear()
+        self.preview_label.setMovie(None)
+        path = self._action_service.resolve_action_gif_path(action_key)
         if path is not None:
             self._load_preview_movie(path)
             self.gif_status_label.setText(f"Current: {path.name}")
             self.gif_status_label.setStyleSheet("color: #2e7d32;")
         else:
-            self.preview_label.setText("No GIF bound — runtime will fall back to a stand pose.")
+            self.gif_status_label.setText("尚未設定 GIF")
+            self.preview_label.setText(
+                "點擊時保留目前外觀；可以之後再設定 GIF。" if action_key == PET_CLICK_ACTION_KEY
+                else "No GIF bound — runtime will fall back to a stand pose."
+            )
 
     def _load_data(self):
         """Load existing move state data."""
@@ -398,9 +446,8 @@ class EditMoveStateDialog(FramelessDialog):
     def _save_action(self):
         """Persist the user's GIF choice for a named action.
 
-        Phase 1c only supports the builtin ``click`` action. Selecting no
-        new GIF is treated as "keep what's bound" (matches the rest of
-        the dialog) rather than "clear binding".
+        Selecting no new GIF keeps the existing binding. Pet-click gestures
+        can be explicitly cleared, returning to the current-sprite behavior.
         """
         if self._action_service is None:
             QtWidgets.QMessageBox.warning(
@@ -410,13 +457,22 @@ class EditMoveStateDialog(FramelessDialog):
             )
             return
 
-        if self.selected_gif_path is None:
-            # Nothing to do — closing the dialog without uploading is a
-            # no-op for now. Future: add an explicit "Unbind" button.
+        action_key = self.named_action_combo.currentData()
+        if action_key == PET_CLICK_ACTION_KEY and self._clear_pet_click_gif:
+            if not self._action_service.unbind_pet_click_gif():
+                QtWidgets.QMessageBox.warning(self, "Save", "Failed to clear the GIF.")
+                return
             self.accept()
             return
 
-        if not self._action_service.bind_click_gif(self.selected_gif_path):
+        if self.selected_gif_path is None:
+            # Missing artwork is allowed; keep the current binding.
+            self.accept()
+            return
+
+        bind = (self._action_service.bind_pet_click_gif if action_key == PET_CLICK_ACTION_KEY
+                else self._action_service.bind_click_gif)
+        if not bind(self.selected_gif_path):
             QtWidgets.QMessageBox.warning(
                 self, "Save", "Failed to bind the GIF to the click action.",
             )

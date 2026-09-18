@@ -5,6 +5,14 @@
 
 ## 功能地圖（改功能時先看這裡）
 
+### Doro 被點擊的 ACTION
+- 設定入口：動作管理的 `pet_click` 卡片「Doro 被點擊時的反應」，可選擇或清除 GIF／APNG／WebP；沒有素材時保留目前外觀。
+- 與 `click`（Doro 幫忙點畫面的 wind-up）獨立儲存。舊 actions.json 由 ActionRepository 自動補上 pet_click，不覆蓋既有 click 綁定。
+- 實際事件：MouseEventHandler.click_detected → DoroApp._on_doro_clicked → SpriteController.start_pet_click_animation。這是暫時手勢覆蓋，不切永久狀態、不呼叫桌面自動化；原 click.txt 聊天仍可另外觸發。
+- 動畫播一次後恢復最新正常／轉場素材，連續點擊重新播放，拖曳會取消。靜態圖顯示 400ms；異常播放最多 30 秒後清理。
+- CoreManager.on_user_clicked／ReactionCatalog 的舊 click 時間軸不是目前 GUI 的點擊接線，不應將它與桌面 click_action 混用。
+- 回歸測試：tests/ui/components/test_pet_click_animation.py，涵蓋儲存、編輯、實際手勢、動畫生命週期及缺少素材。
+
 ### 拖曳動畫
 - 入口：`ui/events/mouse_event_handler.py` 以螢幕座標判斷拖曳，發出 `drag_started`／`drag_finished`。
 - `app.py` 先取消移動及待執行點擊，再從 `res/drag/` 選動畫；`SpriteController` 透過暫時的 renderer movie 播放。
