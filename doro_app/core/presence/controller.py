@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 # store-assigned ID; update this constant then.)
 EXTENSION_ID = "bjdgpompkkahbkmhekmddobhlmjjgipo"
 
+# How long the last shared page stays answerable after the browser loses focus,
+# so "what's on this page?" still works when the user tabs to Doro to ask. Only
+# the explicit ask path uses it; proactive reactions stay on the live page.
+PRESENCE_ASK_GRACE_SECONDS = 30
+
 
 def pairing_code(port: int, token: str) -> str:
     """One string the user copies into the extension, bundling port + token.
@@ -124,6 +129,10 @@ class PresenceController(QtCore.QObject):
     @property
     def current_page(self) -> PageEvent | None:
         return self._bridge.current_page if self._bridge else None
+
+    def recent_page(self, max_age: float = PRESENCE_ASK_GRACE_SECONDS) -> PageEvent | None:
+        """Last shared page within the ask grace window (see the bridge)."""
+        return self._bridge.recent_page(max_age) if self._bridge else None
 
     def interrupt(self) -> None:
         self._epoch += 1

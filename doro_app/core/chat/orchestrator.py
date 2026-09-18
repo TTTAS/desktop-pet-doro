@@ -195,7 +195,10 @@ class ChatOrchestrator(QtCore.QObject):
             if read_current_q is not None:
                 own_page = re.search(r"你.*(?:開|打開)|doro.*(?:開|打開)", user_message, re.I)
                 if self._presence is not None and not own_page:
-                    page = self._presence.current_page
+                    # Tabbing to Doro to ask makes the extension clear the live
+                    # page (browser lost focus), so fall back to the page seen
+                    # just before, within the grace window.
+                    page = self._presence.current_page or self._presence.recent_page()
                     if page is not None:
                         self._pending_web_question = read_current_q
                         self._auto_read_used = True

@@ -28,6 +28,8 @@ class PresenceBridge:
         self._lock = threading.Lock()
         self._page = None
         self._last_message = 0.0
+        self._last_page = None
+        self._last_page_time = 0.0
 
     def _authenticate(self, connection, request):
         protocols = [
@@ -51,6 +53,21 @@ class PresenceBridge:
             if time.monotonic() - self._last_message > 45:
                 return None
             return self._page
+
+    def recent_page(self, max_age: float = 30.0) -> PageEvent | None:
+        """The last shared page, still answerable for a short grace window.
+
+        ``current_page`` goes None the instant the browser loses focus (the
+        extension sends ``clear``), which happens whenever the user tabs to
+        Doro to ask a question. This keeps that same one page for ``max_age``
+        seconds so an explicit "what's on this page" question still works.
+        It is only valid while the client stays connected: a disconnect or a
+        new connection drops it. Still a single in-memory page, never stored.
+        """
+        with self._lock:
+            if self._last_page is None or time.monotonic() - self._last_page_time > max_age:
+                return None
+            return self._last_page
 
     def start(self) -> None:
         from websockets.sync.server import serve
@@ -81,6 +98,7 @@ class PresenceBridge:
         with self._lock:
             previous, self._client = self._client, websocket
             self._page = None
+            self._last_page = None  # a new connection carries no grace page
         if previous:
             previous.close()
         self._on_page(None)
@@ -107,6 +125,9 @@ class PresenceBridge:
                 page = PageEvent.from_message(message)
                 with self._lock:
                     self._page = page
+                    if page is not None:
+                        self._last_page = page
+                        self._last_page_time = time.monotonic()
                 self._on_page(page)
         except ConnectionClosed:
             pass
@@ -116,6 +137,7 @@ class PresenceBridge:
                 if is_current:
                     self._client = None
                     self._page = None
+                    self._last_page = None  # disconnect drops the grace page
             if is_current:
                 self._on_page(None)
 
@@ -123,6 +145,7 @@ class PresenceBridge:
         with self._lock:
             client, self._client = self._client, None
             self._page = None
+            self._last_page = None
         if client:
             client.close()
         if self._server:
