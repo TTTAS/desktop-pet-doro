@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Doro 分頁陪伴",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtlw3I16+rU868XLJGWwED0WnWKTbEQwd4ZGmJ+FnNNME5RKce6NPTNKzRWGcSOO0vDtkRkY/w6/s8Rikk3zW7dk2tqmAgiTg9hfCM+gws8bVVmAbGwHO5ApnLfNL2N7tcTHmgeu7hBnfocJXVVHfDOndfQAXOrKWstG1qNYtP3RghtfuTfN05+BehmdCeutV5pKJqwthiuKfmQRv0f3YT0NoqzDd6qrP+ukVchv64KD9LLJiDfeSJLjwTD4enJyg+oITbDp2C5cPThnUN+GTXSmRMbnY39h9ofxJZYcSDR7pOBTvPlxAOV93BLKdA9EF6lZ2HpOYBm4P3PSOVASBaQIDAQAB",
   "description": "只讀分享目前聚焦分頁的可見文字，讓 Doro 回應與陪伴。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "tabs", "alarms"],

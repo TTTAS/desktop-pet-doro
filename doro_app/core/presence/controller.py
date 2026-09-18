@@ -15,6 +15,22 @@ from .models import EventGate, PageEvent
 
 logger = logging.getLogger(__name__)
 
+# The extension ships a fixed public key in its manifest, so its ID is the same
+# on every machine. Knowing it here means the user never copies an ID: they only
+# paste one pairing code into the extension. (A Web Store build gets a different
+# store-assigned ID; update this constant then.)
+EXTENSION_ID = "bjdgpompkkahbkmhekmddobhlmjjgipo"
+
+
+def pairing_code(port: int, token: str) -> str:
+    """One string the user copies into the extension, bundling port + token.
+
+    Format ``doro1.<port>.<token>``. The token charset is ``[A-Za-z0-9_-]`` and
+    the port is digits, so a simple dot split is unambiguous. The extension's
+    options page parses the same shape.
+    """
+    return f"doro1.{int(port)}.{token}"
+
 
 class PresenceController(QtCore.QObject):
     page_received = QtCore.Signal(object)
@@ -37,7 +53,6 @@ class PresenceController(QtCore.QObject):
         self.settings = {
             "enabled": False,
             "react": False,
-            "extension_id": "",
             "port": 19846,
             "token": secrets.token_urlsafe(32),
         }
@@ -62,7 +77,7 @@ class PresenceController(QtCore.QObject):
 
     def _start_bridge(self):
         bridge = PresenceBridge(
-            self.settings["extension_id"],
+            EXTENSION_ID,
             self.settings["token"],
             self.page_received.emit,
             port=int(self.settings["port"]),
@@ -76,7 +91,7 @@ class PresenceController(QtCore.QObject):
         if type(candidate["port"]) is not int or not 1024 <= candidate["port"] <= 65535:
             raise ValueError("埠號請填 1024～65535。")
         if candidate["enabled"]:
-            PresenceBridge(candidate["extension_id"], candidate["token"], lambda _: None)
+            PresenceBridge(EXTENSION_ID, candidate["token"], lambda _: None)
         previous = dict(self.settings)
         if self._bridge:
             self._bridge.shutdown()
