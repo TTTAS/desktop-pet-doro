@@ -41,7 +41,9 @@ class WebReadWorker(QtCore.QRunnable):
         except Exception as exc:  # 保底：reader 內部理論上已收斂，這裡再兜一層
             logger.critical(f"WebReadWorker 意外錯誤：{exc}", exc_info=True)
             result = WebReadResult(
-                url=self._url, title="", text="",
+                url=self._url,
+                title="",
+                text="",
                 error=f"讀網頁時 doro 出了意外：{exc}",
             )
         try:

@@ -6,14 +6,14 @@ from unittest.mock import Mock
 import pytest
 
 from doro_app.core.state import (
-    State,
-    MoveState,
-    Transition,
-    StateRepository,
-    MoveStateRepository,
     GifRepository,
-    TransitionRepository,
+    MoveState,
+    MoveStateRepository,
+    State,
+    StateRepository,
     StateService,
+    Transition,
+    TransitionRepository,
 )
 
 

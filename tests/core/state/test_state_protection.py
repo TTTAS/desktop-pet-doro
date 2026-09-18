@@ -10,17 +10,14 @@ This is a TDD approach: tests are written first, then the implementation follows
 """
 
 from unittest.mock import Mock
-import pytest
 
-from doro_app.core.state import StateService, StateChangeEvent
+from doro_app.core.state import StateChangeEvent, StateService
 
 
 class TestTransitionProtection:
     """Test state transition protection mechanism."""
 
-    def test_reject_state_change_during_transition(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_reject_state_change_during_transition(self, state_service_with_mocks: StateService):
         """When transitioning, new set_state requests should be rejected.
 
         Scenario:
@@ -110,9 +107,7 @@ class TestTransitionProtection:
         current = service.get_current_state()
         assert current.key == "walking", "State should have changed to walking"
 
-    def test_rejected_request_does_not_fire_event(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_rejected_request_does_not_fire_event(self, state_service_with_mocks: StateService):
         """Rejected state change requests should not trigger on_state_changed event.
 
         Scenario:
@@ -141,9 +136,7 @@ class TestTransitionProtection:
         assert result is False, "Request should be rejected"
         mock_callback.assert_not_called()
 
-    def test_successful_request_fires_event(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_successful_request_fires_event(self, state_service_with_mocks: StateService):
         """Successful state change should trigger on_state_changed event.
 
         This is a sanity check to ensure events still work correctly
@@ -176,9 +169,7 @@ class TestTransitionProtection:
         assert event.old_key == "idle"
         assert event.new_key == "happy"
 
-    def test_initial_state_has_no_transition_lock(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_initial_state_has_no_transition_lock(self, state_service_with_mocks: StateService):
         """After initialization, should not be transitioning.
 
         Ensures the service starts in a ready state.
@@ -265,9 +256,7 @@ class TestTransitionProtectionEdgeCases:
         # Assert
         assert result is False, "Should be rejected even for same state"
 
-    def test_force_change_to_same_state_succeeds(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_force_change_to_same_state_succeeds(self, state_service_with_mocks: StateService):
         """force=True changing to same state should succeed.
 
         This might be used to reset/refresh a state.
@@ -339,9 +328,7 @@ class TestTransitionProtectionWithCallbacks:
 class TestTransitionLockAPI:
     """Test begin_transition() and end_transition() API methods."""
 
-    def test_begin_transition_locks_state_changes(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_begin_transition_locks_state_changes(self, state_service_with_mocks: StateService):
         """begin_transition() should lock state changes."""
         # Arrange
         service = state_service_with_mocks
@@ -360,9 +347,7 @@ class TestTransitionLockAPI:
         change_result = service.set_state("happy")
         assert change_result is False, "State change should be rejected"
 
-    def test_end_transition_unlocks_state_changes(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_end_transition_unlocks_state_changes(self, state_service_with_mocks: StateService):
         """end_transition() should unlock state changes."""
         # Arrange
         service = state_service_with_mocks
@@ -397,9 +382,7 @@ class TestTransitionLockAPI:
         assert result is False, "Should not acquire lock when already transitioning"
         assert service.is_transitioning() is True, "Should still be transitioning"
 
-    def test_end_transition_when_not_transitioning(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_end_transition_when_not_transitioning(self, state_service_with_mocks: StateService):
         """end_transition() should fail if not transitioning."""
         # Arrange
         service = state_service_with_mocks
@@ -411,9 +394,7 @@ class TestTransitionLockAPI:
         assert result is False, "Should not release lock when not transitioning"
         assert service.is_transitioning() is False, "Should still not be transitioning"
 
-    def test_force_bypasses_transition_lock(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_force_bypasses_transition_lock(self, state_service_with_mocks: StateService):
         """force=True should bypass transition lock."""
         # Arrange
         service = state_service_with_mocks
@@ -430,9 +411,7 @@ class TestTransitionLockAPI:
         assert service.get_current_state().key == "walking"
         assert service.is_transitioning() is True, "Lock should still be active"
 
-    def test_transition_lifecycle(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_transition_lifecycle(self, state_service_with_mocks: StateService):
         """Test complete transition lifecycle."""
         # Arrange
         service = state_service_with_mocks
@@ -464,9 +443,7 @@ class TestTransitionLockAPI:
         assert service.set_state("happy") is True
         assert service.get_current_state().key == "happy"
 
-    def test_is_transitioning_reflects_lock_state(
-        self, state_service_with_mocks: StateService
-    ):
+    def test_is_transitioning_reflects_lock_state(self, state_service_with_mocks: StateService):
         """is_transitioning() should accurately reflect lock state."""
         # Arrange
         service = state_service_with_mocks

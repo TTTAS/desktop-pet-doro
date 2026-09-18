@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -33,13 +32,17 @@ def fake_action_service(tmp_path):
 def _import_dialog():
     """Local import so tests can run without Qt initialized at collection."""
     from doro_app.ui.dialogs.move_state.edit_dialog import EditMoveStateDialog
+
     return EditMoveStateDialog
 
 
-def test_action_option_appears_when_action_service_passed(qtbot, fake_state_service, fake_action_service):
+def test_action_option_appears_when_action_service_passed(
+    qtbot, fake_state_service, fake_action_service
+):
     EditMoveStateDialog = _import_dialog()
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
     )
     qtbot.addWidget(dialog)
@@ -60,7 +63,8 @@ def test_action_option_absent_without_action_service(qtbot, fake_state_service):
 def test_selecting_action_locks_key_to_click(qtbot, fake_state_service, fake_action_service):
     EditMoveStateDialog = _import_dialog()
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
     )
     qtbot.addWidget(dialog)
@@ -76,7 +80,10 @@ def test_selecting_action_locks_key_to_click(qtbot, fake_state_service, fake_act
 
 
 def test_action_edit_mode_loads_existing_binding_path(
-    qtbot, fake_state_service, fake_action_service, tmp_path,
+    qtbot,
+    fake_state_service,
+    fake_action_service,
+    tmp_path,
 ):
     EditMoveStateDialog = _import_dialog()
     existing_gif = tmp_path / "currently_bound.gif"
@@ -84,7 +91,8 @@ def test_action_edit_mode_loads_existing_binding_path(
     fake_action_service.resolve_action_gif_path.return_value = existing_gif
 
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
         edit_action_key=CLICK_ACTION_KEY,
     )
@@ -100,14 +108,18 @@ def test_action_edit_mode_loads_existing_binding_path(
 
 
 def test_save_action_calls_bind_click_gif(
-    qtbot, fake_state_service, fake_action_service, tmp_path,
+    qtbot,
+    fake_state_service,
+    fake_action_service,
+    tmp_path,
 ):
     EditMoveStateDialog = _import_dialog()
     selected = tmp_path / "user_choice.gif"
     selected.write_bytes(b"gif")
 
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
         edit_action_key=CLICK_ACTION_KEY,
     )
@@ -120,12 +132,15 @@ def test_save_action_calls_bind_click_gif(
 
 
 def test_save_action_with_no_selection_does_not_call_service(
-    qtbot, fake_state_service, fake_action_service,
+    qtbot,
+    fake_state_service,
+    fake_action_service,
 ):
     """Closing the action dialog without picking a GIF is a no-op."""
     EditMoveStateDialog = _import_dialog()
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
         edit_action_key=CLICK_ACTION_KEY,
     )
@@ -136,12 +151,15 @@ def test_save_action_with_no_selection_does_not_call_service(
 
 
 def test_movement_mode_still_works_alongside_action_service(
-    qtbot, fake_state_service, fake_action_service,
+    qtbot,
+    fake_state_service,
+    fake_action_service,
 ):
     """Adding an Action option must not break the legacy Movement flow."""
     EditMoveStateDialog = _import_dialog()
     dialog = EditMoveStateDialog(
-        fake_state_service, None,
+        fake_state_service,
+        None,
         action_service=fake_action_service,
     )
     qtbot.addWidget(dialog)

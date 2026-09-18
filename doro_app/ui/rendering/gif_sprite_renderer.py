@@ -29,7 +29,7 @@ class GifSpriteRenderer:
         self._temporary_movie: QtGui.QMovie | None = None
 
     @property
-    def renderer_type(self) -> str:  # noqa: D401
+    def renderer_type(self) -> str:
         """Renderer type identifier."""
         return "gif"
 

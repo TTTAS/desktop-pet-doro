@@ -14,9 +14,7 @@ from doro_app.core.web.session import PageView, WebSession
 
 
 def test_element_names_mapping():
-    view = PageView(
-        elements=[{"idx": 0, "name": "搜尋"}, {"idx": 1, "name": "登入"}]
-    )
+    view = PageView(elements=[{"idx": 0, "name": "搜尋"}, {"idx": 1, "name": "登入"}])
     assert view.element_names() == {0: "搜尋", 1: "登入"}
 
 
@@ -31,9 +29,7 @@ def test_actions_before_open_return_error(tmp_path):
 def test_closed_window_error_message(tmp_path):
     # Playwright 「視窗被關掉」的錯誤字樣 → 回友善「被關掉」訊息
     s = WebSession(tmp_path / "profile")
-    msg = s._error_or_closed(
-        Exception("Target page, context or browser has been closed"), "點擊"
-    )
+    msg = s._error_or_closed(Exception("Target page, context or browser has been closed"), "點擊")
     assert "關掉" in msg
 
 

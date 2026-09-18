@@ -1,7 +1,5 @@
 """Tests for application exceptions."""
 
-import pytest
-
 from doro_app.core.exceptions import (
     ChatConnectionError,
     ChatTimeoutError,

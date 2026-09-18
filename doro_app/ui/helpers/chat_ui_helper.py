@@ -9,8 +9,8 @@ from PySide6 import QtWidgets
 from ..dialogs.chat_dialog import DoroChatDialog
 
 if TYPE_CHECKING:
-    from ..components.bubble_controller import BubbleController
     from ...core.core_manager import CoreManager
+    from ..components.bubble_controller import BubbleController
     from ..window import DoroWindow
 
 _PROVIDER_PRESETS = {
@@ -182,11 +182,7 @@ class ChatUIHelper:
             display,
         )
         if ok:
-            tokens = [
-                line.replace("\\n", "\n")
-                for line in text.splitlines()
-                if line.strip()
-            ]
+            tokens = [line.replace("\\n", "\n") for line in text.splitlines() if line.strip()]
             self._chat.settings.set_stop_tokens(tokens)
 
     def configure_max_stop_tokens(self) -> None:

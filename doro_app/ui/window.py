@@ -3,37 +3,38 @@
 from __future__ import annotations
 
 import time
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..constants import (
-    TIMER_INTERVAL_MS,
-    WINDOW_INITIAL_WIDTH,
-    WINDOW_INITIAL_HEIGHT,
-    WINDOW_MIN_WIDTH,
-    WINDOW_MIN_HEIGHT,
-    SPRITE_DEFAULT_WIDTH,
-    SPRITE_DEFAULT_HEIGHT,
-    SPRITE_OFFSET_X,
-    PANEL_DEFAULT_WIDTH_HINT,
-    PANEL_DEFAULT_HEIGHT_HINT,
     BUBBLE_DEFAULT_OFFSET_X,
     BUBBLE_DEFAULT_OFFSET_Y,
     DEFAULT_MOVE_STATE_KEY,
+    PANEL_DEFAULT_HEIGHT_HINT,
+    PANEL_DEFAULT_WIDTH_HINT,
+    SPRITE_DEFAULT_HEIGHT,
+    SPRITE_DEFAULT_WIDTH,
+    SPRITE_OFFSET_X,
+    TIMER_INTERVAL_MS,
+    WINDOW_INITIAL_HEIGHT,
     WINDOW_INITIAL_POSITION_OFFSET_X,
     WINDOW_INITIAL_POSITION_OFFSET_Y,
+    WINDOW_INITIAL_WIDTH,
+    WINDOW_MIN_HEIGHT,
+    WINDOW_MIN_WIDTH,
 )
+from ..core.state import StateService
+from ..utils.config_manager import ConfigManager
+from ..utils.logger import get_logger
 from .components.bubble_controller import BubbleController
-from .rendering.design_tokens import tokens
-from .rendering.gif_sprite_renderer import GifSpriteRenderer
-from .rendering.sprite_renderer import SpriteRenderer
-from .rendering.rendering_engine import RenderingEngine
 from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
-from .viewmodels.doro_viewmodel import DoroViewModel
-from ..utils.logger import get_logger
-from ..core.state import StateService
+from .rendering.design_tokens import tokens
+from .rendering.gif_sprite_renderer import GifSpriteRenderer
+from .rendering.rendering_engine import RenderingEngine
+from .rendering.sprite_renderer import SpriteRenderer
 from .theme.theme import ensure_application_theme
-from ..utils.config_manager import ConfigManager
+from .viewmodels.doro_viewmodel import DoroViewModel
 
 logger = get_logger(__name__)
 
@@ -240,8 +241,7 @@ class DoroWindow(QtWidgets.QWidget):
         now = time.monotonic()
         dt = now - getattr(self, "_last_tick_time", now)
         self._last_tick_time = now
-        if dt < 0.0:
-            dt = 0.0
+        dt = max(dt, 0.0)
         dt = min(dt, tokens.animation.max_delta_time)
 
         # Signal business layer to process movement
@@ -289,8 +289,11 @@ class DoroWindow(QtWidgets.QWidget):
 
     def event(self, e: QtCore.QEvent):
         # A lost mouse grab (e.g. deactivation) may have no release event.
-        if e.type() in (QtCore.QEvent.Type.UngrabMouse, QtCore.QEvent.Type.WindowDeactivate,
-                        QtCore.QEvent.Type.Hide):
+        if e.type() in (
+            QtCore.QEvent.Type.UngrabMouse,
+            QtCore.QEvent.Type.WindowDeactivate,
+            QtCore.QEvent.Type.Hide,
+        ):
             handler = getattr(self, "_mouse_handler", None)
             if handler is not None:
                 handler.reset()
@@ -357,9 +360,7 @@ class DoroWindow(QtWidgets.QWidget):
         # Pick the side the bubble sits on BEFORE resizing, from where the
         # sprite currently is on screen. Near the bottom → flip above.
         if sprite_center_screen is not None:
-            self._bubble_above = self._decide_bubble_above(
-                sprite_center_screen, panel_h_hint
-            )
+            self._bubble_above = self._decide_bubble_above(sprite_center_screen, panel_h_hint)
 
         self._sizing_in_progress = True
         try:
@@ -393,7 +394,9 @@ class DoroWindow(QtWidgets.QWidget):
         except Exception:
             return None
         sprite_center, _ = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         return QtCore.QPointF(
@@ -430,14 +433,16 @@ class DoroWindow(QtWidgets.QWidget):
         # Reset anchor so layout recomputes for the new window size.
         self._sprite_anchor_top = None
         new_local_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         if new_anchor is not None:
             self._sprite_anchor_top = new_anchor
         new_top_left = QtCore.QPoint(
-            int(round(target_screen_center.x() - new_local_center.x())),
-            int(round(target_screen_center.y() - new_local_center.y())),
+            round(target_screen_center.x() - new_local_center.x()),
+            round(target_screen_center.y() - new_local_center.y()),
         )
         clamped = WindowLayoutManager.clamp_position(
             new_top_left, self.size(), self._available_screen_geometry()
@@ -460,7 +465,9 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Calculate sprite center using RenderingEngine
         sprite_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(), self._sprite_anchor_top, self._panel_height_hint,
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
             reserve_above=self._bubble_above,
         )
         if new_anchor is not None:
@@ -472,7 +479,10 @@ class DoroWindow(QtWidgets.QWidget):
         # Render text panel using RenderingEngine
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
-            (self._view_model.bubble_visible or (self._bubble_controller and self._bubble_controller.text_show_override))
+            (
+                self._view_model.bubble_visible
+                or (self._bubble_controller and self._bubble_controller.text_show_override)
+            )
             and self._view_model.bubble_alpha > 0
             and bool(bubble_text.strip())
         )
@@ -481,7 +491,12 @@ class DoroWindow(QtWidgets.QWidget):
 
             alpha = min(max(int(self._view_model.bubble_alpha), 0), COLOR_ALPHA_MAX)
             self._panel_rect_cache = self._rendering_engine.render_text_panel(
-                p, bubble_text, alpha, sprite_center, self.size(), self._panel_height_hint,
+                p,
+                bubble_text,
+                alpha,
+                sprite_center,
+                self.size(),
+                self._panel_height_hint,
                 prefer_above=self._bubble_above,
             )
         else:
@@ -523,8 +538,8 @@ class DoroWindow(QtWidgets.QWidget):
         )
         half_h = self._view_model.sprite_size.height() / 2.0
         return QtCore.QPoint(
-            int(round(sprite_center.x())),
-            int(round(sprite_center.y() + half_h)) - 1,
+            round(sprite_center.x()),
+            round(sprite_center.y() + half_h) - 1,
         )
 
     def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:

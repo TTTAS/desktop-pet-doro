@@ -2,32 +2,34 @@
 
 from __future__ import annotations
 
-import time
 import math
-from typing import Callable, Optional, TYPE_CHECKING
+import time
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
 from ...utils.actions import MOVE_DIRECTIONS, MOVE_TOKEN_PATTERN
-from ...utils.models import MoveStateSettings, MovementRequest
+from ...utils.logger import get_logger
+from ...utils.models import MovementRequest, MoveStateSettings
 from ...utils.paths import MOVEMENT_INSTRUCTION_PATH
 from ...utils.prompts import load_prompt_text
-from ...utils.utils import safe_float as _safe_float, safe_int as _safe_int
+from ...utils.utils import safe_float as _safe_float
+from ...utils.utils import safe_int as _safe_int
+from ..listeners import ListenerRegistry
 from .parser import (
+    direction_key,
     direction_label,
     direction_vector_from_string,
-    direction_key,
     format_move_report,
     normalize_direction_key,
     parse_move_bracket,
 )
 from .repository import MovementRepository
-from ..listeners import ListenerRegistry
-from ...utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from .port import MovementWindowPort
     from ..state import StateService
+    from .port import MovementWindowPort
 
 
 logger = get_logger(__name__)
@@ -41,7 +43,7 @@ class MovementManager:
 
     def __init__(
         self,
-        window: "MovementWindowPort",
+        window: MovementWindowPort,
         state_service: StateService,
         movement_repo: MovementRepository,
     ):
@@ -60,27 +62,27 @@ class MovementManager:
         # Pre-computed clamped destination so the final frame can snap exactly
         # to the requested target instead of stopping wherever rounding lands.
         self._movement_target = QtCore.QPoint()
-        self._movement_direction_key: Optional[str] = None
-        self._movement_pending_report: Optional[str] = None
-        self._movement_previous_state: Optional[str] = None
-        self._movement_requested_state: Optional[str] = None
+        self._movement_direction_key: str | None = None
+        self._movement_pending_report: str | None = None
+        self._movement_previous_state: str | None = None
+        self._movement_requested_state: str | None = None
         self._movement_reports: list[str] = []
         self._last_move_report = ""
-        self._last_error: Optional[str] = None  # Track last parse error
+        self._last_error: str | None = None  # Track last parse error
         # Physical-pixel target of the most recent successful `[move:to;x=;y=]`.
         # The click warning overlay reads this at wind-up time to frame the
         # a11y element Doro is walking towards (the foot hasn't arrived yet
         # when wind-up starts, so sampling the current foot position would
         # frame the wrong element).
-        self.last_target_physical: Optional[tuple[int, int]] = None
+        self.last_target_physical: tuple[int, int] | None = None
         # Completion listeners: invoked exactly once per `_finish_movement` call.
         # Used by `MovementAction` (see core/action/movement_action.py) so the
         # dispatcher can sequence the next action without polling. Listeners
         # are also fired when `cancel_active_movement` ends a movement early
         # so waiters don't strand. The shared `ListenerRegistry` owns the
         # subscribe / unsubscribe / snapshot-emit mechanics.
-        self._completion_listeners: ListenerRegistry[Callable[[], None]] = (
-            ListenerRegistry("movement-completion")
+        self._completion_listeners: ListenerRegistry[Callable[[], None]] = ListenerRegistry(
+            "movement-completion"
         )
 
     # ------------------------------------------------------------------ Public API
@@ -118,7 +120,7 @@ class MovementManager:
         self._finish_movement()
         return True
 
-    def take_last_target_physical(self) -> Optional[tuple[int, int]]:
+    def take_last_target_physical(self) -> tuple[int, int] | None:
         """Consume and clear `last_target_physical`.
 
         `AutomationManager._fire_now` uses this as `click_target_provider`
@@ -130,7 +132,7 @@ class MovementManager:
         self.last_target_physical = None
         return target
 
-    def get_last_error(self) -> Optional[str]:
+    def get_last_error(self) -> str | None:
         """Get the last movement parsing error, if any."""
         return self._last_error
 
@@ -176,7 +178,11 @@ class MovementManager:
             return self._handle_target_move(params, reports)
 
         base_moves = {"", "move", "walk", "slide", "step"}
-        if action_lower and action_lower not in base_moves and action_lower not in {"face", "none", "stay", "idle", "停", "不動"}:
+        if (
+            action_lower
+            and action_lower not in base_moves
+            and action_lower not in {"face", "none", "stay", "idle", "停", "不動"}
+        ):
             if params.get("dir") is None:
                 params["dir"] = action_lower
             action_lower = "move"
@@ -185,8 +191,15 @@ class MovementManager:
         if action_lower in base_moves:
             dx_param = params.get("dx")
             dy_param = params.get("dy")
-            direction_key = params.get("dir") or params.get("direction") or params.get("to") or params.get("向")
-            distance_param = params.get("distance") or params.get("dist") or params.get("offset") or params.get("距離")
+            direction_key = (
+                params.get("dir") or params.get("direction") or params.get("to") or params.get("向")
+            )
+            distance_param = (
+                params.get("distance")
+                or params.get("dist")
+                or params.get("offset")
+                or params.get("距離")
+            )
             speed_param = params.get("speed") or params.get("spd") or params.get("速度")
             state_hint = params.get("state") or params.get("狀態")
             move_state_param = (
@@ -195,7 +208,9 @@ class MovementManager:
                 or params.get("movestate")
                 or params.get("移動狀態")
             )
-            move_state_key, move_state_settings = self._resolve_move_state_settings(move_state_param)
+            move_state_key, move_state_settings = self._resolve_move_state_settings(
+                move_state_param
+            )
             if move_state_settings is None:
                 default_key = self._state_service.get_default_movement_state()
                 move_state_key, move_state_settings = self._resolve_move_state_settings(default_key)
@@ -214,7 +229,9 @@ class MovementManager:
 
             if direction_vec is None:
                 # Failed to parse direction - report error
-                self._last_error = f"無法解析移動方向：dir={direction_key}, dx={dx_param}, dy={dy_param}"
+                self._last_error = (
+                    f"無法解析移動方向：dir={direction_key}, dx={dx_param}, dy={dy_param}"
+                )
                 reports.append(f"[移動錯誤] {self._last_error}")
                 return False
 
@@ -243,13 +260,15 @@ class MovementManager:
             report = format_move_report(
                 target,
                 direction_label_text,
-                int(round(actual_dx)),
-                int(round(actual_dy)),
+                round(actual_dx),
+                round(actual_dy),
             )
 
-            speed_source = speed_param or (
-                move_state_settings.default_speed if move_state_settings else None
-            ) or "med"
+            speed_source = (
+                speed_param
+                or (move_state_settings.default_speed if move_state_settings else None)
+                or "med"
+            )
             speed_name = speed_source.lower()
             self._start_movement(
                 direction_vector,
@@ -266,9 +285,14 @@ class MovementManager:
             dir_hint = params.get("dir", "").strip().lower()
             bubble_offset = window.get_bubble_offset()
             if dir_hint in ("left", "l", "左"):
-                window.apply_bubble_offset(QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(
+                    QtCore.QPointF(-abs(bubble_offset.x() or 120.0), bubble_offset.y()),
+                    persist=True,
+                )
             elif dir_hint in ("right", "r", "右"):
-                window.apply_bubble_offset(QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True)
+                window.apply_bubble_offset(
+                    QtCore.QPointF(abs(bubble_offset.x() or 120.0), bubble_offset.y()), persist=True
+                )
             return True
         return True
 
@@ -366,8 +390,8 @@ class MovementManager:
         report = format_move_report(
             clamped,
             direction_label_text,
-            int(round(actual_dx)),
-            int(round(actual_dy)),
+            round(actual_dx),
+            round(actual_dy),
         )
 
         speed_param = params.get("speed") or params.get("spd") or params.get("速度") or "med"
@@ -457,8 +481,8 @@ class MovementManager:
         report = format_move_report(
             target,
             direction_label_text,
-            int(round(actual_dx)),
-            int(round(actual_dy)),
+            round(actual_dx),
+            round(actual_dy),
         )
 
         move_state_key = self._state_service.get_default_movement_state()
@@ -502,7 +526,9 @@ class MovementManager:
         self._movement_remaining = 0.0
         self._movement_pending_report = None
         self._movement_direction_key = None
-        if self._movement_previous_state and self._state_service.get_state(self._movement_previous_state):
+        if self._movement_previous_state and self._state_service.get_state(
+            self._movement_previous_state
+        ):
             current_state = self._state_service.get_current_state()
             current = current_state.key if current_state else None
             requested = self._state_service.get_requested_state_key()
@@ -534,7 +560,7 @@ class MovementManager:
         # common case for MovementAction's one-shot wait).
         self._completion_listeners.emit()
 
-    def _direction_slug(self, direction: tuple[float, float]) -> Optional[str]:
+    def _direction_slug(self, direction: tuple[float, float]) -> str | None:
         key = direction_key(direction)
         mapping = {
             (-1, 0): "left",
@@ -567,10 +593,10 @@ class MovementManager:
         distance: float,
         *,
         speed_name: str = "med",
-        state_hint: Optional[str] = None,
-        report: Optional[str] = None,
+        state_hint: str | None = None,
+        report: str | None = None,
         move_state: MoveStateSettings | None = None,
-        move_state_name: Optional[str] = None,
+        move_state_name: str | None = None,
     ):
         window = self._window
         unit_x, unit_y = direction
@@ -621,10 +647,12 @@ class MovementManager:
         # the clamped destination so `process_active_movement` can snap to it
         # on completion instead of stopping at whatever pixel rounding lands on.
         self._movement_fpos = QtCore.QPointF(self._movement_start_pos)
-        self._movement_target = window.clamp_window_position(QtCore.QPoint(
-            round(self._movement_start_pos.x() + unit_x * distance),
-            round(self._movement_start_pos.y() + unit_y * distance),
-        ))
+        self._movement_target = window.clamp_window_position(
+            QtCore.QPoint(
+                round(self._movement_start_pos.x() + unit_x * distance),
+                round(self._movement_start_pos.y() + unit_y * distance),
+            )
+        )
         current_state_obj = self._state_service.get_current_state()
         current_state = current_state_obj.key if current_state_obj else None
         self._active_movement = MovementRequest(
@@ -664,7 +692,9 @@ class MovementManager:
         if desired_key and desired_key != current_state_key:
             self._state_service.set_state(desired_key)
 
-    def _infer_state_for_movement(self, direction: tuple[float, float], speed_name: str) -> Optional[str]:
+    def _infer_state_for_movement(
+        self, direction: tuple[float, float], speed_name: str
+    ) -> str | None:
         """
         Infer appropriate state for movement based on direction and speed.
 
@@ -680,9 +710,10 @@ class MovementManager:
 
         # Priority 1: Exact speed match
         for move_state in move_states:
-            if move_state.default_speed == speed_name:
-                if self._state_service.get_state(move_state.state_key):
-                    return move_state.state_key
+            if move_state.default_speed == speed_name and self._state_service.get_state(
+                move_state.state_key
+            ):
+                return move_state.state_key
 
         # Priority 2: Any state for this direction
         for move_state in move_states:
@@ -694,7 +725,9 @@ class MovementManager:
     def _resolve_speed_value(self, speed_name: str) -> float:
         return self._repo.resolve_speed(speed_name)
 
-    def _resolve_move_state_settings(self, key: str | None) -> tuple[Optional[str], Optional[MoveStateSettings]]:
+    def _resolve_move_state_settings(
+        self, key: str | None
+    ) -> tuple[str | None, MoveStateSettings | None]:
         """Resolve movement state settings via StateService only."""
         if not key:
             return None, None

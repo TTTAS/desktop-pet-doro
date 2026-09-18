@@ -10,9 +10,8 @@ gesture shown when the user clicks Doro (``pet_click``).
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 from ...utils.logger import get_logger
 
@@ -29,14 +28,14 @@ class ActionEntry:
 
     key: str
     display_name: str
-    gif_id: Optional[str] = None
+    gif_id: str | None = None
     is_builtin: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ActionEntry":
+    def from_dict(cls, data: dict) -> ActionEntry:
         return cls(
             key=data["key"],
             display_name=data.get("display_name", data["key"].title()),
@@ -122,7 +121,7 @@ class ActionRepository:
 
     # ─── Read API ──────────────────────────────────────────────────
 
-    def get(self, key: str) -> Optional[ActionEntry]:
+    def get(self, key: str) -> ActionEntry | None:
         return self._entries.get(key)
 
     def all_keys(self) -> list[str]:
@@ -133,7 +132,7 @@ class ActionRepository:
 
     # ─── Write API ─────────────────────────────────────────────────
 
-    def update_gif_id(self, key: str, gif_id: Optional[str]) -> bool:
+    def update_gif_id(self, key: str, gif_id: str | None) -> bool:
         entry = self._entries.get(key)
         if entry is None:
             return False

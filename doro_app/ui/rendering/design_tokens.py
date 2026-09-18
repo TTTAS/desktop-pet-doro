@@ -124,22 +124,28 @@ class DesignTokens:
     @staticmethod
     def calculate_outline_alpha(base_alpha: int) -> int:
         """Calculate outline alpha from base alpha."""
-        clamped = max(DesignTokens.opacity.min_base_alpha,
-                     min(DesignTokens.opacity.max_base_alpha, base_alpha))
+        clamped = max(
+            DesignTokens.opacity.min_base_alpha,
+            min(DesignTokens.opacity.max_base_alpha, base_alpha),
+        )
         return int(clamped * DesignTokens.opacity.outline_multiplier)
 
     @staticmethod
     def calculate_fill_alpha(base_alpha: int) -> int:
         """Calculate fill alpha from base alpha."""
-        clamped = max(DesignTokens.opacity.min_base_alpha,
-                     min(DesignTokens.opacity.max_base_alpha, base_alpha))
+        clamped = max(
+            DesignTokens.opacity.min_base_alpha,
+            min(DesignTokens.opacity.max_base_alpha, base_alpha),
+        )
         return int(clamped * DesignTokens.opacity.fill_multiplier)
 
     @staticmethod
     def calculate_shadow_alpha(base_alpha: int) -> int:
         """Calculate shadow alpha from base alpha."""
-        clamped = max(DesignTokens.opacity.min_base_alpha,
-                     min(DesignTokens.opacity.max_base_alpha, base_alpha))
+        clamped = max(
+            DesignTokens.opacity.min_base_alpha,
+            min(DesignTokens.opacity.max_base_alpha, base_alpha),
+        )
         return int(clamped * DesignTokens.opacity.shadow_multiplier)
 
 

@@ -12,14 +12,14 @@
 
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Tuple
+from collections.abc import Callable
 
 from doro_app.core.action.phases import WaitPhase
 
 
 class ManualScheduler:
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))
@@ -86,7 +86,7 @@ class TestResolve:
         done: list[bool] = []
         fail: list[str] = []
 
-        def resolve(outcome: str, detail: str) -> Optional[str]:
+        def resolve(outcome: str, detail: str) -> str | None:
             return None if outcome == "fired" else f"{outcome}: {detail}"
 
         phase = WaitPhase(sig.subscribe, sched, resolve=resolve)
@@ -102,7 +102,7 @@ class TestResolve:
         done: list[bool] = []
         fail: list[str] = []
 
-        def resolve(outcome: str, detail: str) -> Optional[str]:
+        def resolve(outcome: str, detail: str) -> str | None:
             return None if outcome == "fired" else f"{outcome}: {detail}"
 
         phase = WaitPhase(sig.subscribe, sched, resolve=resolve)
@@ -130,7 +130,9 @@ class TestPrecondition:
         sched = ManualScheduler()
         done: list[bool] = []
         phase = WaitPhase(
-            sig.subscribe, sched, precondition=lambda: False,
+            sig.subscribe,
+            sched,
+            precondition=lambda: False,
         )
 
         phase.start(lambda: done.append(True), lambda r: None)
@@ -148,7 +150,9 @@ class TestPrecondition:
         sched = ManualScheduler()
         done: list[bool] = []
         phase = WaitPhase(
-            sig.subscribe, sched, precondition=lambda: True,
+            sig.subscribe,
+            sched,
+            precondition=lambda: True,
         )
 
         phase.start(lambda: done.append(True), lambda r: None)

@@ -5,12 +5,11 @@ failures and resolves on the manager's terminal outcome.
 
 from __future__ import annotations
 
-from typing import Callable, List, Tuple
+from collections.abc import Callable
 
 import pytest
 
 from doro_app.core.action import (
-    Action,
     ActionDispatcher,
     make_click_action,
 )
@@ -19,7 +18,7 @@ from doro_app.core.automation.manager import ClickOutcome
 
 class ManualScheduler:
     def __init__(self) -> None:
-        self.scheduled: List[Tuple[int, Callable[[], None]]] = []
+        self.scheduled: list[tuple[int, Callable[[], None]]] = []
 
     def __call__(self, ms: int, fn: Callable[[], None]) -> None:
         self.scheduled.append((int(ms), fn))
@@ -52,6 +51,7 @@ class FakeAutomation:
         def unsub():
             if callback in self._listeners:
                 self._listeners.remove(callback)
+
         return unsub
 
     def fire_outcome(self, outcome: ClickOutcome, detail: str = "") -> None:
@@ -99,7 +99,9 @@ def dispatcher(state_service, scheduler):
 
 class TestClickAction:
     def test_successful_click_routes_through_dispatcher(
-        self, dispatcher, scheduler,
+        self,
+        dispatcher,
+        scheduler,
     ):
         automation = FakeAutomation()
         dispatcher.dispatch(make_click_action(automation, scheduler))
@@ -117,7 +119,10 @@ class TestClickAction:
         assert dispatcher.is_idle
 
     def test_preflight_rejection_routes_to_failure(
-        self, dispatcher, scheduler, state_service,
+        self,
+        dispatcher,
+        scheduler,
+        state_service,
     ):
         automation = FakeAutomation(preflight=ClickOutcome.RATE_LIMITED)
         dispatcher.dispatch(make_click_action(automation, scheduler))
@@ -132,7 +137,10 @@ class TestClickAction:
         assert dispatcher.is_idle
 
     def test_non_fired_terminal_outcome_is_failure(
-        self, dispatcher, scheduler, state_service,
+        self,
+        dispatcher,
+        scheduler,
+        state_service,
     ):
         """Allowlist miss / esc abort / drag grace — none fired the click,
         all should surface as dispatcher-level failure (so the failure

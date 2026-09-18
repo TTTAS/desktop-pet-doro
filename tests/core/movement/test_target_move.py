@@ -45,7 +45,7 @@ def _make_manager(*, origin=(0, 0), clamp=(0, 0, 1920, 1080)):
 
 class TestParseTo:
     def test_basic_to_starts_movement(self):
-        manager, window = _make_manager(origin=(0, 0))
+        manager, _window = _make_manager(origin=(0, 0))
         reports: list[str] = []
 
         consumed = manager.handle_move_bracket("move:to;x=400;y=300", reports)
@@ -56,7 +56,7 @@ class TestParseTo:
         assert manager.has_active_movement is True
 
     def test_to_alias_goto_also_works(self):
-        manager, window = _make_manager(origin=(0, 0))
+        manager, _window = _make_manager(origin=(0, 0))
         reports: list[str] = []
 
         consumed = manager.handle_move_bracket("move:goto;x=200;y=200", reports)
@@ -98,7 +98,7 @@ class TestValidation:
 class TestClamping:
     def test_excessive_x_clamps_to_screen_bounds(self):
         # clamp_rect is (0, 0, 1920, 1080) — origin/right/bottom
-        manager, window = _make_manager(origin=(0, 0), clamp=(0, 0, 1920, 1080))
+        manager, _window = _make_manager(origin=(0, 0), clamp=(0, 0, 1920, 1080))
         reports: list[str] = []
         manager.handle_move_bracket("move:to;x=99999;y=99999", reports)
         # Movement starts (i.e. coordinates were clamped, not rejected).
@@ -107,7 +107,7 @@ class TestClamping:
     def test_already_at_target_is_noop(self):
         # Window at (100,100), size 100x100 → foot offset (50, 99), so the foot
         # already sits at physical (150, 199). Targeting that is a no-op.
-        manager, window = _make_manager(origin=(100, 100))
+        manager, _window = _make_manager(origin=(100, 100))
         reports: list[str] = []
         manager.handle_move_bracket("move:to;x=150;y=199", reports)
         # Effectively no movement queued.
@@ -120,8 +120,7 @@ class TestFootPlacement:
     def test_top_left_backs_out_foot_offset(self):
         # Foot target physical (200,200); window 100x100 → foot offset (50,99),
         # so the window top-left must end up at (150, 101) to put the foot there.
-        manager, window = _make_manager(origin=(1000, 1000))
-        reports: list[str] = []
+        manager, _window = _make_manager(origin=(1000, 1000))
 
         report = manager.apply_target_move(200, 200)
 
@@ -241,4 +240,3 @@ class TestMovementIntegrationPrecision:
         # QRect(0,0,1920,1080).right() == 1919 — the fake clamps to that.
         assert end.x() == 1919
         assert manager.has_active_movement is False
-

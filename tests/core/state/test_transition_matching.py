@@ -17,42 +17,52 @@ class TestTransitionPriorityMatching:
         coll = TransitionCollection()
 
         # Priority 1: Exact matches
-        coll.add(Transition(
-            key="idle_to_happy",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="idle_happy.gif"
-        ))
-        coll.add(Transition(
-            key="idle_to_sad",
-            from_state="idle",
-            to_state="sad",
-            transition_gif_id="idle_sad.gif"
-        ))
+        coll.add(
+            Transition(
+                key="idle_to_happy",
+                from_state="idle",
+                to_state="happy",
+                transition_gif_id="idle_happy.gif",
+            )
+        )
+        coll.add(
+            Transition(
+                key="idle_to_sad",
+                from_state="idle",
+                to_state="sad",
+                transition_gif_id="idle_sad.gif",
+            )
+        )
 
         # Priority 2a: from specific -> any
-        coll.add(Transition(
-            key="excited_to_any",
-            from_state="excited",
-            to_state=WILDCARD,
-            transition_gif_id="excited_exit.gif"
-        ))
+        coll.add(
+            Transition(
+                key="excited_to_any",
+                from_state="excited",
+                to_state=WILDCARD,
+                transition_gif_id="excited_exit.gif",
+            )
+        )
 
         # Priority 2b: from any -> specific
-        coll.add(Transition(
-            key="any_to_sleeping",
-            from_state=WILDCARD,
-            to_state="sleeping",
-            transition_gif_id="enter_sleeping.gif"
-        ))
+        coll.add(
+            Transition(
+                key="any_to_sleeping",
+                from_state=WILDCARD,
+                to_state="sleeping",
+                transition_gif_id="enter_sleeping.gif",
+            )
+        )
 
         # Priority 3: Universal
-        coll.add(Transition(
-            key="universal",
-            from_state=WILDCARD,
-            to_state=WILDCARD,
-            transition_gif_id="generic_transition.gif"
-        ))
+        coll.add(
+            Transition(
+                key="universal",
+                from_state=WILDCARD,
+                to_state=WILDCARD,
+                transition_gif_id="generic_transition.gif",
+            )
+        )
 
         return coll
 
@@ -91,12 +101,14 @@ class TestTransitionPriorityMatching:
         """Return None when no transition matches (even wildcards)."""
         coll = TransitionCollection()
         # Only add one specific transition
-        coll.add(Transition(
-            key="idle_to_happy",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="idle_happy.gif"
-        ))
+        coll.add(
+            Transition(
+                key="idle_to_happy",
+                from_state="idle",
+                to_state="happy",
+                transition_gif_id="idle_happy.gif",
+            )
+        )
 
         # Different states should return None
         result = coll.find_transition("sad", "angry")
@@ -118,12 +130,14 @@ class TestTransitionWildcardEdgeCases:
     def test_same_state_transition(self):
         """Test transition from state to itself."""
         coll = TransitionCollection()
-        coll.add(Transition(
-            key="idle_to_idle",
-            from_state="idle",
-            to_state="idle",
-            transition_gif_id="idle_loop.gif"
-        ))
+        coll.add(
+            Transition(
+                key="idle_to_idle",
+                from_state="idle",
+                to_state="idle",
+                transition_gif_id="idle_loop.gif",
+            )
+        )
 
         result = coll.find_transition("idle", "idle")
         assert result is not None
@@ -132,12 +146,14 @@ class TestTransitionWildcardEdgeCases:
     def test_wildcard_only_collection(self):
         """Collection with only wildcard transitions."""
         coll = TransitionCollection()
-        coll.add(Transition(
-            key="any_to_any",
-            from_state=WILDCARD,
-            to_state=WILDCARD,
-            transition_gif_id="universal.gif"
-        ))
+        coll.add(
+            Transition(
+                key="any_to_any",
+                from_state=WILDCARD,
+                to_state=WILDCARD,
+                transition_gif_id="universal.gif",
+            )
+        )
 
         # Any transition should match
         result = coll.find_transition("any_state", "other_state")
@@ -147,19 +163,23 @@ class TestTransitionWildcardEdgeCases:
     def test_multiple_exact_matches_use_first_added(self):
         """If multiple exact matches exist (shouldn't happen), use first added."""
         coll = TransitionCollection()
-        coll.add(Transition(
-            key="idle_happy_1",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="first.gif"
-        ))
+        coll.add(
+            Transition(
+                key="idle_happy_1",
+                from_state="idle",
+                to_state="happy",
+                transition_gif_id="first.gif",
+            )
+        )
         # This should overwrite the first one due to same key pair
-        coll.add(Transition(
-            key="idle_happy_2",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="second.gif"
-        ))
+        coll.add(
+            Transition(
+                key="idle_happy_2",
+                from_state="idle",
+                to_state="happy",
+                transition_gif_id="second.gif",
+            )
+        )
 
         result = coll.find_transition("idle", "happy")
         assert result is not None
@@ -179,12 +199,14 @@ class TestTransitionCollectionOperations:
     def test_add_and_find_wildcard_transition(self):
         """Add and find wildcard transitions."""
         coll = TransitionCollection()
-        coll.add(Transition(
-            key="exit_any",
-            from_state="exiting",
-            to_state=WILDCARD,
-            transition_gif_id="exit.gif"
-        ))
+        coll.add(
+            Transition(
+                key="exit_any",
+                from_state="exiting",
+                to_state=WILDCARD,
+                transition_gif_id="exit.gif",
+            )
+        )
 
         result = coll.find_transition("exiting", "anywhere")
         assert result is not None
@@ -194,12 +216,14 @@ class TestTransitionCollectionOperations:
     def test_remove_wildcard_transition(self):
         """Remove wildcard transition."""
         coll = TransitionCollection()
-        coll.add(Transition(
-            key="any_enter",
-            from_state=WILDCARD,
-            to_state="entering",
-            transition_gif_id="enter.gif"
-        ))
+        coll.add(
+            Transition(
+                key="any_enter",
+                from_state=WILDCARD,
+                to_state="entering",
+                transition_gif_id="enter.gif",
+            )
+        )
 
         # Verify it exists
         assert coll.find_transition("anywhere", "entering") is not None
@@ -216,20 +240,14 @@ class TestTransitionCollectionOperations:
         coll = TransitionCollection()
 
         # Add initial transition
-        coll.add(Transition(
-            key="t1",
-            from_state="idle",
-            to_state="happy",
-            transition_gif_id="v1.gif"
-        ))
+        coll.add(
+            Transition(key="t1", from_state="idle", to_state="happy", transition_gif_id="v1.gif")
+        )
 
         # Overwrite with different from/to but same key
-        coll.add(Transition(
-            key="t1",
-            from_state="sad",
-            to_state="angry",
-            transition_gif_id="v2.gif"
-        ))
+        coll.add(
+            Transition(key="t1", from_state="sad", to_state="angry", transition_gif_id="v2.gif")
+        )
 
         # Old mapping should not work
         assert coll.find_transition("idle", "happy") is None

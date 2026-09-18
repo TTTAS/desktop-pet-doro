@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 
 from ...utils.logger import get_logger
 
@@ -36,7 +37,7 @@ class SearchResult:
 class SearchProvider(Protocol):
     name: str
 
-    def search(self, query: str, max_results: int) -> list["SearchResult"]: ...
+    def search(self, query: str, max_results: int) -> list[SearchResult]: ...
 
 
 def search_backend_name(provider: object) -> str:
@@ -48,8 +49,8 @@ def search_backend_name(provider: object) -> str:
 
 
 def _with_deadline(
-    fn: Callable[[], list["SearchResult"]], timeout: int, what: str
-) -> list["SearchResult"]:
+    fn: Callable[[], list[SearchResult]], timeout: int, what: str
+) -> list[SearchResult]:
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     fut = ex.submit(fn)
     try:

@@ -1,6 +1,7 @@
 """Tests for DoroViewModel - presentation logic without UI coupling."""
 
 import math
+
 import pytest
 from PySide6 import QtCore, QtGui
 

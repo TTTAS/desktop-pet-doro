@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from ...utils.logger import get_logger
 
@@ -15,6 +14,7 @@ logger = get_logger(__name__)
 # ───────────────────────────────────────────────────────────
 # Data Models
 # ───────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class SpeedDefaults:
@@ -55,10 +55,10 @@ class MovementStateEntry:
     state_key: str
     direction: str = "any"
     default_speed: str = "med"
-    default_distance: Optional[float] = None
-    animation: Optional[str] = None  # e.g. "walking.gif"
+    default_distance: float | None = None
+    animation: str | None = None  # e.g. "walking.gif"
 
-    def animation_path(self, base_dir: Path) -> Optional[Path]:
+    def animation_path(self, base_dir: Path) -> Path | None:
         """Resolve the animation filename to an absolute path under *base_dir*.
 
         Returns None when no animation is configured or the file does not exist.
@@ -72,6 +72,7 @@ class MovementStateEntry:
 # ───────────────────────────────────────────────────────────
 # Repository
 # ───────────────────────────────────────────────────────────
+
 
 class MovementRepository:
     """Reads ``movements.json`` and exposes typed data models.
@@ -131,14 +132,14 @@ class MovementRepository:
             self._defaults.step_px,
         )
 
-    def get_entry(self, key: str) -> Optional[MovementStateEntry]:
+    def get_entry(self, key: str) -> MovementStateEntry | None:
         return self._entries.get(key)
 
     def resolve_speed(self, name: str) -> float:
         """Shortcut to resolve a speed tier via the loaded defaults."""
         return self._defaults.speed.resolve(name)
 
-    def resolve_animation_path(self, key: str) -> Optional[Path]:
+    def resolve_animation_path(self, key: str) -> Path | None:
         """Resolve the animation file for a movement state key."""
         entry = self._entries.get(key)
         if entry is None:

@@ -28,7 +28,6 @@ Responsibilities:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from ...utils.logger import get_logger
 from ..state import GifRepository, StateService
@@ -58,7 +57,7 @@ class ActionService:
         action_repo: ActionRepository,
         state_service: StateService,
         gif_repo: GifRepository,
-        default_idle_gif: Optional[Path] = None,
+        default_idle_gif: Path | None = None,
     ) -> None:
         self._actions = action_repo
         self._state_service = state_service
@@ -102,7 +101,7 @@ class ActionService:
             gif_id=effective_gif_id,
         )
 
-    def _select_fallback_gif_id(self) -> Optional[str]:
+    def _select_fallback_gif_id(self) -> str | None:
         """Pick a non-user-bound ``gif_id`` for the click state at bootstrap.
 
         Order: random pick from ``stand/`` → single-file ``stand.gif`` →
@@ -140,7 +139,7 @@ class ActionService:
         """The State key used by AutomationManager to drive the wind-up GIF."""
         return CLICK_ACTION_STATE_KEY
 
-    def resolve_action_gif_path(self, action_key: str = CLICK_ACTION_KEY) -> Optional[Path]:
+    def resolve_action_gif_path(self, action_key: str = CLICK_ACTION_KEY) -> Path | None:
         """Return a playable GIF path for *action_key* using the fallback chain.
 
         Returns ``None`` only if every fallback also fails (very unusual —

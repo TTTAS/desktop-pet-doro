@@ -60,9 +60,10 @@ import math
 import os
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ...constants import (
     CLICK_DRAG_GRACE_MS,
@@ -86,7 +87,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
         WindUpAnimatorPort,
     )
 
-    BoundsProvider = Callable[[], Optional[tuple[int, int, int, int]]]
+    BoundsProvider = Callable[[], tuple[int, int, int, int] | None]
 
 
 logger = get_logger("doro.automation")
@@ -95,15 +96,17 @@ logger = get_logger("doro.automation")
 class ClickOutcome(Enum):
     """Terminal outcome of one `execute_click` invocation."""
 
-    DISABLED = "disabled"                 # mouse_enabled was False at execute time
-    RATE_LIMITED = "rate-limited"         # too soon after previous click
-    KILL_SWITCH = "kill-switch"           # three-Esc kill-switch is engaged
-    BUSY = "busy"                         # already mid-wind-up
+    DISABLED = "disabled"  # mouse_enabled was False at execute time
+    RATE_LIMITED = "rate-limited"  # too soon after previous click
+    KILL_SWITCH = "kill-switch"  # three-Esc kill-switch is engaged
+    BUSY = "busy"  # already mid-wind-up
     REJECTED_BY_ALLOWLIST = "rejected-by-allowlist"
-    REJECTED_NOT_FOREGROUND = "rejected-not-foreground"  # allowlisted class but not the focused window
+    REJECTED_NOT_FOREGROUND = (
+        "rejected-not-foreground"  # allowlisted class but not the focused window
+    )
     DRAG_GRACE_EXCEEDED = "drag-grace-exceeded"
     ABORTED_BY_ESC = "esc-abort"
-    NOT_INVOCABLE = "not-invocable"        # UIA found no InvokePattern at target
+    NOT_INVOCABLE = "not-invocable"  # UIA found no InvokePattern at target
     FIRED = "fired"
 
 
@@ -117,7 +120,7 @@ class _PendingClick:
     """Internal state held across the wind-up timer."""
 
     started_at: float
-    grace_deadline: Optional[float] = None  # set when entering drag-grace loop
+    grace_deadline: float | None = None  # set when entering drag-grace loop
 
 
 class AutomationManager:
@@ -142,18 +145,18 @@ class AutomationManager:
     def __init__(
         self,
         *,
-        config_manager: "ConfigManager",
-        window: "AutomationWindowPort",
-        input_backend: "InputBackendPort",
-        transition_coordinator: Optional["TransitionCoordinator"] = None,
-        wind_up_animator: Optional["WindUpAnimatorPort"] = None,
-        warning_overlay: Optional["ClickWarningOverlayPort"] = None,
-        bounds_provider: Optional["BoundsProvider"] = None,
-        click_target_provider: Optional[Callable[[], Optional[tuple[int, int]]]] = None,
-        a11y_clicker: Optional["A11yClickerPort"] = None,
-        on_esc_extra: Optional[Callable[[], None]] = None,
+        config_manager: ConfigManager,
+        window: AutomationWindowPort,
+        input_backend: InputBackendPort,
+        transition_coordinator: TransitionCoordinator | None = None,
+        wind_up_animator: WindUpAnimatorPort | None = None,
+        warning_overlay: ClickWarningOverlayPort | None = None,
+        bounds_provider: BoundsProvider | None = None,
+        click_target_provider: Callable[[], tuple[int, int] | None] | None = None,
+        a11y_clicker: A11yClickerPort | None = None,
+        on_esc_extra: Callable[[], None] | None = None,
         schedule: ScheduleFn,
-        marshal: Optional[Callable[[Callable[[], None]], None]] = None,
+        marshal: Callable[[Callable[[], None]], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         wind_up_ms: int = CLICK_WIND_UP_MS,
         rate_limit_ms: int = CLICK_RATE_LIMIT_MS,
@@ -192,7 +195,7 @@ class AutomationManager:
         self._drag_grace_ms = int(drag_grace_ms)
         self._click_proximity_px = int(click_proximity_px)
 
-        self._pending: Optional[_PendingClick] = None
+        self._pending: _PendingClick | None = None
         self._last_click_at: float = 0.0
         self._abort_pending: bool = False
 
@@ -212,9 +215,9 @@ class AutomationManager:
         # callable as `cb(outcome, detail)` and fire exactly once per
         # call to `_finalize`. The shared `ListenerRegistry` owns the
         # subscribe / unsubscribe / snapshot-emit mechanics.
-        self._outcome_listeners: ListenerRegistry[
-            Callable[["ClickOutcome", str], None]
-        ] = ListenerRegistry("click-outcome")
+        self._outcome_listeners: ListenerRegistry[Callable[[ClickOutcome, str], None]] = (
+            ListenerRegistry("click-outcome")
+        )
 
         # Esc fires on the pynput keyboard-listener thread. Everything the
         # callback does — cancelling the dispatcher, flipping state via
@@ -308,7 +311,7 @@ class AutomationManager:
         return ClickOutcome.FIRED  # provisional; final outcome via listener
 
     def add_outcome_listener(
-        self, callback: Callable[["ClickOutcome", str], None]
+        self, callback: Callable[[ClickOutcome, str], None]
     ) -> Callable[[], None]:
         """Register *callback* to receive the next terminal click outcome.
 
@@ -402,7 +405,12 @@ class AutomationManager:
                 logger.info(
                     "click target (%d,%d) is %dpx from foot (%d,%d) — "
                     "exceeds %dpx proximity, falling back to foot",
-                    cx, cy, int(dist), fx, fy, int(proximity_px),
+                    cx,
+                    cy,
+                    int(dist),
+                    fx,
+                    fy,
+                    int(proximity_px),
                 )
                 cx, cy = fx, fy
                 source = "foot"
@@ -440,7 +448,7 @@ class AutomationManager:
         except Exception:  # pragma: no cover - defensive
             logger.exception("set_mouse_transparent(True) failed")
 
-        class_name: Optional[str] = None
+        class_name: str | None = None
         invoke_ok = False
         try:
             class_name = self._backend.read_window_class_at(cx, cy)
@@ -475,7 +483,7 @@ class AutomationManager:
             except Exception:  # pragma: no cover - defensive
                 target_hwnd = None
                 fg_hwnd = None
-            fg_pid: Optional[int] = None
+            fg_pid: int | None = None
             if fg_hwnd is not None:
                 try:
                     fg_pid = self._backend.read_pid_of_handle(fg_hwnd)
@@ -487,14 +495,12 @@ class AutomationManager:
                 and target_hwnd != fg_hwnd
                 and fg_pid != self._self_pid
             ):
-                fg_class: Optional[str] = None
+                fg_class: str | None = None
                 try:
                     fg_class = self._backend.read_class_of_handle(fg_hwnd)
                 except Exception:  # pragma: no cover - defensive
                     fg_class = None
-                fg_label = (
-                    f"{fg_hwnd} class={fg_class!r}" if fg_class else str(fg_hwnd)
-                )
+                fg_label = f"{fg_hwnd} class={fg_class!r}" if fg_class else str(fg_hwnd)
                 self._finalize(
                     ClickOutcome.REJECTED_NOT_FOREGROUND,
                     f"target window ({target_hwnd}) is not foreground ({fg_label})",
@@ -530,7 +536,9 @@ class AutomationManager:
             # on platforms without Win32 falls back to unscoped lookup.
             try:
                 invoke_ok = self._a11y_clicker.try_invoke_at(
-                    cx, cy, hwnd=target_hwnd,
+                    cx,
+                    cy,
+                    hwnd=target_hwnd,
                 )
             except Exception:  # pragma: no cover - clicker should not raise
                 logger.exception("a11y clicker.try_invoke_at raised")
@@ -659,7 +667,7 @@ class AutomationManager:
 
     # ------------------------------------------------------------------ Helpers
 
-    def _is_allowlisted(self, class_name: Optional[str]) -> bool:
+    def _is_allowlisted(self, class_name: str | None) -> bool:
         """Prefix match (case-insensitive). Apps on Windows expose multiple
         widget-hierarchy classes off the same prefix, e.g. Chrome → "Chrome_
         WidgetWin_1" / "Chrome_RenderWidgetHostHWND". Treating allowlist
@@ -670,9 +678,7 @@ class AutomationManager:
         allowlist = self._config.automation.mouse_target_allowlist
         lowered = class_name.strip().lower()
         return any(
-            lowered.startswith(item.strip().lower())
-            for item in allowlist
-            if item and item.strip()
+            lowered.startswith(item.strip().lower()) for item in allowlist if item and item.strip()
         )
 
     def _record(self, outcome: ClickOutcome, detail: str) -> ClickOutcome:

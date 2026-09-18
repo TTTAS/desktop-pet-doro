@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 from PySide6 import QtCore, QtGui
 
@@ -16,6 +15,7 @@ from PySide6 import QtCore, QtGui
 @dataclass
 class AnimationState:
     """Current animation state."""
+
     time: float = 0.0  # Animation clock
     bob_amplitude: float = 0.0  # Vertical bobbing
     scale_amplitude: float = 0.0  # Scale pulsing
@@ -28,6 +28,7 @@ class AnimationState:
 @dataclass
 class VisualState:
     """Visual appearance configuration."""
+
     fill_colors: tuple[QtGui.QColor, QtGui.QColor, QtGui.QColor]
     cheek_alpha: float = 0.0
     blush_color: QtGui.QColor = field(default_factory=lambda: QtGui.QColor(255, 150, 150))
@@ -37,6 +38,7 @@ class VisualState:
 @dataclass
 class BubbleState:
     """Bubble (speech bubble) state."""
+
     visible: bool = True
     alpha: int = 255
     side: str = "center"  # "left", "right", "center"
@@ -47,6 +49,7 @@ class BubbleState:
 @dataclass
 class SpriteState:
     """Sprite appearance state."""
+
     size: QtCore.QSize = field(default_factory=lambda: QtCore.QSize(200, 200))
     offset_x: float = -110.0
 
@@ -213,12 +216,7 @@ class DoroViewModel:
         """Set scale animation amplitude."""
         self._animation.scale_amplitude = amplitude
 
-    def set_fill_colors(
-        self,
-        top: QtGui.QColor,
-        mid: QtGui.QColor,
-        bottom: QtGui.QColor
-    ) -> None:
+    def set_fill_colors(self, top: QtGui.QColor, mid: QtGui.QColor, bottom: QtGui.QColor) -> None:
         """Set fill gradient colors."""
         self._visual.fill_colors = (top, mid, bottom)
 

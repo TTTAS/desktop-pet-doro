@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6 import QtCore
 
@@ -51,7 +51,7 @@ class WebRuntime(QtCore.QObject):
         self._confirm_timeout_seconds = int(confirm_timeout_seconds)
         self._max_steps = int(max_steps)
 
-        self._queue: "queue.Queue" = queue.Queue()
+        self._queue: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._session: WebSession | None = None
 

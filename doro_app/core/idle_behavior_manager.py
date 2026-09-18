@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ..constants import IDLE_BEHAVIOR_MIN_INTERVAL, IDLE_BEHAVIOR_MAX_INTERVAL
+from ..constants import IDLE_BEHAVIOR_MAX_INTERVAL, IDLE_BEHAVIOR_MIN_INTERVAL
 from ..utils.actions import MOVE_DIRECTIONS
 from ..utils.logger import get_logger
 
@@ -53,8 +54,8 @@ class IdleBehaviorManager(QtCore.QObject):
         state_service: StateService,
         idle_seconds_provider: Callable[[], float],
         mark_activity: Callable[[], None],
-        action_dispatcher: "ActionDispatcher | None" = None,
-        schedule: "ScheduleFn | None" = None,
+        action_dispatcher: ActionDispatcher | None = None,
+        schedule: ScheduleFn | None = None,
         interaction_busy: Callable[[], bool] | None = None,
     ):
         super().__init__()
@@ -78,7 +79,7 @@ class IdleBehaviorManager(QtCore.QObject):
     def _load_lines(self, path: Path) -> None:
         try:
             raw = path.read_text(encoding="utf-8")
-            self._lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            self._lines = [line.strip() for line in raw.splitlines() if line.strip()]
             logger.debug("Loaded %d companion lines", len(self._lines))
         except FileNotFoundError:
             pass
@@ -162,6 +163,7 @@ class IdleBehaviorManager(QtCore.QObject):
         distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
         if self._action_dispatcher is not None and self._schedule is not None:
             from .action import make_walk_and_speak_action
+
             self._action_dispatcher.dispatch(
                 make_walk_and_speak_action(
                     self._movement,
@@ -186,6 +188,7 @@ class IdleBehaviorManager(QtCore.QObject):
         distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
         if self._action_dispatcher is not None and self._schedule is not None:
             from .action import make_walk_and_speak_action
+
             self._action_dispatcher.dispatch(
                 make_walk_and_speak_action(
                     self._movement, self._schedule, direction=direction, distance=distance
@@ -196,7 +199,8 @@ class IdleBehaviorManager(QtCore.QObject):
 
     def _do_transition(self) -> None:
         keys = [
-            k for k in self._state_service.visible_state_keys()
+            k
+            for k in self._state_service.visible_state_keys()
             if not self._state_service.is_movement_only_state(k)
             and k != self._state_service.get_current_state_key()
         ]

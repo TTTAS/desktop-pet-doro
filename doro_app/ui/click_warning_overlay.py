@@ -68,6 +68,7 @@ class ClickWarningOverlay(QtWidgets.QWidget):
             device_pixel_ratio=dpr,
         )
         import sys
+
         if sys.platform == "darwin":
             lw, lh = int(w_phys), int(h_phys)
         else:

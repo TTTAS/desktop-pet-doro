@@ -51,11 +51,7 @@ class ClickActionController(QtCore.QObject):
 
         try:
             raw = self._actions_file.read_text(encoding="utf-8")
-            self._actions = [
-                line.strip()
-                for line in raw.splitlines()
-                if line.strip()
-            ]
+            self._actions = [line.strip() for line in raw.splitlines() if line.strip()]
             logger.debug(f"Loaded {len(self._actions)} click actions")
         except OSError as e:
             logger.warning(f"Failed to load click actions: {e}")

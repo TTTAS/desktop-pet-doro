@@ -127,6 +127,7 @@ def test_cancel_stops_between_steps():
     session = FakeSession([_view()])
     llm = FakeLLM(["[web:scroll;dir=down]"] * 50)
     emits = []
+
     # Cancellation is state, not a counter of how often safety is checked.
     def should_cancel():
         return len(session.executed) >= 1
@@ -141,8 +142,7 @@ def test_cancel_stops_between_steps():
 def test_bare_url_treated_as_goto():
     session = FakeSession([_view()])
     # 模型忘了包 [web:goto]，只丟網址；下一步就收工
-    llm = FakeLLM(["我先去 https://www.google.com/search?q=doro 看看",
-                   "(高) 找到了～ [web:done]"])
+    llm = FakeLLM(["我先去 https://www.google.com/search?q=doro 看看", "(高) 找到了～ [web:done]"])
     op = WebOperator(session, llm, lambda d: True, lambda t: None)
     op.run("搜尋 doro")
     assert len(session.executed) == 1
@@ -180,7 +180,7 @@ def test_captcha_resume_after_user_handles():
     confirms = []
     op = WebOperator(session, llm, lambda d: (confirms.append(d), True)[1], lambda t: None)
     op.run("測試")
-    assert confirms                                    # 有暫停問使用者
+    assert confirms  # 有暫停問使用者
     assert [a.verb for a in session.executed] == ["scroll"]  # 過驗證後有繼續做
 
 
@@ -191,7 +191,7 @@ def test_repeated_same_page_goto_stops():
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append)
     op.run("打轉測試")
-    assert session.executed == []          # 重複動作根本沒執行
+    assert session.executed == []  # 重複動作根本沒執行
     assert "卡" in emits[-1] or "停" in emits[-1]
 
 
@@ -199,37 +199,47 @@ def test_self_recovers_from_repeat_after_nudge():
     # 先重複一次（會被提醒、不執行），模型接著換動作 → doro 自己脫困、不放棄
     elements = [{"idx": 0, "tag": "a", "name": "下一頁"}]
     session = FakeSession([_view(elements)])  # url=https://a.test
-    llm = FakeLLM([
-        "[web:goto;url=https://a.test]",   # 重複目前頁 → 提醒、跳過
-        "[web:click;n=0]",                  # 換了動作 → 執行
-        "(高) 好了～ [web:done]",
-    ])
+    llm = FakeLLM(
+        [
+            "[web:goto;url=https://a.test]",  # 重複目前頁 → 提醒、跳過
+            "[web:click;n=0]",  # 換了動作 → 執行
+            "(高) 好了～ [web:done]",
+        ]
+    )
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append)
     op.run("脫困測試")
     assert [a.verb for a in session.executed] == ["click"]  # 只執行了換過的動作
-    assert emits[-1] == "好了～"                              # 正常收尾、沒放棄
+    assert emits[-1] == "好了～"  # 正常收尾、沒放棄
 
 
 def test_bare_url_same_as_current_not_reopened():
     # 模型只是聊天、句子裡的網址就是目前這頁 → 不要當成 goto 重開
     session = FakeSession([_view()])
-    llm = FakeLLM(["(高) 我在 https://a.test 這裡看看～",  # 沒動作、網址=目前頁
-                   "(高) 好了～ [web:done]"])
+    llm = FakeLLM(
+        ["(高) 我在 https://a.test 這裡看看～", "(高) 好了～ [web:done]"]  # 沒動作、網址=目前頁
+    )
     op = WebOperator(session, llm, lambda d: True, lambda t: None)
     op.run("看看")
-    assert session.executed == []          # 沒有重開同一頁
+    assert session.executed == []  # 沒有重開同一頁
 
 
 def test_login_wall_detection():
     # 蝦皮 verify/traffic 那種被擋/登入頁
-    assert looks_like_login_wall(
-        PageView(url="https://shopee.tw/verify/traffic/error?is_logged_in=false")
-    ) is True
-    assert looks_like_login_wall(PageView(text="看起來您尚未登入。請登入以繼續，或返回首頁")) is True
+    assert (
+        looks_like_login_wall(
+            PageView(url="https://shopee.tw/verify/traffic/error?is_logged_in=false")
+        )
+        is True
+    )
+    assert (
+        looks_like_login_wall(PageView(text="看起來您尚未登入。請登入以繼續，或返回首頁")) is True
+    )
     assert looks_like_login_wall(PageView(title="Access Denied")) is True
     # 正常搜尋結果頁不該誤判
-    assert looks_like_login_wall(PageView(title="藍牙耳機 - 搜尋結果", text="商品列表 ...")) is False
+    assert (
+        looks_like_login_wall(PageView(title="藍牙耳機 - 搜尋結果", text="商品列表 ...")) is False
+    )
 
 
 def test_login_wall_pauses_and_asks_user():

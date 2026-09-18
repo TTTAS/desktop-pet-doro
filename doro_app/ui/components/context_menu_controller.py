@@ -15,12 +15,12 @@ from ..theme.themed_menu import (
 )
 
 if TYPE_CHECKING:
-    from ..components.bubble_controller import BubbleController
-    from ..helpers import ChatUIHelper
-    from ..window import DoroWindow
     from ...core.core_manager import CoreManager
     from ...core.state import StateService
+    from ..components.bubble_controller import BubbleController
     from ..controllers import DialogManager, StateController
+    from ..helpers import ChatUIHelper
+    from ..window import DoroWindow
 
 
 class ContextMenuController:
@@ -80,22 +80,13 @@ class ContextMenuController:
         return MenuSnapshot(
             visible_states=states,
             current_state_key=self._window.current_state_key,
-            is_topmost=bool(
-                self._window.windowFlags()
-                & QtCore.Qt.WindowType.WindowStaysOnTopHint
-            ),
-            bubble_visible=bool(
-                current_state and current_state.visual.bubble_visible
-            ),
+            is_topmost=bool(self._window.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint),
+            bubble_visible=bool(current_state and current_state.visual.bubble_visible),
             has_default_idle_gif=self._default_idle_gif.is_file(),
             is_chat_inflight=self._core_manager.is_chat_inflight,
             has_chat_history=self._core_manager.has_chat_history,
-            a11y_enabled=bool(
-                self._core_manager.config_manager.automation.a11y_enabled
-            ),
-            mouse_enabled=bool(
-                self._core_manager.config_manager.automation.mouse_enabled
-            ),
+            a11y_enabled=bool(self._core_manager.config_manager.automation.a11y_enabled),
+            mouse_enabled=bool(self._core_manager.config_manager.automation.mouse_enabled),
             web_operation_enabled=bool(
                 self._core_manager.config_manager.automation.web_operation_enabled
             ),
@@ -108,15 +99,12 @@ class ContextMenuController:
             show_state_manager=self._dialog_manager.show_state_manager,
             show_move_state_manager=self._dialog_manager.show_move_state_manager,
             toggle_bubble=self._window.toggle_bubble,
-            clear_state_gif=lambda: self._state_controller.clear_state_gif(
-                current_key
-            ),
+            clear_state_gif=lambda: self._state_controller.clear_state_gif(current_key),
             show_rename_dialog=lambda: (
-                self._dialog_manager.show_rename_dialog(current_key)
-                and self._window.update()
-            )
-            if current_key
-            else None,
+                (self._dialog_manager.show_rename_dialog(current_key) and self._window.update())
+                if current_key
+                else None
+            ),
             prompt_chat=self._chat_ui.prompt_chat,
             edit_chat_prompt=self._chat_ui.edit_chat_prompt,
             clear_chat_history=self._chat_ui.clear_chat_history,
@@ -133,6 +121,7 @@ class ContextMenuController:
 
     def _show_presence_settings(self) -> None:
         from ..dialogs.presence_dialog import PresenceDialog
+
         presence = self._core_manager.chat_orchestrator.presence
         if presence is not None:
             PresenceDialog(presence, self._window).exec()
@@ -236,9 +225,7 @@ class ContextMenuController:
         clipboard = QtWidgets.QApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(msg)
-        QtWidgets.QMessageBox.information(
-            win, "Doro 位置（已複製到剪貼簿）", msg
-        )
+        QtWidgets.QMessageBox.information(win, "Doro 位置（已複製到剪貼簿）", msg)
 
     def _simulate_response(self) -> None:
         """Prompt for a fake assistant reply and run it through the exact same

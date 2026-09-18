@@ -9,8 +9,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6 import QtCore
 
 from .port import MovementWindowPort
@@ -27,11 +25,11 @@ class MovementWindowFake(MovementWindowPort):
     def __init__(
         self,
         *,
-        origin: Optional[QtCore.QPoint] = None,
-        size: Optional[QtCore.QSize] = None,
-        clamp_rect: Optional[QtCore.QRect] = None,
-        bubble_offset: Optional[QtCore.QPointF] = None,
-        sprite_foot_offset: Optional[QtCore.QPoint] = None,
+        origin: QtCore.QPoint | None = None,
+        size: QtCore.QSize | None = None,
+        clamp_rect: QtCore.QRect | None = None,
+        bubble_offset: QtCore.QPointF | None = None,
+        sprite_foot_offset: QtCore.QPoint | None = None,
     ):
         self._rect = QtCore.QRect(origin or QtCore.QPoint(0, 0), size or QtCore.QSize(100, 100))
         self._clamp_rect = clamp_rect
@@ -71,9 +69,10 @@ class MovementWindowFake(MovementWindowPort):
     def get_bubble_offset(self) -> QtCore.QPointF:
         return QtCore.QPointF(self._bubble_offset)
 
-    def apply_bubble_offset(self, offset: QtCore.QPointF, *, persist: bool = False):  # pragma: no cover - trivial
+    def apply_bubble_offset(
+        self, offset: QtCore.QPointF, *, persist: bool = False
+    ):  # pragma: no cover - trivial
         self._bubble_offset = QtCore.QPointF(offset)
 
     def reset_tick_timer(self, value: float):  # pragma: no cover - trivial
         self.last_reset_time = value
-

@@ -4,7 +4,7 @@ from .edit_dialog import EditMoveStateDialog
 from .manager_dialog import MoveStateManagerDialog, show_move_state_manager
 
 __all__ = [
-    "MoveStateManagerDialog",
     "EditMoveStateDialog",
+    "MoveStateManagerDialog",
     "show_move_state_manager",
 ]

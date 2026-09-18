@@ -5,9 +5,9 @@ from .gif_gallery_dialog import GifGalleryDialog
 from .manager_dialog import StateManagerDialog, show_state_manager
 
 __all__ = [
-    "StateManagerDialog",
     "AddStateDialog",
     "GifGalleryDialog",
-    "show_state_manager",
+    "StateManagerDialog",
     "show_add_state_dialog",
+    "show_state_manager",
 ]

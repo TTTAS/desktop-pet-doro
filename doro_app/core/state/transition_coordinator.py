@@ -8,7 +8,7 @@ This coordinator focuses solely on transition animations and locking.
 from __future__ import annotations
 
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from ...utils.logger import get_logger
 from .models import Transition, TransitionCollection
@@ -41,7 +41,7 @@ class TransitionCoordinator:
 
     def __init__(
         self,
-        transition_repo: Optional[TransitionRepository],
+        transition_repo: TransitionRepository | None,
         *,
         lock_timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.monotonic,
@@ -60,9 +60,9 @@ class TransitionCoordinator:
         self._is_transitioning = False
         self._lock_timeout_seconds = lock_timeout_seconds
         self._clock = clock
-        self._lock_acquired_at: Optional[float] = None
+        self._lock_acquired_at: float | None = None
 
-    def find(self, from_state: str, to_state: str) -> Optional[Transition]:
+    def find(self, from_state: str, to_state: str) -> Transition | None:
         """
         Find transition for state change.
 
@@ -75,7 +75,7 @@ class TransitionCoordinator:
         """
         return self._transitions.find_transition(from_state, to_state)
 
-    def get(self, key: str) -> Optional[Transition]:
+    def get(self, key: str) -> Transition | None:
         """
         Get transition by key.
 
