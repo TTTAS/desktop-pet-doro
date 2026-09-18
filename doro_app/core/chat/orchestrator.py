@@ -257,8 +257,15 @@ class ChatOrchestrator(QtCore.QObject):
         )
         prompt = (f"上一則反應：{last_reaction[:500]}\n"
                   f"以下是分頁資料：\n網址：{page.url}\n標題：{page.title}\n{page.text}\n分頁資料結束。")
+        # Turn thinking OFF for tab reactions. A thinking model (e.g.
+        # gemini-2.5-flash) otherwise spends the whole budget reasoning and the
+        # one-line reply is truncated (finish_reason=length); it is also too
+        # slow, so by the time it answers the page has changed and the reply is
+        # dropped. reasoning_effort="none" is the OpenAI-compat switch; gateways
+        # that don't understand it ignore the field.
         payload = {"model": settings.model, "messages": build_messages_for_mistral_instruct(system, prompt),
-                   "temperature": settings.temperature, "max_tokens": PRESENCE_MAX_TOKENS}
+                   "temperature": settings.temperature, "max_tokens": PRESENCE_MAX_TOKENS,
+                   "reasoning_effort": "none"}
         timeout, key = int(settings.timeout_seconds), settings.api_key
         def ask():
             if not endpoint:
