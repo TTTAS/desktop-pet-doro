@@ -175,9 +175,10 @@ class SpriteController(QtCore.QObject):
                 return False
 
             # Disconnect old movie
-            if self._current_movie:
+            old_movie = self._current_movie
+            if old_movie is not None:
                 try:
-                    self._current_movie.frameChanged.disconnect(self._on_frame_changed)
+                    old_movie.frameChanged.disconnect(self._on_frame_changed)
                 except (TypeError, RuntimeError):
                     pass
 
@@ -197,6 +198,14 @@ class SpriteController(QtCore.QObject):
             self.sprite_renderer_changed.emit()
             self.repaint_requested.emit()
 
+            # Now that the new movie is live, release the previous one. Without
+            # this the GifPlayer accumulates a QMovie for every state shown this
+            # session — a memory leak, and on Windows each keeps its GIF file
+            # open, so editing/deleting that GIF later fails with WinError 32
+            # even after Doro has switched away from the state.
+            if old_movie is not None:
+                self._gif_player.stop(old_movie)
+
             logger.debug(f"Loaded GIF sprite: {path}")
             return True
 
@@ -211,6 +220,9 @@ class SpriteController(QtCore.QObject):
                 self._current_movie.frameChanged.disconnect(self._on_frame_changed)
             except (TypeError, RuntimeError):
                 pass
+            # Release the file handle too, not just the signal — otherwise the
+            # movie lingers in the GifPlayer and keeps its GIF locked.
+            self._gif_player.stop(self._current_movie)
             self._current_movie = None
 
         self._gif_renderer.set_movie(None)
