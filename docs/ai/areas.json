@@ -140,6 +140,8 @@
     "name": "動作派工",
     "aliases": [
       "動作",
+      "被點擊",
+      "pet_click",
       "派工",
       "dispatcher"
     ],
@@ -149,12 +151,14 @@
     "entries": [
       "doro_app/core/action/dispatcher.py",
       "doro_app/core/action/phases.py",
-      "doro_app/core/action/walk_and_speak_action.py"
+      "doro_app/core/action/walk_and_speak_action.py",
+      "doro_app/core/action/service.py"
     ],
     "tests": [
-      "tests/core/action"
+      "tests/core/action",
+      "tests/ui/components/test_pet_click_animation.py"
     ],
-    "purpose": "序列化動作、等待完成、走完再說話與取消。"
+    "purpose": "序列化動作、等待完成與取消；管理桌面點擊及 Doro 被點擊的獨立素材綁定。"
   },
   {
     "id": "reaction",

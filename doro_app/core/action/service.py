@@ -31,7 +31,7 @@ from pathlib import Path
 
 from ...utils.logger import get_logger
 from ..state import GifRepository, StateService
-from .repository import CLICK_ACTION_KEY, ActionRepository
+from .repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY, ActionRepository
 
 logger = get_logger(__name__)
 
@@ -152,6 +152,11 @@ class ActionService:
             if path and path.is_file():
                 return path
 
+        # Being clicked is an optional gesture, independent of desktop-click
+        # wind-up. Without its own asset, retain the current sprite.
+        if action_key == PET_CLICK_ACTION_KEY:
+            return None
+
         # Step 2: random pick from the stand/ subfolder.
         random_stand = self._gif_repo.pick_random_gif("stand")
         if random_stand and random_stand.is_file():
@@ -167,6 +172,19 @@ class ActionService:
             return self._default_idle_gif
 
         return None
+
+    def bind_pet_click_gif(self, source_path: Path) -> bool:
+        """Persist the pet-click gesture asset without changing display state."""
+        if not source_path.is_file():
+            return False
+        gif_id = self._state_service.store_gif(source_path, "pet_click_action")
+        if not gif_id:
+            return False
+        return self._actions.update_gif_id(PET_CLICK_ACTION_KEY, gif_id)
+
+    def unbind_pet_click_gif(self) -> bool:
+        """Remove the optional gesture binding; keep the current sprite on click."""
+        return self._actions.update_gif_id(PET_CLICK_ACTION_KEY, None)
 
     def bind_click_gif(self, source_path: Path) -> bool:
         """Store *source_path* as the click action's GIF.

@@ -330,24 +330,33 @@ class MoveStateManagerDialog(FramelessDialog):
 
         # Named actions (Phase 1c) — only when an ActionService is wired in.
         if self._action_service is not None:
-            from ....core.action.repository import CLICK_ACTION_KEY
+            from ....core.action.repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY
 
-            click_path = self._action_service.resolve_action_gif_path(CLICK_ACTION_KEY)
-            gif_paths = [click_path] if click_path else []
-            card = _ActionCard(
-                "action",
-                CLICK_ACTION_KEY,
-                gif_paths,
-                self._gif_player,
-                details="Wind-up GIF for [mouse:click]",
-                extra_info="(fallback active)" if not click_path else "",
-                removable=False,  # Click is builtin; user can only rebind GIF.
-                parent=self._grid_container,
-            )
-            card.edit_clicked.connect(self._on_edit)
-            self._grid_layout.addWidget(card, idx // cols, idx % cols)
-            self._cards.append(card)
-            idx += 1
+            for action_key, description in (
+                (PET_CLICK_ACTION_KEY, "Doro 被點擊時的反應"),
+                (CLICK_ACTION_KEY, "Doro 幫你點畫面前的動作"),
+            ):
+                path = self._action_service.resolve_action_gif_path(action_key)
+                gif_paths = [path] if path else []
+                empty_hint = (
+                    "尚未設定 GIF，點擊時保留目前外觀"
+                    if action_key == PET_CLICK_ACTION_KEY
+                    else "使用站立動畫備援"
+                )
+                card = _ActionCard(
+                    "action",
+                    action_key,
+                    gif_paths,
+                    self._gif_player,
+                    details=description,
+                    extra_info=empty_hint if not path else "",
+                    removable=False,
+                    parent=self._grid_container,
+                )
+                card.edit_clicked.connect(self._on_edit)
+                self._grid_layout.addWidget(card, idx // cols, idx % cols)
+                self._cards.append(card)
+                idx += 1
 
         # Transition actions
         for key in sorted(self.service.all_transition_keys()):
