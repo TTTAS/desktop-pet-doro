@@ -60,6 +60,11 @@ _LEADING_STATE_MARKER_RE = re.compile(r"^\s*[(（]\s*([^()（）\n]{1,24})\s*[)�
 # 一般開頭是中文或普通字詞的回覆不受影響。
 _LEADING_BARE_STATE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]{0,23})[ \t　]+")
 
+# 也有模型把開頭狀態寫成方括號（例如 gemini 回「[idle] ...」）。控制指令如
+# [MOVE:...] 在這步之前已被 parse_character_reply 清掉，所以這裡看到的方括號
+# 只會是狀態字或引用標記；只有剛好是已知狀態 key 時才拆掉。
+_LEADING_BRACKET_STATE_RE = re.compile(r"^\s*\[\s*([^\[\]\n]{1,24})\s*\]\s*")
+
 # 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
 # [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
 _OPERATION_SYSTEM_PROMPT = (
@@ -466,13 +471,14 @@ class ChatOrchestrator(QtCore.QObject):
         if match:
             token, rest = match.group(1).strip(), body[match.end() :].lstrip()
         else:
-            # Tolerate a leading state written without parentheses (e.g. Gemini
-            # emitting "stand ..."). Only strip it when the first word is a
-            # recognized state key, so a normal reply is left untouched.
-            bare = _LEADING_BARE_STATE_RE.match(body)
-            if not bare or not self._state_service.parse_state_from_action(bare.group(1)):
+            # Tolerate a leading state the model wrote in another shape: square
+            # brackets ("[idle] ...") or no brackets at all ("stand ..."). Only
+            # strip it when that token is a recognized state key, so a normal
+            # reply — or a citation like "[1]" — is left untouched.
+            alt = _LEADING_BRACKET_STATE_RE.match(body) or _LEADING_BARE_STATE_RE.match(body)
+            if not alt or not self._state_service.parse_state_from_action(alt.group(1).strip()):
                 return text
-            token, rest = bare.group(1), body[bare.end() :].lstrip()
+            token, rest = alt.group(1).strip(), body[alt.end() :].lstrip()
         state_key = self._state_service.parse_state_from_action(token)
         if state_key and not self._state_service.is_movement_only_state(state_key):
             current = self._state_service.get_current_state()

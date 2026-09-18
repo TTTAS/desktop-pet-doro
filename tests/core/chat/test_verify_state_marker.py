@@ -98,6 +98,33 @@ def test_bare_leading_state_without_parens_is_applied_and_stripped():
     state.set_state.assert_called_once_with("stand")
 
 
+def test_bracket_leading_state_is_applied_and_stripped():
+    # Some models write the state in square brackets: "[idle] ...".
+    state = MagicMock()
+    state.parse_state_from_action.return_value = "idle"
+    state.is_movement_only_state.return_value = False
+    current = MagicMock()
+    current.key = "happy"
+    state.get_current_state.return_value = current
+    orch = _make_orchestrator(state)
+
+    out = orch._apply_leading_state_marker("[idle] 嗶哩嗶哩！這頁好多新影片喔")
+
+    assert out == "嗶哩嗶哩！這頁好多新影片喔"
+    state.set_state.assert_called_once_with("idle")
+
+
+def test_bracket_leading_non_state_is_left_untouched():
+    # A leading "[1]" citation is not a state, so it must survive verbatim.
+    state = MagicMock()
+    state.parse_state_from_action.return_value = None
+    orch = _make_orchestrator(state)
+
+    text = "[1] 這是引用來源"
+    assert orch._apply_leading_state_marker(text) == text
+    state.set_state.assert_not_called()
+
+
 def test_bare_leading_word_that_is_not_a_state_is_left_untouched():
     state = MagicMock()
     state.parse_state_from_action.return_value = None
