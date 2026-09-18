@@ -43,6 +43,11 @@ class SpriteController(QtCore.QObject):
         self._renderer: SpriteRenderer = self._gif_renderer
         self._current_movie: QtGui.QMovie | None = None
         self._drag_movie: QtGui.QMovie | None = None
+        self._pet_click_movie: QtGui.QMovie | None = None
+        self._pet_click_last_frame = -1
+        self._pet_click_timer = QtCore.QTimer(self)
+        self._pet_click_timer.setSingleShot(True)
+        self._pet_click_timer.timeout.connect(self.end_pet_click_animation)
 
     @property
     def renderer(self) -> SpriteRenderer:
@@ -90,6 +95,7 @@ class SpriteController(QtCore.QObject):
     def dispose_all(self) -> None:
         """Release resources for ALL renderers (call on application exit)."""
         self.end_drag_animation()
+        self.end_pet_click_animation()
         for r in self._renderers.values():
             if hasattr(r, "dispose"):
                 try:
@@ -128,6 +134,44 @@ class SpriteController(QtCore.QObject):
         self.sprite_renderer_changed.emit()
         self.repaint_requested.emit()
 
+    def start_pet_click_animation(self, path: Path) -> bool:
+        """Play one loop over the current sprite; subsequent clicks restart it."""
+        if self._drag_movie is not None:
+            return False
+        movie = self._gif_player.load(path, size=self._view_model.sprite_size)
+        if movie is None:
+            return False
+        self.end_pet_click_animation()
+        self._pet_click_movie = movie
+        self._pet_click_last_frame = movie.currentFrameNumber()
+        movie.frameChanged.connect(self._on_pet_click_frame_changed)
+        movie.finished.connect(self.end_pet_click_animation)
+        self._gif_renderer.set_temporary_movie(movie)
+        # Static images have no future frame/finished signal; also bound
+        # malformed playback so a gesture can never permanently hide Doro.
+        self._pet_click_timer.start(400 if movie.frameCount() == 1 else 30000)
+        self.repaint_requested.emit()
+        return True
+
+    def end_pet_click_animation(self) -> None:
+        """Release the gesture and reveal the latest normal/transition sprite."""
+        self._pet_click_timer.stop()
+        movie, self._pet_click_movie = self._pet_click_movie, None
+        if movie is None:
+            return
+        self._gif_renderer.set_temporary_movie(None)
+        movie.frameChanged.disconnect(self._on_pet_click_frame_changed)
+        movie.finished.disconnect(self.end_pet_click_animation)
+        self._gif_player.stop(movie)
+        self.repaint_requested.emit()
+
+    def _on_pet_click_frame_changed(self, frame_number: int) -> None:
+        if self._pet_click_last_frame > 0 and frame_number <= self._pet_click_last_frame:
+            self.end_pet_click_animation()
+            return
+        self._pet_click_last_frame = frame_number
+        self.repaint_requested.emit()
+
     def start_drag_animation(self, path: Path) -> bool:
         """Play a temporary gesture sprite without changing persisted state."""
         if self._drag_movie is not None:
@@ -135,6 +179,7 @@ class SpriteController(QtCore.QObject):
         movie = self._gif_player.load(path, size=self._view_model.sprite_size)
         if movie is None:
             return False
+        self.end_pet_click_animation()
         self._drag_movie = movie
         movie.frameChanged.connect(self._on_drag_frame_changed)
         movie.finished.connect(movie.start)

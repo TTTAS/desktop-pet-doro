@@ -3,9 +3,8 @@
 Stores ``ActionEntry`` records in ``actions.json`` alongside the other
 schema files (``states.json``, ``move_states.json``, ``transitions.json``).
 
-Phase 1c only ships one builtin action — ``click``. Future phases (1e/1f)
-will allow user-added named actions; the schema reserves an
-``is_builtin`` flag to differentiate.
+Builtins distinguish desktop click wind-up (``click``) from the optional
+gesture shown when the user clicks Doro (``pet_click``).
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ logger = get_logger(__name__)
 
 
 CLICK_ACTION_KEY = "click"
+PET_CLICK_ACTION_KEY = "pet_click"
 
 
 @dataclass
@@ -57,9 +57,8 @@ class ActionRepository:
           ]
         }
 
-    On first load the builtin ``click`` action is auto-inserted with
-    ``gif_id=None`` — the runtime fallback chain (see
-    :class:`ActionService`) makes sure clicks still work without an asset.
+    Missing builtins are inserted with ``gif_id=None``. Desktop clicks use
+    the stand fallback; pet clicks retain the current sprite without an asset.
     """
 
     def __init__(self, file_path: Path):
@@ -71,7 +70,7 @@ class ActionRepository:
         return self._file_path
 
     def load(self) -> None:
-        """Populate from disk, then ensure the ``click`` builtin exists."""
+        """Populate from disk, then ensure both click builtins exist."""
         self._entries.clear()
         if self._file_path.is_file():
             try:
@@ -82,6 +81,13 @@ class ActionRepository:
             except Exception as exc:
                 logger.warning(f"Failed to read {self._file_path}: {exc}")
         self._ensure_click_builtin()
+        existing = self._entries.get(PET_CLICK_ACTION_KEY)
+        self._entries[PET_CLICK_ACTION_KEY] = ActionEntry(
+            key=PET_CLICK_ACTION_KEY,
+            display_name="Doro 被點擊",
+            gif_id=existing.gif_id if existing else None,
+            is_builtin=True,
+        )
 
     def _ensure_click_builtin(self) -> None:
         if CLICK_ACTION_KEY not in self._entries:

@@ -5,6 +5,12 @@
       "display_name": "Click",
       "gif_id": null,
       "is_builtin": true
+    },
+    {
+      "key": "pet_click",
+      "display_name": "Doro 被點擊",
+      "gif_id": null,
+      "is_builtin": true
     }
   ]
 }
