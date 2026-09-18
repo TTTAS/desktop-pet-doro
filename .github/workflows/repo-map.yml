@@ -1,6 +1,7 @@
 name: Repository map
 
-on: [push, pull_request]
+# 只手動觸發，不在每次 push / PR 自動跑（節省 Actions 用量）。
+on: [workflow_dispatch]
 
 permissions:
   contents: read
