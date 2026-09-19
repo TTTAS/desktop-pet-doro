@@ -1,10 +1,9 @@
 name: Tests
 
+# 只手動觸發，不在每次 push / PR 自動跑（節省 Actions 用量）。
+# 要跑：GitHub 上 Actions 分頁選這個 workflow → Run workflow。
 on:
-  push:
-    branches: ["main", "master", "claude/**"]
-  pull_request:
-    branches: ["main", "master"]
+  workflow_dispatch:
 
 jobs:
   test:

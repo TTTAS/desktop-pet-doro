@@ -44,6 +44,10 @@ logger = get_logger(__name__)
 # 講到一半被 max_tokens 砍斷、結尾留下半截的 Markdown 符號。
 WEB_ANSWER_MAX_TOKENS = 900
 
+# 分頁反應也給大一點的額度。思考型模型（如 gemini-2.5-flash）會先花掉數百個
+# 內部 thinking token，若上限太小，真正要說的那句話會被砍到一半（finish_reason=length）。
+PRESENCE_MAX_TOKENS = 900
+
 # 行首的項目符號（-、*、•…）。泡泡框是純文字，統一換成「・」比較乾淨。
 _BULLET_PREFIX_RE = re.compile(r"^\s*[\-\*•‣◦·]\s+")
 
@@ -51,6 +55,16 @@ _BULLET_PREFIX_RE = re.compile(r"^\s*[\-\*•‣◦·]\s+")
 # 所以只拆掉開頭這一個標記；內文裡的括號（例如「(USGS)」「(來源1, 來源2)」）要保留。
 # 長度上限避免把「開頭剛好是一句話括號」整句吃掉。半形/全形括號都收。
 _LEADING_STATE_MARKER_RE = re.compile(r"^\s*[(（]\s*([^()（）\n]{1,24})\s*[)）]\s*")
+
+# 有些模型會忘了加括號，直接把狀態字寫在開頭（例如 gemini 回「stand ...」而不是
+# 「(stand) ...」）。這時抓開頭那個英數字詞，只有在它剛好是已知狀態 key 時才拆掉，
+# 一般開頭是中文或普通字詞的回覆不受影響。
+_LEADING_BARE_STATE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]{0,23})[ \t　]+")
+
+# 也有模型把開頭狀態寫成別種括號（gemini 回過「[idle] ...」，也可能是 {}、<>、【】）。
+# 控制指令如 [MOVE:...] 在這步之前已被 parse_character_reply 清掉，所以這裡看到的括號
+# 只會是狀態字或引用標記；只有剛好是已知狀態 key 時才拆掉。
+_LEADING_BRACKET_STATE_RE = re.compile(r"^\s*[\[{<【]\s*([^\[\]{}<>【】\n]{1,24})\s*[\]}>】]\s*")
 
 # 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
 # [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
@@ -189,7 +203,10 @@ class ChatOrchestrator(QtCore.QObject):
                     r"你.*(?:開|打開)|doro.*(?:開|打開)", user_message, re.IGNORECASE
                 )
                 if self._presence is not None and not own_page:
-                    page = self._presence.current_page
+                    # Tabbing to Doro to ask makes the extension clear the live
+                    # page (browser lost focus), so fall back to the page seen
+                    # just before, within the grace window.
+                    page = self._presence.current_page or self._presence.recent_page()
                     if page is not None:
                         self._pending_web_question = read_current_q
                         self._auto_read_used = True
@@ -260,11 +277,18 @@ class ChatOrchestrator(QtCore.QObject):
             f"上一則反應：{last_reaction[:500]}\n"
             f"以下是分頁資料：\n網址：{page.url}\n標題：{page.title}\n{page.text}\n分頁資料結束。"
         )
+        # Turn thinking OFF for tab reactions. A thinking model (e.g.
+        # gemini-2.5-flash) otherwise spends the whole budget reasoning and the
+        # one-line reply is truncated (finish_reason=length); it is also too
+        # slow, so by the time it answers the page has changed and the reply is
+        # dropped. reasoning_effort="none" is the OpenAI-compat switch; gateways
+        # that don't understand it ignore the field.
         payload = {
             "model": settings.model,
             "messages": build_messages_for_mistral_instruct(system, prompt),
             "temperature": settings.temperature,
-            "max_tokens": 350,
+            "max_tokens": PRESENCE_MAX_TOKENS,
+            "reasoning_effort": "none",
         }
         timeout, key = int(settings.timeout_seconds), settings.api_key
 
@@ -479,17 +503,26 @@ class ChatOrchestrator(QtCore.QObject):
         literal placeholder ``(狀態)`` instead of a real state key, the marker is
         still stripped; the state simply isn't changed.
         """
-        match = _LEADING_STATE_MARKER_RE.match(text or "")
-        if not match:
-            return text
-        token = match.group(1).strip()
+        body = text or ""
+        match = _LEADING_STATE_MARKER_RE.match(body)
+        if match:
+            token, rest = match.group(1).strip(), body[match.end() :].lstrip()
+        else:
+            # Tolerate a leading state the model wrote in another shape: square
+            # brackets ("[idle] ...") or no brackets at all ("stand ..."). Only
+            # strip it when that token is a recognized state key, so a normal
+            # reply — or a citation like "[1]" — is left untouched.
+            alt = _LEADING_BRACKET_STATE_RE.match(body) or _LEADING_BARE_STATE_RE.match(body)
+            if not alt or not self._state_service.parse_state_from_action(alt.group(1).strip()):
+                return text
+            token, rest = alt.group(1).strip(), body[alt.end() :].lstrip()
         state_key = self._state_service.parse_state_from_action(token)
         if state_key and not self._state_service.is_movement_only_state(state_key):
             current = self._state_service.get_current_state()
             current_key = current.key if current else None
             if state_key != current_key:
                 self._state_service.set_state(state_key)
-        return text[match.end() :].lstrip()
+        return rest
 
     def _begin_web_read_current(self, question: str) -> bool:
         """讀 doro 目前開著的那頁（不重新導航）；讀完一樣走 ``_on_web_read_result``。"""

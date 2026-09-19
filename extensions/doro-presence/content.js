@@ -20,14 +20,23 @@
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     if (message.type === 'snapshot') reply(snapshot());
   });
-  let scheduled = false;
+  // Wait for the DOM to go quiet before telling the app, so a page that is
+  // still loading or being scrolled doesn't fire a burst of reactions. Still
+  // fire at most every MAX_WAIT_MS while it keeps changing (e.g. a live clock),
+  // so a never-quiet page isn't ignored forever.
+  const SETTLE_MS = 1000;
+  const MAX_WAIT_MS = 4000;
+  let settleTimer = null;
+  let firstChange = 0;
   function changed() {
-    if (document.visibilityState !== 'visible' || scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
+    if (document.visibilityState !== 'visible') return;
+    const now = Date.now();
+    if (!firstChange) firstChange = now;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      firstChange = 0;
       chrome.runtime.sendMessage({type: 'page_changed'}).catch(() => {});
-    });
+    }, Math.min(SETTLE_MS, Math.max(0, MAX_WAIT_MS - (now - firstChange))));
   }
   new MutationObserver(changed).observe(document.documentElement, {
     // Visibility and editable state may change without changing any text node.

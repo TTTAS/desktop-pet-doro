@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import pytest
 
@@ -53,6 +54,44 @@ def test_paired_client_page_and_clear(bridge):
         ws.send('{"type":"ping"}')
         assert json.loads(ws.recv(timeout=2))["type"] == "pong"
         assert server.current_page is None
+
+
+def test_recent_page_grace_after_clear_and_disconnect(bridge):
+    server, _events, received = bridge
+    page_msg = json.dumps(
+        {
+            "type": "page",
+            "focused": True,
+            "visible": True,
+            "tab_id": 1,
+            "url": "https://example.test",
+            "title": "A",
+            "text": "content",
+        }
+    )
+    with connect(
+        f"ws://127.0.0.1:{server.port}/presence",
+        origin=server.origin,
+        subprotocols=["doro-v1", "auth." + "T" * 43],
+        proxy=None,
+    ) as ws:
+        ws.send(page_msg)
+        assert received.wait(2)
+        # Browser loses focus -> extension clears the live page.
+        ws.send('{"type":"clear"}')
+        ws.send('{"type":"ping"}')
+        assert json.loads(ws.recv(timeout=2))["type"] == "pong"  # clear is processed
+        assert server.current_page is None
+        # Grace: the ask path can still read the page it saw a moment ago...
+        assert server.recent_page(30).text == "content"
+        # ...but not once the window has elapsed.
+        assert server.recent_page(0) is None
+    # Disconnect drops the grace page entirely.
+    for _ in range(100):
+        if server.recent_page(30) is None:
+            break
+        time.sleep(0.02)
+    assert server.recent_page(30) is None
 
 
 @pytest.mark.parametrize(

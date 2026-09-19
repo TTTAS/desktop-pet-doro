@@ -89,7 +89,9 @@ chrome.storage.onChanged.addListener((_changes, area) => { if (area === 'local')
 chrome.tabs.onActivated.addListener(() => { clearPage(); collect(); });
 chrome.tabs.onRemoved.addListener(() => { clearPage(); collect(); });
 chrome.tabs.onUpdated.addListener((_id, change, tab) => {
-  if (tab.active && (change.url || change.status)) { clearPage(); collect(); }
+  if (!tab.active) return;
+  if (change.url) clearPage();                 // navigation: drop the old page now
+  if (change.status === 'complete') collect(); // only read once the page finished loading
 });
 chrome.windows.onFocusChanged.addListener(() => { clearPage(); collect(); });
 chrome.runtime.onMessage.addListener((message, sender) => {

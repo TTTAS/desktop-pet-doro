@@ -31,19 +31,31 @@ if errorlevel 1 goto err_venv
 REM 2) activate venv
 call ".venv\Scripts\activate.bat"
 
-REM 3) first run: install deps + download the Chromium browser
-if exist ".venv\.doro_setup_done" goto run
+REM 3) install deps on first run, OR whenever pyproject.toml changed.
+REM    The marker stores the hash of pyproject.toml. When the dependency
+REM    list changes later (e.g. a new package like websockets is added),
+REM    the hash no longer matches and we reinstall, so old venvs pick up
+REM    the new packages instead of silently missing them.
+set "PYPROJECT_HASH="
+for /f "skip=1 delims=" %%H in ('certutil -hashfile "pyproject.toml" SHA256') do if not defined PYPROJECT_HASH set "PYPROJECT_HASH=%%H"
 
+set "SAVED_HASH="
+if exist ".venv\.doro_setup_done" set /p SAVED_HASH=<".venv\.doro_setup_done"
+
+if not defined PYPROJECT_HASH goto do_setup
+if /I "%SAVED_HASH%"=="%PYPROJECT_HASH%" goto run
+
+:do_setup
 echo [setup] installing dependencies, first time takes a few minutes ...
 python -m pip install --upgrade pip
-pip install -e ".[web,automation,a11y]"
+python -m pip install -e ".[web,automation,a11y]"
 if errorlevel 1 goto err_pip
 
 echo [setup] downloading Playwright browser Chromium ...
 python -m playwright install chromium
 if errorlevel 1 goto err_pw
 
-echo done> ".venv\.doro_setup_done"
+echo %PYPROJECT_HASH%> ".venv\.doro_setup_done"
 echo [setup] done.
 
 :run

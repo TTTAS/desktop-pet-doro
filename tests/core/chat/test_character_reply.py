@@ -53,6 +53,13 @@ def test_invalid_distance_and_coordinates_cannot_move():
         assert reply.text == "Hello"
 
 
+def test_truncated_move_token_is_not_left_in_text():
+    # A reply cut off mid-token (finish_reason=length) must not leak "[MOVE:".
+    reply = parse_character_reply("這次沒有新的按鈕 [MOVE:dir=right;")
+    assert reply.direction is None
+    assert reply.text == "這次沒有新的按鈕"
+
+
 def test_state_prompt_has_real_keys():
     assert "idle、happy" in character_instructions(["idle", "happy"])
 
