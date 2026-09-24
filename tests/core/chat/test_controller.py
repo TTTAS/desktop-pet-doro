@@ -321,9 +321,10 @@ class TestPayloadBuilding:
 
         prompt = controller._compose_system_prompt()
 
-        assert "[前景視窗元件樹]" in prompt
+        # 聊天規則本身也提到 [前景視窗元件樹]，所以比對注入區塊的開頭。
+        assert "[前景視窗元件樹]\nbutton" in prompt
         assert "書籤" in prompt
-        assert prompt.index("[Doro 當下狀態]") < prompt.index("[前景視窗元件樹]")
+        assert prompt.index("[Doro 當下狀態]") < prompt.index("[前景視窗元件樹]\nbutton")
 
     def test_compose_system_prompt_omits_a11y_tree_when_provider_empty(
         self, tmp_prompt_file, mock_state_service, mock_config_manager
@@ -338,7 +339,7 @@ class TestPayloadBuilding:
             a11y_tree_provider=lambda: "",
         )
         prompt = controller._compose_system_prompt()
-        assert "[前景視窗元件樹]" not in prompt
+        assert "[前景視窗元件樹]" not in prompt.splitlines()
         assert not prompt.endswith("\n\n\n")
 
     def test_compose_system_prompt_a11y_default_provider_is_noop(
@@ -353,7 +354,7 @@ class TestPayloadBuilding:
             config_manager=mock_config_manager,
         )
         prompt = controller._compose_system_prompt()
-        assert "[前景視窗元件樹]" not in prompt
+        assert "[前景視窗元件樹]" not in prompt.splitlines()
 
 
 # ═══════════════════════════════════════════════════════════

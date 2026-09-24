@@ -22,6 +22,7 @@ def _make_stub_settings():
         timeout_seconds=30,
         max_tokens=512,
         stop_tokens=[],
+        structured_mode="text",
         set_server_url=Mock(),
         set_model=Mock(),
         set_endpoint_path=Mock(),
@@ -31,6 +32,7 @@ def _make_stub_settings():
         set_max_tokens=Mock(),
         set_max_stop_tokens=Mock(),
         set_stop_tokens=Mock(),
+        set_structured_mode=Mock(),
     )
 
 
@@ -177,3 +179,14 @@ def test_save_persists_tavily_settings(qtbot):
         tavily_api_key="tvly-xyz",
         verify_search_depth="advanced",
     )
+
+
+def test_structured_mode_round_trips(qtbot):
+    dialog, orch, _config = _make_dialog(qtbot)
+    st = orch.settings
+    assert dialog._structured_mode_combo.currentData() == "text"
+
+    dialog._structured_mode_combo.setCurrentIndex(dialog._structured_mode_combo.findData("auto"))
+    dialog._on_save()
+
+    st.set_structured_mode.assert_called_once_with("auto")

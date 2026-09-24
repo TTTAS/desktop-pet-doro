@@ -10,7 +10,7 @@
 ## 決策
 
 - 提示詞分三層：**人設**（`dia_prompt.txt`，使用者可改，全功能共用）、**回覆格式**（由 Pydantic 結構產生，使用者不可改）、**任務說明**（寫在各功能程式裡，與該功能的結構放一起）。新增功能＝一個結構＋幾行任務說明。
-- 用 Instructor 呼叫 OpenAI 相容端點（LM Studio、Ollama `/v1`、雲端）。預設自動偵測：先送 `json_schema`，伺服器拒絕就退回「提示詞附 schema＋解析」並記住；設定可手動指定模式。
+- 共用層 `doro_app/core/llm` 沿用自寫的 HTTP 呼叫，只加 `pydantic`。預設自動偵測：先送 `response_format: json_schema`，伺服器回 400／422 就退回「提示詞附 schema＋解析」並依端點與模型記住；設定可手動指定模式。兩種模式共用同一份提示詞、解析與重問。
 - **角色回覆**（`state`、`line`、`move`，存在感另有 `worth_saying`）容錯：能用的欄位照用，狀態不合法就不換狀態；聊天失敗重問一次，存在感直接不顯示。
 - **工具決策**（網站操作下一步）嚴格：驗證失敗附錯誤重問一次，仍不合格就停止操作。延續 ADR 0004：角色回覆不能升級成工具決策。
 - 回覆格式定義完整角色動作集合，各功能任務說明只開放自己可用的子集（聊天含速度與絕對座標，網頁回答仍只有四方向＋距離）。
@@ -21,9 +21,9 @@
 ## 考慮過的選項
 
 - 維持文字格式、只統一描述：仍然靠提示詞與正則，無法驗證欄位。
-- 只用 pydantic 自寫一層：做得到，但等於重做 Instructor 的模式切換與重問。
+- Instructor：它的退回模式會在對話最前面插入英文 `system` 訊息，而 Doro 刻意把系統提示折進第一則 user 訊息（部分 Mistral instruct 模板拒收 system 角色）；它也只收 base_url，接不上可設定的 endpoint path。剩下的 JSON schema 模式本身很薄，不值得多帶 `openai`、`instructor` 兩個依賴進打包版。
 - 原生 function calling 表達工具決策：各後端支援比 JSON schema 更不一致，且與角色回覆走兩套機制。
 
 ## 取捨
 
-核心依賴增加 `pydantic`、`openai`、`instructor`、`opencc`，原本自寫的 HTTP 呼叫被取代，`DORO_WEB_DEBUG` 的原始回傳改由客戶端 hook 印出。小型本機模型被強制輸出 JSON 時台詞品質可能下降。
+核心依賴增加 `pydantic`、`opencc-python-reimplemented`；模式偵測與重問要自己維護。小型本機模型被強制輸出 JSON 時台詞品質可能下降。

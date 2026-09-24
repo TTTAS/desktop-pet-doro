@@ -15,7 +15,9 @@ from ...constants import (
 )
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
+from ..llm.structured import SETTINGS_PREAMBLE
 from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
+from .chat_rules import CHAT_RULES
 from .retry import ChatRetryPolicy
 from .settings import ChatSettings
 from .validator import ResponseValidator
@@ -435,7 +437,11 @@ class ChatController(QtCore.QObject):
         }
 
     def _compose_system_prompt(self) -> str:
-        prompt = (self._settings.system_prompt or "").strip()
+        # 人設（使用者可改）＋ 聊天的任務說明與格式（程式負責）。
+        persona = (self._settings.system_prompt or "").strip()
+        prompt = "\n\n".join(
+            part for part in (SETTINGS_PREAMBLE, persona, CHAT_RULES.strip()) if part
+        )
         state_list = self._safe_call_provider(self._state_text_provider)
         placeholder = "{{STATE_LIST}}"
         if placeholder in prompt:

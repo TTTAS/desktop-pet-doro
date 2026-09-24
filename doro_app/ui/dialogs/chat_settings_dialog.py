@@ -129,6 +129,16 @@ class ChatSettingsDialog(FramelessDialog):
         self._max_stop_spin.setSpecialValueText("Unlimited")
         form.addRow("Max stop tokens:", self._max_stop_spin)
 
+        # 結構化回覆：自動偵測伺服器是否支援 JSON schema，不支援就退回文字格式。
+        self._structured_mode_combo = QtWidgets.QComboBox()
+        for label, value in (
+            ("自動偵測", "auto"),
+            ("JSON schema", "json_schema"),
+            ("文字（提示詞附格式）", "text"),
+        ):
+            self._structured_mode_combo.addItem(label, value)
+        form.addRow("回覆格式模式:", self._structured_mode_combo)
+
         # ── 查證搜尋（第 2 層）：Tavily key + 深度 ──────────────
         self._tavily_key_edit = QtWidgets.QLineEdit()
         self._tavily_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
@@ -199,6 +209,8 @@ class ChatSettingsDialog(FramelessDialog):
         self._timeout_spin.setValue(st.timeout_seconds)
         self._max_tokens_spin.setValue(st.max_tokens)
         self._max_stop_spin.setValue(max_stop)
+        mode_index = self._structured_mode_combo.findData(st.structured_mode)
+        self._structured_mode_combo.setCurrentIndex(max(mode_index, 0))
 
         tokens = st.stop_tokens
         display = "\n".join(t.replace("\n", "\\n") for t in tokens)
@@ -264,6 +276,7 @@ class ChatSettingsDialog(FramelessDialog):
         st.set_timeout_seconds(self._timeout_spin.value())
         st.set_max_tokens(self._max_tokens_spin.value())
         st.set_max_stop_tokens(self._max_stop_spin.value())
+        st.set_structured_mode(self._structured_mode_combo.currentData())
 
         tokens = [
             line.replace("\\n", "\n")

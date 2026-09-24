@@ -44,6 +44,28 @@
     "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現。"
   },
   {
+    "id": "llm",
+    "name": "模型呼叫與結構化回覆",
+    "aliases": [
+      "LLM",
+      "提示詞",
+      "回覆格式",
+      "結構化"
+    ],
+    "scope": [
+      "doro_app/core/llm/*.py"
+    ],
+    "entries": [
+      "doro_app/core/llm/structured.py",
+      "doro_app/core/llm/replies.py",
+      "doro_app/core/llm/transport.py"
+    ],
+    "tests": [
+      "tests/core/llm"
+    ],
+    "purpose": "HTTP 呼叫、人設＋任務說明＋回覆格式組合、JSON schema／文字模式偵測、驗證重問與繁體轉換。"
+  },
+  {
     "id": "web",
     "name": "指令上網",
     "aliases": [

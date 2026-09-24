@@ -40,6 +40,7 @@ from .config_defaults import (
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_STRUCTURED_MODE,
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_TAVILY_API_KEY,
     DEFAULT_VERIFY_SEARCH_DEPTH,
@@ -230,6 +231,7 @@ class ConfigManager:
             "history_turns": kwargs.get("history_turns", current.history_turns),
             "stop_tokens": kwargs.get("stop_tokens", current.stop_tokens),
             "max_stop_tokens": kwargs.get("max_stop_tokens", current.max_stop_tokens),
+            "structured_mode": kwargs.get("structured_mode", current.structured_mode),
         }
 
         # Validation happens in ChatConfig.__post_init__
@@ -370,6 +372,9 @@ class ConfigManager:
                 max_stop_tokens=_safe_int(
                     self._settings.value("chat/max_stop_tokens"), DEFAULT_CHAT_MAX_STOP_TOKENS
                 ),
+                structured_mode=_safe_str(
+                    self._settings.value("chat/structured_mode"), DEFAULT_CHAT_STRUCTURED_MODE
+                ),
             )
             self._config.chat = chat_config
         except ValueError as e:
@@ -484,6 +489,7 @@ class ConfigManager:
         self._settings.setValue("chat/history_turns", chat.history_turns)
         self._settings.setValue("chat/stop_tokens", chat.stop_tokens)
         self._settings.setValue("chat/max_stop_tokens", chat.max_stop_tokens)
+        self._settings.setValue("chat/structured_mode", chat.structured_mode)
 
         # Save UI config
         ui = self._config.ui

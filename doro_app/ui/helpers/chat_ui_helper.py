@@ -89,8 +89,8 @@ class ChatUIHelper:
 
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self.window,
-            "編輯系統提示詞",
-            "系統提示詞 (System Prompt):",
+            "編輯人設",
+            "Doro 的人設（性格與語氣；回覆格式由程式負責，不必寫在這裡）:",
             current_prompt,
         )
         if not ok:
@@ -99,8 +99,8 @@ class ChatUIHelper:
         self._chat.settings.update_system_prompt(text)
         QtWidgets.QMessageBox.information(
             self.window,
-            "提示詞已更新",
-            "系統提示詞已成功更新",
+            "人設已更新",
+            "人設已成功更新",
         )
 
     def configure_chat_server(self) -> None:
