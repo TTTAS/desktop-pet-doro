@@ -157,3 +157,19 @@ def test_full_width_leading_marker_is_stripped():
     out = orch._apply_leading_state_marker("（狀態）欸嘿，內文(inline)不變。")
 
     assert out == "欸嘿，內文(inline)不變。"
+
+
+def test_bare_leading_state_on_its_own_line_is_applied_and_stripped():
+    # Gemini has answered with the state alone on the first line: "idle\n...".
+    state = MagicMock()
+    state.parse_state_from_action.return_value = "idle"
+    state.is_movement_only_state.return_value = False
+    current = MagicMock()
+    current.key = "stand"
+    state.get_current_state.return_value = current
+    orch = _make_orchestrator(state)
+
+    out = orch._apply_leading_state_marker("idle\n新旗艦居然要萬元檔了！")
+
+    assert out == "新旗艦居然要萬元檔了！"
+    state.set_state.assert_called_once_with("idle")
