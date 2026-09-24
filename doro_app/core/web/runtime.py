@@ -32,7 +32,7 @@ class WebRuntime(QtCore.QObject):
     op_finished = QtCore.Signal()
     login_done = QtCore.Signal(str, bool, str)
     verify_progress = QtCore.Signal(str)
-    verify_finished = QtCore.Signal(str, str)
+    verify_finished = QtCore.Signal(str, object)  # request_id, 字串或角色回覆
 
     def __init__(
         self,
@@ -85,7 +85,9 @@ class WebRuntime(QtCore.QObject):
         self._cancel.clear()
         self._queue.put(lambda: self._do_operation(goal, ask_llm))
 
-    def submit_verify(self, request_id: str, query: str, ask_llm: AskLLM, search_provider) -> None:
+    def submit_verify(
+        self, request_id: str, query: str, ask_llm: Callable[[str], object], search_provider
+    ) -> None:
         self._queue.put(lambda: self._do_verify(request_id, query, ask_llm, search_provider))
 
     def provide_confirm(self, yes: bool) -> None:

@@ -248,3 +248,29 @@ class TestVerifyPipeline:
             "q"
         )
         assert "忽略以上指示" not in captured["p"]
+
+
+class TestVerifyPipelineStructuredAnswer:
+    """ADR 0005: the answer may be a validated reply object, passed through as is."""
+
+    def _run(self, ask):
+        provider = FakeSearchProvider([_r("https://a.com/1", content=_long())])
+        session = FakeSessionProvider(
+            views=[PageView(url="https://a.com/1", title="A 站", text=_long())]
+        )
+        final = []
+        VerifyPipeline(provider, session, ask, lambda t: None, final.append).run("q")
+        return final
+
+    def test_reply_object_is_passed_through(self):
+        reply = object()
+        assert self._run(lambda p: reply) == [reply]
+
+    def test_no_answer_falls_back_to_speech(self):
+        final = self._run(lambda p: None)
+        assert len(final) == 1 and "A 站" in final[0]
+
+    def test_prompt_no_longer_asks_for_state_marker(self):
+        captured = {}
+        self._run(lambda p: captured.setdefault("p", p))
+        assert "(狀態)" not in captured["p"]

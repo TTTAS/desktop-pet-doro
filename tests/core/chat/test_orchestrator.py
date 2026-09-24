@@ -23,7 +23,17 @@ def mock_controller():
     controller.is_inflight = False
     # Settings now live on a ChatSettings object the orchestrator exposes
     # directly (orchestrator.settings) rather than via pass-through methods.
-    controller.settings = Mock()
+    controller.settings = Mock(
+        server_url="http://127.0.0.1:1234",
+        endpoint_path="/v1/chat/completions",
+        model="local",
+        api_key="",
+        timeout_seconds=30,
+        temperature=0.7,
+        max_tokens=256,
+        structured_mode="auto",
+        system_prompt="【人設】doro",
+    )
 
     # Mock methods
     controller.start_request = Mock(return_value=(True, None))
