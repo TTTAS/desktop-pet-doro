@@ -34,7 +34,7 @@
 - **回覆與角色動作**：門為 `ChatOrchestrator.present_character_reply`，解析在 `chat/presentation.py`。讀頁／查證／操作結果與存在感皆可用合法狀態及一個方向型 MOVE；生產環境先走再說。此門永不執行 mouse/web/read/login/verify/operate。
 - **你正在看的分頁／存在感**：`extensions/doro-presence/` → `core/presence/bridge.py` → `PresenceController`。App 是 loopback WS server，token＋精確 extension Origin 配對；擴充只讀 active＋visible＋focused 分頁。設定入口為聊天子選單的「分頁陪伴設定」。
   - 明講「你剛開的頁」讀 Doro 分頁；分享啟用後「這頁」取擴充目前頁，沒有有效來源就說明，不混用。
-  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、LLM 可回 SILENT，忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。
+  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、模型以 `worth_saying` 做開口判斷（ADR 0005），忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。
   - 兩端預設停用；不分享輸入框或編輯內容，不提供擴充 click/type 入口。
 - 依賴：`pip install -e ".[web]"`，指令上網另需 `playwright install chromium`。缺少可選依賴不影響一般桌寵。
 - App 關閉會收掉 WebRuntime 和 PresenceController。語彙表不放這些實作細節。
