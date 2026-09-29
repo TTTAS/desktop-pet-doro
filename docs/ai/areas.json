@@ -36,7 +36,7 @@
     "entries": [
       "doro_app/core/chat/orchestrator.py",
       "doro_app/core/chat/controller.py",
-      "doro_app/core/chat/presentation.py"
+      "doro_app/core/chat/chat_reply.py"
     ],
     "tests": [
       "tests/core/chat"
@@ -308,8 +308,7 @@
     ],
     "tests": [
       "tests/test_config_manager.py",
-      "tests/test_config_schema.py",
-      "tests/test_actions.py"
+      "tests/test_config_schema.py"
     ],
     "purpose": "設定讀寫、schema、資源定位、提示詞載入與共用解析。"
   }

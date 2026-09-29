@@ -37,12 +37,21 @@ _VECTORS = {"left": (-1, 0), "right": (1, 0), "up": (0, -1), "down": (0, 1)}
 
 
 def character_reply_model(
-    state_keys: list[str], *, decide_worth_saying: bool = False
+    state_keys: list[str],
+    *,
+    decide_worth_saying: bool = False,
+    move_model: type[BaseModel] = DirectionalMove,
+    tool_model: type[BaseModel] | None = None,
+    name: str | None = None,
 ) -> type[BaseModel]:
     """Build the reply schema for one call; ``state`` is limited to ``state_keys``.
 
     With ``decide_worth_saying`` the model first decides whether the situation
     is worth speaking about (開口判斷); when it isn't, ``line`` may stay empty.
+    ``move_model`` is the 角色動作 subset this feature allows. Only a feature
+    that passes ``tool_model`` gets a ``tool`` field at all, so a page answer
+    can never ask for another tool (ADR 0004). Both are dropped, not failed,
+    when malformed.
     """
     allowed = tuple(dict.fromkeys(k for k in state_keys if k))
     state_type: Any = Literal[allowed] if allowed else str  # type: ignore[valid-type]
@@ -59,20 +68,28 @@ def character_reply_model(
     )
     fields["line"] = (str, Field(default="", description="Doro 說的台詞，繁體中文"))
     fields["move"] = (
-        DirectionalMove | None,
+        move_model | None,
         Field(default=None, description="說話前先走一段；不需要走就填 null"),
     )
+    if tool_model is not None:
+        fields["tool"] = (
+            tool_model | None,
+            Field(default=None, description="需要 doro 另外去做的事；一次最多一個，沒有就填 null"),
+        )
 
     def _known_state(cls, value: Any) -> Any:
         return value if value in allowed else None
 
-    def _usable_move(cls, value: Any) -> Any:
-        if value is None or isinstance(value, DirectionalMove):
-            return value
-        try:
-            return DirectionalMove.model_validate(value)
-        except ValidationError:
-            return None
+    def _usable(model: type[BaseModel]):
+        def check(cls, value: Any) -> Any:
+            if value is None or isinstance(value, model):
+                return value
+            try:
+                return model.model_validate(value)
+            except ValidationError:
+                return None
+
+        return check
 
     def _clean_line(cls, value: str) -> str:
         return to_traditional(value.strip())
@@ -83,14 +100,16 @@ def character_reply_model(
         return self
 
     validators: dict[str, Any] = {
-        "_move": field_validator("move", mode="before")(_usable_move),
+        "_move": field_validator("move", mode="before")(_usable(move_model)),
         "_line": field_validator("line", mode="after")(_clean_line),
         "_speaks": model_validator(mode="after")(_speaks_with_line),
     }
     if allowed:
         validators["_state"] = field_validator("state", mode="before")(_known_state)
+    if tool_model is not None:
+        validators["_tool"] = field_validator("tool", mode="before")(_usable(tool_model))
 
-    name = "PresenceReply" if decide_worth_saying else "CharacterReply"
+    name = name or ("PresenceReply" if decide_worth_saying else "CharacterReply")
     # 解析時缺欄位就用預設值（寬容），但給模型看的 schema 把每個欄位都列為必填，
     # 讓伺服器端的約束解碼一定會產生完整結構。
     config = ConfigDict(json_schema_serialization_defaults_required=True)

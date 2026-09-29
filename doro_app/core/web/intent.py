@@ -34,20 +34,6 @@ _READ_INTENT_PATTERN = re.compile(
 )
 
 
-# AI 主動要求讀網頁的動作標記：``[read:https://...]``。
-# 這是「讓 LLM 自己判斷要不要讀」的路：模型看完使用者訊息後，如果覺得需要看某個
-# 網頁才能回答，就在回覆結尾吐這個標記，doro 讀完再把內容餵回去讓它作答。
-_READ_ACTION_PATTERN = re.compile(r"\[\s*read\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE)
-
-
-def parse_read_action(text: str) -> str | None:
-    """從 AI 回覆裡抓 ``[read:網址]`` 動作標記，回傳網址；沒有就回 ``None``。"""
-    if not text:
-        return None
-    match = _READ_ACTION_PATTERN.search(text)
-    return match.group(1) if match else None
-
-
 @dataclass(frozen=True)
 class WebReadRequest:
     """一次「讀網頁」請求。
@@ -121,58 +107,6 @@ def parse_operate_command(text: str) -> str | None:
     if _OPERATE_INTENT_PATTERN.search(stripped):
         return stripped
     return None
-
-
-# AI 主動要求「操作網頁」的動作標記：``[operate: 一句話目標]``。
-# 這是「讓 LLM 自己判斷」的路：模型覺得使用者要的是「在網站上辦事」時吐這個，
-# doro 就開自己的瀏覽器一步步做（區別於「點桌面/工具列」用 [mouse:click]）。
-_OPERATE_ACTION_PATTERN = re.compile(r"\[\s*operate\s*[:：]\s*([^\]]*)\]", re.IGNORECASE)
-
-
-# 登入助手動作標記：``[login:網址]``。使用者想自己登入某站時，模型吐這個，doro
-# 只把站開著停在那讓使用者本人登入（不操作），登入狀態存進專屬設定檔。
-_LOGIN_ACTION_PATTERN = re.compile(r"\[\s*login\s*[:：]\s*(https?://[^\]\s]+)\s*\]", re.IGNORECASE)
-
-
-def parse_login_action(text: str) -> str | None:
-    """從 AI 回覆抓 ``[login:網址]``，回傳網址；沒有就回 ``None``。"""
-    if not text:
-        return None
-    match = _LOGIN_ACTION_PATTERN.search(text)
-    return match.group(1) if match else None
-
-
-# 查證動作標記：``[verify: 要查證/查的問題]``。使用者想「查證、比對來源、查資料」
-# 時模型吐這個，doro 會搜尋、讀幾個來源、比對後回報。
-_VERIFY_ACTION_PATTERN = re.compile(r"\[\s*verify\s*[:：]\s*([^\]]*)\]", re.IGNORECASE)
-
-
-def parse_verify_action(text: str) -> str | None:
-    """從 AI 回覆抓 ``[verify: 問題]``，回傳問題字串（可能為空字串）。
-
-    沒有這個標記回 ``None``（呼叫端用 ``is not None`` 判斷；空字串代表「就查使用者
-    剛剛那句」）。
-    """
-    if not text:
-        return None
-    match = _VERIFY_ACTION_PATTERN.search(text)
-    if not match:
-        return None
-    return match.group(1).strip()
-
-
-def parse_operate_action(text: str) -> str | None:
-    """從 AI 回覆抓 ``[operate: 目標]``，回傳目標字串（可能為空字串）。
-
-    沒有這個標記回 ``None``。注意：呼叫端要用 ``is not None`` 判斷（空目標 ""
-    也算命中，代表「就照使用者剛剛那句去操作」）。
-    """
-    if not text:
-        return None
-    match = _OPERATE_ACTION_PATTERN.search(text)
-    if not match:
-        return None
-    return match.group(1).strip()
 
 
 def is_affirmative(text: str) -> bool:

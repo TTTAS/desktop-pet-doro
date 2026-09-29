@@ -1,4 +1,4 @@
-"""End-to-end check: a `[mouse:click]` in an LLM response routes through the
+"""End-to-end check: a chat reply whose tool is ``click`` routes through the
 chat orchestrator → AutomationManager → FakeInputBackend.
 
 This is the seam that ties Phase 1c together: if any one of parser,
@@ -13,9 +13,14 @@ import pytest
 
 from doro_app.core.automation.fakes import FakeAutomationWindow, FakeInputBackend
 from doro_app.core.automation.manager import AutomationManager, ClickOutcome
+from doro_app.core.chat.chat_reply import chat_reply_model
 from doro_app.core.chat.orchestrator import ChatOrchestrator
 
 from .conftest import ClockStub, ConfigManagerStub, ManualScheduler
+
+
+def click_reply(line="嘿嘿要幫人點囉～"):
+    return chat_reply_model([]).model_validate({"line": line, "tool": {"kind": "click"}})
 
 
 @pytest.fixture
@@ -84,7 +89,7 @@ def automation_setup():
     }
 
 
-def test_mouse_click_bracket_routes_to_automation_manager(
+def test_click_tool_routes_to_automation_manager(
     stub_controller, stub_movement, stub_state_service, automation_setup
 ):
     orchestrator = ChatOrchestrator(
@@ -94,81 +99,39 @@ def test_mouse_click_bracket_routes_to_automation_manager(
         automation=automation_setup["manager"],
     )
 
-    # An assistant response with one bare `[mouse:click]` bracket.
-    response = "嘿嘿要幫人點囉～[mouse:click]"
-    orchestrator._handle_actions_in_text(response)
+    orchestrator._on_request_succeeded(click_reply(), False)
 
     # Wind-up was scheduled; click hasn't fired yet.
     assert automation_setup["clicker"].invoke_calls == []
     automation_setup["scheduler"].flush()
 
     assert automation_setup["clicker"].invoke_calls == [(640, 480)]
-    assert automation_setup["manager"].outcomes[-1] == ClickOutcome.FIRED
-
-
-def test_only_first_click_per_response_is_dispatched(
-    stub_controller, stub_movement, stub_state_service, automation_setup
-):
-    """Two `[mouse:click]` brackets in one reply → one click, no BUSY churn."""
-    orchestrator = ChatOrchestrator(
-        stub_controller,
-        stub_movement,
-        stub_state_service,
-        automation=automation_setup["manager"],
-    )
-
-    response = "點兩下！[mouse:click] [mouse:click]"
-    orchestrator._handle_actions_in_text(response)
-    automation_setup["scheduler"].flush()
-
-    assert automation_setup["clicker"].invoke_calls == [(640, 480)]
-    # The second bracket was dropped before reaching the manager — exactly
-    # one click attempt was recorded (no BUSY entry from a double dispatch).
+    # One tool per reply → exactly one click attempt.
     assert list(automation_setup["manager"].outcomes) == [ClickOutcome.FIRED]
 
 
-def test_coordinate_form_is_rejected_silently(
-    stub_controller, stub_movement, stub_state_service, automation_setup
-):
-    """[mouse:click;x=1;y=1] must NEVER reach the input backend."""
-    orchestrator = ChatOrchestrator(
-        stub_controller,
-        stub_movement,
-        stub_state_service,
-        automation=automation_setup["manager"],
-    )
-
-    response = "點這裡 [mouse:click;x=1;y=1]"
-    orchestrator._handle_actions_in_text(response)
-    # Even if we flush the scheduler, nothing was ever scheduled.
-    automation_setup["scheduler"].flush()
-    assert automation_setup["clicker"].invoke_calls == []
-
-
-def test_orchestrator_without_automation_drops_bracket_quietly(
+def test_orchestrator_without_automation_drops_click_quietly(
     stub_controller, stub_movement, stub_state_service
 ):
-    """Default install (no automation wired) must still parse responses cleanly."""
+    """Default install (no automation wired) must still handle the reply."""
     orchestrator = ChatOrchestrator(
         stub_controller,
         stub_movement,
         stub_state_service,
         automation=None,
     )
-    # Should not raise.
-    orchestrator._handle_actions_in_text("[mouse:click] hi")
+
+    assert orchestrator._on_request_succeeded(click_reply("hi"), False) == "hi"
 
 
-def test_unsupported_mouse_actions_never_fire(
-    stub_controller, stub_movement, stub_state_service, automation_setup
-):
-    orchestrator = ChatOrchestrator(
-        stub_controller,
-        stub_movement,
-        stub_state_service,
-        automation=automation_setup["manager"],
-    )
-    for bad in ["[mouse:double_click]", "[mouse:drag;dx=10;dy=10]", "[mouse:scroll;dy=120]"]:
-        orchestrator._handle_actions_in_text(bad)
-    automation_setup["scheduler"].flush()
-    assert automation_setup["clicker"].invoke_calls == []
+def test_click_tool_carries_no_coordinates_or_other_mouse_actions():
+    """The schema only knows a plain left click; anything else is dropped."""
+    model = chat_reply_model([])
+    for tool in (
+        {"kind": "double_click"},
+        {"kind": "drag"},
+        {"kind": "scroll"},
+    ):
+        assert model.model_validate({"line": "點", "tool": tool}).tool is None
+    click = model.model_validate({"line": "點", "tool": {"kind": "click", "x": 1, "y": 1}}).tool
+    assert click.model_dump(exclude_none=True) == {"kind": "click"}

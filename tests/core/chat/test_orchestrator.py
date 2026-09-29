@@ -4,7 +4,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from doro_app.core.chat.chat_reply import chat_reply_model
 from doro_app.core.chat.orchestrator import ChatOrchestrator
+
+
+def reply(**fields):
+    """A validated chat reply, as ChatController hands it over (ADR 0005)."""
+    return chat_reply_model(["idle", "happy"]).model_validate(fields)
 
 
 @pytest.fixture
@@ -116,28 +122,8 @@ class TestSendMessage:
 # ═══════════════════════════════════════════════════════════
 
 
-class TestCleanAssistantDialogue:
-    """`_clean_assistant_dialogue`：一般聊天取一行，讀網頁答覆保留多行。"""
-
-    def test_default_returns_first_line_only(self, orchestrator):
-        text = "(開心) 第一句\n第二句\n第三句"
-        # 一般寵物聊天：維持只顯示第一句的個性
-        assert orchestrator._clean_assistant_dialogue(text) == "(開心) 第一句"
-
-    def test_multiline_keeps_all_lines(self, orchestrator):
-        text = "(思考) 這頁在講 A\n重點一：B\n重點二：C"
-        out = orchestrator._clean_assistant_dialogue(text, multi_line=True)
-        assert out == "(思考) 這頁在講 A\n重點一：B\n重點二：C"
-
-    def test_multiline_still_filters_user_lines(self, orchestrator):
-        text = "(思考) doro的話\n使用者: 不該顯示\n第二句"
-        out = orchestrator._clean_assistant_dialogue(text, multi_line=True)
-        assert "不該顯示" not in out
-        assert "第二句" in out
-
-
 class TestOperateActionRouting:
-    """模型吐 [operate:目標] → 啟動網頁操作（受總開關管）。"""
+    """回覆的 tool 是 operate → 啟動網頁操作（受總開關管）。"""
 
     def _make(self, mock_controller, mock_movement_manager, mock_state_service, *, enabled):
         from types import SimpleNamespace
@@ -160,7 +146,9 @@ class TestOperateActionRouting:
             mock_controller, mock_movement_manager, mock_state_service, enabled=True
         )
         orch._last_user_text = "幫我在購物網站買耳機"
-        shown = orch._on_request_succeeded("(思考) 好，doro上網幫你～ [operate:買耳機]", False)
+        shown = orch._on_request_succeeded(
+            reply(line="好，doro上網幫你～", tool={"kind": "operate", "goal": "買耳機"}), False
+        )
         assert shown == ""
         assert orch._operating is True
         web_runtime.submit_operation.assert_called_once()
@@ -173,7 +161,7 @@ class TestOperateActionRouting:
             mock_controller, mock_movement_manager, mock_state_service, enabled=True
         )
         orch._last_user_text = "幫我在 pchome 訂便當"
-        orch._on_request_succeeded("(思考) 好喔～ [operate:]", False)
+        orch._on_request_succeeded(reply(line="好喔～", tool={"kind": "operate"}), False)
         assert "便當" in web_runtime.submit_operation.call_args.args[0]
 
     def test_operate_action_blocked_when_disabled(
@@ -184,14 +172,16 @@ class TestOperateActionRouting:
         )
         bubble_spy = Mock()
         orch.bubble_text_requested.connect(bubble_spy)
-        orch._on_request_succeeded("(思考) 好～ [operate:買耳機]", False)
+        orch._on_request_succeeded(
+            reply(line="好～", tool={"kind": "operate", "goal": "買耳機"}), False
+        )
         assert orch._operating is False
         web_runtime.submit_operation.assert_not_called()
         assert "關" in bubble_spy.call_args.args[0]
 
 
 class TestVerifyActionRouting:
-    """模型吐 [verify:問題] → 啟動查證（read-only，不受操作總開關限制）。"""
+    """回覆的 tool 是 verify → 啟動查證（read-only，不受操作總開關限制）。"""
 
     def test_verify_action_starts_verify(
         self, mock_controller, mock_movement_manager, mock_state_service
@@ -203,7 +193,9 @@ class TestVerifyActionRouting:
             state_service=mock_state_service,
             web_runtime=web_runtime,
         )
-        shown = orch._on_request_succeeded("(高) 上網幫你查～ [verify:基本工資多少]", False)
+        shown = orch._on_request_succeeded(
+            reply(line="上網幫你查～", tool={"kind": "verify", "query": "基本工資多少"}), False
+        )
         assert shown == ""
         assert orch._operating is False
         web_runtime.submit_verify.assert_called_once()
@@ -220,12 +212,12 @@ class TestVerifyActionRouting:
             web_runtime=web_runtime,
         )
         orch._last_user_text = "台積電股價是不是真的破千了"
-        orch._on_request_succeeded("(高) 我查查～ [verify:]", False)
+        orch._on_request_succeeded(reply(line="我查查～", tool={"kind": "verify"}), False)
         assert "台積電" in web_runtime.submit_verify.call_args.args[1]
 
 
 class TestLoginActionRouting:
-    """模型吐 [login:網址] → 開站給使用者登入（不受總開關限制、也不啟動操作）。"""
+    """回覆的 tool 是 login → 開站給使用者登入（不受總開關限制、也不啟動操作）。"""
 
     def test_login_action_opens_site(
         self, mock_controller, mock_movement_manager, mock_state_service
@@ -237,7 +229,10 @@ class TestLoginActionRouting:
             state_service=mock_state_service,
             web_runtime=web_runtime,
         )
-        shown = orch._on_request_succeeded("(高) 幫你把蝦皮開好～ [login:https://shopee.tw]", False)
+        shown = orch._on_request_succeeded(
+            reply(line="幫你把蝦皮開好～", tool={"kind": "login", "url": "https://shopee.tw"}),
+            False,
+        )
         assert shown == ""
         assert orch._operating is False  # 不是操作，是開站
         web_runtime.submit_login.assert_called_once()
@@ -418,7 +413,7 @@ class TestEventHandlers:
         orchestrator.bubble_text_requested.connect(mock_listener)
 
         # Trigger handler with simple response
-        orchestrator._on_request_succeeded("Hello there!", False)
+        orchestrator._on_request_succeeded(reply(line="Hello there!"), False)
 
         # Should emit bubble text
         mock_listener.assert_called()
@@ -455,62 +450,9 @@ class TestEventHandlers:
         mock_listener.assert_not_called()
 
 
-class TestControlTagLeak:
-    """Movement/control-only replies must never show raw tags in the bubble."""
-
-    def test_movement_only_response_clears_bubble_without_tag(self, orchestrator):
-        text_listener = Mock()
-        clear_listener = Mock()
-        orchestrator.bubble_text_requested.connect(text_listener)
-        orchestrator.bubble_clear_requested.connect(clear_listener)
-
-        orchestrator._on_request_succeeded("[MOVE:dir=right]", False)
-
-        clear_listener.assert_called_once()
-        # The raw tag must never reach the bubble via any emit.
-        for emitted in text_listener.call_args_list:
-            assert "MOVE" not in emitted[0][0]
-            assert "[" not in emitted[0][0]
-
-    def test_lowercase_move_only_response_clears_bubble(self, orchestrator):
-        text_listener = Mock()
-        clear_listener = Mock()
-        orchestrator.bubble_text_requested.connect(text_listener)
-        orchestrator.bubble_clear_requested.connect(clear_listener)
-
-        orchestrator._on_request_succeeded("[move:left]", False)
-
-        clear_listener.assert_called_once()
-        text_listener.assert_not_called()
-
-    def test_state_and_mouse_only_response_clears_bubble(self, orchestrator):
-        text_listener = Mock()
-        clear_listener = Mock()
-        orchestrator.bubble_text_requested.connect(text_listener)
-        orchestrator.bubble_clear_requested.connect(clear_listener)
-
-        orchestrator._on_request_succeeded("[STATE:walk_right][mouse:click]", False)
-
-        clear_listener.assert_called_once()
-        for emitted in text_listener.call_args_list:
-            assert "[" not in emitted[0][0]
-
-    def test_dialogue_with_trailing_move_tag_strips_tag(self, orchestrator):
-        text_listener = Mock()
-        orchestrator.bubble_text_requested.connect(text_listener)
-
-        orchestrator._on_request_succeeded("早安！ [MOVE:dir=right]", False)
-
-        text_listener.assert_called()
-        emitted = text_listener.call_args[0][0]
-        assert "早安" in emitted
-        assert "[" not in emitted and "]" not in emitted
-
-
-class TestMouseBracketDeferred:
-    """Mouse brackets must be enqueued behind move brackets in the dispatcher
-    queue, regardless of text order — otherwise a click written before a
-    move bracket would fire immediately, bypassing the wait."""
+class TestClickAfterMove:
+    """A desktop click must be enqueued behind the move in the dispatcher
+    queue — otherwise it would fire before Doro arrives, bypassing the wait."""
 
     def _make_orch_with_dispatcher(
         self,
@@ -534,7 +476,7 @@ class TestMouseBracketDeferred:
         )
         return orch, dispatcher
 
-    def test_click_after_move_keeps_order(
+    def test_click_is_queued_after_the_move(
         self,
         mock_controller,
         mock_movement_manager,
@@ -546,30 +488,7 @@ class TestMouseBracketDeferred:
             mock_state_service,
         )
         orch._on_request_succeeded(
-            "好！[MOVE:to;x=200;y=100] [mouse:click]",
-            False,
-        )
-        kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
-        assert kinds == ["movement", "click"]
-
-    def test_click_before_move_in_text_still_dispatches_after_move(
-        self,
-        mock_controller,
-        mock_movement_manager,
-        mock_state_service,
-    ):
-        """The defence in depth: even when the LLM puts `[mouse:click]`
-        textually before `[move:to;...]`, the orchestrator defers the click
-        so the dispatcher receives the movement action first. Without this,
-        the click would fire immediately (movement never starts because the
-        action queue head is the click action)."""
-        orch, dispatcher = self._make_orch_with_dispatcher(
-            mock_controller,
-            mock_movement_manager,
-            mock_state_service,
-        )
-        orch._on_request_succeeded(
-            "好！[mouse:click] [MOVE:to;x=200;y=100]",
+            reply(line="好！", move={"x": 200, "y": 100}, tool={"kind": "click"}),
             False,
         )
         kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]
@@ -577,24 +496,22 @@ class TestMouseBracketDeferred:
 
 
 class TestSimulateResponse:
-    """simulate_response injects text through the real reply pipeline."""
+    """simulate_response injects a reply JSON through the real reply pipeline."""
 
-    def test_simulate_shows_cleaned_dialogue_and_returns_it(self, orchestrator):
+    def test_simulate_shows_line_and_returns_it(self, orchestrator):
         text_listener = Mock()
         orchestrator.bubble_text_requested.connect(text_listener)
 
-        shown = orchestrator.simulate_response("早安！ [MOVE:dir=right]")
+        shown = orchestrator.simulate_response(
+            '{"state":"idle","line":"早安！","move":{"dir":"right","distance":80}}'
+        )
 
-        assert "早安" in shown
-        assert "[" not in shown
-        text_listener.assert_called()
-        assert "[" not in text_listener.call_args[0][0]
+        assert shown == "早安！"
+        assert text_listener.call_args[0][0] == "早安！"
 
-    def test_simulate_actions_only_clears_bubble_returns_empty(self, orchestrator):
-        clear_listener = Mock()
-        orchestrator.bubble_clear_requested.connect(clear_listener)
+    def test_simulate_rejects_text_that_is_not_a_reply(self, orchestrator):
+        text_listener = Mock()
+        orchestrator.bubble_text_requested.connect(text_listener)
 
-        shown = orchestrator.simulate_response("[MOVE:dir=right]")
-
-        assert shown == ""
-        clear_listener.assert_called_once()
+        assert orchestrator.simulate_response("早安！ [MOVE:dir=right]") is None
+        text_listener.assert_not_called()

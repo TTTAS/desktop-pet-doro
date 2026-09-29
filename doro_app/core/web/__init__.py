@@ -20,12 +20,8 @@ from .intent import (
     WebReadRequest,
     is_affirmative,
     is_stop,
-    parse_login_action,
-    parse_operate_action,
     parse_operate_command,
-    parse_read_action,
     parse_read_current_command,
-    parse_verify_action,
     parse_web_read_command,
 )
 from .reader import WebPageReader, WebReadResult
@@ -36,11 +32,7 @@ __all__ = [
     "WebReadResult",
     "is_affirmative",
     "is_stop",
-    "parse_login_action",
-    "parse_operate_action",
     "parse_operate_command",
-    "parse_read_action",
     "parse_read_current_command",
-    "parse_verify_action",
     "parse_web_read_command",
 ]

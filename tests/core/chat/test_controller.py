@@ -1,5 +1,6 @@
 """Tests for ChatController - chat settings and request handling."""
 
+import json
 from unittest.mock import Mock
 
 import pytest
@@ -43,6 +44,7 @@ def mock_config_manager():
     manager.chat.max_tokens = 512
     manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
+    manager.chat.structured_mode = "auto"
     return manager
 
 
@@ -72,6 +74,7 @@ def controller_with_qsettings(tmp_prompt_file, mock_state_service, mock_config_m
     default_manager.chat.max_tokens = 512
     default_manager.chat.stop_tokens = list(DEFAULT_CHAT_STOP_TOKENS)
     default_manager.chat.max_stop_tokens = DEFAULT_CHAT_MAX_STOP_TOKENS
+    default_manager.chat.structured_mode = "auto"
     default_manager.update_chat = Mock()
     default_manager.save = Mock()
 
@@ -181,16 +184,36 @@ class TestRequestLifecycle:
         assert success is False
         assert "already" in error.lower()
 
-    def test_build_payload_called_with_message(self, controller_with_qsettings):
-        """start_request uses the provided message for payload building."""
-        # Test the payload building function directly
-        payload = controller_with_qsettings._build_chat_payload("Test message")
+    def test_successful_reply_is_stored_as_json_in_history(self, controller_with_qsettings):
+        """History keeps the whole structured reply (ADR 0005)."""
+        from doro_app.core.chat.chat_reply import chat_reply_model
 
-        # Verify the message is in the payload
-        assert "messages" in payload
-        # Should contain the test message somewhere
-        messages_str = str(payload["messages"])
-        assert "Test message" in messages_str
+        ctrl = controller_with_qsettings
+        reply = chat_reply_model(["idle"]).model_validate({"state": "idle", "line": "嗨"})
+        received = []
+        ctrl.request_succeeded.connect(lambda r, _auto: received.append(r))
+        ctrl._current_request_id = "r1"
+        ctrl._inflight = True
+        ctrl._last_user_message = "早安"
+
+        ctrl._handle_worker_result("r1", (reply, None))
+
+        assert received == [reply]
+        assert ctrl._history[0] == {"role": "user", "content": "早安"}
+        assert json.loads(ctrl._history[1]["content"])["line"] == "嗨"
+        assert ctrl.is_inflight is False
+
+    def test_unusable_reply_fails_the_request(self, controller_with_qsettings):
+        ctrl = controller_with_qsettings
+        failed = []
+        ctrl.request_failed.connect(lambda msg, _auto: failed.append(msg))
+        ctrl._current_request_id = "r1"
+        ctrl._inflight = True
+
+        ctrl._handle_worker_result("r1", (None, "回覆不合格式：找不到 JSON 物件"))
+
+        assert failed == ["回覆不合格式：找不到 JSON 物件"]
+        assert ctrl._history == []
 
     def test_cancel_inflight_sets_cancelled_state(self, controller_with_qsettings):
         """cancel_inflight marks request as cancelled."""
@@ -218,26 +241,58 @@ class TestRequestLifecycle:
 class TestPayloadBuilding:
     """Test chat payload construction."""
 
-    def test_build_chat_payload_includes_user_message(self, controller_with_qsettings):
-        """_build_chat_payload includes user message."""
-        payload = controller_with_qsettings._build_chat_payload("Hello")
+    def _capture(self, monkeypatch, text='{"state":"idle","line":"嗨","move":null,"tool":null}'):
+        from doro_app.core.llm import structured
+        from doro_app.core.llm.transport import Completion
 
-        assert "messages" in payload
-        # Should have at least the user message
-        assert len(payload["messages"]) >= 1
-        # User message should be in the messages
-        user_messages = [m for m in payload["messages"] if m.get("role") == "user"]
-        assert any("Hello" in m.get("content", "") for m in user_messages)
+        structured.forget_detected_modes()
+        payloads = []
 
-    def test_build_chat_payload_includes_config(self, controller_with_qsettings):
-        """_build_chat_payload includes configuration."""
-        payload = controller_with_qsettings._build_chat_payload("Hello")
+        def request(url, payload, timeout, api_key):
+            payloads.append(payload)
+            return Completion(text, None, 200)
 
-        assert "model" in payload
-        assert "temperature" in payload
-        assert "max_tokens" in payload
-        assert payload["model"] == controller_with_qsettings.settings.model
-        assert payload["temperature"] == controller_with_qsettings.settings.temperature
+        monkeypatch.setattr(structured.transport, "request_completion", request)
+        return payloads
+
+    def test_request_sends_history_then_system_folded_user_message(
+        self, controller_with_qsettings, monkeypatch
+    ):
+        payloads = self._capture(monkeypatch)
+        ctrl = controller_with_qsettings
+        ctrl._history = [{"role": "user", "content": "早"}, {"role": "assistant", "content": "{}"}]
+
+        reply, error = ctrl._build_request("Hello")()
+
+        assert error is None and reply.line == "嗨"
+        messages = payloads[0]["messages"]
+        assert messages[:2] == ctrl._history
+        assert messages[2]["role"] == "user"
+        assert messages[2]["content"].startswith("<<SYS>>") and "Hello" in messages[2]["content"]
+        assert payloads[0]["model"] == ctrl.settings.model
+        assert payloads[0]["temperature"] == ctrl.settings.temperature
+        assert "stop" in payloads[0]
+        schema = payloads[0]["response_format"]["json_schema"]["schema"]
+        assert "tool" in schema["properties"]
+
+    def test_web_answer_request_has_no_tool_field(self, controller_with_qsettings, monkeypatch):
+        payloads = self._capture(monkeypatch)
+
+        controller_with_qsettings._build_request("網頁內容…", web_answer=True)()
+
+        schema = payloads[0]["response_format"]["json_schema"]["schema"]
+        assert "tool" not in schema["properties"]
+        assert "剛用瀏覽器讀完一個網頁" in payloads[0]["messages"][-1]["content"]
+
+    def test_max_tokens_override_only_raises(self, controller_with_qsettings, monkeypatch):
+        payloads = self._capture(monkeypatch)
+        ctrl = controller_with_qsettings
+
+        ctrl._build_request("Hi", max_tokens_override=1)()
+        ctrl._build_request("Hi", max_tokens_override=5000)()
+
+        assert payloads[0]["max_tokens"] == ctrl.settings.max_tokens
+        assert payloads[1]["max_tokens"] == 5000
 
     def test_compose_system_prompt_includes_state_info(self, controller_with_qsettings):
         """_compose_system_prompt includes state information."""
