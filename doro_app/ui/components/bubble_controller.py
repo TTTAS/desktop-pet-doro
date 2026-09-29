@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from PySide6 import QtCore
 
 from ...constants import (
+    BUBBLE_AUTO_HIDE_MS,
     BUBBLE_CHUNK_MAX_CHARS,
     BUBBLE_CHUNK_MAX_READ_MS,
     BUBBLE_CHUNK_MIN_READ_MS,
@@ -28,7 +29,7 @@ class BubbleConfig:
     offset_x: float = 120.0
     offset_y: float = -110.0
     scale: float = 1.0
-    auto_hide_ms: int = 6000
+    auto_hide_ms: int = BUBBLE_AUTO_HIDE_MS
 
 
 class BubbleController(QtCore.QObject):
@@ -74,7 +75,7 @@ class BubbleController(QtCore.QObject):
         self._hide_timer.timeout.connect(self._on_hide_timer_timeout)
 
         # Auto-hide default delay (can be overridden per-message)
-        self._default_auto_hide_ms = 6000
+        self._default_auto_hide_ms = BUBBLE_AUTO_HIDE_MS
 
         # Multi-part ("speak in chunks") sequence state. When a long reply is
         # split, the remaining pieces wait here and the display settings that

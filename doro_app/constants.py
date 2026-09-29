@@ -5,7 +5,13 @@
 # ═══════════════════════════════════════════════════════════
 
 TIMER_INTERVAL_MS = 16  # ~60 FPS (1000ms / 60 = 16.67ms)
-BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds
+BUBBLE_AUTO_HIDE_MS = 6000  # 6 seconds; default when a message sets no delay
+# Per-kind auto-hide delays: longer / more important messages stay up longer.
+BUBBLE_REPLY_HIDE_MS = 40000  # Doro's own reply (chat, verify, presence)
+BUBBLE_ACTION_NEEDED_HIDE_MS = 30000  # asks the user to go do something (e.g. log in)
+BUBBLE_OPERATION_HIDE_MS = 20000  # web-operation progress / result line
+BUBBLE_ERROR_HIDE_MS = 12000  # failure messages (can't read / open / network)
+BUBBLE_NOTICE_HIDE_MS = 8000  # short reminder
 
 # Bubble chunking: long replies (web summaries, verify results) are split into
 # several short bubbles shown one after another, so a single bubble never grows
