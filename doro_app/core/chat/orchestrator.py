@@ -31,11 +31,7 @@ from ..web import (
 )
 from ..llm import LlmTarget, ask_structured, character_reply_model, compose_system
 from ..web.runtime import WebRuntime
-from .chat import (
-    build_messages_for_mistral_instruct,
-    perform_chat_request,
-    resolve_chat_endpoint,
-)
+from ..web.web_actions import WebStep
 from .controller import ChatController
 from .presentation import character_instructions, parse_character_reply
 
@@ -76,13 +72,12 @@ _LEADING_BARE_STATE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]{0,23})\s+")
 # 只會是狀態字或引用標記；只有剛好是已知狀態 key 時才拆掉。
 _LEADING_BRACKET_STATE_RE = re.compile(r"^\s*[\[{<【]\s*([^\[\]{}<>【】\n]{1,24})\s*[\]}>】]\s*")
 
-# 操作網頁專用的系統提示。**刻意不用 doro 的角色提示詞**——那份提示白名單只准
-# [MOVE]/[mouse:click]/[read:]，等於禁掉 [web:...]，會讓模型不敢下操作動作。
-_OPERATION_SYSTEM_PROMPT = (
-    "你是桌面寵物 doro，正在幫使用者操作網頁瀏覽器。"
-    "每一步我會給你目前頁面的狀況，你就回覆『一個』下一步動作，格式是 [web:...]（例如 "
-    "[web:goto;url=...]、[web:click;n=編號]、[web:type;n=編號;text=文字]、[web:done]）。"
-    "可以用 doro 活潑可愛的口氣講一句話，但一定要照格式附上那個動作，不要只聊天不做事。"
+# 網站操作的任務說明（ADR 0005）。回覆是工具決策（WebStep），嚴格驗證；
+# 人設只影響 line 的口氣，不帶聊天規則（那份白名單不含網站操作）。
+_OPERATION_TASK = (
+    "你正在幫使用者操作網頁瀏覽器。每一步我會給你目前頁面的狀況，"
+    "你就決定『一個』下一步 action 並填好它需要的參數。"
+    "line 可以用 doro 活潑可愛的口氣講一句話，但一定要給 action，不要只聊天不做事。"
 )
 
 # 查證的任務說明（ADR 0005）：人設與回覆格式由共用層附上，允許多行、誠實的比對答覆。
@@ -687,45 +682,33 @@ class ChatOrchestrator(QtCore.QObject):
 
         logger.info(f"開始網頁操作任務：{goal}")
         runtime = self._ensure_web_runtime()
-        self._capture_character_prompt()
+        ask = self._make_operation_ask()
         self._operating = True
         self._awaiting_confirm = False
         self.bubble_text_requested.emit(
             "好，doro開始幫你操作囉～（想喊卡就打「停」）", {"auto_hide": False}
         )
         self.busy_cursor_requested.emit(True)
-        runtime.submit_operation(goal, self._operation_ask_llm)
+        runtime.submit_operation(goal, ask)
         return True
 
-    def _web_llm(self, system_prompt: str, prompt: str) -> str:
-        """網頁任務用的同步 LLM 呼叫（在 WebRuntime 執行緒上跑）。
-
-        隔離規則：用 doro 既有的聊天設定（模型/伺服器/金鑰），但帶各自的系統提示、
-        **不掛 a11y 前景視窗樹**，避免混淆。
-        """
-        settings = self._controller.settings
-        endpoint = resolve_chat_endpoint(settings.server_url, settings.endpoint_path)
-        if not endpoint:
-            return ""
-        messages = build_messages_for_mistral_instruct(
-            system_prompt + self._web_character_prompt, prompt
+    def _make_operation_ask(self) -> Callable[[str], WebStep | None]:
+        """Freeze settings on the GUI thread; the returned function runs on the
+        WebRuntime thread and returns a validated next step (工具決策) or None."""
+        settings = self.settings
+        target = LlmTarget.from_settings(
+            settings, max_tokens=max(int(settings.max_tokens), WEB_ANSWER_MAX_TOKENS)
         )
-        payload = {
-            "model": settings.model,
-            "messages": messages,
-            "temperature": settings.temperature,
-            "max_tokens": max(int(settings.max_tokens), WEB_ANSWER_MAX_TOKENS),
-        }
-        # LLM 原始回傳的除錯印出，已統一在 perform_chat_request（DORO_WEB_DEBUG）。
-        text, err = perform_chat_request(
-            endpoint, payload, int(settings.timeout_seconds), settings.api_key
-        )
-        if err:
-            logger.warning(f"網頁 LLM 呼叫失敗：{err}")
-        return text or ""
+        system = compose_system(settings.system_prompt, _OPERATION_TASK, WebStep)
 
-    def _operation_ask_llm(self, prompt: str) -> str:
-        return self._web_llm(_OPERATION_SYSTEM_PROMPT, prompt)
+        def ask(prompt: str) -> WebStep | None:
+            # 工具決策嚴格：附錯誤重問一次，仍不合格就交給操作循環停手（ADR 0005）。
+            result = ask_structured(target, system, prompt, WebStep, retries=1)
+            if result.error:
+                logger.warning(f"網站操作 LLM 沒有合格的下一步：{result.error}")
+            return result.value
+
+        return ask
 
     def _handle_message_while_operating(self, user_message: str) -> bool:
         """操作進行中收到訊息：只認「停/取消」與「好/不要」確認。"""

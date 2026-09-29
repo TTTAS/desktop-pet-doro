@@ -1,10 +1,10 @@
-"""網頁操作（第 3 層）的「動作指令」解析 + 安全分級。
+"""網頁操作（第 3 層）的「動作指令」+ 安全分級。
 
-doro 操作網頁的方式，沿用牠既有的「動作標記」慣例（像 `[move:...]`、
-`[mouse:click]`）：模型看完目前頁面後，吐一個 `[web:...]` 指令，doro 執行、再把
-新頁面回報給模型，一步一步做。
+模型看完目前頁面後，回一個 :class:`WebStep`（工具決策，ADR 0005，由共用層驗證），
+轉成 :class:`WebAction` 執行，再把新頁面回報給模型，一步一步做。
 
-支援的指令（一次一個）：
+``WebAction.raw`` 與 :func:`parse_web_action` 仍用下列文字寫法，供歷史紀錄、
+除錯與測試建構動作（一次一個）：
 - ``[web:goto;url=網址]``      打開網址
 - ``[web:click;n=編號]``       點畫面上第 n 個可點元件（編號來自 snapshot）
 - ``[web:type;n=編號;text=文字]`` 在第 n 個輸入框打字
@@ -21,6 +21,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ..llm.zh import to_traditional
 
 # 「送出類 / 不可逆」關鍵字：點到名稱含這些字的按鈕，或按 Enter，都要先問使用者。
 COMMIT_KEYWORDS = (
@@ -102,6 +107,74 @@ class WebAction:
             return int(str(n).strip())
         except ValueError:
             return None
+
+
+# 每種動作必填的參數。
+_REQUIRED_PARAMS = {
+    "goto": ("url",),
+    "click": ("n",),
+    "type": ("n", "text"),
+    "press": ("key",),
+    "scroll": ("dir",),
+}
+
+
+class WebStep(BaseModel):
+    """工具決策：網站操作的下一步（ADR 0005）。
+
+    與角色回覆相反，這裡**不容錯**：缺參數、網址不是 http(s) 就整個不合格，
+    交給共用層附錯誤重問；仍不合格就停止操作，絕不猜著執行。
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    action: Literal["goto", "click", "type", "press", "scroll", "back", "done"] = Field(
+        description=(
+            "下一步：goto 開網址、click 點元件、type 在輸入框打字、press 按鍵、"
+            "scroll 捲動、back 上一頁、done 目標已達成或卡住而收尾"
+        )
+    )
+    url: str | None = Field(default=None, description="goto 要開的完整網址（http 或 https）")
+    n: int | None = Field(default=None, description="click／type 的元件編號，只能用頁面列出的")
+    text: str | None = Field(default=None, description="type 要輸入的文字")
+    key: str | None = Field(default=None, description="press 的按鍵，例如 Enter、Tab、Escape")
+    dir: Literal["up", "down"] | None = Field(default=None, description="scroll 的方向")
+    line: str = Field(
+        default="",
+        description="doro 對使用者說的一句話（繁體中文）；done 時必填，老實說結果或卡在哪",
+    )
+
+    @field_validator("line", mode="after")
+    @classmethod
+    def _traditional_line(cls, value: str) -> str:
+        return to_traditional(value.strip())
+
+    @model_validator(mode="after")
+    def _params_match_action(self):
+        missing = [
+            name
+            for name in _REQUIRED_PARAMS.get(self.action, ())
+            if getattr(self, name) in (None, "")
+        ]
+        if missing:
+            raise ValueError(f"{self.action} 需要 {'、'.join(missing)}")
+        if self.action == "goto" and not self.url.strip().lower().startswith(
+            ("http://", "https://")
+        ):
+            raise ValueError("goto 的 url 必須是 http 或 https 開頭的完整網址")
+        if self.action == "done" and not self.line:
+            raise ValueError("done 時 line 必須說明結果")
+        return self
+
+    def to_action(self) -> WebAction:
+        """轉成既有的 :class:`WebAction`，沿用安全分級與執行路徑。"""
+        params = {
+            name: str(getattr(self, name)).strip()
+            for name in ("url", "n", "text", "key", "dir")
+            if getattr(self, name) is not None
+        }
+        raw = "[web:" + ";".join([self.action, *(f"{k}={v}" for k, v in params.items())]) + "]"
+        return WebAction(verb=self.action, params=params, raw=raw)
 
 
 def parse_web_action(text: str) -> WebAction | None:

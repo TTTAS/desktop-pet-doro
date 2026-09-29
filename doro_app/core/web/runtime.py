@@ -21,7 +21,8 @@ _SHUTDOWN = object()
 DEFAULT_IDLE_CLOSE_SECONDS = 300
 DEFAULT_CONFIRM_TIMEOUT_SECONDS = 300
 
-AskLLM = Callable[[str], str]
+# 驗證過的回覆或 None（ADR 0005）：操作拿 WebStep，查證拿角色回覆。
+AskLLM = Callable[[str], object]
 
 
 class WebRuntime(QtCore.QObject):
@@ -85,9 +86,7 @@ class WebRuntime(QtCore.QObject):
         self._cancel.clear()
         self._queue.put(lambda: self._do_operation(goal, ask_llm))
 
-    def submit_verify(
-        self, request_id: str, query: str, ask_llm: Callable[[str], object], search_provider
-    ) -> None:
+    def submit_verify(self, request_id: str, query: str, ask_llm: AskLLM, search_provider) -> None:
         self._queue.put(lambda: self._do_verify(request_id, query, ask_llm, search_provider))
 
     def provide_confirm(self, yes: bool) -> None:
