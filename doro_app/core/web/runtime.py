@@ -21,7 +21,8 @@ _SHUTDOWN = object()
 DEFAULT_IDLE_CLOSE_SECONDS = 300
 DEFAULT_CONFIRM_TIMEOUT_SECONDS = 300
 
-AskLLM = Callable[[str], str]
+# 驗證過的回覆或 None（ADR 0005）：操作拿 WebStep，查證拿角色回覆。
+AskLLM = Callable[[str], object]
 
 
 class WebRuntime(QtCore.QObject):
@@ -32,7 +33,7 @@ class WebRuntime(QtCore.QObject):
     op_finished = QtCore.Signal()
     login_done = QtCore.Signal(str, bool, str)
     verify_progress = QtCore.Signal(str)
-    verify_finished = QtCore.Signal(str, str)
+    verify_finished = QtCore.Signal(str, object)  # request_id, 字串或角色回覆
 
     def __init__(
         self,

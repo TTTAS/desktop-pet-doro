@@ -100,3 +100,41 @@ class TestNeedsConfirmation:
 
     def test_click_missing_index_needs_confirm(self):
         assert needs_confirmation(WebAction(verb="click", params={}), {}) is True
+
+
+class TestWebStep:
+    """工具決策不容錯：缺參數或網址不合格就整個不合格（ADR 0005）。"""
+
+    def test_valid_step_becomes_web_action(self):
+        from doro_app.core.web.web_actions import WebStep
+
+        action = WebStep(action="type", n=2, text="藍牙耳機").to_action()
+        assert (action.verb, action.index(), action.params["text"]) == ("type", 2, "藍牙耳機")
+        assert action.raw == "[web:type;n=2;text=藍牙耳機]"
+
+    def test_missing_params_or_bad_url_are_rejected(self):
+        import pytest
+        from pydantic import ValidationError
+
+        from doro_app.core.web.web_actions import WebStep
+
+        for bad in (
+            {"action": "click"},
+            {"action": "type", "n": 1},
+            {"action": "press"},
+            {"action": "scroll"},
+            {"action": "goto", "url": "bing.com"},
+            {"action": "done", "line": " "},
+            {"action": "explode"},
+        ):
+            with pytest.raises(ValidationError):
+                WebStep.model_validate(bad)
+
+    def test_line_is_converted_but_typed_text_and_url_are_not(self):
+        from doro_app.core.web.web_actions import WebStep
+
+        typed = WebStep(action="type", n=0, text="简体输入", line="点击这里")
+        assert typed.line == "點選這裡"
+        assert typed.text == "简体输入"
+        goto = WebStep(action="goto", url="https://example.cn/搜索")
+        assert goto.url == "https://example.cn/搜索"

@@ -5,6 +5,9 @@ description = "Desktop pet application with state management and chat functional
 requires-python = ">=3.10"
 dependencies = [
     "PySide6>=6.5.0",
+    # 結構化回覆與繁體轉換（ADR 0005）
+    "pydantic>=2.6",
+    "opencc-python-reimplemented>=0.1.7",
 ]
 
 [project.optional-dependencies]

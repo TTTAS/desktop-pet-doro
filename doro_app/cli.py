@@ -7,8 +7,10 @@ import sys
 
 
 def run_chat_test(message: str | None) -> int:
-    from .core.chat.chat import perform_chat_request, resolve_chat_endpoint
-    from .utils.actions import parse_actions_from_text
+    """Send one chat request through the same structured path the app uses."""
+    from .core.chat.chat_reply import CHAT_TASK, chat_reply_model
+    from .core.llm import LlmTarget, ask_structured, compose_system
+    from .core.llm.transport import resolve_chat_endpoint
     from .utils.config_manager import ConfigManager
     from .utils.paths import PROMPT_PATH
     from .utils.prompts import load_prompt_text
@@ -18,52 +20,40 @@ def run_chat_test(message: str | None) -> int:
         print("Chat test aborted: message is empty.")
         return 1
 
-    prompt_path = PROMPT_PATH
-    system_prompt = load_prompt_text(prompt_path)
-
-    config_manager = ConfigManager()
-    server_url = config_manager.chat.server_url
-    model = config_manager.chat.model
-    endpoint_path = config_manager.chat.endpoint_path
-    timeout_seconds = config_manager.chat.timeout_seconds
-    temperature = config_manager.chat.temperature
-
-    endpoint_url = resolve_chat_endpoint(server_url, endpoint_path)
+    chat = ConfigManager().chat
+    endpoint_url = resolve_chat_endpoint(chat.server_url, chat.endpoint_path)
     if not endpoint_url:
         print("Chat test failed: chat server URL is not configured.")
         return 1
 
-    messages: list[dict[str, str]] = []
-    system_prompt = (system_prompt or "").strip()
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": test_message})
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-
-    assistant_text, error_message = perform_chat_request(
-        endpoint_url,
-        payload,
-        timeout_seconds,
+    target = LlmTarget(
+        endpoint=endpoint_url,
+        model=chat.model,
+        api_key=chat.api_key,
+        timeout_seconds=chat.timeout_seconds,
+        temperature=chat.temperature,
+        max_tokens=chat.max_tokens,
+        mode=chat.structured_mode,
     )
-    if error_message:
-        print(f"Chat test failed: {error_message}")
+    # No state service here, so the schema accepts any state text.
+    reply_model = chat_reply_model([])
+    system = compose_system(load_prompt_text(PROMPT_PATH), CHAT_TASK, reply_model)
+    result = ask_structured(target, system, test_message, reply_model, retries=chat.max_retries)
+    if result.error:
+        print(f"Chat test failed: {result.error}")
+        if result.raw:
+            print(f"Raw reply: {result.raw}")
         return 1
 
+    reply = result.value
     print("Chat test succeeded.")
-    if assistant_text:
-        display_text, actions = parse_actions_from_text(assistant_text)
-        if actions:
-            printable = [f"{kind}:{token}" for kind, token in actions]
-            print(f"Recognized actions: {', '.join(printable)}")
-        if display_text:
-            print(f"Assistant: {display_text}")
-        else:
-            print("Assistant response contained only action trigger(s).")
+    print(f"Assistant: {reply.line}")
+    if reply.state:
+        print(f"State: {reply.state}")
+    if reply.move is not None:
+        print(f"Move: {reply.move.movement_token()}")
+    if reply.tool is not None:
+        print(f"Tool: {reply.tool.model_dump(exclude_none=True)}")
     return 0
 
 

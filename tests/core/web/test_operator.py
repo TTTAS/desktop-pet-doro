@@ -8,6 +8,16 @@ from doro_app.core.web.operator import (
     looks_like_login_wall,
 )
 from doro_app.core.web.session import PageView
+from doro_app.core.web.web_actions import WebStep
+
+
+def step(action, **params):
+    """A validated next step, as the structured layer would return it."""
+    return WebStep(action=action, **params)
+
+
+def done(line="好了～"):
+    return step("done", line=line)
 
 
 class FakeSession:
@@ -39,7 +49,7 @@ class FakeLLM:
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
-        return self._replies.pop(0) if self._replies else "(狀態) 好了～ [web:done]"
+        return self._replies.pop(0) if self._replies else done()
 
 
 def _view(elements=None, text="頁面內容"):
@@ -48,7 +58,7 @@ def _view(elements=None, text="頁面內容"):
 
 def test_safe_action_then_done():
     session = FakeSession([_view()])
-    llm = FakeLLM(["[web:scroll;dir=down]", "(高興) 看完囉～ [web:done]"])
+    llm = FakeLLM([step("scroll", dir="down"), done("看完囉～")])
     confirms, emits = [], []
     op = WebOperator(session, llm, lambda d: confirms.append(d) or True, emits.append)
 
@@ -63,7 +73,7 @@ def test_safe_action_then_done():
 def test_commit_action_asks_and_proceeds_on_yes():
     elements = [{"idx": 0, "tag": "button", "name": "送出訂單"}]
     session = FakeSession([_view(elements)])
-    llm = FakeLLM(["[web:click;n=0]", "(高興) 送出好囉～ [web:done]"])
+    llm = FakeLLM([step("click", n=0), done("送出好囉～")])
     confirms = []
     op = WebOperator(session, llm, lambda d: confirms.append(d) or True, lambda t: None)
 
@@ -77,7 +87,7 @@ def test_commit_action_asks_and_proceeds_on_yes():
 def test_commit_action_aborts_on_no():
     elements = [{"idx": 0, "tag": "button", "name": "購買"}]
     session = FakeSession([_view(elements)])
-    llm = FakeLLM(["[web:click;n=0]"])
+    llm = FakeLLM([step("click", n=0)])
     emits = []
     op = WebOperator(session, llm, lambda d: False, emits.append)
 
@@ -89,7 +99,7 @@ def test_commit_action_aborts_on_no():
 
 def test_ensure_open_error_stops_early():
     session = FakeSession([_view()], open_err="沒裝瀏覽器")
-    llm = FakeLLM(["[web:scroll;dir=down]"])
+    llm = FakeLLM([step("scroll", dir="down")])
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append)
 
@@ -101,7 +111,7 @@ def test_ensure_open_error_stops_early():
 
 def test_snapshot_error_stops():
     session = FakeSession([PageView(error="讀不到頁面")])
-    llm = FakeLLM(["[web:done]"])
+    llm = FakeLLM([done()])
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append)
 
@@ -113,7 +123,7 @@ def test_snapshot_error_stops():
 def test_max_steps_cap():
     session = FakeSession([_view()])
     # 一直給安全動作、永遠不 done
-    llm = FakeLLM(["[web:scroll;dir=down]"] * 50)
+    llm = FakeLLM([step("scroll", dir="down")] * 50)
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append, max_steps=5)
 
@@ -125,7 +135,7 @@ def test_max_steps_cap():
 
 def test_cancel_stops_between_steps():
     session = FakeSession([_view()])
-    llm = FakeLLM(["[web:scroll;dir=down]"] * 50)
+    llm = FakeLLM([step("scroll", dir="down")] * 50)
     emits = []
 
     # Cancellation is state, not a counter of how often safety is checked.
@@ -139,15 +149,15 @@ def test_cancel_stops_between_steps():
     assert "停下來" in emits[-1]
 
 
-def test_bare_url_treated_as_goto():
+def test_unusable_decision_stops_without_acting():
+    # 工具決策嚴格：共用層重問後仍不合格（None）→ 停手，不猜著執行
     session = FakeSession([_view()])
-    # 模型忘了包 [web:goto]，只丟網址；下一步就收工
-    llm = FakeLLM(["我先去 https://www.google.com/search?q=doro 看看", "(高) 找到了～ [web:done]"])
-    op = WebOperator(session, llm, lambda d: True, lambda t: None)
+    llm = FakeLLM([None])
+    emits = []
+    op = WebOperator(session, llm, lambda d: True, emits.append)
     op.run("搜尋 doro")
-    assert len(session.executed) == 1
-    assert session.executed[0].verb == "goto"
-    assert "google.com/search" in session.executed[0].params["url"]
+    assert session.executed == []
+    assert "停下來" in emits[-1]
 
 
 def test_captcha_detection():
@@ -160,7 +170,7 @@ def test_captcha_detection():
 def test_captcha_pauses_and_asks_user():
     # 碰到驗證 → 暫停問使用者（不亂點、不問 AI）
     session = FakeSession([_view(text="請完成人機驗證，我不是機器人")])
-    llm = FakeLLM(["[web:click;n=0]"] * 5)
+    llm = FakeLLM([step("click", n=0)] * 5)
     confirms, emits = [], []
     # 使用者回「不要」→ 放棄
     op = WebOperator(session, llm, lambda d: (confirms.append(d), False)[1], emits.append)
@@ -176,7 +186,7 @@ def test_captcha_resume_after_user_handles():
     captcha = PageView(url="https://x", title="reCAPTCHA", text="verify", elements=[])
     clean = _view(elements=[{"idx": 0, "tag": "a", "name": "連結"}])
     session = FakeSession([captcha, clean])
-    llm = FakeLLM(["[web:scroll;dir=down]", "(高) 好了～ [web:done]"])
+    llm = FakeLLM([step("scroll", dir="down"), done()])
     confirms = []
     op = WebOperator(session, llm, lambda d: (confirms.append(d), True)[1], lambda t: None)
     op.run("測試")
@@ -187,7 +197,7 @@ def test_captcha_resume_after_user_handles():
 def test_repeated_same_page_goto_stops():
     # 模型一直叫 doro 開「已經在的同一頁」→ 提醒數次仍不聽 → 停手
     session = FakeSession([_view()])  # view.url = https://a.test
-    llm = FakeLLM(["[web:goto;url=https://a.test]"] * 10)
+    llm = FakeLLM([step("goto", url="https://a.test")] * 10)
     emits = []
     op = WebOperator(session, llm, lambda d: True, emits.append)
     op.run("打轉測試")
@@ -201,9 +211,9 @@ def test_self_recovers_from_repeat_after_nudge():
     session = FakeSession([_view(elements)])  # url=https://a.test
     llm = FakeLLM(
         [
-            "[web:goto;url=https://a.test]",  # 重複目前頁 → 提醒、跳過
-            "[web:click;n=0]",  # 換了動作 → 執行
-            "(高) 好了～ [web:done]",
+            step("goto", url="https://a.test"),  # 重複目前頁 → 提醒、跳過
+            step("click", n=0),  # 換了動作 → 執行
+            done(),
         ]
     )
     emits = []
@@ -211,17 +221,6 @@ def test_self_recovers_from_repeat_after_nudge():
     op.run("脫困測試")
     assert [a.verb for a in session.executed] == ["click"]  # 只執行了換過的動作
     assert emits[-1] == "好了～"  # 正常收尾、沒放棄
-
-
-def test_bare_url_same_as_current_not_reopened():
-    # 模型只是聊天、句子裡的網址就是目前這頁 → 不要當成 goto 重開
-    session = FakeSession([_view()])
-    llm = FakeLLM(
-        ["(高) 我在 https://a.test 這裡看看～", "(高) 好了～ [web:done]"]  # 沒動作、網址=目前頁
-    )
-    op = WebOperator(session, llm, lambda d: True, lambda t: None)
-    op.run("看看")
-    assert session.executed == []  # 沒有重開同一頁
 
 
 def test_login_wall_detection():
@@ -244,7 +243,7 @@ def test_login_wall_detection():
 
 def test_login_wall_pauses_and_asks_user():
     session = FakeSession([_view(text="看起來您尚未登入。請登入以繼續")])
-    llm = FakeLLM(["[web:click;n=0]"] * 5)
+    llm = FakeLLM([step("click", n=0)] * 5)
     confirms, emits = [], []
     op = WebOperator(session, llm, lambda d: (confirms.append(d), False)[1], emits.append)
     op.run("幫我在蝦皮找藍牙耳機")

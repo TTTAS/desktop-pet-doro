@@ -8,8 +8,8 @@
 
 - ``session``：一個像 :class:`~doro_app.core.web.session.WebSession` 的物件
   （``ensure_open`` / ``snapshot`` / ``execute``）。
-- ``ask_llm(prompt) -> str``：把提示丟給模型、拿回一段文字（正式接線時就是同步呼叫
-  聊天伺服器；測試時是假的）。
+- ``ask_step(prompt) -> WebStep | None``：把提示丟給模型、拿回驗證過的下一步
+  （工具決策，ADR 0005）；模型回不出合格格式就是 ``None``，循環會停手。
 - ``confirm(desc) -> bool``：送出類動作前問使用者、等他回覆（正式接線時會橋接到聊天
   「打字回覆好/不要」；測試時是假的）。
 - ``emit(text)``：把進度／最終結果顯示出來（正式接線時是泡泡框）。
@@ -21,13 +21,12 @@
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Callable
 from typing import Protocol
 
 from ...utils.logger import get_logger
 from .session import PageView
-from .web_actions import WebAction, needs_confirmation, parse_web_action
+from .web_actions import WebAction, WebStep, needs_confirmation
 
 logger = get_logger(__name__)
 
@@ -58,10 +57,6 @@ def _short_url(url: str) -> str:
     u = (url or "").strip()
     return u if len(u) <= _MAX_URL_LEN else u[:_MAX_URL_LEN] + "…"
 
-
-_TOKEN_RE = re.compile(r"[\[\(][^\[\]\(\)]*[\]\)]")
-# 保險用：模型只丟了網址、忘了包成 [web:goto]，也認得出來去開。
-_BARE_URL_RE = re.compile(r"https?://[^\s\]）)」』]+", re.IGNORECASE)
 
 # 人機驗證（CAPTCHA）/ 機器人偵測 的特徵字。碰到這些 doro 要停手交給人——
 # 安全底線：doro 不解驗證碼、不繞過機器人偵測。
@@ -155,7 +150,7 @@ class SessionLike(Protocol):
     def execute(self, action: WebAction) -> str | None: ...
 
 
-AskLLM = Callable[[str], str]
+AskStep = Callable[[str], WebStep | None]
 Confirm = Callable[[str], bool]
 Emit = Callable[[str], None]
 
@@ -170,12 +165,6 @@ def describe_action(action: WebAction, element_names: dict[int, str]) -> str:
         target = f"「{name}」" if name else f"第 {idx} 個元件"
         return f"點擊 {target}"
     return f"執行 {action.verb}"
-
-
-def _clean_final(reply: str) -> str:
-    """從模型的收尾回覆抽出要顯示的對話（去掉 [web:...]、(狀態) 等標記）。"""
-    cleaned = _TOKEN_RE.sub("", reply or "")
-    return cleaned.strip()
 
 
 def build_operate_prompt(
@@ -220,38 +209,25 @@ def build_operate_prompt(
             lines.append(f"  - {h}")
 
     lines.append("")
-    lines.append(
-        f"這是第 {step + 1} / {max_steps} 步。請只輸出「一個」下一步動作，格式如下（擇一）："
-    )
-    lines.append("  [web:goto;url=網址]        打開某網址")
-    lines.append("  [web:click;n=編號]         點某個元件")
-    lines.append("  [web:type;n=編號;text=文字] 在某輸入框打字")
-    lines.append("  [web:press;key=Enter]      按鍵（Enter/Tab/Escape）")
-    lines.append("  [web:scroll;dir=down]      往下捲（或 up）")
-    lines.append("  [web:back]                 回上一頁")
-    lines.append("  [web:done]                 目標已達成，並用一句話告訴使用者結果")
+    lines.append(f"這是第 {step + 1} / {max_steps} 步。請只決定「一個」下一步 action。")
     lines.append("")
     lines.append("重要：")
-    lines.append(
-        "- 你【一定】要輸出一個上面的 [web:...] 動作來推進，除非真的完成了才用 [web:done]。"
-    )
-    lines.append(
-        "- 如果現在是空白頁 / 還沒開始，第一步幾乎一定是 [web:goto;url=...] 打開要用的網站。"
-    )
+    lines.append("- 你【一定】要給一個 action 來推進，除非真的完成了才用 done。")
+    lines.append("- 如果現在是空白頁 / 還沒開始，第一步幾乎一定是 goto 打開要用的網站。")
     lines.append("- 要用搜尋引擎，就直接開搜尋結果頁。優先用 Bing（比較不會跳人機驗證）：")
     lines.append(
-        "  [web:goto;url=https://www.bing.com/search?q=關鍵字]（關鍵字換成要搜尋的內容，空白用 + 連接）"
+        "  goto https://www.bing.com/search?q=關鍵字（關鍵字換成要搜尋的內容，空白用 + 連接）"
     )
     lines.append(
         "- 在搜尋結果頁只點『真正的外部網站結果連結』（通常是標題連結）；不要點圖片結果、相關搜尋、篩選或廣告，"
         "也不要點會停在 bing.com 自己頁面的東西（例如圖片檢視），那會卡住。"
     )
-    lines.append("- 一次只給一個動作；用純文字不要 Markdown；編號只能用上面列出的。")
+    lines.append("- 一次只給一個動作；line 用純文字不要 Markdown；編號只能用上面列出的。")
     lines.append(
-        "- 【誠實很重要】用 [web:done] 收尾前，先確認頁面上『真的』出現了目標結果"
+        "- 【誠實很重要】用 done 收尾前，先確認頁面上『真的』出現了目標結果"
         "（例如真的看到搜尋結果清單、真的完成了那件事）。如果現在是登入頁、驗證頁、"
-        "錯誤頁、或根本沒看到預期結果，就【不要謊稱成功】——用一句話老實說卡在哪"
-        "（例如「被要求登入」「沒找到結果」），再 [web:done]。"
+        "錯誤頁、或根本沒看到預期結果，就【不要謊稱成功】——在 line 老實說卡在哪"
+        "（例如「被要求登入」「沒找到結果」），再 done。"
     )
     return "\n".join(lines)
 
@@ -262,7 +238,7 @@ class WebOperator:
     def __init__(
         self,
         session: SessionLike,
-        ask_llm: AskLLM,
+        ask_step: AskStep,
         confirm: Confirm,
         emit: Emit,
         *,
@@ -271,7 +247,7 @@ class WebOperator:
         emit_reply: Emit | None = None,
     ) -> None:
         self._session = session
-        self._ask_llm = ask_llm
+        self._ask_step = ask_step
         self._confirm = confirm
         self._emit = emit
         self._max_steps = max(1, int(max_steps))
@@ -339,26 +315,24 @@ class WebOperator:
             prompt = build_operate_prompt(
                 goal, view, history, step=step, max_steps=self._max_steps, warning=warning
             )
-            reply = self._ask_llm(prompt) or ""
+            decision = self._ask_step(prompt)
             if self._should_cancel():
                 self._emit("好，doro停下來囉～")
                 return
-            action = parse_web_action(reply)
+            if decision is None:
+                # 工具決策嚴格：重問後仍不合格就停手，不猜著執行（ADR 0005）。
+                _dbg("→ 停手：模型回不出合格的下一步")
+                self._emit("doro這一步沒想清楚，先停下來囉～人要不要換個說法再叫我一次？")
+                return
+            action = decision.to_action()
 
-            # 保險：沒包成 [web:goto]，但回覆裡有網址 → 當成 goto。但**只在網址跟
-            # 目前頁不同時**才觸發，否則模型一直聊到同一個網址會害 doro 狂重開同一頁。
-            if action is None and "done" not in reply.lower():
-                url_match = _BARE_URL_RE.search(reply)
-                if url_match and _norm_url(url_match.group(0)) != _norm_url(view.url):
-                    action = WebAction(verb="goto", params={"url": url_match.group(0)}, raw=reply)
-
-            _dbg(f"parsed action = {action.verb if action else 'none'}")
-            if action is None or action.verb == "done":
-                _dbg("→ 收尾（沒有可執行動作 / done）")
+            _dbg(f"decided action = {action.raw}")
+            if action.verb == "done":
+                _dbg("→ 收尾（done）")
                 if self._emit_reply is not None:
-                    self._emit_reply(reply or "doro這次沒拿到回答，還不能確認完成了。")
+                    self._emit_reply(decision.line)
                 else:
-                    self._emit(_clean_final(reply) or "doro這次沒拿到回答，還不能確認完成了。")
+                    self._emit(decision.line)
                 return
 
             # 防打轉：只盯 goto / click（會「狂重開同一頁 / 狂點同一顆」的兩種）。
@@ -385,8 +359,8 @@ class WebOperator:
                     return
                 warning = (
                     "你剛剛重複了同一個動作、而且沒有讓進度前進。請【務必換一個不一樣的動作】："
-                    "往下捲看更多 [web:scroll;dir=down]、點畫面上『別的』元件、回上一頁 [web:back]、"
-                    "或如果其實已經完成就用 [web:done] 收尾。千萬不要再重複剛剛那個動作。"
+                    "往下捲看更多（scroll down）、點畫面上『別的』元件、回上一頁（back）、"
+                    "或如果其實已經完成就用 done 收尾。千萬不要再重複剛剛那個動作。"
                 )
                 continue  # 這個重複動作不執行，帶著提醒重來一輪
 

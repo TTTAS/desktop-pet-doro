@@ -7,12 +7,8 @@ import pytest
 from doro_app.core.web.intent import (
     is_affirmative,
     is_stop,
-    parse_login_action,
-    parse_operate_action,
     parse_operate_command,
-    parse_read_action,
     parse_read_current_command,
-    parse_verify_action,
     parse_web_read_command,
 )
 
@@ -76,30 +72,6 @@ class TestParseWebReadCommand:
         assert parse_web_read_command(text) is not None
 
 
-class TestParseReadAction:
-    """AI 主動吐 [read:網址] 的解析（LLM 判斷路）。"""
-
-    def test_extracts_url_from_action_token(self):
-        text = "(思考) 好，doro去看看～ [read:https://example.com/article]"
-        assert parse_read_action(text) == "https://example.com/article"
-
-    def test_tolerates_spaces_and_fullwidth_colon(self):
-        assert parse_read_action("[read： https://a.test ]") == "https://a.test"
-
-    def test_case_insensitive(self):
-        assert parse_read_action("[READ:https://a.test]") == "https://a.test"
-
-    def test_no_token_returns_none(self):
-        assert parse_read_action("(開心) 嘿嘿人好呀～") is None
-
-    def test_non_http_url_not_matched(self):
-        # 只接受 http(s) 開頭，避免亂抓
-        assert parse_read_action("[read:ftp://a.test]") is None
-
-    def test_empty(self):
-        assert parse_read_action("") is None
-
-
 class TestParseOperateCommand:
     """操作只認明講（Q9=甲）。"""
 
@@ -144,52 +116,6 @@ class TestParseReadCurrentCommand:
         assert parse_read_current_command("今天天氣如何") is None
         assert parse_read_current_command("幫我操作一下") is None
         assert parse_read_current_command("") is None
-
-
-class TestParseOperateAction:
-    """AI 主動吐 [operate:目標] 才啟動網頁操作（LLM 判斷路）。"""
-
-    def test_extracts_goal(self):
-        text = "(思考) 好，doro上網幫你查～ [operate:在購物網站搜尋藍牙耳機]"
-        assert parse_operate_action(text) == "在購物網站搜尋藍牙耳機"
-
-    def test_fullwidth_colon(self):
-        assert parse_operate_action("[operate：買東西]") == "買東西"
-
-    def test_empty_goal_is_empty_string_not_none(self):
-        # 命中但目標空 → 回 ""（呼叫端會改用使用者剛剛那句）
-        assert parse_operate_action("好啊 [operate:]") == ""
-
-    def test_no_token_returns_none(self):
-        assert parse_operate_action("(開心) 幫你點書籤～ [mouse:click]") is None
-        assert parse_operate_action("") is None
-
-
-class TestParseLoginAction:
-    def test_extracts_url(self):
-        assert (
-            parse_login_action("(高) 幫你開好～ [login:https://shopee.tw]") == "https://shopee.tw"
-        )
-
-    def test_fullwidth_colon(self):
-        assert parse_login_action("[login：https://a.test]") == "https://a.test"
-
-    def test_none(self):
-        assert parse_login_action("(高) 幫你點書籤 [mouse:click]") is None
-        assert parse_login_action("[login:notaurl]") is None
-        assert parse_login_action("") is None
-
-
-class TestParseVerifyAction:
-    def test_extracts_query(self):
-        assert parse_verify_action("(高) 上網查查～ [verify:基本工資多少]") == "基本工資多少"
-
-    def test_empty_query_is_empty_string(self):
-        assert parse_verify_action("[verify:]") == ""
-
-    def test_none(self):
-        assert parse_verify_action("(高) 幫你開好 [login:https://a.tw]") is None
-        assert parse_verify_action("") is None
 
 
 class TestConfirmWords:

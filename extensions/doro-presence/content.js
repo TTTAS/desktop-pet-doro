@@ -1,7 +1,7 @@
 /* Read only: never fill, click, focus or change the document. */
 (() => {
   function snapshot() {
-    if (document.visibilityState !== 'visible' || !document.hasFocus()) return null;
+    if (document.visibilityState !== 'visible' || !document.hasFocus() || !document.body) return null;
     const excluded = 'input,textarea,select,option,[contenteditable],script,style,noscript,[hidden],[aria-hidden="true"]';
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const chunks = [];
@@ -28,17 +28,40 @@
   const MAX_WAIT_MS = 4000;
   let settleTimer = null;
   let firstChange = 0;
+  // After the extension is reloaded or updated, this copy keeps running in tabs
+  // that were already open but can no longer reach the extension:
+  // chrome.runtime.id becomes undefined and sendMessage throws synchronously
+  // ("Extension context invalidated"), which .catch() cannot see. Stop quietly;
+  // the tab gets a fresh copy when it is reloaded.
+  function alive() {
+    return Boolean(globalThis.chrome && chrome.runtime && chrome.runtime.id);
+  }
+  function retire() {
+    clearTimeout(settleTimer);
+    observer.disconnect();
+    document.removeEventListener('visibilitychange', changed);
+    window.removeEventListener('focus', changed);
+    window.removeEventListener('pageshow', changed);
+  }
+  function notify() {
+    firstChange = 0;
+    if (!alive()) return retire();
+    try {
+      chrome.runtime.sendMessage({type: 'page_changed'}).catch(() => {});
+    } catch (_error) {
+      retire();
+    }
+  }
   function changed() {
+    if (!alive()) return retire();
     if (document.visibilityState !== 'visible') return;
     const now = Date.now();
     if (!firstChange) firstChange = now;
     clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => {
-      firstChange = 0;
-      chrome.runtime.sendMessage({type: 'page_changed'}).catch(() => {});
-    }, Math.min(SETTLE_MS, Math.max(0, MAX_WAIT_MS - (now - firstChange))));
+    settleTimer = setTimeout(notify, Math.min(SETTLE_MS, Math.max(0, MAX_WAIT_MS - (now - firstChange))));
   }
-  new MutationObserver(changed).observe(document.documentElement, {
+  const observer = new MutationObserver(changed);
+  observer.observe(document.documentElement, {
     // Visibility and editable state may change without changing any text node.
     subtree: true, childList: true, characterData: true, attributes: true,
   });

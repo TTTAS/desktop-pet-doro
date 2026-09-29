@@ -380,7 +380,7 @@ def build_context_menu_content(
     ask_action.setEnabled(not snapshot.is_chat_inflight)
     ask_action.triggered.connect(callbacks.prompt_chat)
 
-    edit_prompt_action = chat_menu.addAction("Edit prompt")
+    edit_prompt_action = chat_menu.addAction("Edit persona")
     edit_prompt_action.triggered.connect(callbacks.edit_chat_prompt)
 
     clear_history_action = chat_menu.addAction("Clear conversation history")

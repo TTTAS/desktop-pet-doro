@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ...constants import (
-    CHAT_DEFAULT_HISTORY_TURNS,
-    CHAT_THREAD_CLEANUP_DELAY_MS,
-)
+from ...constants import CHAT_DEFAULT_HISTORY_TURNS
 from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
-from .chat import build_messages_for_mistral_instruct, resolve_chat_endpoint
-from .retry import ChatRetryPolicy
+from ..llm import LlmTarget, ask_structured, compose_system
+from ..llm.transport import resolve_chat_endpoint
+from .chat_reply import CHAT_TASK, WEB_ANSWER_TASK, chat_reply_model, web_answer_model
 from .settings import ChatSettings
-from .validator import ResponseValidator
 
 if TYPE_CHECKING:
     from ..state import StateService
@@ -37,7 +35,7 @@ class ChatWorkerSignals(QtCore.QObject):
     """
 
     finished = QtCore.Signal(str)  # request_id
-    result = QtCore.Signal(str, tuple)  # request_id, (assistant_text, error_message)
+    result = QtCore.Signal(str, tuple)  # request_id, (reply, error_message)
     error = QtCore.Signal(str, str)  # request_id, error_message
 
 
@@ -49,26 +47,19 @@ class ChatWorker(QtCore.QRunnable):
     Uses signals (via ChatWorkerSignals) to return results.
     """
 
-    def __init__(
-        self, request_id: str, endpoint: str, payload: dict, timeout: int, api_key: str = ""
-    ):
+    def __init__(self, request_id: str, ask: Callable[[], tuple]):
         super().__init__()
         self.request_id = request_id
-        self.endpoint = endpoint
-        self.payload = payload
-        self.timeout = timeout
-        self.api_key = api_key
+        # Pure I/O closure built on the GUI thread; returns (reply, error_message).
+        self.ask = ask
         self.signals = ChatWorkerSignals()
         self.setAutoDelete(True)  # QThreadPool will delete this after run()
 
     @QtCore.Slot()
     def run(self):
         """Execute the chat request and emit result signal."""
-        from .chat import perform_chat_request
-
         try:
-            result = perform_chat_request(self.endpoint, self.payload, self.timeout, self.api_key)
-            self.signals.result.emit(self.request_id, result)
+            self.signals.result.emit(self.request_id, self.ask())
         except Exception as e:
             logger.error(f"Worker exception: {e}", exc_info=True)
             self.signals.error.emit(self.request_id, str(e))
@@ -80,7 +71,7 @@ class ChatController(QtCore.QObject):
     """Manage chat configuration, payload building, and worker lifecycle."""
 
     request_started = QtCore.Signal(str, bool)
-    request_succeeded = QtCore.Signal(str, bool)
+    request_succeeded = QtCore.Signal(object, bool)  # validated reply, was_auto
     request_failed = QtCore.Signal(str, bool)
     request_cancelled = QtCore.Signal(str)
 
@@ -108,9 +99,6 @@ class ChatController(QtCore.QObject):
         self._doro_state_provider: TextProvider = doro_state_provider or (lambda: "")
         self._a11y_tree_provider: TextProvider = a11y_tree_provider or (lambda: "")
 
-        # Response validation
-        self._validator = ResponseValidator(state_service)
-
         # User-configurable settings live in their own module (backlog #5).
         self._settings = ChatSettings(
             config_manager=config_manager,
@@ -118,9 +106,8 @@ class ChatController(QtCore.QObject):
             parent=self,
         )
 
-        # Retry logic (counter, limit, original message, decision) lives in
-        # its own module so it has a single home (backlog #5 stage 2).
-        self._retry = ChatRetryPolicy(config_manager.chat.max_retries)
+        # 回覆格式不合時由共用層附錯誤重問（ADR 0005）；次數沿用 max_retries 設定。
+        self._max_retries = config_manager.chat.max_retries
         self._history_turns = config_manager.chat.history_turns
 
         self._history: list[dict[str, str]] = []
@@ -166,7 +153,10 @@ class ChatController(QtCore.QObject):
         *,
         is_auto: bool = False,
         max_tokens: int | None = None,
+        web_answer: bool = False,
     ) -> tuple[bool, str | None]:
+        """Start one chat request. ``web_answer`` asks for a page answer: a
+        plain character reply without ``tool`` (ADR 0004)."""
         cleaned = (user_message or "").strip()
         if not cleaned:
             logger.warning("Chat request rejected: empty message")
@@ -181,24 +171,15 @@ class ChatController(QtCore.QObject):
             logger.error("Chat request rejected: server URL not configured")
             return False, "Chat server URL is not configured."
 
-        # Seed the retry policy with the original message (no-op on retries).
-        self._retry.remember_original(cleaned)
-
-        logger.debug("Building chat payload")
+        logger.debug("Building chat request")
         # max_tokens 覆寫：讀網頁的正式答覆需要比寵物一句話更多字數，避免講到一半被砍。
-        payload = self._build_chat_payload(cleaned, max_tokens_override=max_tokens)
+        ask = self._build_request(cleaned, max_tokens_override=max_tokens, web_answer=web_answer)
 
         self._current_request_id = QtCore.QUuid.createUuid().toString()
 
         logger.debug(f"Submitting chat request to thread pool (id={self._current_request_id})")
         # Use QRunnable + QThreadPool (official PySide6 pattern)
-        worker = ChatWorker(
-            self._current_request_id,
-            endpoint,
-            payload,
-            int(self._settings.timeout_seconds),
-            self._settings.api_key,
-        )
+        worker = ChatWorker(self._current_request_id, ask)
 
         # Connect worker signals to handlers (QueuedConnection for thread safety)
         worker.signals.result.connect(
@@ -217,12 +198,7 @@ class ChatController(QtCore.QObject):
         self._last_user_message = cleaned
         self._request_is_auto = is_auto
 
-        retry_info = (
-            f" (retry {self._retry.attempt}/{self._retry.max_retries})"
-            if self._retry.attempt > 0
-            else ""
-        )
-        logger.info(f"Starting chat request{retry_info} (auto={is_auto})")
+        logger.info(f"Starting chat request (auto={is_auto}, web_answer={web_answer})")
         self.request_started.emit(cleaned, is_auto)
         return True, None
 
@@ -235,7 +211,6 @@ class ChatController(QtCore.QObject):
         # Note: QRunnable cannot be cancelled once started in QThreadPool
         # We mark it as cancelled and ignore results in handlers
         self._reset_worker_state()
-        self._retry.reset()  # terminal — clear retry state for next request
         self.request_cancelled.emit(request_id)  # emit 保存的 ID
 
     # ------------------------------------------------------------------ Worker callbacks
@@ -252,93 +227,28 @@ class ChatController(QtCore.QObject):
             self._cancelled_requests.discard(request_id)
             return
 
-        assistant_text, error_message = result
+        reply, error_message = result
 
-        if error_message:
-            self._handle_worker_error(error_message)
+        if error_message or reply is None:
+            # 網路錯誤，或重問後仍不合格式（共用層已經重問過）。
+            self._handle_worker_error(error_message or "No assistant response returned.")
             return
 
-        # A 200 response can still carry no usable text (empty content, or
-        # the parser found nothing) — perform_chat_request returns
-        # (None, None) then. Treat it as a failed request instead of calling
-        # len() on None, which would crash this slot and leave _inflight
-        # stuck until the finished-signal fallback fires.
-        if not assistant_text:
-            logger.warning("Worker returned empty assistant text; treating as no-response")
-            self._handle_worker_error("No assistant response returned.")
-            return
-
-        logger.info(f"Worker finished successfully, response length: {len(assistant_text)}")
-
-        # Validate response
-        validation = self._validator.validate(assistant_text)
-
-        if not validation.valid:
-            logger.warning(f"Response validation failed: {validation.error_message}")
-
-            # Ask the retry policy for the next attempt. It owns the counter,
-            # the limit, and the original-message preservation — so
-            # `_reset_worker_state()` below no longer needs to (and must not)
-            # touch retry state. Returns None when the failure isn't
-            # retryable or the max-retry gate has tripped.
-            retry_message = self._retry.next_retry(validation)
-            if retry_message is not None:
-                logger.info(
-                    f"Retrying request (attempt {self._retry.attempt}/{self._retry.max_retries})"
-                )
-
-                # Don't add failed response to history
-                was_auto = self._request_is_auto
-                self._reset_worker_state()
-
-                # IMPORTANT: Delay retry to let the current worker cleanup finish
-                def _delayed_retry():
-                    success, error = self.start_request(retry_message, is_auto=was_auto)
-                    if not success:
-                        logger.error(f"Retry failed to start: {error}")
-                        # Terminal: the retry never launched. Clear retry state
-                        # so it doesn't leak into the next independent request
-                        # (a stale counter would skip original-message seeding).
-                        self._retry.reset()
-                        self.request_failed.emit(
-                            f"Response validation failed and retry failed: {validation.error_message}",
-                            was_auto,
-                        )
-
-                # Wait for Qt thread cleanup before retrying
-                QtCore.QTimer.singleShot(CHAT_THREAD_CLEANUP_DELAY_MS, _delayed_retry)
-                return
-
-            # Max retries exceeded or shouldn't retry
-            logger.error(
-                f"Response validation failed after {self._retry.attempt} retries: {validation.error_message}"
-            )
-            was_auto = self._request_is_auto
-            self._reset_worker_state()
-            self._retry.reset()  # terminal — clear retry state for next request
-
-            self.request_failed.emit(
-                f"Response validation failed: {validation.error_message}",
-                was_auto,
-            )
-            return
-
-        # Validation passed
-        logger.info(
-            f"Response validation passed (state={validation.has_state}, movement={validation.has_movement}, dialogue={validation.has_dialogue})"
-        )
+        logger.info("Chat reply validated")
 
         if self._last_user_message:
             self._history.append({"role": "user", "content": self._last_user_message})
-        self._history.append({"role": "assistant", "content": assistant_text})
+        # 歷史存完整結構化回覆，讓模型看得到自己照格式回答（ADR 0005）。
+        self._history.append(
+            {"role": "assistant", "content": json.dumps(reply.model_dump(), ensure_ascii=False)}
+        )
         self._trim_history()
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
-        self._retry.reset()  # terminal — clear retry state for next request
 
         logger.debug(f"Emitting request_succeeded signal (auto={was_auto})")
-        self.request_succeeded.emit(assistant_text, was_auto)
+        self.request_succeeded.emit(reply, was_auto)
 
     @QtCore.Slot(str, str)
     def _handle_worker_exception(self, request_id: str, error_message: str):
@@ -373,7 +283,6 @@ class ChatController(QtCore.QObject):
             )
             was_auto = self._request_is_auto
             self._reset_worker_state()
-            self._retry.reset()  # terminal — clear retry state for next request
             self.request_failed.emit("Worker completed without result", was_auto)
 
     @QtCore.Slot(str)
@@ -382,17 +291,11 @@ class ChatController(QtCore.QObject):
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
-        self._retry.reset()  # terminal — clear retry state for next request
 
         logger.debug(f"Emitting request_failed signal (auto={was_auto})")
         self.request_failed.emit(error_message, was_auto)
 
     def _reset_worker_state(self):
-        # Worker/inflight bookkeeping only. Retry state is deliberately NOT
-        # cleared here — that used to zero the counter mid-retry (before the
-        # next attempt was launched), which defeated the max-retry gate and
-        # dropped the original message. Terminal paths call
-        # `self._retry.reset()` explicitly instead.
         logger.debug("Resetting worker state")
         self._inflight = False
         self._last_user_message = ""
@@ -402,59 +305,71 @@ class ChatController(QtCore.QObject):
 
     # ------------------------------------------------------------------ Payload helpers
 
-    def _build_chat_payload(
-        self, user_message: str, *, max_tokens_override: int | None = None
-    ) -> dict:
-        messages: list[dict[str, str]] = []
-        system_prompt = self._compose_system_prompt()
-        stop_tokens = self._settings.stop_tokens
-        max_stop_tokens = self._settings.max_stop_tokens
-        if max_stop_tokens > 0:
-            stop_tokens = stop_tokens[:max_stop_tokens]
-
-        if system_prompt:
-            first_entry = build_messages_for_mistral_instruct(system_prompt, user_message)
-        else:
-            first_entry = [{"role": "user", "content": user_message}]
-
-        history = copy.deepcopy(self._history)
-        messages.extend(history)
-        messages.extend(first_entry)
-
+    def _build_request(
+        self,
+        user_message: str,
+        *,
+        max_tokens_override: int | None = None,
+        web_answer: bool = False,
+    ) -> Callable[[], tuple]:
+        """Freeze everything on the GUI thread; the returned closure only does I/O."""
         max_tokens = self._settings.max_tokens
         if max_tokens_override is not None and max_tokens_override > 0:
             # 只往上取，不會意外把使用者設定的額度調小。
             max_tokens = max(max_tokens, int(max_tokens_override))
+        target = LlmTarget.from_settings(self._settings, max_tokens=max_tokens)
 
-        return {
-            "model": self._settings.model,
-            "messages": messages,
-            "temperature": self._settings.temperature,
-            "max_tokens": max_tokens,
-            "stop": stop_tokens,
-        }
+        state_keys = self._visible_state_keys()
+        if web_answer:
+            reply_model = web_answer_model(state_keys)
+            system = compose_system(self._settings.system_prompt, WEB_ANSWER_TASK, reply_model)
+        else:
+            reply_model = chat_reply_model(state_keys)
+            system = self._compose_system_prompt(reply_model)
 
-    def _compose_system_prompt(self) -> str:
-        prompt = (self._settings.system_prompt or "").strip()
-        state_list = self._safe_call_provider(self._state_text_provider)
-        placeholder = "{{STATE_LIST}}"
-        if placeholder in prompt:
-            prompt = prompt.replace(placeholder, state_list, 1)
-        elif state_list:
-            prompt = f"{prompt}\n\n{state_list}" if prompt else state_list
+        stop_tokens = self._settings.stop_tokens
+        max_stop_tokens = self._settings.max_stop_tokens
+        if max_stop_tokens > 0:
+            stop_tokens = stop_tokens[:max_stop_tokens]
+        history = copy.deepcopy(self._history)
+        retries = self._max_retries
 
-        movement_hint = self._safe_call_provider(self._movement_hint_provider)
-        if movement_hint:
-            prompt = f"{prompt}\n\n{movement_hint}" if prompt else movement_hint
+        def ask() -> tuple:
+            result = ask_structured(
+                target,
+                system,
+                user_message,
+                reply_model,
+                retries=retries,
+                history=history,
+                extra_payload={"stop": stop_tokens},
+            )
+            return result.value, result.error
 
-        doro_state = self._safe_call_provider(self._doro_state_provider)
-        if doro_state:
-            prompt = f"{prompt}\n\n{doro_state}" if prompt else doro_state
+        return ask
 
-        a11y_tree = self._safe_call_provider(self._a11y_tree_provider)
-        if a11y_tree:
-            prompt = f"{prompt}\n\n{a11y_tree}" if prompt else a11y_tree
-        return prompt
+    def _compose_system_prompt(self, reply_model=None) -> str:
+        """人設（使用者可改）＋ 聊天任務說明與當下情境 ＋ 回覆格式（程式負責）。"""
+        if reply_model is None:
+            reply_model = chat_reply_model(self._visible_state_keys())
+        task = CHAT_TASK.strip()
+        for provider in (
+            self._state_text_provider,
+            self._movement_hint_provider,
+            self._doro_state_provider,
+            self._a11y_tree_provider,
+        ):
+            block = self._safe_call_provider(provider)
+            if block:
+                task = f"{task}\n\n{block}"
+        return compose_system(self._settings.system_prompt or "", task, reply_model)
+
+    def _visible_state_keys(self) -> list[str]:
+        try:
+            return list(self._state_service.visible_state_keys())
+        except Exception as exc:
+            logger.warning(f"State keys unavailable, schema allows any state: {exc}")
+            return []
 
     def _safe_call_provider(self, provider: TextProvider) -> str:
         """

@@ -19,6 +19,9 @@ DEFAULT_CHAT_MODEL = "lmstudio"  # Default LLM model identifier
 DEFAULT_CHAT_ENDPOINT_PATH = "/v1/chat/completions"  # OpenAI-compatible API path
 DEFAULT_CHAT_API_KEY = _env("DORO_CHAT_API_KEY", "")
 DEFAULT_CHAT_MAX_RETRIES = 2  # Number of retries for failed requests
+# 結構化回覆模式：auto 先試 json_schema、伺服器拒絕就退回文字；也可手動指定。
+STRUCTURED_MODES = ("auto", "json_schema", "text")
+DEFAULT_CHAT_STRUCTURED_MODE = "auto"
 DEFAULT_CHAT_STOP_TOKENS = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
 DEFAULT_CHAT_MAX_STOP_TOKENS = 0  # 0 = no limit
 

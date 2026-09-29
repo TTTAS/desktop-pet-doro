@@ -31,6 +31,8 @@ from .config_defaults import (
     DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_ENDPOINT_PATH,
     DEFAULT_CHAT_MAX_RETRIES,
+    DEFAULT_CHAT_STRUCTURED_MODE,
+    STRUCTURED_MODES,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_SERVER_URL,
@@ -72,6 +74,9 @@ class ChatConfig:
     # History configuration
     history_turns: int = CHAT_DEFAULT_HISTORY_TURNS
 
+    # 結構化回覆模式（auto / json_schema / text）
+    structured_mode: str = DEFAULT_CHAT_STRUCTURED_MODE
+
     def __post_init__(self):
         """Validate configuration values."""
         # Validate timeout
@@ -96,6 +101,11 @@ class ChatConfig:
         if not isinstance(self.history_turns, int) or self.history_turns < 0:
             raise ValueError(
                 f"history_turns must be non-negative integer, got {self.history_turns}"
+            )
+
+        if self.structured_mode not in STRUCTURED_MODES:
+            raise ValueError(
+                f"structured_mode must be one of {STRUCTURED_MODES}, got {self.structured_mode!r}"
             )
 
     @property

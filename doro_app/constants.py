@@ -115,7 +115,6 @@ CHAT_DEFAULT_TIMEOUT_SECONDS = 30  # Request timeout in seconds
 CHAT_DEFAULT_TEMPERATURE = 0.7  # LLM temperature (creativity level)
 CHAT_DEFAULT_MAX_TOKENS = 512  # Maximum tokens per response
 CHAT_CONFIG_PERSIST_DELAY_MS = 50  # Debounce delay before saving config
-CHAT_THREAD_CLEANUP_DELAY_MS = 150  # Qt thread cleanup requires ~100-200ms
 
 # ═══════════════════════════════════════════════════════════
 # Movement Speed Constants

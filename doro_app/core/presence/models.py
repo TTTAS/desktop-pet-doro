@@ -50,8 +50,8 @@ class EventGate:
     """Coalesce while busy and remember attempted content, with no time quota.
 
     Exact normalized content is deduplicated locally. The model additionally
-    compares the last reaction and chooses SILENT when a new event means the
-    same thing. Memory capacity is a cache bound, not a speech/request limit.
+    compares the last reaction and sets ``worth_saying`` false when a new
+    event means the same thing. Memory capacity is a cache bound, not a speech/request limit.
     """
 
     def __init__(self):

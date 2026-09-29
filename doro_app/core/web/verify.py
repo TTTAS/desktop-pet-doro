@@ -74,7 +74,8 @@ class SessionLike(Protocol):
     def snapshot(self, wait_idle: bool = True) -> PageView: ...
 
 
-AskLLM = Callable[[str], str]
+# 回傳字串或已驗證的角色回覆（ADR 0005）；None／空字串代表沒有答案。
+AskLLM = Callable[[str], object]
 Emit = Callable[[str], None]
 SessionProvider = Callable[[], SessionLike]
 
@@ -125,7 +126,7 @@ def build_verify_prompt(query: str, sources: list[dict]) -> str:
         "2. 考慮各個分頁，挑相關內容，不必硬湊推薦數量。提到候選時用實際名稱，可附提供的網址，不要寫「來源1」「來源2」。"
     )
     lines.append("3. 不足就說不確定，絕不要編。")
-    lines.append("4. 純文字；開頭 (狀態)；2～4 句，約 150 字。")
+    lines.append("4. 純文字；2～4 句，約 150 字。")
     return "\n".join(lines)
 
 
@@ -147,7 +148,7 @@ class VerifyPipeline:
         session_provider: SessionProvider,
         ask_llm: AskLLM,
         emit_progress: Emit,
-        emit_final: Emit,
+        emit_final: Callable[[object], None],
         *,
         max_sources: int = DEFAULT_MAX_SOURCES,
     ) -> None:
@@ -217,12 +218,15 @@ class VerifyPipeline:
 
         _dbg(f"比對 {len(sources)} 個來源")
         try:
-            answer = self._ask_llm(build_verify_prompt(query, sources)) or ""
+            # 答覆可能是字串或已驗證的角色回覆；pipeline 只看有沒有答案。
+            answer = self._ask_llm(build_verify_prompt(query, sources))
         except Exception as exc:
             print(f"[doro verify] llm failed: {exc}", flush=True)
-            answer = ""
-        _dbg(f"answer len={len(answer)}")
-        self._final(answer.strip() or _fallback_speech(sources))
+            answer = None
+        if isinstance(answer, str):
+            answer = answer.strip()
+        _dbg(f"answer: {'yes' if answer else 'none'}")
+        self._final(answer or _fallback_speech(sources))
 
     def _emit_progress(self, text: str) -> None:
         try:

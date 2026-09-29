@@ -64,6 +64,7 @@ class ChatSettings(QtCore.QObject):
         self._max_tokens = chat.max_tokens
         self._stop_tokens = list(chat.stop_tokens)
         self._max_stop_tokens = chat.max_stop_tokens
+        self._structured_mode = chat.structured_mode
 
         self._system_prompt = load_prompt_text(prompt_path)
 
@@ -147,6 +148,15 @@ class ChatSettings(QtCore.QObject):
         self._max_tokens = max(1, int(value))
         self._schedule_persist()
 
+    @property
+    def structured_mode(self) -> str:
+        return self._structured_mode
+
+    def set_structured_mode(self, mode: str) -> None:
+        # ChatConfig 會驗證值（auto / json_schema / text）。
+        self._structured_mode = mode.strip()
+        self._schedule_persist()
+
     # ------------------------------------------------------------------ System prompt
 
     @property
@@ -182,5 +192,6 @@ class ChatSettings(QtCore.QObject):
             max_tokens=self._max_tokens,
             stop_tokens=self._stop_tokens,
             max_stop_tokens=self._max_stop_tokens,
+            structured_mode=self._structured_mode,
         )
         self._config_manager.save()

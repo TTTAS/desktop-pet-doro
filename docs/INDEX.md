@@ -20,6 +20,7 @@
 - [0002：兩層活潑](adr/0002-two-layer-liveliness.md)
 - [0003：擴充與 localhost WebSocket](adr/0003-extension-localhost-websocket.md)
 - [0004：角色回覆與網站操作](adr/0004-character-replies-and-operation-safety.md)
+- [0005：結構化回覆與提示詞分層](adr/0005-structured-llm-replies.md)
 
 ## 按需參考
 

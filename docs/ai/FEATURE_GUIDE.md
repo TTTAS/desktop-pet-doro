@@ -26,15 +26,16 @@
 ### 🌐 指令上網與分頁陪伴
 - 語彙：`CONTEXT.md`；架構與取捨：`docs/adr/`；安裝驗收：`docs/web-presence-setup.md`。
 - **指令上網**：`doro_app/core/web/`，門為 `WebRuntime`（專屬執行緒及共用 Playwright session）。
-  - `[read:網址]`：讀完回既有聊天流程；頁面回答只允許角色表現，不再觸發其他工具。
-  - `[verify:問題]`：搜尋 → 開最多三個來源頁給使用者看 → 每開一頁就讀一頁 → 比對。單頁失敗不中斷；未讀正文的搜尋文字一律帶摘要標記。Tavily / ddgs 在 `search_providers.py`。
-  - `[operate:目標]`：`WebOperator` 的看→想→確認→做循環；受操作總開關限制。`needs_confirmation` 根據名稱、表單屬性及焦點判斷。Enter 只有明確搜尋框才免問，複合／未知按鍵、未知按鈕、表單送出會問。
-  - `[login:網址]`：只開站給使用者本人登入。密碼／驗證碼不讀值、不代填。
+  - 聊天回覆的 `tool` 欄位決定要不要上網（ADR 0005，結構在 `chat/chat_reply.py`）。
+  - `read`：讀完回既有聊天流程；頁面回答的結構沒有 `tool`，只允許角色表現，不再觸發其他工具。
+  - `verify`：搜尋 → 開最多三個來源頁給使用者看 → 每開一頁就讀一頁 → 比對。單頁失敗不中斷；未讀正文的搜尋文字一律帶摘要標記。Tavily / ddgs 在 `search_providers.py`。
+  - `operate`：`WebOperator` 的看→想→確認→做循環，每一步是嚴格驗證的 `WebStep`；受操作總開關限制。`needs_confirmation` 根據名稱、表單屬性及焦點判斷。Enter 只有明確搜尋框才免問，複合／未知按鍵、未知按鈕、表單送出會問。
+  - `login`：只開站給使用者本人登入。密碼／驗證碼不讀值、不代填。
   - 取消在模型返回後及真正執行前檢查。已送到瀏覽器的單次動作不能追回。
-- **回覆與角色動作**：門為 `ChatOrchestrator.present_character_reply`，解析在 `chat/presentation.py`。讀頁／查證／操作結果與存在感皆可用合法狀態及一個方向型 MOVE；生產環境先走再說。此門永不執行 mouse/web/read/login/verify/operate。
+- **回覆與角色動作**：模型回覆都經 `core/llm` 驗證成結構（ADR 0005）。門為 `ChatOrchestrator.present_structured_reply`（純文字台詞走 `present_character_reply`）。讀頁／查證答覆與存在感的結構只有合法狀態及一個方向型 `move`，沒有 `tool`；生產環境先走再說。
 - **你正在看的分頁／存在感**：`extensions/doro-presence/` → `core/presence/bridge.py` → `PresenceController`。App 是 loopback WS server，token＋精確 extension Origin 配對；擴充只讀 active＋visible＋focused 分頁。設定入口為聊天子選單的「分頁陪伴設定」。
   - 明講「你剛開的頁」讀 Doro 分頁；分享啟用後「這頁」取擴充目前頁，沒有有效來源就說明，不混用。
-  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、LLM 可回 SILENT，忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。
+  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、模型以 `worth_saying` 做開口判斷（ADR 0005），忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。
   - 兩端預設停用；不分享輸入框或編輯內容，不提供擴充 click/type 入口。
 - 依賴：`pip install -e ".[web]"`，指令上網另需 `playwright install chromium`。缺少可選依賴不影響一般桌寵。
 - App 關閉會收掉 WebRuntime 和 PresenceController。語彙表不放這些實作細節。
@@ -42,12 +43,11 @@
 ### 🗨️ 聊天
 - 核心邏輯：`doro_app/core/chat/`
 - 門 1（GUI 用）：`ChatOrchestrator` … `doro_app/core/chat/orchestrator.py`
-- 門 2（無畫面 / CLI / 背景用）：`perform_chat_request` … `doro_app/core/chat/chat.py`
+- 門 2（無畫面 / CLI / 背景用）：`ask_structured` … `doro_app/core/llm/structured.py`（純文字呼叫仍有 `perform_chat_request`）
 - 資料夾內的房間（需要時才進去）：
-  - `controller.py`：設定、對話歷史、發問流程
-  - `retry.py`：連線失敗重試
+  - `controller.py`：設定、對話歷史（存完整結構化回覆）、發問流程
+  - `chat_reply.py`：聊天回覆結構（含 `tool`）與任務說明
   - `settings.py`：聊天設定值
-  - `validator.py`：AI 回覆內容檢查
 - 對話視窗：`doro_app/ui/dialogs/chat_dialog.py`、`chat_settings_dialog.py`
 - 背景送請求：`doro_app/utils/workers.py`
 - 設定的門：`orchestrator.settings`（一個 `ChatSettings` 物件）。要改「聊天設定怎麼讀寫、

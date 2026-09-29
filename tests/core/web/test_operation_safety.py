@@ -1,6 +1,6 @@
 from doro_app.core.web.operator import WebOperator
 from doro_app.core.web.session import PageView
-from doro_app.core.web.web_actions import needs_confirmation, parse_web_action
+from doro_app.core.web.web_actions import WebStep, needs_confirmation, parse_web_action
 
 
 class Session:
@@ -23,7 +23,7 @@ def test_cancel_during_model_does_not_execute():
 
     def ask(_):
         stopped[0] = True
-        return "[web:click;n=0]"
+        return WebStep(action="click", n=0)
 
     WebOperator(session, ask, lambda _: True, lambda _: None, should_cancel=lambda: stopped[0]).run(
         "next"
@@ -40,7 +40,7 @@ def test_cancel_after_confirmation_does_not_execute():
 
     WebOperator(
         session,
-        lambda _: "[web:click;n=0]",
+        lambda _: WebStep(action="click", n=0),
         confirm,
         lambda _: None,
         should_cancel=lambda: stopped[0],
@@ -51,7 +51,10 @@ def test_cancel_after_confirmation_does_not_execute():
 def test_password_cannot_be_filled_by_model():
     session = Session([{"idx": 0, "name": "Password", "sensitive": True}])
     WebOperator(
-        session, lambda _: "[web:type;n=0;text=FAKE_SECRET]", lambda _: True, lambda _: None
+        session,
+        lambda _: WebStep(action="type", n=0, text="FAKE_SECRET"),
+        lambda _: True,
+        lambda _: None,
     ).run("fill")
     assert session.executed == []
 
@@ -66,12 +69,12 @@ def test_unknown_and_submit_controls_require_confirmation():
         )
 
 
-def test_final_reply_retains_character_expression_for_presenter():
+def test_final_line_goes_to_the_presenter():
     replies = []
     session = Session()
-    raw = "(happy) Found it! [MOVE:dir=right;distance=80] [web:done]"
+    finish = WebStep(action="done", line="找到了！")
     WebOperator(
-        session, lambda _: raw, lambda _: True, lambda _: None, emit_reply=replies.append
+        session, lambda _: finish, lambda _: True, lambda _: None, emit_reply=replies.append
     ).run("find")
-    assert replies == [raw]
+    assert replies == ["找到了！"]
     assert session.executed == []

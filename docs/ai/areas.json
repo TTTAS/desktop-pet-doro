@@ -36,12 +36,34 @@
     "entries": [
       "doro_app/core/chat/orchestrator.py",
       "doro_app/core/chat/controller.py",
-      "doro_app/core/chat/presentation.py"
+      "doro_app/core/chat/chat_reply.py"
     ],
     "tests": [
       "tests/core/chat"
     ],
     "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現。"
+  },
+  {
+    "id": "llm",
+    "name": "模型呼叫與結構化回覆",
+    "aliases": [
+      "LLM",
+      "提示詞",
+      "回覆格式",
+      "結構化"
+    ],
+    "scope": [
+      "doro_app/core/llm/*.py"
+    ],
+    "entries": [
+      "doro_app/core/llm/structured.py",
+      "doro_app/core/llm/replies.py",
+      "doro_app/core/llm/transport.py"
+    ],
+    "tests": [
+      "tests/core/llm"
+    ],
+    "purpose": "HTTP 呼叫、人設＋任務說明＋回覆格式組合、JSON schema／文字模式偵測、驗證重問與繁體轉換。"
   },
   {
     "id": "web",
@@ -286,8 +308,7 @@
     ],
     "tests": [
       "tests/test_config_manager.py",
-      "tests/test_config_schema.py",
-      "tests/test_actions.py"
+      "tests/test_config_schema.py"
     ],
     "purpose": "設定讀寫、schema、資源定位、提示詞載入與共用解析。"
   }

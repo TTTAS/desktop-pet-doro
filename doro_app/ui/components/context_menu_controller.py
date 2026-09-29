@@ -234,12 +234,17 @@ class ContextMenuController:
         text, ok = QtWidgets.QInputDialog.getMultiLineText(
             self._window,
             "假傳伺服器回應",
-            "輸入要模擬的回應（例：(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]）：",
+            "輸入要模擬的回應 JSON（例："
+            '{"line":"幫人點～","move":{"x":180,"y":100},"tool":{"kind":"click"}}）：',
         )
         if not ok or not text.strip():
             return
         dialogue = self._core_manager.chat_orchestrator.simulate_response(text.strip())
-        if not dialogue:
+        if dialogue is None:
+            QtWidgets.QMessageBox.warning(
+                self._window, "Doro", "（這段不是合格的回覆 JSON，詳細原因在 log）"
+            )
+        elif not dialogue:
             QtWidgets.QMessageBox.information(
                 self._window, "Doro", "（這段回應只有動作／狀態指令，沒有對話）"
             )

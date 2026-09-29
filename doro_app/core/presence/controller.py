@@ -39,7 +39,7 @@ def pairing_code(port: int, token: str) -> str:
 
 class PresenceController(QtCore.QObject):
     page_received = QtCore.Signal(object)
-    result_ready = QtCore.Signal(object, int, str, bool)
+    result_ready = QtCore.Signal(object, int, object, bool)
 
     def __init__(self, orchestrator, settings_path: Path, busy, parent=None):
         super().__init__(parent)
@@ -161,7 +161,7 @@ class PresenceController(QtCore.QObject):
             event, epoch, answer = self._completed
             self._completed = None
             if epoch == self._epoch and event == self.current_page:
-                self._orchestrator.present_character_reply(
+                self._orchestrator.present_structured_reply(
                     answer,
                     should_present=lambda event=event, epoch=epoch: (
                         not self._closed
@@ -189,10 +189,10 @@ class PresenceController(QtCore.QObject):
         self._running = True
 
         def run():
-            answer, ok = "", False
+            answer, ok = None, False
             try:
-                answer = ask() or ""
-                ok = bool(answer.strip())
+                answer = ask()
+                ok = answer is not None
             except Exception as exc:
                 # Exception messages/tracebacks can contain page or credential data.
                 logger.warning("Presence model unavailable (%s)", type(exc).__name__)
@@ -205,7 +205,7 @@ class PresenceController(QtCore.QObject):
         # Only spoken replies should suppress a later, similar reaction.
         self._last_reaction = text
 
-    @QtCore.Slot(object, int, str, bool)
+    @QtCore.Slot(object, int, object, bool)
     def _on_result(self, event, epoch, answer, ok):
         self._running = False
         if self._closed:
@@ -215,7 +215,14 @@ class PresenceController(QtCore.QObject):
             self.status = "模型暫時無回應，基本陪伴繼續；下一個頁面事件再試"
         elif epoch == self._epoch and event == self.current_page:
             self.status = "分頁陪伴運作中"
-            if answer.strip() != "[SILENT]":
+            # 開口判斷記進 log，日後挑評估資料用；不記分頁內容。
+            logger.info(
+                "開口判斷 worth_saying=%s state=%s line=%s",
+                answer.worth_saying,
+                answer.state,
+                answer.line,
+            )
+            if answer.worth_saying:
                 self._completed = (event, epoch, answer)
         self._pump()
 
