@@ -301,7 +301,7 @@ class DoroApp:
             response_text,
             override_visibility=kwargs.get("override_visibility", False),
             auto_hide=kwargs.get("auto_hide", True),
-            hide_delay_ms=kwargs.get("hide_delay_ms", 6000),
+            hide_delay_ms=kwargs.get("hide_delay_ms", BUBBLE_AUTO_HIDE_MS),
         )
 
     def _on_chat_operation_started(self):

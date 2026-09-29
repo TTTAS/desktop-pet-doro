@@ -10,6 +10,14 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
+from ...constants import (
+    BUBBLE_ACTION_NEEDED_HIDE_MS,
+    BUBBLE_AUTO_HIDE_MS,
+    BUBBLE_ERROR_HIDE_MS,
+    BUBBLE_NOTICE_HIDE_MS,
+    BUBBLE_OPERATION_HIDE_MS,
+    BUBBLE_REPLY_HIDE_MS,
+)
 from ...utils.logger import get_logger
 from ...utils.paths import NETWORK_FAIL_MESSAGES_PATH
 from ..llm import (
@@ -366,12 +374,16 @@ class ChatOrchestrator(QtCore.QObject):
             self.bubble_text_requested.emit(
                 "開好囉～人自己在那個瀏覽器視窗登入一下（帳密你本人打，doro不會碰）。\n"
                 "登入狀態doro會記住，之後叫我操作就不會被擋了！登好想做什麼再跟我說～",
-                {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 30000},
+                {
+                    "override_visibility": True,
+                    "auto_hide": True,
+                    "hide_delay_ms": BUBBLE_ACTION_NEEDED_HIDE_MS,
+                },
             )
         else:
             self.bubble_text_requested.emit(
                 message or "唔…doro開不起來這個網站…",
-                {"auto_hide": True, "hide_delay_ms": 12000},
+                {"auto_hide": True, "hide_delay_ms": BUBBLE_ERROR_HIDE_MS},
             )
 
     def _begin_verify(self, query: str) -> bool:
@@ -503,7 +515,7 @@ class ChatOrchestrator(QtCore.QObject):
                 {
                     "override_visibility": True,
                     "auto_hide": True,
-                    "hide_delay_ms": 40000,
+                    "hide_delay_ms": BUBBLE_REPLY_HIDE_MS,
                 },
             )
             if on_present is not None:
@@ -563,7 +575,7 @@ class ChatOrchestrator(QtCore.QObject):
             self.busy_cursor_requested.emit(False)
             self.bubble_text_requested.emit(
                 result.error or "doro 讀不到這頁…",
-                {"auto_hide": True, "hide_delay_ms": 12000},
+                {"auto_hide": True, "hide_delay_ms": BUBBLE_ERROR_HIDE_MS},
             )
             return
 
@@ -620,7 +632,7 @@ class ChatOrchestrator(QtCore.QObject):
         if not self._web_operation_enabled():
             self.bubble_text_requested.emit(
                 "操作功能現在關著喔，去設定打開就能用～",
-                {"auto_hide": True, "hide_delay_ms": 8000},
+                {"auto_hide": True, "hide_delay_ms": BUBBLE_NOTICE_HIDE_MS},
             )
             return True
 
@@ -663,7 +675,7 @@ class ChatOrchestrator(QtCore.QObject):
                 runtime.request_cancel()
             self._awaiting_confirm = False
             self.bubble_text_requested.emit(
-                "好，doro停下來囉～", {"auto_hide": True, "hide_delay_ms": 6000}
+                "好，doro停下來囉～", {"auto_hide": True, "hide_delay_ms": BUBBLE_AUTO_HIDE_MS}
             )
             return True
         if self._awaiting_confirm:
@@ -683,7 +695,12 @@ class ChatOrchestrator(QtCore.QObject):
         if not cleaned:
             return
         self.bubble_text_requested.emit(
-            cleaned, {"override_visibility": True, "auto_hide": True, "hide_delay_ms": 20000}
+            cleaned,
+            {
+                "override_visibility": True,
+                "auto_hide": True,
+                "hide_delay_ms": BUBBLE_OPERATION_HIDE_MS,
+            },
         )
 
     @QtCore.Slot(str)
@@ -833,10 +850,10 @@ class ChatOrchestrator(QtCore.QObject):
         fallback_text = self._get_random_network_fail_message()
 
         if not was_auto:
-            # FIXED: Error messages should auto-hide after longer delay (12s instead of 6s)
+            # Error messages auto-hide after a longer delay than the default
             # Previously used auto_hide=False which broke the timer completely
             self.bubble_text_requested.emit(
-                fallback_text, {"auto_hide": True, "hide_delay_ms": 12000}
+                fallback_text, {"auto_hide": True, "hide_delay_ms": BUBBLE_ERROR_HIDE_MS}
             )
 
     # ------------------------------------------------------------------ Response processing
