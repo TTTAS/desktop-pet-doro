@@ -102,28 +102,46 @@ def test_menu_has_simulate_response_action(qtbot):
     cbs.simulate_response.assert_called_once()
 
 
+class _FakeReplyDialog:
+    """Stands in for SimulateReplyDialog so no modal loop runs."""
+
+    reply = '{"line":"幫人點～","move":{"x":180,"y":100},"tool":{"kind":"click"}}'
+    accepted = True
+
+    def __init__(self, state_keys, parent=None):
+        _FakeReplyDialog.state_keys = state_keys
+
+    def exec(self):
+        return self.accepted
+
+    def reply_json(self):
+        return self.reply if self.accepted else None
+
+
 def test_simulate_response_feeds_orchestrator(monkeypatch):
-    monkeypatch.setattr(
-        QtWidgets.QInputDialog,
-        "getMultiLineText",
-        lambda *a, **k: ("(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]", True),
-    )
+    from doro_app.ui.dialogs import simulate_reply_dialog
+
+    monkeypatch.setattr(simulate_reply_dialog, "SimulateReplyDialog", _FakeReplyDialog)
+    monkeypatch.setattr(_FakeReplyDialog, "accepted", True)
     core = Mock()
     ctrl = _make_controller(core)
+    ctrl._state_service.visible_state_keys.return_value = ["idle", "happy"]
 
     ctrl._simulate_response()
 
-    core.chat_orchestrator.simulate_response.assert_called_once_with(
-        "(walking) 幫人點～ [MOVE:to;x=180;y=100] [mouse:click]"
-    )
+    assert _FakeReplyDialog.state_keys == ["idle", "happy"]
+    core.chat_orchestrator.simulate_response.assert_called_once_with(_FakeReplyDialog.reply)
 
 
 def test_simulate_response_cancelled_does_nothing(monkeypatch):
-    monkeypatch.setattr(
-        QtWidgets.QInputDialog, "getMultiLineText", lambda *a, **k: ("ignored", False)
-    )
+    from doro_app.ui.dialogs import simulate_reply_dialog
+
+    monkeypatch.setattr(simulate_reply_dialog, "SimulateReplyDialog", _FakeReplyDialog)
+    monkeypatch.setattr(_FakeReplyDialog, "accepted", False)
     core = Mock()
-    _make_controller(core)._simulate_response()
+    ctrl = _make_controller(core)
+    ctrl._state_service.visible_state_keys.return_value = []
+    ctrl._simulate_response()
     core.chat_orchestrator.simulate_response.assert_not_called()
 
 
