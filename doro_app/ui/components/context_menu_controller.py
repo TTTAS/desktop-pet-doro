@@ -228,21 +228,21 @@ class ContextMenuController:
         QtWidgets.QMessageBox.information(win, "Doro 位置（已複製到剪貼簿）", msg)
 
     def _simulate_response(self) -> None:
-        """Prompt for a fake assistant reply and run it through the exact same
-        handling a real server reply gets (movement/state/mouse parsing), so the
+        """Fill in a fake chat reply as a form and run it through the exact same
+        handling a real server reply gets (state, move, tool, line), so the
         user can test Doro without hitting the server."""
-        text, ok = QtWidgets.QInputDialog.getMultiLineText(
-            self._window,
-            "假傳伺服器回應",
-            "輸入要模擬的回應 JSON（例："
-            '{"line":"幫人點～","move":{"x":180,"y":100},"tool":{"kind":"click"}}）：',
-        )
-        if not ok or not text.strip():
+        from ..dialogs.simulate_reply_dialog import SimulateReplyDialog
+
+        dialog = SimulateReplyDialog(list(self._state_service.visible_state_keys()), self._window)
+        if not dialog.exec():
             return
-        dialogue = self._core_manager.chat_orchestrator.simulate_response(text.strip())
+        text = dialog.reply_json()
+        if text is None:
+            return
+        dialogue = self._core_manager.chat_orchestrator.simulate_response(text)
         if dialogue is None:
             QtWidgets.QMessageBox.warning(
-                self._window, "Doro", "（這段不是合格的回覆 JSON，詳細原因在 log）"
+                self._window, "Doro", "（這段不是合格的回覆，詳細原因在 log）"
             )
         elif not dialogue:
             QtWidgets.QMessageBox.information(
