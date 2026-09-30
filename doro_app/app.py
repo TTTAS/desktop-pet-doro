@@ -29,7 +29,7 @@ from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
 from .utils.logger import get_logger
-from .utils.paths import COMPANION_PROMPTS_PATH, DRAG_DIR, STATE_DIR
+from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
 
 logger = get_logger(__name__)
 
@@ -633,9 +633,7 @@ class DoroApp:
         presence = getattr(self, "_presence", None)
         if presence is not None:
             presence.interrupt()
-        animations = sorted(
-            p for p in DRAG_DIR.glob("*") if p.suffix.lower() in {".gif", ".webp", ".apng"}
-        )
+        animations = self._action_service.list_drag_gif_paths()
         random.shuffle(animations)
         for path in animations:
             if self._sprite_controller.start_drag_animation(path):

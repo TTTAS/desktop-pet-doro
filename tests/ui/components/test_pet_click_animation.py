@@ -156,6 +156,7 @@ def test_action_card_exists_without_gif_and_editor_saves_correct_binding(
     assert {card._key for card in manager._cards if card._action_type == "action"} == {
         "click",
         "pet_click",
+        "pet_drag",
     }
     editor = EditMoveStateDialog(
         state, None, action_service=service, edit_action_key=PET_CLICK_ACTION_KEY

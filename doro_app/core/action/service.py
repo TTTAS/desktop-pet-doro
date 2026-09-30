@@ -30,6 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...utils.logger import get_logger
+from ..exceptions import GifNotFoundError, GifStorageError
 from ..state import GifRepository, StateService
 from .repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY, ActionRepository
 
@@ -48,6 +49,9 @@ CLICK_ACTION_STATE_LABEL = "Click"
 CLICK_FAILED_STATE_KEY = "click_failed"
 CLICK_FAILED_STATE_LABEL = "Click Failed"
 
+# Subfolder key inside the drag GifRepository (``res/drag/``).
+DRAG_GIF_KEY = "drag"
+
 
 class ActionService:
     """Coordinate :class:`ActionRepository` with the display state machine."""
@@ -58,11 +62,13 @@ class ActionService:
         state_service: StateService,
         gif_repo: GifRepository,
         default_idle_gif: Path | None = None,
+        drag_gif_repo: GifRepository | None = None,
     ) -> None:
         self._actions = action_repo
         self._state_service = state_service
         self._gif_repo = gif_repo
         self._default_idle_gif = default_idle_gif
+        self._drag_gif_repo = drag_gif_repo
 
     # ─── Bootstrap ─────────────────────────────────────────────────
 
@@ -216,3 +222,28 @@ class ActionService:
             return False
         self._state_service.update_state(CLICK_ACTION_STATE_KEY, gif_id=None)
         return True
+
+    # ─── Drag pool ─────────────────────────────────────────────────
+
+    def list_drag_gif_paths(self) -> list[Path]:
+        """Every animation in the drag pool; empty keeps the current sprite."""
+        if self._drag_gif_repo is None:
+            return []
+        return self._drag_gif_repo.list_gifs(DRAG_GIF_KEY)
+
+    def add_drag_gif(self, source_path: Path) -> bool:
+        """Copy *source_path* into the drag pool."""
+        if self._drag_gif_repo is None:
+            return False
+        try:
+            self._drag_gif_repo.add_gif(source_path, DRAG_GIF_KEY)
+        except (GifNotFoundError, GifStorageError) as exc:
+            logger.error(f"Failed to add drag GIF: {exc}")
+            return False
+        return True
+
+    def remove_drag_gif(self, filename: str) -> bool:
+        """Delete one file from the drag pool."""
+        if self._drag_gif_repo is None:
+            return False
+        return self._drag_gif_repo.remove_gif(DRAG_GIF_KEY, filename)

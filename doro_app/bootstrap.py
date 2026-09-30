@@ -20,6 +20,7 @@ from .utils.paths import (
     ACTION_TRANSITION_DIR,
     ACTIONS_JSON_PATH,
     CLICK_ACTIONS_PATH,
+    DRAG_DIR,
     MOVE_DIR,
     PROMPT_PATH,
     STATE_DIR,
@@ -97,6 +98,7 @@ def bootstrap_environment() -> BootstrappedDependencies:
         state_service,
         gif_repo,
         default_idle_gif=default_idle_gif,
+        drag_gif_repo=GifRepository(DRAG_DIR.parent),
     )
 
     return BootstrappedDependencies(

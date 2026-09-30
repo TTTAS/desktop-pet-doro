@@ -15,7 +15,8 @@
 
 ### 拖曳動畫
 - 入口：`ui/events/mouse_event_handler.py` 以螢幕座標判斷拖曳，發出 `drag_started`／`drag_finished`。
-- `app.py` 先取消移動及待執行點擊，再從 `res/drag/` 選動畫；`SpriteController` 透過暫時的 renderer movie 播放。
+- 設定入口：動作管理的 `pet_drag` 卡片「Doro 被拖曳時的反應」，按 GIFs 或 Edit → Manage GIFs 新增／移除多張 GIF／APNG／WebP。素材池就是 `res/drag/` 資料夾（同 TRANSITION 的多 GIF 作法），不寫入 actions.json；清單空白時保留目前外觀。
+- `app.py` 先取消移動及待執行點擊，再由 `ActionService.list_drag_gif_paths()` 隨機挑一張；`SpriteController` 透過暫時的 renderer movie 播放。
 - 這是手勢期間的顯示覆蓋，不寫入永久狀態；放開、失去抓取、視窗停用或隱藏後，恢復最新的正常／轉場素材。
 - 拖曳期間不啟動閒置動作或分頁主動回應。素材缺失時保留原角色，視窗仍可拖曳。
 - 回歸測試：`tests/ui/components/test_drag_animation.py`，包含真實 WebP 影格播放。

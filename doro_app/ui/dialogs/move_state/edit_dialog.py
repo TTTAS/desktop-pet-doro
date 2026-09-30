@@ -7,7 +7,11 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ....core.action import ActionService
-from ....core.action.repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY
+from ....core.action.repository import (
+    CLICK_ACTION_KEY,
+    PET_CLICK_ACTION_KEY,
+    PET_DRAG_ACTION_KEY,
+)
 from ....core.state import StateService, Transition
 from ...components.frameless_dialog import FramelessDialog
 from ...components.gif_player import GifPlayer
@@ -95,6 +99,7 @@ class EditMoveStateDialog(FramelessDialog):
         self.named_action_combo = QtWidgets.QComboBox()
         self.named_action_combo.addItem("Doro 幫你點畫面", CLICK_ACTION_KEY)
         self.named_action_combo.addItem("Doro 被點擊", PET_CLICK_ACTION_KEY)
+        self.named_action_combo.addItem("Doro 被拖曳", PET_DRAG_ACTION_KEY)
         self.named_action_combo.setEnabled(not self.is_edit)
         if self._edit_action_key:
             self.named_action_combo.setCurrentIndex(
@@ -225,13 +230,9 @@ class EditMoveStateDialog(FramelessDialog):
         self.to_state_label.setVisible(is_transition)
         self.to_state_combo.setVisible(is_transition)
 
-        # Show manage GIFs button only for transitions
-        self.manage_gifs_btn.setVisible(is_transition)
         self.named_action_label.setVisible(is_action)
         self.named_action_combo.setVisible(is_action)
-        self.clear_pet_gif_btn.setVisible(
-            is_action and self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY
-        )
+        self._update_gif_buttons()
 
         # Each builtin keeps its own key and asset binding.
         if is_action:
@@ -257,21 +258,32 @@ class EditMoveStateDialog(FramelessDialog):
                 "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
 
+    def _update_gif_buttons(self):
+        """Single-file actions pick one GIF; transitions and drag use the gallery."""
+        named = self.named_action_combo.currentData() if self.action_type == "action" else None
+        is_drag = named == PET_DRAG_ACTION_KEY
+        self.manage_gifs_btn.setVisible(self.action_type == "transition" or is_drag)
+        self.select_gif_btn.setVisible(not is_drag)
+        self.clear_pet_gif_btn.setVisible(named == PET_CLICK_ACTION_KEY)
+
     def _update_action_info(self):
-        is_pet = self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY
-        self.info_label.setText(
-            "點擊 Doro 本體時播放一次；拖曳不觸發。還沒準備 GIF 也可以保留空白，之後再設定。"
-            if is_pet
-            else "Doro 幫你點畫面前播放的動作；未綁定時使用站立動畫備援。"
-        )
+        action_key = self.named_action_combo.currentData()
+        if action_key == PET_CLICK_ACTION_KEY:
+            text = "點擊 Doro 本體時播放一次；拖曳不觸發。還沒準備 GIF 也可以保留空白，之後再設定。"
+        elif action_key == PET_DRAG_ACTION_KEY:
+            text = (
+                "拖曳 Doro 時從清單隨機挑一張循環播放，放開後恢復。"
+                "用 'Manage GIFs...' 新增或移除；清單空白時保留目前外觀。"
+            )
+        else:
+            text = "Doro 幫你點畫面前播放的動作；未綁定時使用站立動畫備援。"
+        self.info_label.setText(text)
 
     def _on_named_action_changed(self, _index: int):
         self.selected_gif_path = None
         self._clear_pet_click_gif = False
         self.key_edit.setText(self.named_action_combo.currentData())
-        self.clear_pet_gif_btn.setVisible(
-            self.named_action_combo.currentData() == PET_CLICK_ACTION_KEY
-        )
+        self._update_gif_buttons()
         self._update_action_info()
         self._load_action_data()
 
@@ -355,6 +367,9 @@ class EditMoveStateDialog(FramelessDialog):
         """Open GIF gallery dialog for transition multi-GIF management."""
         from ..state.gif_gallery_dialog import GifGalleryDialog
 
+        if self.action_type == "action":
+            return self._manage_drag_gifs()
+
         key = self.key_edit.text().strip()
         if not key:
             QtWidgets.QMessageBox.warning(self, "Validation", "Please enter a key first.")
@@ -386,6 +401,29 @@ class EditMoveStateDialog(FramelessDialog):
                 self.gif_status_label.setText("No GIF selected")
                 self.gif_status_label.setStyleSheet("color: #9c6b8a;")
 
+    def _manage_drag_gifs(self):
+        """Gallery edits to the drag pool apply immediately, like transitions."""
+        from ..state.gif_gallery_dialog import GifGalleryDialog
+
+        if self._action_service is None:
+            return
+        gif_paths = self._action_service.list_drag_gif_paths()
+        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            removed = dialog.removed_filenames
+            added = dialog.added_paths
+            dialog.cleanup()
+            self._gif_player.clear()
+
+            for filename in removed:
+                try:
+                    self._action_service.remove_drag_gif(filename)
+                except Exception:
+                    pass  # File locked — will be cleaned up next launch
+            for path in added:
+                self._action_service.add_drag_gif(path)
+            self._load_action_data()
+
     def _load_action_data(self) -> None:
         """Populate the dialog with an existing named action's GIF preview."""
         if self._action_service is None:
@@ -396,6 +434,17 @@ class EditMoveStateDialog(FramelessDialog):
         action_key = self.named_action_combo.currentData()
         self._gif_player.clear()
         self.preview_label.setMovie(None)
+        if action_key == PET_DRAG_ACTION_KEY:
+            drag_paths = self._action_service.list_drag_gif_paths()
+            if drag_paths:
+                self._load_preview_movie(drag_paths[0])
+                self.gif_status_label.setText(f"{len(drag_paths)} GIF(s)")
+                self.gif_status_label.setStyleSheet("color: #2e7d32;")
+            else:
+                self.gif_status_label.setText("尚未設定 GIF")
+                self.gif_status_label.setStyleSheet("color: #9c6b8a;")
+                self.preview_label.setText("拖曳時保留目前外觀；可以之後再設定 GIF。")
+            return
         path = self._action_service.resolve_action_gif_path(action_key)
         if path is not None:
             self._load_preview_movie(path)
@@ -463,6 +512,10 @@ class EditMoveStateDialog(FramelessDialog):
             return
 
         action_key = self.named_action_combo.currentData()
+        if action_key == PET_DRAG_ACTION_KEY:
+            # The drag pool is edited through the gallery, which saves immediately.
+            self.accept()
+            return
         if action_key == PET_CLICK_ACTION_KEY and self._clear_pet_click_gif:
             if not self._action_service.unbind_pet_click_gif():
                 QtWidgets.QMessageBox.warning(self, "Save", "Failed to clear the GIF.")
