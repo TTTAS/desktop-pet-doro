@@ -26,7 +26,7 @@ class _ActionCard(QtWidgets.QFrame):
 
     edit_clicked = QtCore.Signal(str, str)  # (action_type, key)
     remove_clicked = QtCore.Signal(str, str)  # (action_type, key)
-    manage_gifs_clicked = QtCore.Signal(str)  # transition_key
+    manage_gifs_clicked = QtCore.Signal(str)  # transition or pet_drag key
 
     CARD_WIDTH = 210
     PREVIEW_SIZE = 110
@@ -41,12 +41,14 @@ class _ActionCard(QtWidgets.QFrame):
         details: str = "",
         extra_info: str = "",
         removable: bool = True,
+        manage_gifs: bool = False,
         parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
         self._action_type = action_type
         self._key = key
         self._removable = removable
+        self._manage_gifs = manage_gifs or action_type == "transition"
         self._gif_paths = gif_paths
         self._gif_player = gif_player
         self._preview_index = 0
@@ -147,7 +149,7 @@ class _ActionCard(QtWidgets.QFrame):
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.setSpacing(4)
 
-        if self._action_type == "transition":
+        if self._manage_gifs:
             gifs_btn = QtWidgets.QPushButton("GIFs")
             gifs_btn.setToolTip("Manage GIFs")
             gifs_btn.setFixedHeight(26)
@@ -330,7 +332,11 @@ class MoveStateManagerDialog(FramelessDialog):
 
         # Named actions (Phase 1c) — only when an ActionService is wired in.
         if self._action_service is not None:
-            from ....core.action.repository import CLICK_ACTION_KEY, PET_CLICK_ACTION_KEY
+            from ....core.action.repository import (
+                CLICK_ACTION_KEY,
+                PET_CLICK_ACTION_KEY,
+                PET_DRAG_ACTION_KEY,
+            )
 
             for action_key, description in (
                 (PET_CLICK_ACTION_KEY, "Doro 被點擊時的反應"),
@@ -357,6 +363,24 @@ class MoveStateManagerDialog(FramelessDialog):
                 self._grid_layout.addWidget(card, idx // cols, idx % cols)
                 self._cards.append(card)
                 idx += 1
+
+            drag_paths = self._action_service.list_drag_gif_paths()
+            card = _ActionCard(
+                "action",
+                PET_DRAG_ACTION_KEY,
+                drag_paths,
+                self._gif_player,
+                details="Doro 被拖曳時的反應（多張隨機）",
+                extra_info="" if drag_paths else "尚未設定 GIF，拖曳時保留目前外觀",
+                removable=False,
+                manage_gifs=True,
+                parent=self._grid_container,
+            )
+            card.edit_clicked.connect(self._on_edit)
+            card.manage_gifs_clicked.connect(self._on_manage_drag_gifs)
+            self._grid_layout.addWidget(card, idx // cols, idx % cols)
+            self._cards.append(card)
+            idx += 1
 
         # Transition actions
         for key in sorted(self.service.all_transition_keys()):
@@ -492,6 +516,29 @@ class MoveStateManagerDialog(FramelessDialog):
                     pass
             for path in added:
                 self.service.add_transition_gif(key, path)
+            self._populate()
+
+    def _on_manage_drag_gifs(self, _key: str):
+        from ..state.gif_gallery_dialog import GifGalleryDialog
+
+        if self._action_service is None:
+            return
+        gif_paths = self._action_service.list_drag_gif_paths()
+        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            removed = dialog.removed_filenames
+            added = dialog.added_paths
+            dialog.cleanup()
+            self._gif_player.clear()
+            self._cards.clear()
+
+            for filename in removed:
+                try:
+                    self._action_service.remove_drag_gif(filename)
+                except Exception:
+                    pass
+            for path in added:
+                self._action_service.add_drag_gif(path)
             self._populate()
 
     # ── Lifecycle ──

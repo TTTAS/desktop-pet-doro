@@ -20,6 +20,10 @@ logger = get_logger(__name__)
 
 CLICK_ACTION_KEY = "click"
 PET_CLICK_ACTION_KEY = "pet_click"
+# Drag gestures keep a random pool of files under ``res/drag/`` (like
+# transitions), so this key only identifies the menu entry and is never
+# stored in ``actions.json``.
+PET_DRAG_ACTION_KEY = "pet_drag"
 
 
 @dataclass

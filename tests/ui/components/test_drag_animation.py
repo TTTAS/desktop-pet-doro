@@ -83,6 +83,7 @@ def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending):
     handler = MouseEventHandler()
     assets = sorted(DRAG_DIR.glob("*.webp"))
     app = SimpleNamespace(
+        _action_service=Mock(list_drag_gif_paths=Mock(return_value=list(assets))),
         _automation=Mock(),
         _action_dispatcher=Mock(),
         _movement=Mock(),
@@ -170,3 +171,101 @@ def test_idle_defers_while_user_is_dragging(qapp, tmp_path):
         idle._mark_activity.assert_not_called()
     finally:
         idle._timer.stop()
+
+
+@pytest.fixture
+def drag_service(real_state_service, temp_gif_storage, tmp_path):
+    from doro_app.core.action.repository import ActionRepository
+    from doro_app.core.action.service import ActionService
+    from doro_app.core.state import GifRepository
+
+    service = ActionService(
+        ActionRepository(tmp_path / "actions.json"),
+        real_state_service,
+        GifRepository(temp_gif_storage),
+        drag_gif_repo=GifRepository(tmp_path / "res"),
+    )
+    service.bootstrap()
+    return service, real_state_service, tmp_path / "res" / "drag"
+
+
+def test_drag_pool_adds_and_removes_files_in_drag_folder(drag_service):
+    service, _, drag_dir = drag_service
+    assert service.list_drag_gif_paths() == []
+    source = next(DRAG_DIR.glob("*.webp"))
+    assert service.add_drag_gif(source)
+    assert service.add_drag_gif(source)
+    names = [p.name for p in service.list_drag_gif_paths()]
+    assert names == ["drag_1.webp", "drag_2.webp"]
+    assert all(p.parent == drag_dir for p in service.list_drag_gif_paths())
+    assert service.remove_drag_gif("drag_1.webp")
+    assert [p.name for p in service.list_drag_gif_paths()] == ["drag_2.webp"]
+    assert not service.add_drag_gif(drag_dir / "missing.webp")
+
+
+def test_drag_uses_menu_pool_and_skips_when_empty(qapp, drag_service):
+    service, _, _ = drag_service
+    sprite = Mock()
+    app = SimpleNamespace(
+        _action_service=service,
+        _automation=None,
+        _action_dispatcher=None,
+        _movement=Mock(),
+        _presence=None,
+        _sprite_controller=sprite,
+    )
+    DoroApp._on_doro_dragged(app)
+    sprite.start_drag_animation.assert_not_called()
+    service.add_drag_gif(next(DRAG_DIR.glob("*.webp")))
+    service.add_drag_gif(next(DRAG_DIR.glob("*.webp")))
+    sprite.start_drag_animation.side_effect = [False, True]
+    DoroApp._on_doro_dragged(app)
+    tried = [c.args[0] for c in sprite.start_drag_animation.call_args_list]
+    assert sorted(tried) == service.list_drag_gif_paths()
+
+
+def test_drag_card_and_editor_manage_the_pool(qtbot, drag_service, monkeypatch):
+    from PySide6 import QtWidgets
+
+    from doro_app.core.action.repository import PET_DRAG_ACTION_KEY
+    from doro_app.ui.dialogs.move_state.edit_dialog import EditMoveStateDialog
+    from doro_app.ui.dialogs.move_state.manager_dialog import MoveStateManagerDialog
+    from doro_app.ui.dialogs.state import gif_gallery_dialog
+
+    service, state, _ = drag_service
+    source = next(DRAG_DIR.glob("*.webp"))
+
+    class FakeGallery:
+        def __init__(self, *_args, **_kwargs):
+            self.added_paths = [source]
+            self.removed_filenames = []
+
+        def exec(self):
+            return QtWidgets.QDialog.DialogCode.Accepted
+
+        def cleanup(self):
+            pass
+
+    monkeypatch.setattr(gif_gallery_dialog, "GifGalleryDialog", FakeGallery)
+
+    manager = MoveStateManagerDialog(state, action_service=service)
+    qtbot.addWidget(manager)
+    card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
+    assert card._manage_gifs and not card._gif_paths
+    card.manage_gifs_clicked.emit(PET_DRAG_ACTION_KEY)
+    assert len(service.list_drag_gif_paths()) == 1
+    card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
+    assert len(card._gif_paths) == 1
+
+    editor = EditMoveStateDialog(
+        state, None, action_service=service, edit_action_key=PET_DRAG_ACTION_KEY
+    )
+    qtbot.addWidget(editor)
+    assert not editor.manage_gifs_btn.isHidden()
+    assert editor.select_gif_btn.isHidden()
+    assert editor.gif_status_label.text() == "1 GIF(s)"
+    editor._on_manage_transition_gifs()
+    assert len(service.list_drag_gif_paths()) == 2
+    assert editor.gif_status_label.text() == "2 GIF(s)"
+    editor._save_action()
+    assert editor.result() == QtWidgets.QDialog.DialogCode.Accepted
