@@ -258,6 +258,11 @@ class ConfigManager:
             "bubble_offset_x": kwargs.get("bubble_offset_x", current.bubble_offset_x),
             "bubble_offset_y": kwargs.get("bubble_offset_y", current.bubble_offset_y),
             "bubble_scale": kwargs.get("bubble_scale", current.bubble_scale),
+            "quiet_companion": kwargs.get("quiet_companion", current.quiet_companion),
+            "companion_home_x": kwargs.get("companion_home_x", current.companion_home_x),
+            "companion_rest_state": kwargs.get(
+                "companion_rest_state", current.companion_rest_state
+            ),
         }
 
         new_config = UIConfig(**updated_values)
@@ -393,6 +398,11 @@ class ConfigManager:
                 bubble_scale=_safe_float(
                     self._settings.value("ui/bubble_scale"), BUBBLE_DEFAULT_SCALE
                 ),
+                quiet_companion=_safe_bool(self._settings.value("ui/quiet_companion"), False),
+                companion_home_x=_safe_float(self._settings.value("ui/companion_home_x"), 0.9),
+                companion_rest_state=_safe_str(
+                    self._settings.value("ui/companion_rest_state"), "idle"
+                ),
             )
             self._config.ui = ui_config
         except ValueError as e:
@@ -496,6 +506,9 @@ class ConfigManager:
         self._settings.setValue("ui/bubble_offset_x", float(ui.bubble_offset_x))
         self._settings.setValue("ui/bubble_offset_y", float(ui.bubble_offset_y))
         self._settings.setValue("ui/bubble_scale", float(ui.bubble_scale))
+        self._settings.setValue("ui/quiet_companion", ui.quiet_companion)
+        self._settings.setValue("ui/companion_home_x", ui.companion_home_x)
+        self._settings.setValue("ui/companion_rest_state", ui.companion_rest_state)
 
         # Save automation config
         automation = self._config.automation

@@ -62,6 +62,7 @@ class MovementManager:
         # Pre-computed clamped destination so the final frame can snap exactly
         # to the requested target instead of stopping wherever rounding lands.
         self._movement_target = QtCore.QPoint()
+        self._movement_foot_offset = QtCore.QPoint()
         self._movement_direction_key: str | None = None
         self._movement_pending_report: str | None = None
         self._movement_previous_state: str | None = None
@@ -300,6 +301,8 @@ class MovementManager:
         if not self._active_movement or dt <= 0.0:
             return
 
+        self._sync_foot_offset()
+
         velocity = self._movement_velocity
         step_dx = velocity.x() * dt
         step_dy = velocity.y() * dt
@@ -312,7 +315,8 @@ class MovementManager:
         # pre-computed target so we land on the exact requested pixel.
         if step_len >= self._movement_remaining:
             window.move_window_to(self._movement_target)
-            self._finish_movement(final_position=self._movement_target)
+            self._sync_foot_offset()
+            self._finish_movement(final_position=window.current_position())
             return
 
         # Integrate in floating point so sub-pixel components survive between
@@ -324,16 +328,32 @@ class MovementManager:
         desired = self._movement_fpos.toPoint()
         clamped = window.clamp_window_position(desired)
         window.move_window_to(clamped)
+        self._sync_foot_offset()
         if clamped != desired:
             # Hit a screen-edge clamp — can't progress further along this
             # vector, finish in place rather than dragging on against the wall.
-            self._finish_movement(final_position=clamped)
+            self._finish_movement(final_position=window.current_position())
             return
 
         self._movement_remaining -= step_len
         if self._movement_remaining <= self._repo.defaults.completion_threshold:
             window.move_window_to(self._movement_target)
-            self._finish_movement(final_position=self._movement_target)
+            self._sync_foot_offset()
+            self._finish_movement(final_position=window.current_position())
+
+    def _sync_foot_offset(self) -> None:
+        """Rebase a running walk after a GIF or bubble changes window layout."""
+        offset = self._window.sprite_foot_offset_logical()
+        delta = self._movement_foot_offset - offset
+        self._movement_fpos += QtCore.QPointF(delta)
+        self._movement_target += delta
+        self._movement_start_pos += delta
+        self._movement_foot_offset = offset
+
+    def place_foot(self, foot: QtCore.QPoint) -> None:
+        """Place a logical foot point for short gravity/settling motion."""
+        target = foot - self._window.sprite_foot_offset_logical()
+        self._window.move_window_to(self._window.clamp_window_position(target))
 
     def _handle_target_move(self, params: dict, reports: list) -> bool:
         """Handle `[move:to;x=X;y=Y]` — walk Doro to a target.
@@ -509,6 +529,11 @@ class MovementManager:
         # after state revert — cancellation should leave Doro wherever she was
         # dragged to.
         snap_target = final_position
+        final_foot = (
+            final_position + window.sprite_foot_offset_logical()
+            if final_position is not None
+            else None
+        )
         if final_position is None:
             final_position = window.current_position()
         # Pending reports describe the planned destination. On cancellation
@@ -543,15 +568,14 @@ class MovementManager:
             # place. Do not overwrite a newer queued expression in this case.
             if current != self._movement_previous_state or stale_walk:
                 self._state_service.set_state(self._movement_previous_state)
-                # Mirror of `_start_movement`'s snap-back: reverting the state
-                # may resize the sprite and trigger
-                # `_reposition_to_keep_sprite_center`, which shifts the window
-                # to preserve the sprite's screen *centre*. We want the *foot*
-                # to land on the originally targeted pixel; `snap_target` is
-                # the top-left computed against that foot in the pre-walk
-                # (idle) frame, which is the frame we just reverted to.
+                # Restore the same screen foot even if the resting GIF has
+                # different dimensions or transparent padding.
                 if snap_target is not None:
-                    window.move_window_to(snap_target)
+                    window.move_window_to(
+                        window.clamp_window_position(
+                            final_foot - window.sprite_foot_offset_logical()
+                        )
+                    )
         self._movement_previous_state = None
         self._movement_requested_state = None
 
@@ -610,6 +634,7 @@ class MovementManager:
         self._movement_velocity = velocity
         self._movement_remaining = distance
         self._movement_start_pos = window.current_position()
+        start_offset = window.sprite_foot_offset_logical()
         self._movement_direction_key = self._direction_slug(direction)
         self._movement_pending_report = report
         current_state = self._state_service.get_current_state()
@@ -622,26 +647,13 @@ class MovementManager:
             prefer_walking=move_state_name == self._state_service.get_default_movement_state(),
         )
 
-        # `_set_movement_state` triggered the walking GIF, which may have a
-        # different intrinsic size than the pre-walk sprite. The window
-        # auto-resizes to fit (`apply_window_preferred_size`) and
-        # `_reposition_to_keep_sprite_center` shifts the window top-left
-        # so the sprite *centre* stays put on screen — meaning the top-left
-        # we just recorded as `_movement_start_pos` is no longer where the
-        # window actually is. `process_active_movement` integrates velocity
-        # from the *current* top-left each tick, so an uncorrected shift
-        # would compound and land Doro short of (or past) the planned
-        # destination by the shift amount. Symptom: `[MOVE:to;x;y]` lands
-        # at a different absolute pixel depending on which walking sprite
-        # (direction) was picked.
-        #
-        # Undo the auto-reposition so the velocity vector and remaining
-        # distance both stay valid. The visual cost is a one-frame sprite
-        # jump at the start of the walk; the gain is pixel-accurate
-        # landing regardless of starting direction.
-        post_state_pos = window.current_position()
-        if post_state_pos != self._movement_start_pos:
-            window.move_window_to(self._movement_start_pos)
+        # Walking GIFs can change local offsets. Rebase the integrator onto
+        # the new layout while preserving the original screen foot.
+        start_foot = self._movement_start_pos + start_offset
+        self._movement_start_pos = start_foot - window.sprite_foot_offset_logical()
+        window.move_window_to(self._movement_start_pos)
+        self._movement_start_pos = window.current_position()
+        self._movement_foot_offset = window.sprite_foot_offset_logical()
 
         # Seed the floating-point integrator at the real start, and pre-compute
         # the clamped destination so `process_active_movement` can snap to it

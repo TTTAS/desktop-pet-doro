@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -134,6 +135,8 @@ class DoroWindow(QtWidgets.QWidget):
         self._panel_height_hint = PANEL_DEFAULT_HEIGHT_HINT
         self._panel_rect_cache: QtCore.QRectF | None = None
         self._sprite_anchor_top: float | None = None
+        self._layout_foot_offset: QtCore.QPoint | None = None
+        self._landing_time = 0.0
         # Which side of the sprite the bubble is reserved on. Decided from the
         # sprite's on-screen position each time the bubble resizes: when Doro is
         # near the bottom of the screen the bubble flips above so it never has
@@ -253,6 +256,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Use ViewModel for animation time
         self._view_model.tick(dt)
+        self._landing_time = max(0.0, self._landing_time - dt)
         self.update()
 
     # --- Interaction -----------------------------------------------------
@@ -318,10 +322,41 @@ class DoroWindow(QtWidgets.QWidget):
         return WindowLayoutManager.get_available_screen_geometry(self)
 
     def _clamp_window_position(self, desired: QtCore.QPoint) -> QtCore.QPoint:
-        """Clamp window position to screen bounds. Delegates to WindowLayoutManager."""
-        window_size = self.frameGeometry().size()
-        screen_rect = self._available_screen_geometry()
-        return WindowLayoutManager.clamp_position(desired, window_size, screen_rect)
+        """Clamp visible sprite bounds, independent of the speech panel."""
+        return WindowLayoutManager.clamp_sprite_position(
+            desired, self.sprite_contact_rect(), self.floor_geometry()
+        )
+
+    def sprite_contact_rect(self) -> QtCore.QRect:
+        """Stable character bounds in window-local logical pixels."""
+        center, _ = self._rendering_engine.calculate_sprite_center(
+            self.size(),
+            self._sprite_anchor_top,
+            self._panel_height_hint,
+            reserve_above=self._bubble_above,
+        )
+        size = self._view_model.sprite_size
+        bounds = QtCore.QRect(QtCore.QPoint(), size)
+        if isinstance(self._sprite_renderer, GifSpriteRenderer):
+            visible = self._sprite_renderer.contact_bounds()
+            if not visible.isEmpty():
+                bounds = visible
+        return bounds.translated(
+            round(center.x() - size.width() / 2.0),
+            round(center.y() - size.height() / 2.0),
+        )
+
+    def foot_position(self) -> QtCore.QPoint:
+        return self.current_position() + self.sprite_foot_offset_logical()
+
+    def floor_geometry(self) -> QtCore.QRect:
+        """Work-area floor of the monitor under the character, not the panel."""
+        screen = QtWidgets.QApplication.screenAt(self.foot_position())
+        return screen.availableGeometry() if screen else self._available_screen_geometry()
+
+    def play_landing(self) -> None:
+        self._landing_time = 0.28
+        self.update()
 
     def _move_window_to(self, point: QtCore.QPoint):
         """Move window to position. Delegates to WindowLayoutManager."""
@@ -336,14 +371,14 @@ class DoroWindow(QtWidgets.QWidget):
         )
 
     def apply_window_preferred_size(self):
-        """Apply preferred window size. Delegates to WindowLayoutManager.
-
-        When the bubble has no text and isn't being force-shown, request a
-        compact (sprite-sized) window so the visible sprite aligns with the
-        window edges — keeps Doro's drawn position consistent with
-        ``[MOVE:to]`` target arithmetic (which treats the window's bottom
-        centre as the foot anchor).
-        """
+        """Resize the panel reserve while preserving the character's foot."""
+        # The renderer/size may already have changed when this signal arrives.
+        # Keep the LAST layout's foot, rather than sampling the new center.
+        old_foot = (
+            self.current_position() + self._layout_foot_offset
+            if self._layout_foot_offset is not None
+            else None
+        )
         panel_w_hint, panel_h_hint = self._compute_panel_size_hint()
         self._panel_width_hint = panel_w_hint
         self._panel_height_hint = panel_h_hint
@@ -356,6 +391,8 @@ class DoroWindow(QtWidgets.QWidget):
         # the sprite on screen — adjust the top-left so the sprite stays
         # put across the mode switch.
         sprite_center_screen = self._sprite_center_in_screen_coords()
+        if old_foot is not None and sprite_center_screen is not None:
+            sprite_center_screen += QtCore.QPointF(old_foot - self.foot_position())
 
         # Pick the side the bubble sits on BEFORE resizing, from where the
         # sprite currently is on screen. Near the bottom → flip above.
@@ -371,8 +408,10 @@ class DoroWindow(QtWidgets.QWidget):
                 panel_h_hint,
                 compact=compact,
             )
-            if sprite_center_screen is not None:
-                self._reposition_to_keep_sprite_center(sprite_center_screen)
+            self._sprite_anchor_top = None
+            if old_foot is not None:
+                self.move(self._clamp_window_position(old_foot - self.sprite_foot_offset_logical()))
+            self._layout_foot_offset = self.sprite_foot_offset_logical()
         finally:
             self._sizing_in_progress = False
 
@@ -413,7 +452,7 @@ class DoroWindow(QtWidgets.QWidget):
         Flip above only when below can't fit the bubble and above has more room —
         otherwise keep the normal below placement (avoids flip-flopping).
         """
-        screen_rect = self._available_screen_geometry()
+        screen_rect = self.floor_geometry()
         half_h = float(self._view_model.sprite_size.height()) / 2.0
         gap = float(tokens.spacing.sprite_bubble_gap) + float(tokens.spacing.margin_bottom)
 
@@ -424,30 +463,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         needed = float(panel_height_hint) + gap
         return room_below < needed and room_above > room_below
-
-    def _reposition_to_keep_sprite_center(self, target_screen_center: QtCore.QPointF) -> None:
-        """After a resize, move the window so the sprite stays at the same
-        screen position. Computes the sprite centre in the NEW (post-resize)
-        window using the same layout helper rendering uses, then offsets
-        top-left to keep that screen point invariant."""
-        # Reset anchor so layout recomputes for the new window size.
-        self._sprite_anchor_top = None
-        new_local_center, new_anchor = self._rendering_engine.calculate_sprite_center(
-            self.size(),
-            self._sprite_anchor_top,
-            self._panel_height_hint,
-            reserve_above=self._bubble_above,
-        )
-        if new_anchor is not None:
-            self._sprite_anchor_top = new_anchor
-        new_top_left = QtCore.QPoint(
-            round(target_screen_center.x() - new_local_center.x()),
-            round(target_screen_center.y() - new_local_center.y()),
-        )
-        clamped = WindowLayoutManager.clamp_position(
-            new_top_left, self.size(), self._available_screen_geometry()
-        )
-        self.move(clamped)
 
     def contextMenuEvent(self, e: QtGui.QContextMenuEvent):
         self.mark_user_activity()
@@ -474,7 +489,14 @@ class DoroWindow(QtWidgets.QWidget):
             self._sprite_anchor_top = new_anchor
 
         # Render sprite using RenderingEngine + SpriteRenderer
+        p.save()
+        if self._landing_time > 0:
+            foot = self.sprite_foot_offset_logical()
+            p.translate(foot)
+            p.scale(1.0, 1.0 - 0.08 * math.sin(math.pi * self._landing_time / 0.28))
+            p.translate(-foot)
         self._rendering_engine.render_sprite(p, self._sprite_renderer, sprite_center, bob, scale)
+        p.restore()
 
         # Render text panel using RenderingEngine
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
@@ -498,6 +520,7 @@ class DoroWindow(QtWidgets.QWidget):
                 self.size(),
                 self._panel_height_hint,
                 prefer_above=self._bubble_above,
+                screen_rect=self.floor_geometry().translated(-self.current_position()),
             )
         else:
             self._panel_rect_cache = None
@@ -516,7 +539,13 @@ class DoroWindow(QtWidgets.QWidget):
 
     def move_window_to(self, pos: QtCore.QPoint):
         """Move window to position (public API)."""
-        self._move_window_to(pos)
+        self._move_window_to(self._clamp_window_position(pos))
+        # Bubble can change sides while walking, but must never move the foot.
+        center = self._sprite_center_in_screen_coords()
+        if center is not None and not self._sizing_in_progress:
+            above = self._decide_bubble_above(center, self._panel_height_hint)
+            if above != self._bubble_above:
+                self.apply_window_preferred_size()
 
     def sprite_foot_offset_logical(self) -> QtCore.QPoint:
         """Offset of the sprite's visual foot (bottom-centre) from the
@@ -530,17 +559,8 @@ class DoroWindow(QtWidgets.QWidget):
         click / overlay anchored to the visible sprite, not the
         invisible window frame.
         """
-        sprite_center, _ = self._rendering_engine.calculate_sprite_center(
-            self.size(),
-            self._sprite_anchor_top,
-            self._panel_height_hint,
-            reserve_above=self._bubble_above,
-        )
-        half_h = self._view_model.sprite_size.height() / 2.0
-        return QtCore.QPoint(
-            round(sprite_center.x()),
-            round(sprite_center.y() + half_h) - 1,
-        )
+        rect = self.sprite_contact_rect()
+        return QtCore.QPoint(rect.left() + rect.width() // 2, rect.bottom())
 
     def logical_point_for_physical(self, x: int, y: int) -> QtCore.QPoint:
         """Convert an OS physical pixel (a11y/mouse space) to a Qt logical point.

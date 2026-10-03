@@ -153,6 +153,7 @@ class RenderingEngine:
         window_size: QtCore.QSize,
         panel_height_hint: float,
         prefer_above: bool = False,
+        screen_rect: QtCore.QRect | None = None,
     ) -> QtCore.QRectF | None:
         """
         Render the text panel (bubble).
@@ -176,11 +177,15 @@ class RenderingEngine:
         if not text or alpha <= 0:
             return None
 
+        usable = QtCore.QRectF(0, 0, window_size.width(), window_size.height())
+        if screen_rect is not None:
+            usable = usable.intersected(QtCore.QRectF(screen_rect))
+
         # Calculate panel dimensions
         target_width = max(PANEL_MIN_WIDTH, float(self._view_model.sprite_size.width()))
         panel_width = max(
             PANEL_MIN_HEIGHT,
-            min(target_width, float(window_size.width()) - 24.0),
+            min(target_width, usable.width() - 24.0),
         )
 
         inner_padding_x = tokens.spacing.bubble_inner_x
@@ -206,18 +211,18 @@ class RenderingEngine:
             max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0)
         )
         gap = tokens.spacing.sprite_bubble_gap
-        margin_top = tokens.spacing.margin_top
-        margin_bottom = tokens.spacing.margin_bottom
+        margin_top = usable.top() + tokens.spacing.margin_top
+        bottom_limit = usable.bottom() - tokens.spacing.margin_bottom
 
         below_top = sprite_center.y() + sprite_half_h + gap
-        available_below = window_size.height() - margin_bottom - below_top
+        available_below = bottom_limit - below_top
         above_bottom = sprite_center.y() - sprite_half_h - gap
         available_above = max(0.0, above_bottom - margin_top)
 
         # Grow-to-fit: show the full panel height. Only the extreme case — text
         # taller than the entire usable window — forces a clamp. Otherwise we
         # shift the bubble to stay on-screen instead of clipping the text.
-        max_panel_height = max(0.0, window_size.height() - margin_top - margin_bottom)
+        max_panel_height = max(0.0, bottom_limit - margin_top)
         adjusted_panel_height = min(panel_height, max_panel_height)
 
         # Choose the side. Normally prefer below and fall back above only when
@@ -235,11 +240,11 @@ class RenderingEngine:
         if place_below:
             top = max(margin_top, below_top)
             # Shift up (don't shrink/clip) if it would spill past the bottom margin.
-            max_top = max(margin_top, window_size.height() - margin_bottom - adjusted_panel_height)
+            max_top = max(margin_top, bottom_limit - adjusted_panel_height)
             top = min(top, max_top)
             self._view_model.set_bubble_side("below")
         else:
-            bottom_edge = min(above_bottom, window_size.height() - margin_bottom)
+            bottom_edge = min(above_bottom, bottom_limit)
             top = max(margin_top, bottom_edge - adjusted_panel_height)
             self._view_model.set_bubble_side("above")
 
@@ -248,8 +253,8 @@ class RenderingEngine:
 
         # Calculate left position
         left = sprite_center.x() - panel_width / 2.0
-        min_left = tokens.spacing.margin_horizontal
-        max_left = window_size.width() - panel_width - tokens.spacing.margin_horizontal
+        min_left = usable.left() + tokens.spacing.margin_horizontal
+        max_left = usable.right() - panel_width - tokens.spacing.margin_horizontal
         if max_left < min_left:
             min_left = max_left = max(window_size.width() - panel_width, 0.0)
         left = max(min_left, min(max_left, left))

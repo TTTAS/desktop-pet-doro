@@ -37,6 +37,7 @@ class ContextMenuController:
         core_manager: CoreManager,
         chat_ui: ChatUIHelper,
         default_idle_gif: Path,
+        companion=None,
     ) -> None:
         self._window = window
         self._state_service = state_service
@@ -46,6 +47,7 @@ class ContextMenuController:
         self._core_manager = core_manager
         self._chat_ui = chat_ui
         self._default_idle_gif = default_idle_gif
+        self._companion = companion
 
     # ──────────────────────────────────────────────────────────
     # Public API
@@ -85,6 +87,7 @@ class ContextMenuController:
             has_default_idle_gif=self._default_idle_gif.is_file(),
             is_chat_inflight=self._core_manager.is_chat_inflight,
             has_chat_history=self._core_manager.has_chat_history,
+            quiet_companion=bool(self._companion and self._companion.quiet),
             a11y_enabled=bool(self._core_manager.config_manager.automation.a11y_enabled),
             mouse_enabled=bool(self._core_manager.config_manager.automation.mouse_enabled),
             web_operation_enabled=bool(
@@ -117,6 +120,9 @@ class ContextMenuController:
             simulate_response=self._simulate_response,
             inspect_position=self._inspect_position,
             quit_app=QtWidgets.QApplication.instance().quit,
+            toggle_quiet=self._companion.set_quiet if self._companion else lambda _: None,
+            save_nest=self._companion.save_nest if self._companion else lambda: None,
+            save_rest_state=self._companion.save_rest_state if self._companion else lambda: None,
         )
 
     def _show_presence_settings(self) -> None:

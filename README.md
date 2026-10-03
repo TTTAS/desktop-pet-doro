@@ -49,6 +49,16 @@ python doro.py
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
 
+### 安靜陪伴與桌邊落地
+
+- 右鍵選「我先忙（安靜陪伴）」：Doro 回到桌邊的窩，暫停自主說話、漫遊與分頁主動評論。仍可點她或主動聊天；互動結束、泡泡消失並安靜 8 秒後回窩。取消勾選可恢復原有自主行為。
+- 拖到喜歡的水平位置，右鍵選「把這裡設為窩（桌邊）」。窩的位置以目前螢幕可用區域的比例儲存，切換螢幕或解析度時不會跑回已移除的螢幕。
+- 先從 States 選擇喜歡的姿勢，再選「用目前姿勢休息」。未設定或素材狀態已刪除時使用 idle，無需新增 GIF 或呼叫模型。
+- 在工作列上緣附近放手（96 個 Qt 邏輯像素內），會短距離落地、輕輕下蹲一次，再切到休息姿勢。高處放手仍保持自由擺放，拖曳或新互動可中斷落地／回窩。
+- 泡泡與角色邊界分開計算：開關泡泡、不同尺寸 GIF 與轉場都保留腳底位置，泡泡在底部改放上方。GIF 接地点採載入時首個有效畫面的非透明範圍並固定，避免逐幀追蹤造成抖動；自帶浮空動作或不透明背景的素材仍可能看起來離地。
+
+模式、窩的位置及休息姿勢會隨原有設定一起儲存。地板是螢幕可用區域底部（通常為工作列上緣），不是把角色藏到工作列後方。
+
 ## Project Structure
 
 For AI-assisted work, start with [AGENTS.md](AGENTS.md) and the compact

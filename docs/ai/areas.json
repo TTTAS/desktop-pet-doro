@@ -216,13 +216,16 @@
     ],
     "entries": [
       "doro_app/core/core_manager.py",
-      "doro_app/core/idle_behavior_manager.py"
+      "doro_app/core/idle_behavior_manager.py",
+      "doro_app/core/companion.py"
     ],
     "tests": [
       "tests/core/test_core_manager.py",
-      "tests/core/test_core_manager_click.py"
+      "tests/core/test_core_manager_click.py",
+      "tests/core/test_companion.py",
+      "tests/ui/test_grounding.py"
     ],
-    "purpose": "核心事件協調及不依賴頁面模型的閒置陪伴。"
+    "purpose": "核心事件協調、閒置陪伴及安靜模式的回窩／桌邊落地；接地與泡泡共用固定腳底位置。"
   },
   {
     "id": "automation",

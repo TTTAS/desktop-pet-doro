@@ -65,7 +65,7 @@ class PresenceBridge:
         new connection drops it. Still a single in-memory page, never stored.
         """
         with self._lock:
-            if self._last_page is None or time.monotonic() - self._last_page_time > max_age:
+            if self._last_page is None or time.monotonic() - self._last_page_time >= max_age:
                 return None
             return self._last_page
 

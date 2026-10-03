@@ -6,8 +6,13 @@ import json
 
 import pytest
 
-from doro_app.core.llm import LlmTarget, ask_structured, character_reply_model, compose_system
-from doro_app.core.llm import structured
+from doro_app.core.llm import (
+    LlmTarget,
+    ask_structured,
+    character_reply_model,
+    compose_system,
+    structured,
+)
 from doro_app.core.llm.transport import Completion
 
 

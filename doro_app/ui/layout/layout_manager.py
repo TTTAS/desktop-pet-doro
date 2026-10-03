@@ -102,6 +102,17 @@ class WindowLayoutManager:
         return QtCore.QPoint(clamped_x, clamped_y)
 
     @staticmethod
+    def clamp_sprite_position(
+        desired: QtCore.QPoint, sprite_rect: QtCore.QRect, screen_rect: QtCore.QRect
+    ) -> QtCore.QPoint:
+        """Keep the character visible; transparent panel reserve is not a wall."""
+        visible_top_left = desired + sprite_rect.topLeft()
+        return (
+            WindowLayoutManager.clamp_position(visible_top_left, sprite_rect.size(), screen_rect)
+            - sprite_rect.topLeft()
+        )
+
+    @staticmethod
     def compute_panel_size_hint(
         sprite_size: QtCore.QSize,
         bubble_text: str,
@@ -171,7 +182,8 @@ class WindowLayoutManager:
 
         desired_w = max(
             380,
-            round(max(sprite_w + 120.0, panel_width_hint + 48.0)),
+            # Room on either side to slide the bubble inward at screen edges.
+            round(max(sprite_w + 120.0, panel_width_hint * 2.0 + 240.0)),
         )
         desired_h = max(
             320,
@@ -254,16 +266,8 @@ class WindowLayoutManager:
         # Fallback to regular move
         window.move(point)
 
-        # Process events to ensure window is moved before continuing
-        QtWidgets.QApplication.processEvents(
-            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-        )
-
-        # Raise window to top
-        try:
-            window.raise_()
-        except Exception:
-            pass
+        # Let the normal event loop paint. Pumping it here can recursively run
+        # movement timers; raising on every step also defeats "not topmost".
 
     @staticmethod
     def extract_sprite_size_from_movie(movie: QtGui.QMovie | None) -> QtCore.QSize | None:

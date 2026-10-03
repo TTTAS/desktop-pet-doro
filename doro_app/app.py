@@ -17,6 +17,7 @@ from .core.automation.foreground_tracker import ForegroundTracker
 from .core.automation.manager import AutomationManager
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
+from .core.companion import CompanionController
 from .core.core_manager import CoreManager
 from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
@@ -165,6 +166,16 @@ class DoroApp:
             actions_file=self._click_actions_path,
             chat_orchestrator=self._chat_orchestrator,
         )
+        self._companion = CompanionController(
+            window=self.window,
+            movement=self._movement,
+            states=self._state_service,
+            config=self._config_manager,
+            bubble=self._bubble_controller,
+            busy=self._companion_busy,
+            cancel=self._cancel_companion_activity,
+            silence=lambda quiet: self._presence.set_quiet(quiet),
+        )
         self._idle_behavior = IdleBehaviorManager(
             companion_file=COMPANION_PROMPTS_PATH,
             chat_orchestrator=self._chat_orchestrator,
@@ -172,7 +183,9 @@ class DoroApp:
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
             mark_activity=lambda: self.window.mark_user_activity(),
-            interaction_busy=lambda: self._mouse_handler.is_dragging,
+            interaction_busy=lambda: (
+                self._mouse_handler.is_dragging or self._companion.quiet or self._companion.settling
+            ),
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )
@@ -229,6 +242,7 @@ class DoroApp:
             ),
         )
         self._chat_orchestrator.set_presence(self._presence)
+        self._presence.set_quiet(self._companion.quiet)
 
         # Quit-time teardown: stop the pynput listener thread, the
         # a11y UIA worker pool, and the foreground-window poller before
@@ -271,7 +285,9 @@ class DoroApp:
         self._bubble_controller.text_changed.connect(
             lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
         )
-        self._bubble_controller.visibility_changed.connect(lambda *_: self.window.update())
+        self._bubble_controller.visibility_changed.connect(
+            lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
+        )
         self._bubble_controller.repaint_requested.connect(self.window.update)
         self._bubble_controller.update_bubble_side_requested.connect(
             self.window.update_bubble_side_from_offset
@@ -382,6 +398,7 @@ class DoroApp:
             core_manager=self.core_manager,
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
+            companion=self._companion,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -393,8 +410,11 @@ class DoroApp:
         mouse_handler.window_drag_requested.connect(self.window.move)
         mouse_handler.drag_started.connect(self._on_doro_dragged)
         mouse_handler.drag_finished.connect(self._sprite_controller.end_drag_animation)
+        mouse_handler.drag_finished.connect(self._companion.released)
         mouse_handler.click_detected.connect(self._on_doro_clicked)
         mouse_handler.user_activity_detected.connect(self.window.mark_user_activity)
+        mouse_handler.user_activity_detected.connect(self._companion.interrupt)
+        self.window.tick_requested.connect(self._companion.tick)
         # Idle behavior no longer resets on user activity: Doro acts on her
         # own fixed 1-3 min rhythm regardless of whether you're using the
         # computer, so this connection is intentionally omitted.
@@ -424,6 +444,22 @@ class DoroApp:
                 auto_hide_ms=BUBBLE_AUTO_HIDE_MS,
             )
         )
+
+    def _companion_busy(self) -> bool:
+        return (
+            self._mouse_handler.is_dragging
+            or self._chat_orchestrator.is_inflight
+            or self._chat_orchestrator.is_web_busy
+            or not self._action_dispatcher.is_idle
+            or self._movement.has_active_movement
+            or self._state_service.is_transitioning()
+        )
+
+    def _cancel_companion_activity(self) -> None:
+        if self._automation is not None:
+            self._automation.cancel_pending_click("quiet-companion")
+        self._action_dispatcher.cancel_current("quiet-companion")
+        self._movement.cancel_active_movement()
 
     def run(self):
         """Start the application by showing the main window."""

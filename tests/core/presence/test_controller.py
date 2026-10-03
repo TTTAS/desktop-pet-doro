@@ -100,6 +100,28 @@ def test_user_interrupt_discards_background_reply(qtbot, tmp_path):
         controller.shutdown()
 
 
+def test_quiet_discards_inflight_and_does_not_replay_pages(qtbot, tmp_path):
+    controller, orch, bridge, _busy = make_controller(tmp_path)
+    release = threading.Event()
+    orch.make_presence_request.return_value = lambda: (release.wait(2), reply("Hello"))[1]
+    try:
+        bridge.current_page = page("before quiet")
+        controller._on_page(bridge.current_page)
+        controller.set_quiet(True)
+        bridge.current_page = page("during quiet")
+        controller._on_page(bridge.current_page)
+        release.set()
+        qtbot.waitUntil(lambda: not controller._running)
+        controller.set_quiet(False)
+        controller._pump()
+        orch.present_structured_reply.assert_not_called()
+        assert orch.make_presence_request.call_count == 1
+        assert controller.current_page == bridge.current_page
+    finally:
+        release.set()
+        controller.shutdown()
+
+
 def test_failure_then_new_event_recovers_and_silent_does_not_speak(qtbot, tmp_path):
     controller, orch, bridge, _busy = make_controller(tmp_path)
 

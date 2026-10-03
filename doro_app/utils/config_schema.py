@@ -31,15 +31,15 @@ from .config_defaults import (
     DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_ENDPOINT_PATH,
     DEFAULT_CHAT_MAX_RETRIES,
-    DEFAULT_CHAT_STRUCTURED_MODE,
-    STRUCTURED_MODES,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_STRUCTURED_MODE,
     DEFAULT_TAVILY_API_KEY,
     DEFAULT_VERIFY_SEARCH_DEPTH,
     DEFAULT_WEB_OPERATION_ENABLED,
+    STRUCTURED_MODES,
 )
 
 # ═══════════════════════════════════════════════════════════
@@ -128,6 +128,9 @@ class UIConfig:
 
     # Bubble appearance
     bubble_scale: float = BUBBLE_DEFAULT_SCALE
+    quiet_companion: bool = False
+    companion_home_x: float = 0.9
+    companion_rest_state: str = "idle"
 
     def __post_init__(self):
         """Validate configuration values."""
@@ -141,6 +144,15 @@ class UIConfig:
         # Scale should be positive
         if not isinstance(self.bubble_scale, (int, float)) or self.bubble_scale <= 0:
             raise ValueError(f"bubble_scale must be positive number, got {self.bubble_scale}")
+        if not isinstance(self.quiet_companion, bool):
+            raise ValueError("quiet_companion must be bool")
+        if (
+            not isinstance(self.companion_home_x, (int, float))
+            or not 0 <= self.companion_home_x <= 1
+        ):
+            raise ValueError("companion_home_x must be between 0 and 1")
+        if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
+            raise ValueError("companion_rest_state must be a nonempty state key")
 
     @property
     def config_key_prefix(self) -> str:

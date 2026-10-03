@@ -26,6 +26,7 @@ class MenuSnapshot:
     a11y_enabled: bool = False  # accessibility tree reading is on
     mouse_enabled: bool = False  # synthetic mouse-click automation is on
     web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
+    quiet_companion: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,6 +51,9 @@ class MenuCallbacks:
     inspect_position: Callable[[], None]
     quit_app: Callable[[], None]
     show_presence_settings: Callable[[], None] = lambda: None
+    toggle_quiet: Callable[[bool], None] = lambda _: None
+    save_nest: Callable[[], None] = lambda: None
+    save_rest_state: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -325,6 +329,16 @@ def build_context_menu_content(
         snapshot: Read-only data captured at menu-build time
         callbacks: Action callbacks for menu items
     """
+    quiet_action = menu.addAction("我先忙（安靜陪伴）")
+    quiet_action.setCheckable(True)
+    quiet_action.setChecked(snapshot.quiet_companion)
+    quiet_action.triggered.connect(callbacks.toggle_quiet)
+    nest_action = menu.addAction("把這裡設為窩（桌邊）")
+    nest_action.triggered.connect(callbacks.save_nest)
+    rest_action = menu.addAction("用目前姿勢休息")
+    rest_action.triggered.connect(callbacks.save_rest_state)
+    menu.addSeparator()
+
     # States submenu
     states_menu = menu.addMenu("States")
     for key, label in snapshot.visible_states:
