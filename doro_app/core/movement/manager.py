@@ -92,6 +92,15 @@ class MovementManager:
     def has_active_movement(self) -> bool:
         return self._active_movement is not None
 
+    @property
+    def active_movement(self) -> MovementRequest | None:
+        """Current request identity, for callers to recognize their own walk.
+
+        Treat the returned request as read-only and compare with ``is``: a
+        replacement walk may have exactly the same direction and distance.
+        """
+        return self._active_movement
+
     def add_completion_listener(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Register *callback* to fire after the next movement finishes.
 

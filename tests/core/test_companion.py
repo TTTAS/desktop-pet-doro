@@ -19,6 +19,12 @@ def companion(tmp_path):
     window.clamp_window_position.side_effect = lambda p: p
     window.seconds_since_last_activity.return_value = 100
     movement = Mock()
+    movement.active_movement = None
+
+    def walk(*_):
+        movement.active_movement = object()
+
+    movement.apply_directional_walk.side_effect = walk
     movement.place_foot.side_effect = lambda p: foot.__setitem__(0, p)
     states = Mock()
     states.is_movement_only_state.return_value = False
@@ -114,3 +120,96 @@ def test_missing_rest_state_falls_back_without_replaying_every_tick(companion):
     for _ in range(80):
         c.controller.tick(0.02)
     c.states.set_state.assert_called_once_with("idle")
+
+
+@pytest.mark.parametrize("replacement", [None, object()])
+@pytest.mark.parametrize("tick_before_click", [False, True])
+def test_click_after_return_does_not_cancel_chat_work(companion, replacement, tick_before_click):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.cancel.reset_mock()
+    # Chat can stay busy after arrival, or replace the return with its own walk.
+    c.movement.active_movement = replacement
+    c.busy[0] = True
+    if tick_before_click:
+        c.controller.tick(0.02)
+    c.controller.interrupt()
+    c.cancel.assert_not_called()
+    c.movement.cancel_active_movement.assert_not_called()
+    c.states.set_state.assert_not_called()
+
+
+def test_click_cancels_only_the_owned_return(companion):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.cancel.reset_mock()
+    c.controller.interrupt()
+    c.cancel.assert_not_called()
+    c.movement.cancel_active_movement.assert_called_once()
+
+
+@pytest.mark.parametrize("trigger", ["startup", "click", "walk", "release"])
+def test_grounded_without_a_drop_does_not_squat(companion, trigger):
+    c = companion
+    if trigger == "walk":
+        c.controller.tick(0.02)
+    c.foot[0] = QtCore.QPoint(500, 799)
+    if trigger == "click":
+        c.controller.interrupt()
+    elif trigger == "release":
+        c.controller.released()
+    c.controller.tick(0.02)
+    c.window.play_landing.assert_not_called()
+
+
+def test_pose_selected_at_home_survives_until_saved(companion):
+    c = companion
+    c.foot[0] = QtCore.QPoint(500, 799)
+    c.controller.save_nest()
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.controller.interrupt()
+    c.states.get_current_state.return_value = SimpleNamespace(key="happy")
+    c.states.set_state.reset_mock()
+    c.window.seconds_since_last_activity.return_value = 30
+    for _ in range(20):
+        c.controller.tick(0.02)
+    c.states.set_state.assert_not_called()
+    c.controller.save_rest_state()
+    assert c.config.ui.companion_rest_state == "happy"
+
+
+@pytest.mark.parametrize("change", ["drag", "work_area", "nest"])
+def test_parked_arrival_does_not_prevent_return_after_location_changes(companion, change):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.movement.active_movement = None
+    c.controller.tick(0.02)
+    c.movement.apply_directional_walk.reset_mock()
+    c.controller.tick(0.02)
+    c.movement.apply_directional_walk.assert_not_called()
+    if change == "drag":
+        c.controller.interrupt()
+        c.foot[0] += QtCore.QPoint(-200, -100)
+    elif change == "work_area":
+        c.window.floor_geometry.return_value = QtCore.QRect(0, 0, 1000, 900)
+    else:
+        c.config.update_ui(companion_home_x=0.25)
+    c.controller.tick(0.02)
+    c.movement.apply_directional_walk.assert_called_once()
+
+
+def test_walk_below_movement_threshold_settles_once(companion):
+    c = companion
+    c.foot[0] = QtCore.QPoint(500, 799)
+    c.controller.save_nest()
+    c.foot[0] += QtCore.QPoint(2, 0)
+    c.movement.apply_directional_walk.side_effect = None
+    c.controller.set_quiet(True)
+    for _ in range(20):
+        c.controller.tick(0.02)
+    c.movement.apply_directional_walk.assert_called_once()
+    assert c.foot[0] == QtCore.QPoint(500, 799)

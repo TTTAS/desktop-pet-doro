@@ -29,10 +29,9 @@ class CompanionController:
         self._quiet = config.ui.quiet_companion
         self._fall_y: float | None = None
         self._fall_speed = 0.0
-        self._rest_requested = False
-        self._was_grounded = False
         self._return_now = self._quiet
-        self._returning = False
+        self._return_movement = None
+        self._parked = None
 
     @property
     def quiet(self) -> bool:
@@ -68,13 +67,12 @@ class CompanionController:
             self._config.save()
 
     def interrupt(self) -> None:
-        if self._returning:
-            self._cancel()
-            self._returning = False
+        owned = self._return_movement
+        self._return_movement = None
+        if owned is not None and self._movement.active_movement is owned:
+            self._movement.cancel_active_movement()
         self._fall_y = None
-        self._rest_requested = False
         self._return_now = False
-        self._was_grounded = False
 
     def _rest(self) -> None:
         key = self._config.ui.companion_rest_state
@@ -89,9 +87,7 @@ class CompanionController:
         self._movement.place_foot(self._window.foot_position())
         foot = self._window.foot_position()
         gap = self._window.floor_geometry().bottom() - foot.y()
-        if 0 <= gap <= self.DROP_DISTANCE:
-            self._was_grounded = False
-            self._rest_requested = True
+        if 0 < gap <= self.DROP_DISTANCE:
             self._fall_y = float(foot.y())
             self._fall_speed = 0.0
 
@@ -104,12 +100,36 @@ class CompanionController:
         offset = self._window.sprite_foot_offset_logical()
         return self._window.clamp_window_position(target - offset) + offset
 
+    def _location(self) -> tuple:
+        return (
+            self._window.foot_position(),
+            self._window.floor_geometry(),
+            self._config.ui.companion_home_x,
+        )
+
+    def _finish_return(self) -> None:
+        self._rest()
+        # A wider walking sprite can stop short of the nest. Settle once using
+        # the resting bounds instead of scheduling another impossible walk.
+        self._movement.place_foot(self._home())
+        # A deferred state transition can still change those bounds. Accept
+        # this arrival until the foot, work area or saved nest actually moves.
+        self._parked = self._location()
+
     def tick(self, dt: float) -> None:
-        if self._busy():
+        busy = self._busy()
+        if self._return_movement is not None:
+            active = self._movement.active_movement
+            if active is not self._return_movement:
+                self._return_movement = None
+                # Never restore a pose or position over newly started user work.
+                if active is None and not busy:
+                    self._finish_return()
+                    return
+        if busy:
             if self.settling:
                 self.interrupt()
             return
-        self._returning = False
         foot = self._window.foot_position()
         floor = self._window.floor_geometry().bottom()
         if self._fall_y is not None:
@@ -118,15 +138,8 @@ class CompanionController:
             self._movement.place_foot(QtCore.QPoint(foot.x(), round(self._fall_y)))
             if self._fall_y >= floor:
                 self._fall_y = None
-            foot = self._window.foot_position()
-
-        grounded = abs(foot.y() - floor) <= 1
-        if grounded and not self._was_grounded:
-            self._window.play_landing()
-        self._was_grounded = grounded
-        if grounded and self._rest_requested:
-            self._rest_requested = False
-            self._rest()
+                self._window.play_landing()
+                self._rest()
 
         if not self._quiet or self.settling:
             return
@@ -134,12 +147,17 @@ class CompanionController:
             self._window.seconds_since_last_activity() < self.RETURN_DELAY or self._bubble.text
         ):
             return
+        explicit_return = self._return_now
         self._return_now = False
+        if not explicit_return and self._parked == self._location():
+            return
         delta = self._home() - self._window.foot_position()
         distance = math.hypot(delta.x(), delta.y())
         if distance > 1.0:
-            self._rest_requested = True
-            self._returning = True
             self._movement.apply_directional_walk((delta.x(), delta.y()), distance)
-        else:
-            self._rest()
+            self._return_movement = self._movement.active_movement
+            if self._return_movement is None:
+                # MovementManager also declines walks below its threshold.
+                self._finish_return()
+        elif explicit_return:
+            self._finish_return()

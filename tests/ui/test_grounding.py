@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6 import QtCore, QtGui
 
+from doro_app.core.companion import CompanionController
 from doro_app.core.movement.manager import MovementManager
 from doro_app.core.movement.repository import MovementRepository
 from doro_app.ui.components.bubble_controller import BubbleController
@@ -135,3 +136,53 @@ def test_walking_with_different_gif_sizes_and_bubble_keeps_target(pet):
             break
     assert not movement.has_active_movement
     assert window.foot_position() == QtCore.QPoint(750, 799)
+
+
+@pytest.mark.parametrize("home_x", [0.0, 1.0])
+def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path, home_x):
+    window, bubble, _ = pet
+    config = ConfigManager(tmp_path / "edge.ini")
+    config.update_ui(companion_home_x=home_x)
+    current = ["idle"]
+    states = Mock()
+    states.get_current_state.side_effect = lambda: SimpleNamespace(key=current[0])
+    states.get_requested_state_key.side_effect = lambda: current[0]
+    states.get_default_movement_state.return_value = "walk"
+    states.get_move_state.return_value = None
+    states.find_move_states_by_direction.return_value = []
+    states.is_movement_only_state.return_value = False
+
+    def switch(key, **_):
+        current[0] = key
+        window.view_model.set_sprite_size(
+            QtCore.QSize(350, 200) if key == "walk" else QtCore.QSize(120, 200)
+        )
+        window.on_sprite_renderer_changed()
+        return True
+
+    states.set_state.side_effect = switch
+    switch("idle")
+    movement = MovementManager(window, states, MovementRepository(Path("/nonexistent")))
+    movement.apply_directional_walk = Mock(wraps=movement.apply_directional_walk)
+    window.seconds_since_last_activity = lambda: 100
+    window.play_landing = Mock()
+    controller = CompanionController(
+        window=window,
+        movement=movement,
+        states=states,
+        config=config,
+        bubble=bubble,
+        busy=lambda: movement.has_active_movement,
+        cancel=Mock(),
+        silence=Mock(),
+    )
+    place(window, 600, 799)
+    controller.set_quiet(True)
+    for _ in range(600):
+        movement.process_active_movement(0.05)
+        controller.tick(0.05)
+    assert not movement.has_active_movement
+    movement.apply_directional_walk.assert_called_once()
+    assert current[0] == "idle"
+    assert window.foot_position() == controller._home()
+    window.play_landing.assert_not_called()
