@@ -28,7 +28,6 @@ class MenuSnapshot:
     web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
     quiet_companion: bool = False
     has_rest_point: bool = False
-    floor_interaction: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -57,7 +56,6 @@ class MenuCallbacks:
     save_nest: Callable[[], None] = lambda: None
     save_rest_state: Callable[[], None] = lambda: None
     clear_rest_point: Callable[[], None] = lambda: None
-    toggle_floor_interaction: Callable[[bool], None] = lambda _: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -344,10 +342,6 @@ def build_context_menu_content(
     clear_rest_action.triggered.connect(callbacks.clear_rest_point)
     rest_action = menu.addAction("用目前姿勢休息")
     rest_action.triggered.connect(callbacks.save_rest_state)
-    floor_action = menu.addAction("底部互動（靠近底部放手時落地）")
-    floor_action.setCheckable(True)
-    floor_action.setChecked(snapshot.floor_interaction)
-    floor_action.triggered.connect(callbacks.toggle_floor_interaction)
     menu.addSeparator()
 
     # States submenu

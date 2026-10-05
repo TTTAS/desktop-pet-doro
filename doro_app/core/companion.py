@@ -1,4 +1,4 @@
-"""Quiet companionship and short, interruptible drops onto the desktop floor."""
+"""Quiet companionship with freely placed resting points."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ class CompanionController:
     survives resolution/taskbar changes and never returns to a removed monitor.
     """
 
-    DROP_DISTANCE = 96
     RETURN_DELAY = 8.0
 
     def __init__(self, *, window, movement, states, config, bubble, busy, cancel, silence):
@@ -27,8 +26,6 @@ class CompanionController:
         self._cancel = cancel
         self._silence = silence
         self._quiet = config.ui.quiet_companion
-        self._fall_y: float | None = None
-        self._fall_speed = 0.0
         self._return_now = self._quiet
         self._return_movement = None
         self._parked = None
@@ -38,22 +35,8 @@ class CompanionController:
         return self._quiet
 
     @property
-    def settling(self) -> bool:
-        return self._fall_y is not None
-
-    @property
     def has_rest_point(self) -> bool:
         return self._config.ui.companion_home_y is not None
-
-    @property
-    def floor_interaction(self) -> bool:
-        return self._config.ui.companion_floor_interaction
-
-    def set_floor_interaction(self, enabled: bool) -> None:
-        self._config.update_ui(companion_floor_interaction=bool(enabled))
-        self._config.save()
-        if not enabled:
-            self._fall_y = None
 
     def set_quiet(self, enabled: bool) -> None:
         self._quiet = bool(enabled)
@@ -96,7 +79,6 @@ class CompanionController:
         self._return_movement = None
         if owned is not None and self._movement.active_movement is owned:
             self._movement.cancel_active_movement()
-        self._fall_y = None
         self._return_now = False
 
     def _rest(self) -> None:
@@ -108,15 +90,8 @@ class CompanionController:
             self._states.set_state(key)
 
     def released(self) -> None:
-        """Opt-in short drops attach to the floor; other releases stay free."""
+        """Keep release within sprite bounds, without gravity or landing effects."""
         self._movement.place_foot(self._window.foot_position())
-        if not self.floor_interaction:
-            return
-        foot = self._window.foot_position()
-        gap = self._window.floor_geometry().bottom() - foot.y()
-        if 0 < gap <= self.DROP_DISTANCE:
-            self._fall_y = float(foot.y())
-            self._fall_speed = 0.0
 
     def _home(self) -> QtCore.QPoint:
         if not self.has_rest_point:
@@ -157,21 +132,9 @@ class CompanionController:
                     self._finish_return()
                     return
         if busy:
-            if self.settling:
-                self.interrupt()
             return
-        foot = self._window.foot_position()
-        floor = self._window.floor_geometry().bottom()
-        if self._fall_y is not None:
-            self._fall_speed += 1100.0 * max(0.0, dt)
-            self._fall_y = min(float(floor), self._fall_y + self._fall_speed * dt)
-            self._movement.place_foot(QtCore.QPoint(foot.x(), round(self._fall_y)))
-            if self._fall_y >= floor:
-                self._fall_y = None
-                self._window.play_landing()
-                self._rest()
 
-        if not self._quiet or self.settling:
+        if not self._quiet:
             return
         if not self._return_now and (
             self._window.seconds_since_last_activity() < self.RETURN_DELAY or self._bubble.text

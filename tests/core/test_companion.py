@@ -57,28 +57,17 @@ def companion(tmp_path):
     )
 
 
-def test_release_near_floor_lands_once_and_rests(companion):
+@pytest.mark.parametrize("height", [300, 750, 799])
+def test_release_stays_free_even_when_legacy_floor_setting_is_enabled(companion, height):
     c = companion
+    assert c.config.ui.companion_floor_interaction
+    c.foot[0] = QtCore.QPoint(500, height)
     c.controller.released()
     for _ in range(80):
         c.controller.tick(0.02)
-    assert c.foot[0].y() == 799
-    c.window.play_landing.assert_called_once()
-    c.states.set_state.assert_called_once_with("idle")
-
-
-def test_high_drag_stays_free_and_new_interaction_cancels_drop(companion):
-    c = companion
-    c.foot[0] = QtCore.QPoint(500, 300)
-    c.controller.released()
-    assert not c.controller.settling
-    c.foot[0] = QtCore.QPoint(500, 750)
-    c.controller.released()
-    c.controller.tick(0.02)
-    position = c.foot[0]
-    c.controller.interrupt()
-    c.controller.tick(0.02)
-    assert c.foot[0] == position
+    assert c.foot[0] == QtCore.QPoint(500, height)
+    c.window.play_landing.assert_not_called()
+    c.states.set_state.assert_not_called()
 
 
 def test_quiet_returns_to_saved_nest_and_persists(companion):
@@ -118,7 +107,8 @@ def test_missing_rest_state_falls_back_without_replaying_every_tick(companion):
     c = companion
     c.config.update_ui(companion_rest_state="deleted")
     c.states.get_state.return_value = None
-    c.controller.released()
+    c.controller.save_nest()
+    c.controller.set_quiet(True)
     for _ in range(80):
         c.controller.tick(0.02)
     c.states.set_state.assert_called_once_with("idle")
@@ -227,7 +217,6 @@ def test_unset_rest_point_and_disabled_floor_interaction_leave_position_free(com
     for _ in range(100):
         c.controller.tick(0.02)
     assert c.foot[0] == QtCore.QPoint(500, 760)
-    assert not c.controller.settling
     c.window.play_landing.assert_not_called()
     c.movement.apply_directional_walk.assert_not_called()
     # Moving again after enabling quiet must not make an implicit rest point.
@@ -252,21 +241,6 @@ def test_rest_point_preserves_height_across_monitor_changes(companion):
     c.movement.active_movement = None
     c.controller.tick(0.02)
     assert c.foot[0] == QtCore.QPoint(500, 400)
-
-
-def test_disabling_floor_interaction_stops_fall_without_cancelling_other_work(companion):
-    c = companion
-    c.controller.released()
-    c.controller.tick(0.02)
-    foot = QtCore.QPoint(c.foot[0])
-    c.controller.set_floor_interaction(False)
-    for _ in range(100):
-        c.controller.tick(0.02)
-    assert c.foot[0] == foot
-    assert not c.controller.settling
-    c.cancel.assert_not_called()
-    c.window.play_landing.assert_not_called()
-    assert not ConfigManager(c.config._settings.fileName()).ui.companion_floor_interaction
 
 
 def test_clearing_rest_point_cancels_return_and_stays_in_place(companion):

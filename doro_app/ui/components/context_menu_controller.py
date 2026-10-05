@@ -89,7 +89,6 @@ class ContextMenuController:
             has_chat_history=self._core_manager.has_chat_history,
             quiet_companion=bool(self._companion and self._companion.quiet),
             has_rest_point=bool(self._companion and self._companion.has_rest_point),
-            floor_interaction=bool(self._companion and self._companion.floor_interaction),
             a11y_enabled=bool(self._core_manager.config_manager.automation.a11y_enabled),
             mouse_enabled=bool(self._core_manager.config_manager.automation.mouse_enabled),
             web_operation_enabled=bool(
@@ -126,9 +125,6 @@ class ContextMenuController:
             save_nest=self._companion.save_nest if self._companion else lambda: None,
             save_rest_state=self._companion.save_rest_state if self._companion else lambda: None,
             clear_rest_point=self._companion.clear_rest_point if self._companion else lambda: None,
-            toggle_floor_interaction=(
-                self._companion.set_floor_interaction if self._companion else lambda _: None
-            ),
         )
 
     def _show_presence_settings(self) -> None:

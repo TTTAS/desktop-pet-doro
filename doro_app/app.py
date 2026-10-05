@@ -183,9 +183,7 @@ class DoroApp:
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
             mark_activity=lambda: self.window.mark_user_activity(),
-            interaction_busy=lambda: (
-                self._mouse_handler.is_dragging or self._companion.quiet or self._companion.settling
-            ),
+            interaction_busy=lambda: (self._mouse_handler.is_dragging or self._companion.quiet),
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )

@@ -26,6 +26,10 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         ChatOrchestrator, "_default_web_profile_dir", staticmethod(lambda: tmp_path / "web")
     )
     config = ConfigManager(tmp_path / "settings.ini")
+    # Simulate upgrading a user who had the removed floor option enabled.
+    config.update_ui(companion_floor_interaction=True)
+    config.save()
+    config = ConfigManager(tmp_path / "settings.ini")
     default_gif = STATE_DIR / "idle.gif"
     deps = BootstrappedDependencies(
         config_manager=config,
@@ -88,18 +92,11 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
 
         snapshot = app._context_menu_ctrl._build_snapshot()
         assert snapshot.has_rest_point
-        assert not snapshot.floor_interaction
         menu = DoroMenu(app.window)
         build_context_menu_content(menu, app.window, snapshot, callbacks)
         actions = {action.text(): action for action in menu.actions()}
         assert "把這裡設為休息點" in actions
-        floor_toggle = actions["底部互動（靠近底部放手時落地）"]
-        assert not floor_toggle.isChecked()
-        floor_toggle.trigger()
-        assert app._context_menu_ctrl._build_snapshot().floor_interaction
-        assert config.ui.companion_floor_interaction
-        floor_toggle.trigger()
-        assert not config.ui.companion_floor_interaction
+        assert not any("底部互動" in label for label in actions)
         actions["清除休息點（原地陪伴）"].trigger()
         assert not app._context_menu_ctrl._build_snapshot().has_rest_point
         app._movement.place_foot(QtCore.QPoint(600, 750))

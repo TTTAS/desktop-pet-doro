@@ -131,7 +131,7 @@ class UIConfig:
     quiet_companion: bool = False
     companion_home_x: float = 0.9
     companion_home_y: float | None = None  # None means no saved resting point.
-    companion_floor_interaction: bool = False
+    companion_floor_interaction: bool = False  # Legacy setting; floor interaction is disabled.
     companion_rest_state: str = "idle"
 
     def __post_init__(self):
