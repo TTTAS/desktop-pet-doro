@@ -10,7 +10,7 @@ from PySide6 import QtCore
 class CompanionController:
     """Coordinates existing movement/state services without model requests.
 
-    A nest is a horizontal fraction of the current monitor's work area. This
+    A resting point stores both fractions of the current monitor's work area. This
     survives resolution/taskbar changes and never returns to a removed monitor.
     """
 
@@ -41,6 +41,20 @@ class CompanionController:
     def settling(self) -> bool:
         return self._fall_y is not None
 
+    @property
+    def has_rest_point(self) -> bool:
+        return self._config.ui.companion_home_y is not None
+
+    @property
+    def floor_interaction(self) -> bool:
+        return self._config.ui.companion_floor_interaction
+
+    def set_floor_interaction(self, enabled: bool) -> None:
+        self._config.update_ui(companion_floor_interaction=bool(enabled))
+        self._config.save()
+        if not enabled:
+            self._fall_y = None
+
     def set_quiet(self, enabled: bool) -> None:
         self._quiet = bool(enabled)
         self._config.update_ui(quiet_companion=self._quiet)
@@ -54,11 +68,22 @@ class CompanionController:
 
     def save_nest(self) -> None:
         area = self._window.floor_geometry()
-        ratio = (self._window.foot_position().x() - area.left()) / max(1, area.width() - 1)
-        self._config.update_ui(companion_home_x=max(0.0, min(1.0, ratio)))
+        foot = self._window.foot_position()
+        x_ratio = (foot.x() - area.left()) / max(1, area.width() - 1)
+        y_ratio = (foot.y() - area.top()) / max(1, area.height() - 1)
+        self._config.update_ui(
+            companion_home_x=max(0.0, min(1.0, x_ratio)),
+            companion_home_y=max(0.0, min(1.0, y_ratio)),
+        )
         self._config.save()
         if self._quiet:
             self._return_now = True
+
+    def clear_rest_point(self) -> None:
+        self.interrupt()
+        self._config.update_ui(companion_home_y=None)
+        self._config.save()
+        self._parked = None
 
     def save_rest_state(self) -> None:
         state = self._states.get_current_state()
@@ -83,8 +108,10 @@ class CompanionController:
             self._states.set_state(key)
 
     def released(self) -> None:
-        """Only short drops attach to the floor; dragging high stays free."""
+        """Opt-in short drops attach to the floor; other releases stay free."""
         self._movement.place_foot(self._window.foot_position())
+        if not self.floor_interaction:
+            return
         foot = self._window.foot_position()
         gap = self._window.floor_geometry().bottom() - foot.y()
         if 0 < gap <= self.DROP_DISTANCE:
@@ -92,10 +119,12 @@ class CompanionController:
             self._fall_speed = 0.0
 
     def _home(self) -> QtCore.QPoint:
+        if not self.has_rest_point:
+            return self._window.foot_position()
         area = self._window.floor_geometry()
         target = QtCore.QPoint(
             area.left() + round((area.width() - 1) * self._config.ui.companion_home_x),
-            area.bottom(),
+            area.top() + round((area.height() - 1) * self._config.ui.companion_home_y),
         )
         offset = self._window.sprite_foot_offset_logical()
         return self._window.clamp_window_position(target - offset) + offset
@@ -105,6 +134,7 @@ class CompanionController:
             self._window.foot_position(),
             self._window.floor_geometry(),
             self._config.ui.companion_home_x,
+            self._config.ui.companion_home_y,
         )
 
     def _finish_return(self) -> None:

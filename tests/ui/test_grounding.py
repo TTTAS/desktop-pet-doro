@@ -142,7 +142,7 @@ def test_walking_with_different_gif_sizes_and_bubble_keeps_target(pet):
 def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path, home_x):
     window, bubble, _ = pet
     config = ConfigManager(tmp_path / "edge.ini")
-    config.update_ui(companion_home_x=home_x)
+    config.update_ui(companion_home_x=home_x, companion_home_y=1.0)
     current = ["idle"]
     states = Mock()
     states.get_current_state.side_effect = lambda: SimpleNamespace(key=current[0])

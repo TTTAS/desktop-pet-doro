@@ -5,6 +5,18 @@ import pytest
 from doro_app.utils.config_schema import AppConfig, ChatConfig, DoroConfig, UIConfig
 
 
+@pytest.mark.parametrize("height", [-0.1, 1.1, float("nan"), "middle", True])
+def test_rest_point_height_must_be_a_valid_ratio(height):
+    with pytest.raises(ValueError, match="companion_home_y"):
+        UIConfig(companion_home_y=height)
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_floor_interaction_requires_boolean(value):
+    with pytest.raises(ValueError, match="companion_floor_interaction"):
+        UIConfig(companion_floor_interaction=value)
+
+
 class TestChatConfig:
     """Tests for ChatConfig validation."""
 

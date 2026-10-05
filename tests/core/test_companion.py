@@ -11,6 +11,7 @@ from doro_app.utils.config_manager import ConfigManager
 @pytest.fixture
 def companion(tmp_path):
     config = ConfigManager(tmp_path / "companion.ini")
+    config.update_ui(companion_home_y=1.0, companion_floor_interaction=True)
     foot = [QtCore.QPoint(500, 750)]
     window = Mock()
     window.foot_position.side_effect = lambda: QtCore.QPoint(foot[0])
@@ -90,10 +91,11 @@ def test_quiet_returns_to_saved_nest_and_persists(companion):
     c.cancel.assert_called_once()
     c.bubble.clear_text.assert_called_once()
     direction, _distance = c.movement.apply_directional_walk.call_args.args
-    assert direction == (200, 399)
+    assert direction == (200, 350)
     restored = ConfigManager(c.config._settings.fileName())
     assert restored.ui.quiet_companion
     assert restored.ui.companion_home_x == pytest.approx(500 / 999)
+    assert restored.ui.companion_home_y == pytest.approx(750 / 799)
 
 
 def test_busy_and_click_grace_do_not_interrupt_user_work(companion):
@@ -213,3 +215,71 @@ def test_walk_below_movement_threshold_settles_once(companion):
         c.controller.tick(0.02)
     c.movement.apply_directional_walk.assert_called_once()
     assert c.foot[0] == QtCore.QPoint(500, 799)
+
+
+@pytest.mark.parametrize("quiet", [False, True])
+def test_unset_rest_point_and_disabled_floor_interaction_leave_position_free(companion, quiet):
+    c = companion
+    c.config.update_ui(companion_home_y=None, companion_floor_interaction=False)
+    c.foot[0] = QtCore.QPoint(500, 760)
+    c.controller.set_quiet(quiet)
+    c.controller.released()
+    for _ in range(100):
+        c.controller.tick(0.02)
+    assert c.foot[0] == QtCore.QPoint(500, 760)
+    assert not c.controller.settling
+    c.window.play_landing.assert_not_called()
+    c.movement.apply_directional_walk.assert_not_called()
+    # Moving again after enabling quiet must not make an implicit rest point.
+    c.controller.interrupt()
+    c.foot[0] = QtCore.QPoint(300, 400)
+    c.controller.tick(0.02)
+    c.movement.apply_directional_walk.assert_not_called()
+
+
+def test_rest_point_preserves_height_across_monitor_changes(companion):
+    c = companion
+    c.window.floor_geometry.return_value = QtCore.QRect(-1000, -200, 1001, 801)
+    c.foot[0] = QtCore.QPoint(-750, 200)
+    c.controller.save_nest()
+    assert c.config.ui.companion_home_x == pytest.approx(0.25)
+    assert c.config.ui.companion_home_y == pytest.approx(0.5)
+    c.window.floor_geometry.return_value = QtCore.QRect(0, 100, 2001, 601)
+    c.foot[0] = QtCore.QPoint(900, 600)
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    assert c.movement.apply_directional_walk.call_args.args[0] == (-400, -200)
+    c.movement.active_movement = None
+    c.controller.tick(0.02)
+    assert c.foot[0] == QtCore.QPoint(500, 400)
+
+
+def test_disabling_floor_interaction_stops_fall_without_cancelling_other_work(companion):
+    c = companion
+    c.controller.released()
+    c.controller.tick(0.02)
+    foot = QtCore.QPoint(c.foot[0])
+    c.controller.set_floor_interaction(False)
+    for _ in range(100):
+        c.controller.tick(0.02)
+    assert c.foot[0] == foot
+    assert not c.controller.settling
+    c.cancel.assert_not_called()
+    c.window.play_landing.assert_not_called()
+    assert not ConfigManager(c.config._settings.fileName()).ui.companion_floor_interaction
+
+
+def test_clearing_rest_point_cancels_return_and_stays_in_place(companion):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.controller.clear_rest_point()
+    c.movement.cancel_active_movement.assert_called_once()
+    c.movement.active_movement = None
+    c.movement.apply_directional_walk.reset_mock()
+    foot = QtCore.QPoint(c.foot[0])
+    c.controller.tick(0.02)
+    assert c.foot[0] == foot
+    c.movement.apply_directional_walk.assert_not_called()
+    assert not c.controller.has_rest_point
+    assert ConfigManager(c.config._settings.fileName()).ui.companion_home_y is None

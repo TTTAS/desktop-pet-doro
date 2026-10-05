@@ -15,6 +15,45 @@ from doro_app.utils.config_schema import AppConfig, ChatConfig, UIConfig
 pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 
 
+@pytest.mark.parametrize("height", [0.0, 0.4, 1.0])
+def test_free_rest_point_and_floor_toggle_round_trip(tmp_path, height):
+    path = tmp_path / "companion.ini"
+    manager = ConfigManager(path)
+    assert manager.ui.companion_home_y is None
+    assert not manager.ui.companion_floor_interaction
+    manager.update_ui(
+        companion_home_x=0.25, companion_home_y=height, companion_floor_interaction=True
+    )
+    manager.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_home_x == 0.25
+    assert restored.ui.companion_home_y == height
+    assert restored.ui.companion_floor_interaction
+    restored.update_ui(companion_home_y=None, companion_floor_interaction=False)
+    restored.save()
+    cleared = ConfigManager(path)
+    assert cleared.ui.companion_home_y is None
+    assert not cleared.ui.companion_floor_interaction
+
+
+@pytest.mark.parametrize("height", [None, "invalid", "nan", 2.0])
+def test_old_or_invalid_rest_point_does_not_force_floor_or_reset_other_settings(tmp_path, height):
+    path = tmp_path / "old.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/quiet_companion", True)
+    settings.setValue("ui/companion_home_x", 0.75)
+    settings.setValue("ui/bubble_scale", 1.5)
+    if height is not None:
+        settings.setValue("ui/companion_home_y", height)
+    settings.sync()
+    manager = ConfigManager(path)
+    assert manager.ui.quiet_companion
+    assert manager.ui.companion_home_x == 0.75
+    assert manager.ui.bubble_scale == 1.5
+    assert manager.ui.companion_home_y is None
+    assert not manager.ui.companion_floor_interaction
+
+
 class TestConfigManagerInitialization:
     """Tests for ConfigManager initialization."""
 

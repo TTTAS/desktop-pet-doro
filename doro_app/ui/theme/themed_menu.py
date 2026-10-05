@@ -27,6 +27,8 @@ class MenuSnapshot:
     mouse_enabled: bool = False  # synthetic mouse-click automation is on
     web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
     quiet_companion: bool = False
+    has_rest_point: bool = False
+    floor_interaction: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,6 +56,8 @@ class MenuCallbacks:
     toggle_quiet: Callable[[bool], None] = lambda _: None
     save_nest: Callable[[], None] = lambda: None
     save_rest_state: Callable[[], None] = lambda: None
+    clear_rest_point: Callable[[], None] = lambda: None
+    toggle_floor_interaction: Callable[[bool], None] = lambda _: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -333,10 +337,17 @@ def build_context_menu_content(
     quiet_action.setCheckable(True)
     quiet_action.setChecked(snapshot.quiet_companion)
     quiet_action.triggered.connect(callbacks.toggle_quiet)
-    nest_action = menu.addAction("把這裡設為窩（桌邊）")
+    nest_action = menu.addAction("把這裡設為休息點")
     nest_action.triggered.connect(callbacks.save_nest)
+    clear_rest_action = menu.addAction("清除休息點（原地陪伴）")
+    clear_rest_action.setEnabled(snapshot.has_rest_point)
+    clear_rest_action.triggered.connect(callbacks.clear_rest_point)
     rest_action = menu.addAction("用目前姿勢休息")
     rest_action.triggered.connect(callbacks.save_rest_state)
+    floor_action = menu.addAction("底部互動（靠近底部放手時落地）")
+    floor_action.setCheckable(True)
+    floor_action.setChecked(snapshot.floor_interaction)
+    floor_action.triggered.connect(callbacks.toggle_floor_interaction)
     menu.addSeparator()
 
     # States submenu

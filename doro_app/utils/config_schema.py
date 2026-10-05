@@ -130,6 +130,8 @@ class UIConfig:
     bubble_scale: float = BUBBLE_DEFAULT_SCALE
     quiet_companion: bool = False
     companion_home_x: float = 0.9
+    companion_home_y: float | None = None  # None means no saved resting point.
+    companion_floor_interaction: bool = False
     companion_rest_state: str = "idle"
 
     def __post_init__(self):
@@ -151,6 +153,14 @@ class UIConfig:
             or not 0 <= self.companion_home_x <= 1
         ):
             raise ValueError("companion_home_x must be between 0 and 1")
+        if self.companion_home_y is not None and (
+            not isinstance(self.companion_home_y, (int, float))
+            or isinstance(self.companion_home_y, bool)
+            or not 0 <= self.companion_home_y <= 1
+        ):
+            raise ValueError("companion_home_y must be None or between 0 and 1")
+        if not isinstance(self.companion_floor_interaction, bool):
+            raise ValueError("companion_floor_interaction must be bool")
         if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
             raise ValueError("companion_rest_state must be a nonempty state key")
 

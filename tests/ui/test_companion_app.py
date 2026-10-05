@@ -11,6 +11,7 @@ from doro_app.core.automation.foreground_tracker import ForegroundTracker
 from doro_app.core.chat.orchestrator import ChatOrchestrator
 from doro_app.core.movement.repository import MovementRepository
 from doro_app.core.state import GifRepository
+from doro_app.ui.theme.themed_menu import DoroMenu, build_context_menu_content
 from doro_app.utils.config_manager import ConfigManager
 from doro_app.utils.paths import STATE_DIR
 
@@ -49,7 +50,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         app.window._available_screen_geometry = lambda: area
         app.window.floor_geometry = lambda: area
         app.run()
-        app._movement.place_foot(QtCore.QPoint(600, 799))
+        app._movement.place_foot(QtCore.QPoint(600, 400))
         callbacks = app._context_menu_ctrl._build_callbacks()
         callbacks.save_nest()
         callbacks.save_rest_state()
@@ -75,6 +76,36 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         app._bubble_controller.clear_text()
         app._companion.tick(0.02)
         assert app.window.foot_position() == foot
+
+        # A saved point in mid-screen must stay there, including after walking.
+        app.window.seconds_since_last_activity = lambda: 100
+        app._movement.place_foot(QtCore.QPoint(900, 600))
+        for _ in range(500):
+            app._movement.process_active_movement(0.05)
+            app._companion.tick(0.05)
+        assert not app._movement.has_active_movement
+        assert app.window.foot_position() == QtCore.QPoint(600, 400)
+
+        snapshot = app._context_menu_ctrl._build_snapshot()
+        assert snapshot.has_rest_point
+        assert not snapshot.floor_interaction
+        menu = DoroMenu(app.window)
+        build_context_menu_content(menu, app.window, snapshot, callbacks)
+        actions = {action.text(): action for action in menu.actions()}
+        assert "把這裡設為休息點" in actions
+        floor_toggle = actions["底部互動（靠近底部放手時落地）"]
+        assert not floor_toggle.isChecked()
+        floor_toggle.trigger()
+        assert app._context_menu_ctrl._build_snapshot().floor_interaction
+        assert config.ui.companion_floor_interaction
+        floor_toggle.trigger()
+        assert not config.ui.companion_floor_interaction
+        actions["清除休息點（原地陪伴）"].trigger()
+        assert not app._context_menu_ctrl._build_snapshot().has_rest_point
+        app._movement.place_foot(QtCore.QPoint(600, 750))
+        app._companion.released()
+        app._companion.tick(0.5)
+        assert app.window.foot_position() == QtCore.QPoint(600, 750)
         callbacks.toggle_quiet(False)
         assert not app._presence._quiet
         assert not config.ui.quiet_companion

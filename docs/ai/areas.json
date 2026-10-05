@@ -225,7 +225,7 @@
       "tests/core/test_companion.py",
       "tests/ui/test_grounding.py"
     ],
-    "purpose": "核心事件協調、閒置陪伴及安靜模式的回窩／桌邊落地；接地與泡泡共用固定腳底位置。"
+    "purpose": "核心事件協調、閒置陪伴及安靜模式的自由休息點／可選底部互動；接地與泡泡共用固定腳底位置。"
   },
   {
     "id": "automation",

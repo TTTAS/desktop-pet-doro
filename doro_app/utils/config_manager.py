@@ -260,6 +260,10 @@ class ConfigManager:
             "bubble_scale": kwargs.get("bubble_scale", current.bubble_scale),
             "quiet_companion": kwargs.get("quiet_companion", current.quiet_companion),
             "companion_home_x": kwargs.get("companion_home_x", current.companion_home_x),
+            "companion_home_y": kwargs.get("companion_home_y", current.companion_home_y),
+            "companion_floor_interaction": kwargs.get(
+                "companion_floor_interaction", current.companion_floor_interaction
+            ),
             "companion_rest_state": kwargs.get(
                 "companion_rest_state", current.companion_rest_state
             ),
@@ -388,6 +392,7 @@ class ConfigManager:
 
         # Load UI config
         try:
+            home_y = _safe_float(self._settings.value("ui/companion_home_y"), -1.0)
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
                     self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
@@ -400,6 +405,10 @@ class ConfigManager:
                 ),
                 quiet_companion=_safe_bool(self._settings.value("ui/quiet_companion"), False),
                 companion_home_x=_safe_float(self._settings.value("ui/companion_home_x"), 0.9),
+                companion_home_y=home_y if 0 <= home_y <= 1 else None,
+                companion_floor_interaction=_safe_bool(
+                    self._settings.value("ui/companion_floor_interaction"), False
+                ),
                 companion_rest_state=_safe_str(
                     self._settings.value("ui/companion_rest_state"), "idle"
                 ),
@@ -508,6 +517,11 @@ class ConfigManager:
         self._settings.setValue("ui/bubble_scale", float(ui.bubble_scale))
         self._settings.setValue("ui/quiet_companion", ui.quiet_companion)
         self._settings.setValue("ui/companion_home_x", ui.companion_home_x)
+        if ui.companion_home_y is None:
+            self._settings.remove("ui/companion_home_y")
+        else:
+            self._settings.setValue("ui/companion_home_y", ui.companion_home_y)
+        self._settings.setValue("ui/companion_floor_interaction", ui.companion_floor_interaction)
         self._settings.setValue("ui/companion_rest_state", ui.companion_rest_state)
 
         # Save automation config
