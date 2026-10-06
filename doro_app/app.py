@@ -183,7 +183,17 @@ class DoroApp:
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
             mark_activity=lambda: self.window.mark_user_activity(),
-            interaction_busy=lambda: (self._mouse_handler.is_dragging or self._companion.quiet),
+            interaction_busy=lambda: (
+                self._mouse_handler.is_dragging
+                or bool(self._bubble_controller.text)
+                or QtWidgets.QApplication.activeModalWidget() is not None
+                or QtWidgets.QApplication.activePopupWidget() is not None
+            ),
+            profile_provider=lambda: self._config_manager.ui.companion_activity,
+            quiet_provider=lambda: self._companion.quiet,
+            effects_enabled=lambda: self._config_manager.ui.companion_effects,
+            micro_effect=self.window.play_expression,
+            window=self.window,
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )
@@ -321,6 +331,9 @@ class DoroApp:
     def _on_chat_operation_started(self):
         """Translate chat operation started domain event to UI busy cursor."""
         self.window.set_busy_cursor(True)
+        self._idle_behavior.interrupt()
+        self._companion.interrupt()
+        self.window.clear_expression()
 
     def _on_chat_operation_completed(self):
         """Translate chat operation completed domain event to UI cursor reset."""
@@ -397,6 +410,8 @@ class DoroApp:
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
             companion=self._companion,
+            on_interaction=self._interrupt_background_companionship,
+            on_settings_changed=self._idle_behavior.reset,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -412,6 +427,8 @@ class DoroApp:
         mouse_handler.click_detected.connect(self._on_doro_clicked)
         mouse_handler.user_activity_detected.connect(self.window.mark_user_activity)
         mouse_handler.user_activity_detected.connect(self._companion.interrupt)
+        mouse_handler.user_activity_detected.connect(self._idle_behavior.interrupt)
+        mouse_handler.user_activity_detected.connect(self.window.clear_expression)
         self.window.tick_requested.connect(self._companion.tick)
         # Idle behavior no longer resets on user activity: Doro acts on her
         # own fixed 1-3 min rhythm regardless of whether you're using the
@@ -451,6 +468,8 @@ class DoroApp:
             or not self._action_dispatcher.is_idle
             or self._movement.has_active_movement
             or self._state_service.is_transitioning()
+            or QtWidgets.QApplication.activeModalWidget() is not None
+            or QtWidgets.QApplication.activePopupWidget() is not None
         )
 
     def _cancel_companion_activity(self) -> None:
@@ -633,7 +652,13 @@ class DoroApp:
         path = self._action_service.resolve_action_gif_path(PET_CLICK_ACTION_KEY)
         if path is not None:
             self._sprite_controller.start_pet_click_animation(path)
+        self.window.play_expression("heart")
         self._click_action_controller.trigger_random_action()
+
+    def _interrupt_background_companionship(self) -> None:
+        self._idle_behavior.interrupt()
+        self._companion.interrupt()
+        self.window.clear_expression()
 
     def _on_doro_dragged(self) -> None:
         """User dragged Doro — kill any in-flight click, active movement,

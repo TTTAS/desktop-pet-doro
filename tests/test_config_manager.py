@@ -15,6 +15,33 @@ from doro_app.utils.config_schema import AppConfig, ChatConfig, UIConfig
 pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 
 
+def test_companion_preferences_and_calibration_survive_unrelated_ui_changes(tmp_path):
+    path = tmp_path / "companion.ini"
+    config = ConfigManager(path)
+    config.update_ui(
+        companion_activity="calm",
+        companion_effects=False,
+        sprite_foot_overrides={"c:/pet.gif": 0.82},
+    )
+    config.update_ui(bubble_scale=1.25)
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_activity == "calm"
+    assert not restored.ui.companion_effects
+    assert restored.ui.sprite_foot_overrides == {"c:/pet.gif": 0.82}
+
+
+def test_invalid_calibration_entries_do_not_discard_valid_preferences(tmp_path):
+    path = tmp_path / "companion.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/sprite_foot_overrides", '{"good": 0.8, "bad": "oops", "nan": NaN}')
+    settings.setValue("ui/companion_activity", "calm")
+    settings.sync()
+    restored = ConfigManager(path)
+    assert restored.ui.sprite_foot_overrides == {"good": 0.8}
+    assert restored.ui.companion_activity == "calm"
+
+
 @pytest.mark.parametrize("height", [0.0, 0.4, 1.0])
 def test_free_rest_point_and_floor_toggle_round_trip(tmp_path, height):
     path = tmp_path / "companion.ini"

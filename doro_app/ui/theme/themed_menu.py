@@ -56,6 +56,7 @@ class MenuCallbacks:
     save_nest: Callable[[], None] = lambda: None
     save_rest_state: Callable[[], None] = lambda: None
     clear_rest_point: Callable[[], None] = lambda: None
+    show_companion_settings: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -335,6 +336,8 @@ def build_context_menu_content(
     quiet_action.setCheckable(True)
     quiet_action.setChecked(snapshot.quiet_companion)
     quiet_action.triggered.connect(callbacks.toggle_quiet)
+    settings_action = menu.addAction("陪伴設定…")
+    settings_action.triggered.connect(callbacks.show_companion_settings)
     nest_action = menu.addAction("把這裡設為休息點")
     nest_action.triggered.connect(callbacks.save_nest)
     clear_rest_action = menu.addAction("清除休息點（原地陪伴）")

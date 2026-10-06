@@ -223,9 +223,10 @@
       "tests/core/test_core_manager.py",
       "tests/core/test_core_manager_click.py",
       "tests/core/test_companion.py",
+      "tests/core/test_idle_behavior.py",
       "tests/ui/test_grounding.py"
     ],
-    "purpose": "核心事件協調、閒置陪伴及安靜模式的自由休息點；邊界與泡泡共用固定腳底位置，底部互動目前停用。"
+    "purpose": "核心事件協調、可調活潑節奏、短程散步與姿勢 Action、安靜原地小動作及自由休息點；底部互動停用。"
   },
   {
     "id": "automation",

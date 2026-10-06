@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtWidgets
 
 from doro_app.app import DoroApp
 from doro_app.bootstrap import BootstrappedDependencies
@@ -90,12 +90,26 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert not app._movement.has_active_movement
         assert app.window.foot_position() == QtCore.QPoint(600, 400)
 
+        # Modal preferences must pause returns as well as idle wandering.
+        preferences = QtWidgets.QDialog(app.window)
+        qtbot.addWidget(preferences)
+        preferences.setModal(True)
+        preferences.show()
+        QtWidgets.QApplication.processEvents()
+        assert app._companion_busy()
+        app._movement.place_foot(QtCore.QPoint(700, 450))
+        app._companion.tick(0.05)
+        assert not app._movement.has_active_movement
+        assert app.window.foot_position() == QtCore.QPoint(700, 450)
+        preferences.close()
+
         snapshot = app._context_menu_ctrl._build_snapshot()
         assert snapshot.has_rest_point
         menu = DoroMenu(app.window)
         build_context_menu_content(menu, app.window, snapshot, callbacks)
         actions = {action.text(): action for action in menu.actions()}
         assert "把這裡設為休息點" in actions
+        assert "陪伴設定…" in actions
         assert not any("底部互動" in label for label in actions)
         actions["清除休息點（原地陪伴）"].trigger()
         assert not app._context_menu_ctrl._build_snapshot().has_rest_point

@@ -38,6 +38,8 @@ class ContextMenuController:
         chat_ui: ChatUIHelper,
         default_idle_gif: Path,
         companion=None,
+        on_interaction=None,
+        on_settings_changed=None,
     ) -> None:
         self._window = window
         self._state_service = state_service
@@ -48,6 +50,8 @@ class ContextMenuController:
         self._chat_ui = chat_ui
         self._default_idle_gif = default_idle_gif
         self._companion = companion
+        self._on_interaction = on_interaction or (lambda: None)
+        self._on_settings_changed = on_settings_changed or (lambda: None)
 
     # ──────────────────────────────────────────────────────────
     # Public API
@@ -55,6 +59,7 @@ class ContextMenuController:
 
     def show(self, global_pos: QtCore.QPoint) -> None:
         """Build and display the context menu at *global_pos*."""
+        self._on_interaction()
         menu = create_doro_menu(
             parent=self._window,
             avatar_position="none",
@@ -125,7 +130,21 @@ class ContextMenuController:
             save_nest=self._companion.save_nest if self._companion else lambda: None,
             save_rest_state=self._companion.save_rest_state if self._companion else lambda: None,
             clear_rest_point=self._companion.clear_rest_point if self._companion else lambda: None,
+            show_companion_settings=self._show_companion_settings,
         )
+
+    def _show_companion_settings(self) -> None:
+        from ..dialogs.companion_dialog import CompanionDialog
+
+        self._on_interaction()
+        dialog = CompanionDialog(
+            self._core_manager.config_manager, self._state_service, self._window, self._window
+        )
+        try:
+            if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                self._on_settings_changed()
+        finally:
+            dialog.cleanup()
 
     def _show_presence_settings(self) -> None:
         from ..dialogs.presence_dialog import PresenceDialog

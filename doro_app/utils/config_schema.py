@@ -133,6 +133,9 @@ class UIConfig:
     companion_home_y: float | None = None  # None means no saved resting point.
     companion_floor_interaction: bool = False  # Legacy setting; floor interaction is disabled.
     companion_rest_state: str = "idle"
+    companion_activity: str = "lively"
+    companion_effects: bool = True
+    sprite_foot_overrides: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate configuration values."""
@@ -163,6 +166,23 @@ class UIConfig:
             raise ValueError("companion_floor_interaction must be bool")
         if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
             raise ValueError("companion_rest_state must be a nonempty state key")
+        if not isinstance(self.companion_activity, str) or self.companion_activity not in {
+            "lively",
+            "balanced",
+            "calm",
+        }:
+            raise ValueError("companion_activity must be lively, balanced or calm")
+        if not isinstance(self.companion_effects, bool):
+            raise ValueError("companion_effects must be bool")
+        if not isinstance(self.sprite_foot_overrides, dict) or any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not 0 <= value <= 1
+            for key, value in self.sprite_foot_overrides.items()
+        ):
+            raise ValueError("sprite_foot_overrides must map GIF paths to ratios")
 
     @property
     def config_key_prefix(self) -> str:

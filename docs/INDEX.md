@@ -12,6 +12,7 @@
 | 對齊產品用詞 | [CONTEXT.md](../CONTEXT.md) |
 | 安裝與啟動 | [README](../README.md) |
 | 分頁陪伴配對、驗收 | [分頁陪伴設定](web-presence-setup.md) |
+| 活潑節奏、休息 GIF 與腳底校正 | [活潑陪伴計畫與驗收](companion-liveliness-plan.md) |
 | 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
 ## 架構決策（已採用）

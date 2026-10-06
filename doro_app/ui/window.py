@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -32,6 +33,7 @@ from .events.mouse_event_handler import MouseEventHandler
 from .layout.layout_manager import WindowLayoutManager
 from .rendering.design_tokens import tokens
 from .rendering.gif_sprite_renderer import GifSpriteRenderer
+from .rendering.pet_expression import PetExpression
 from .rendering.rendering_engine import RenderingEngine
 from .rendering.sprite_renderer import SpriteRenderer
 from .theme.theme import ensure_application_theme
@@ -137,6 +139,7 @@ class DoroWindow(QtWidgets.QWidget):
         self._sprite_anchor_top: float | None = None
         self._layout_foot_offset: QtCore.QPoint | None = None
         self._landing_time = 0.0
+        self._pet_expression = PetExpression()
         # Which side of the sprite the bubble is reserved on. Decided from the
         # sprite's on-screen position each time the bubble resizes: when Doro is
         # near the bottom of the screen the bubble flips above so it never has
@@ -257,6 +260,10 @@ class DoroWindow(QtWidgets.QWidget):
         # Use ViewModel for animation time
         self._view_model.tick(dt)
         self._landing_time = max(0.0, self._landing_time - dt)
+        if self._config_manager is None or self._config_manager.ui.companion_effects:
+            self._pet_expression.advance(dt)
+        else:
+            self._pet_expression.clear()
         self.update()
 
     # --- Interaction -----------------------------------------------------
@@ -341,6 +348,13 @@ class DoroWindow(QtWidgets.QWidget):
             visible = self._sprite_renderer.contact_bounds()
             if not visible.isEmpty():
                 bounds = visible
+            ratio = (
+                self._config_manager.ui.sprite_foot_overrides.get(self.current_gif_key())
+                if self._config_manager
+                else None
+            )
+            if ratio is not None:
+                bounds.setBottom(max(bounds.top(), round((size.height() - 1) * ratio)))
         return bounds.translated(
             round(center.x() - size.width() / 2.0),
             round(center.y() - size.height() / 2.0),
@@ -356,6 +370,29 @@ class DoroWindow(QtWidgets.QWidget):
 
     def play_landing(self) -> None:
         self._landing_time = 0.28
+        self.update()
+
+    def current_gif_key(self) -> str:
+        movie = getattr(self._sprite_renderer, "movie", None)
+        try:
+            filename = movie.fileName() if movie is not None and hasattr(movie, "fileName") else ""
+        except RuntimeError:  # A shutdown/layout signal can outlive the QMovie.
+            return ""
+        if not filename:
+            return ""
+        cached = getattr(self, "_gif_key_cache", (None, ""))
+        if cached[0] != filename:
+            cached = (filename, str(Path(filename).resolve()).casefold())
+            self._gif_key_cache = cached
+        return cached[1]
+
+    def play_expression(self, kind: str) -> None:
+        if self._config_manager is None or self._config_manager.ui.companion_effects:
+            self._pet_expression.start(kind, time.monotonic())
+            self.update()
+
+    def clear_expression(self) -> None:
+        self._pet_expression.clear()
         self.update()
 
     def _move_window_to(self, point: QtCore.QPoint):
@@ -490,6 +527,7 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Render sprite using RenderingEngine + SpriteRenderer
         p.save()
+        self._pet_expression.transform(p, self.sprite_foot_offset_logical())
         if self._landing_time > 0:
             foot = self.sprite_foot_offset_logical()
             p.translate(foot)
@@ -499,6 +537,7 @@ class DoroWindow(QtWidgets.QWidget):
         p.restore()
 
         # Render text panel using RenderingEngine
+        self._pet_expression.paint_decoration(p, self.sprite_contact_rect())
         bubble_text = self._bubble_controller.text if self._bubble_controller else ""
         panel_should_draw = (
             (
