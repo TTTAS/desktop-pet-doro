@@ -11,10 +11,10 @@ def test_rest_point_height_must_be_a_valid_ratio(height):
         UIConfig(companion_home_y=height)
 
 
-@pytest.mark.parametrize("value", ["true", 1, None])
-def test_floor_interaction_requires_boolean(value):
-    with pytest.raises(ValueError, match="companion_floor_interaction"):
-        UIConfig(companion_floor_interaction=value)
+@pytest.mark.parametrize("value", ["happy", [1], [""]])
+def test_companion_poses_require_nonempty_state_keys(value):
+    with pytest.raises(ValueError, match="companion_pose_keys"):
+        UIConfig(companion_pose_keys=value)
 
 
 class TestChatConfig:

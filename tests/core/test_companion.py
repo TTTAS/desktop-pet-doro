@@ -11,7 +11,8 @@ from doro_app.utils.config_manager import ConfigManager
 @pytest.fixture
 def companion(tmp_path):
     config = ConfigManager(tmp_path / "companion.ini")
-    config.update_ui(companion_home_y=1.0, companion_floor_interaction=True)
+    config.update_ui(companion_home_y=1.0)
+    config._settings.setValue("ui/companion_floor_interaction", True)
     foot = [QtCore.QPoint(500, 750)]
     window = Mock()
     window.foot_position.side_effect = lambda: QtCore.QPoint(foot[0])
@@ -60,7 +61,6 @@ def companion(tmp_path):
 @pytest.mark.parametrize("height", [300, 750, 799])
 def test_release_stays_free_even_when_legacy_floor_setting_is_enabled(companion, height):
     c = companion
-    assert c.config.ui.companion_floor_interaction
     c.foot[0] = QtCore.QPoint(500, height)
     c.controller.released()
     for _ in range(80):
@@ -164,6 +164,7 @@ def test_pose_selected_at_home_survives_until_saved(companion):
     c.controller.tick(0.02)
     c.controller.interrupt()
     c.states.get_current_state.return_value = SimpleNamespace(key="happy")
+    c.controller.preserve_manual_pose()
     c.states.set_state.reset_mock()
     c.window.seconds_since_last_activity.return_value = 30
     for _ in range(20):
@@ -210,7 +211,7 @@ def test_walk_below_movement_threshold_settles_once(companion):
 @pytest.mark.parametrize("quiet", [False, True])
 def test_unset_rest_point_and_disabled_floor_interaction_leave_position_free(companion, quiet):
     c = companion
-    c.config.update_ui(companion_home_y=None, companion_floor_interaction=False)
+    c.config.update_ui(companion_home_y=None)
     c.foot[0] = QtCore.QPoint(500, 760)
     c.controller.set_quiet(quiet)
     c.controller.released()
@@ -238,6 +239,8 @@ def test_rest_point_preserves_height_across_monitor_changes(companion):
     c.controller.set_quiet(True)
     c.controller.tick(0.02)
     assert c.movement.apply_directional_walk.call_args.args[0] == (-400, -200)
+    # Simulate the completed walk's real arrival.
+    c.foot[0] = QtCore.QPoint(500, 400)
     c.movement.active_movement = None
     c.controller.tick(0.02)
     assert c.foot[0] == QtCore.QPoint(500, 400)
@@ -257,3 +260,79 @@ def test_clearing_rest_point_cancels_return_and_stays_in_place(companion):
     c.movement.apply_directional_walk.assert_not_called()
     assert not c.controller.has_rest_point
     assert ConfigManager(c.config._settings.fileName()).ui.companion_home_y is None
+
+
+@pytest.mark.parametrize("busy", [False, True])
+def test_saved_rest_preferences_apply_in_place_when_safe(companion, busy):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.interrupt()
+    c.config.update_ui(companion_rest_state="new_rest")
+    c.busy[0] = busy
+    foot = QtCore.QPoint(c.foot[0])
+    c.controller.refresh_preferences()
+    if busy:
+        c.states.set_state.assert_not_called()
+        c.controller.tick(0.02)
+        c.states.set_state.assert_not_called()
+        c.busy[0] = False
+        c.window.seconds_since_last_activity.return_value = 0
+        c.controller.tick(0.02)
+    c.states.set_state.assert_called_once_with("new_rest")
+    c.movement.apply_directional_walk.assert_not_called()
+    assert c.foot[0] == foot
+
+
+@pytest.mark.parametrize("trigger", ["interaction", "busy_work"])
+def test_no_rest_point_recovers_pose_after_work_without_moving(companion, trigger):
+    c = companion
+    c.config.update_ui(companion_home_y=None, companion_rest_state="rest")
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.states.set_state.reset_mock()
+    if trigger == "interaction":
+        c.controller.interrupt()
+    else:
+        c.busy[0] = True
+        c.controller.tick(0.02)
+        c.busy[0] = False
+    c.window.seconds_since_last_activity.return_value = 2
+    c.controller.tick(0.02)
+    c.states.set_state.assert_not_called()
+    c.window.seconds_since_last_activity.return_value = 10
+    for _ in range(10):
+        c.controller.tick(0.02)
+    c.states.set_state.assert_called_once_with("rest")
+    c.movement.apply_directional_walk.assert_not_called()
+    c.movement.place_foot.assert_not_called()
+
+
+def test_manual_pose_without_rest_point_is_preserved_until_next_interaction(companion):
+    c = companion
+    c.config.update_ui(companion_home_y=None)
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.controller.interrupt()
+    c.controller.preserve_manual_pose()
+    c.states.set_state.reset_mock()
+    c.busy[0] = True  # A selected pose can have a transition animation.
+    c.controller.tick(0.02)
+    c.busy[0] = False
+    c.controller.tick(0.02)
+    c.states.set_state.assert_not_called()
+    c.controller.interrupt()
+    c.controller.tick(0.02)
+    c.states.set_state.assert_called_once_with("idle")
+
+
+def test_edge_arrival_never_teleports_to_unreachable_home(companion):
+    c = companion
+    c.controller.set_quiet(True)
+    c.controller.tick(0.02)
+    c.movement.active_movement = None
+    c.foot[0] = QtCore.QPoint(840, 799)
+    for _ in range(20):
+        c.controller.tick(0.02)
+    assert c.foot[0] == QtCore.QPoint(840, 799)
+    c.movement.place_foot.assert_not_called()
+    c.movement.apply_directional_walk.assert_called_once()

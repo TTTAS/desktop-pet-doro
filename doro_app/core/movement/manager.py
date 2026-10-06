@@ -360,7 +360,7 @@ class MovementManager:
         self._movement_foot_offset = offset
 
     def place_foot(self, foot: QtCore.QPoint) -> None:
-        """Place a logical foot point for short gravity/settling motion."""
+        """Place a logical foot point while respecting the visible sprite bounds."""
         target = foot - self._window.sprite_foot_offset_logical()
         self._window.move_window_to(self._window.clamp_window_position(target))
 

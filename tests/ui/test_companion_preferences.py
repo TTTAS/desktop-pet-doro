@@ -105,6 +105,92 @@ def test_calibration_preview_line_can_be_clicked(preferences, qtbot):
     dialog.reject()
 
 
+@pytest.mark.parametrize("gesture", ["pet_click", "drag"])
+def test_calibration_survives_gesture_and_bubble_relayout(
+    preferences, pet, tmp_path, qtbot, gesture
+):
+    dialog, window, states = preferences
+    _, bubble, sprite = pet
+    dialog.anchor.setValue(82)
+    dialog.accept()
+    key = window.current_gif_key()
+    foot = window.foot_position()
+    contact = window.sprite_contact_rect().size()
+    path = tmp_path / "gesture.gif"
+    path.write_bytes((STATE_DIR / "idle.gif").read_bytes())
+    assert getattr(sprite, f"start_{gesture}_animation")(path)
+    assert window.current_gif_key() == key
+    assert window.foot_position() == foot
+    preview = CompanionDialog(window._config_manager, states, window)
+    qtbot.addWidget(preview)
+    assert preview._gif_key == key
+    assert preview.anchor.value() == 82
+    assert (
+        preview.foot_preview.pixmap.cacheKey()
+        == sprite.renderer.base_movie.currentPixmap().cacheKey()
+    )
+    preview.reject()
+    for text in ["摸摸！", "正在拖曳時也保持校正。" * 5, ""]:
+        bubble.set_text(text, auto_hide=False)
+        assert window.foot_position() == foot
+        assert window.sprite_contact_rect().size() == contact
+    getattr(sprite, f"end_{gesture}_animation")()
+    assert window.foot_position() == foot
+
+
+@pytest.mark.parametrize("failure", ["unreadable", "create", "copy"])
+def test_import_failures_explain_problem_and_allow_retry(
+    preferences, monkeypatch, tmp_path, failure
+):
+    dialog, window, states = preferences
+    before = states.visible_state_keys()
+    warn = Mock()
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", warn)
+    if failure == "unreadable":
+        path = tmp_path / "broken.gif"
+        path.write_text("not a GIF")
+        monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileName", lambda *_: (str(path), ""))
+        dialog._choose_gif()
+        assert dialog._pending_gif is None
+    else:
+        dialog._pending_gif = STATE_DIR / "idle.gif"
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                states, "add_state" if failure == "create" else "set_gif", lambda *_: False
+            )
+            dialog.accept()
+        assert dialog._pending_gif == STATE_DIR / "idle.gif"
+    warn.assert_called_once()
+    assert states.visible_state_keys() == before
+    assert window._config_manager.ui.companion_rest_state == "idle"
+    assert dialog.result() != QtWidgets.QDialog.DialogCode.Accepted
+    dialog._pending_gif = STATE_DIR / "idle.gif"
+    dialog.accept()
+    assert states.get_gif_path(window._config_manager.ui.companion_rest_state).is_file()
+    assert dialog.result() == QtWidgets.QDialog.DialogCode.Accepted
+
+
+def test_autonomous_pose_checklist_is_explicit_and_persisted(preferences, qtbot):
+    dialog, window, states = preferences
+    dialog.reject()
+    states.add_state("angry", "生氣")
+    states.add_state("play", "玩耍")
+    other = CompanionDialog(window._config_manager, states, window)
+    qtbot.addWidget(other)
+    for i in range(other.pose_list.count()):
+        item = other.pose_list.item(i)
+        key = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        assert (item.checkState() == QtCore.Qt.CheckState.Checked) == (key == "happy")
+        item.setCheckState(
+            QtCore.Qt.CheckState.Checked if key == "play" else QtCore.Qt.CheckState.Unchecked
+        )
+    other._pending_gif = STATE_DIR / "idle.gif"
+    other.accept()
+    config = ConfigManager(window._config_manager._settings.fileName())
+    assert config.ui.companion_pose_keys == ["play"]
+    assert config.ui.companion_rest_state not in config.ui.companion_pose_keys
+
+
 def test_expression_is_bounded_and_anchor_stays_fixed():
     expression = PetExpression()
     assert expression.start("heart", 10)

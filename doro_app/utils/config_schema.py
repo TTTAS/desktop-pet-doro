@@ -131,10 +131,10 @@ class UIConfig:
     quiet_companion: bool = False
     companion_home_x: float = 0.9
     companion_home_y: float | None = None  # None means no saved resting point.
-    companion_floor_interaction: bool = False  # Legacy setting; floor interaction is disabled.
     companion_rest_state: str = "idle"
     companion_activity: str = "lively"
     companion_effects: bool = True
+    companion_pose_keys: list[str] = field(default_factory=lambda: ["happy"])
     sprite_foot_overrides: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -162,8 +162,6 @@ class UIConfig:
             or not 0 <= self.companion_home_y <= 1
         ):
             raise ValueError("companion_home_y must be None or between 0 and 1")
-        if not isinstance(self.companion_floor_interaction, bool):
-            raise ValueError("companion_floor_interaction must be bool")
         if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
             raise ValueError("companion_rest_state must be a nonempty state key")
         if not isinstance(self.companion_activity, str) or self.companion_activity not in {
@@ -174,6 +172,10 @@ class UIConfig:
             raise ValueError("companion_activity must be lively, balanced or calm")
         if not isinstance(self.companion_effects, bool):
             raise ValueError("companion_effects must be bool")
+        if not isinstance(self.companion_pose_keys, list) or any(
+            not isinstance(key, str) or not key.strip() for key in self.companion_pose_keys
+        ):
+            raise ValueError("companion_pose_keys must be a list of nonempty state keys")
         if not isinstance(self.sprite_foot_overrides, dict) or any(
             not isinstance(key, str)
             or not key

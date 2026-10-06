@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import time
 from pathlib import Path
 
@@ -138,7 +137,6 @@ class DoroWindow(QtWidgets.QWidget):
         self._panel_rect_cache: QtCore.QRectF | None = None
         self._sprite_anchor_top: float | None = None
         self._layout_foot_offset: QtCore.QPoint | None = None
-        self._landing_time = 0.0
         self._pet_expression = PetExpression()
         # Which side of the sprite the bubble is reserved on. Decided from the
         # sprite's on-screen position each time the bubble resizes: when Doro is
@@ -259,7 +257,6 @@ class DoroWindow(QtWidgets.QWidget):
 
         # Use ViewModel for animation time
         self._view_model.tick(dt)
-        self._landing_time = max(0.0, self._landing_time - dt)
         if self._config_manager is None or self._config_manager.ui.companion_effects:
             self._pet_expression.advance(dt)
         else:
@@ -368,12 +365,9 @@ class DoroWindow(QtWidgets.QWidget):
         screen = QtWidgets.QApplication.screenAt(self.foot_position())
         return screen.availableGeometry() if screen else self._available_screen_geometry()
 
-    def play_landing(self) -> None:
-        self._landing_time = 0.28
-        self.update()
-
     def current_gif_key(self) -> str:
-        movie = getattr(self._sprite_renderer, "movie", None)
+        """Identity of the GIF defining contact geometry, never a gesture overlay."""
+        movie = getattr(self._sprite_renderer, "base_movie", None)
         try:
             filename = movie.fileName() if movie is not None and hasattr(movie, "fileName") else ""
         except RuntimeError:  # A shutdown/layout signal can outlive the QMovie.
@@ -528,11 +522,6 @@ class DoroWindow(QtWidgets.QWidget):
         # Render sprite using RenderingEngine + SpriteRenderer
         p.save()
         self._pet_expression.transform(p, self.sprite_foot_offset_logical())
-        if self._landing_time > 0:
-            foot = self.sprite_foot_offset_logical()
-            p.translate(foot)
-            p.scale(1.0, 1.0 - 0.08 * math.sin(math.pi * self._landing_time / 0.28))
-            p.translate(-foot)
         self._rendering_engine.render_sprite(p, self._sprite_renderer, sprite_center, bob, scale)
         p.restore()
 

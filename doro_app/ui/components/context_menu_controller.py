@@ -104,7 +104,7 @@ class ContextMenuController:
     def _build_callbacks(self) -> MenuCallbacks:
         current_key = self._window.current_state_key
         return MenuCallbacks(
-            set_state=self._state_controller.set_state,
+            set_state=self._select_state,
             show_state_manager=self._dialog_manager.show_state_manager,
             show_move_state_manager=self._dialog_manager.show_move_state_manager,
             toggle_bubble=self._window.toggle_bubble,
@@ -133,6 +133,11 @@ class ContextMenuController:
             show_companion_settings=self._show_companion_settings,
         )
 
+    def _select_state(self, key: str) -> None:
+        self._state_controller.set_state(key)
+        if self._companion:
+            self._companion.preserve_manual_pose()
+
     def _show_companion_settings(self) -> None:
         from ..dialogs.companion_dialog import CompanionDialog
 
@@ -143,6 +148,8 @@ class ContextMenuController:
         try:
             if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
                 self._on_settings_changed()
+                if self._companion:
+                    self._companion.refresh_preferences()
         finally:
             dialog.cleanup()
 

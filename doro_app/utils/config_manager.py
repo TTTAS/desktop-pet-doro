@@ -52,6 +52,16 @@ from .config_schema import AppConfig, AutomationConfig, ChatConfig, DoroConfig, 
 logger = get_logger(__name__)
 
 
+def _companion_poses(value: Any) -> list[str]:
+    try:
+        parsed = json.loads(value) if value is not None else ["happy"]
+        if isinstance(parsed, list):
+            return list(dict.fromkeys(k for k in parsed if isinstance(k, str) and k.strip()))
+    except (TypeError, ValueError):
+        pass
+    return ["happy"]
+
+
 def _foot_overrides(value: Any) -> dict[str, float]:
     try:
         parsed = json.loads(value or "{}")
@@ -285,9 +295,7 @@ class ConfigManager:
             "sprite_foot_overrides": kwargs.get(
                 "sprite_foot_overrides", current.sprite_foot_overrides
             ),
-            "companion_floor_interaction": kwargs.get(
-                "companion_floor_interaction", current.companion_floor_interaction
-            ),
+            "companion_pose_keys": kwargs.get("companion_pose_keys", current.companion_pose_keys),
             "companion_rest_state": kwargs.get(
                 "companion_rest_state", current.companion_rest_state
             ),
@@ -438,8 +446,8 @@ class ConfigManager:
                 sprite_foot_overrides=_foot_overrides(
                     self._settings.value("ui/sprite_foot_overrides")
                 ),
-                companion_floor_interaction=_safe_bool(
-                    self._settings.value("ui/companion_floor_interaction"), False
+                companion_pose_keys=_companion_poses(
+                    self._settings.value("ui/companion_pose_keys")
                 ),
                 companion_rest_state=_safe_str(
                     self._settings.value("ui/companion_rest_state"), "idle"
@@ -553,7 +561,8 @@ class ConfigManager:
             self._settings.remove("ui/companion_home_y")
         else:
             self._settings.setValue("ui/companion_home_y", ui.companion_home_y)
-        self._settings.setValue("ui/companion_floor_interaction", ui.companion_floor_interaction)
+        self._settings.remove("ui/companion_floor_interaction")
+        self._settings.setValue("ui/companion_pose_keys", json.dumps(ui.companion_pose_keys))
         self._settings.setValue("ui/companion_rest_state", ui.companion_rest_state)
         self._settings.setValue("ui/companion_activity", ui.companion_activity)
         self._settings.setValue("ui/companion_effects", ui.companion_effects)

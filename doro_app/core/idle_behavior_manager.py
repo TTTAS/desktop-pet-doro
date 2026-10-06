@@ -50,6 +50,7 @@ class IdleBehaviorManager(QtCore.QObject):
         schedule=None,
         interaction_busy=None,
         profile_provider=None,
+        pose_keys_provider=None,
         quiet_provider=None,
         effects_enabled=None,
         micro_effect=None,
@@ -66,6 +67,7 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule = schedule
         self._interaction_busy = interaction_busy or (lambda: False)
         self._profile = profile_provider or (lambda: "lively")
+        self._pose_keys = pose_keys_provider or (lambda: ["happy"])
         self._quiet = quiet_provider or (lambda: False)
         self._effects = effects_enabled or (lambda: False)
         self._micro_effect = micro_effect or (lambda _: None)
@@ -236,7 +238,8 @@ class IdleBehaviorManager(QtCore.QObject):
         keys = [
             key
             for key in self._state_service.visible_state_keys()
-            if not self._state_service.is_movement_only_state(key)
+            if key in self._pose_keys()
+            and not self._state_service.is_movement_only_state(key)
             and key != self._state_service.get_current_state_key()
         ]
         if not keys or self._action_dispatcher is None or self._schedule is None:

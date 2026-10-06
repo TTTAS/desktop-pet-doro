@@ -43,24 +43,22 @@ def test_invalid_calibration_entries_do_not_discard_valid_preferences(tmp_path):
 
 
 @pytest.mark.parametrize("height", [0.0, 0.4, 1.0])
-def test_free_rest_point_and_floor_toggle_round_trip(tmp_path, height):
+def test_free_rest_point_round_trip_removes_legacy_floor_toggle(tmp_path, height):
     path = tmp_path / "companion.ini"
     manager = ConfigManager(path)
     assert manager.ui.companion_home_y is None
-    assert not manager.ui.companion_floor_interaction
-    manager.update_ui(
-        companion_home_x=0.25, companion_home_y=height, companion_floor_interaction=True
-    )
+    manager._settings.setValue("ui/companion_floor_interaction", True)
+    manager.update_ui(companion_home_x=0.25, companion_home_y=height)
     manager.save()
     restored = ConfigManager(path)
     assert restored.ui.companion_home_x == 0.25
     assert restored.ui.companion_home_y == height
-    assert restored.ui.companion_floor_interaction
-    restored.update_ui(companion_home_y=None, companion_floor_interaction=False)
+    assert not restored._settings.contains("ui/companion_floor_interaction")
+    restored.update_ui(companion_home_y=None)
     restored.save()
     cleared = ConfigManager(path)
     assert cleared.ui.companion_home_y is None
-    assert not cleared.ui.companion_floor_interaction
+    assert not cleared._settings.contains("ui/companion_floor_interaction")
 
 
 @pytest.mark.parametrize("height", [None, "invalid", "nan", 2.0])
@@ -78,7 +76,33 @@ def test_old_or_invalid_rest_point_does_not_force_floor_or_reset_other_settings(
     assert manager.ui.companion_home_x == 0.75
     assert manager.ui.bubble_scale == 1.5
     assert manager.ui.companion_home_y is None
-    assert not manager.ui.companion_floor_interaction
+    assert not hasattr(manager.ui, "companion_floor_interaction")
+
+
+@pytest.mark.parametrize("keys", [[], ["happy"], ["custom", "idle"]])
+def test_companion_pose_list_round_trip(tmp_path, keys):
+    path = tmp_path / "poses.ini"
+    config = ConfigManager(path)
+    config.update_ui(companion_pose_keys=keys)
+    config.update_ui(companion_activity="calm")
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_pose_keys == keys
+    assert restored.ui.companion_activity == "calm"
+
+
+@pytest.mark.parametrize(
+    "raw, expected", [("invalid", ["happy"]), ('["play", 2, "", "play"]', ["play"])]
+)
+def test_invalid_pose_list_does_not_reset_other_settings(tmp_path, raw, expected):
+    config = ConfigManager(tmp_path / "poses.ini")
+    config.update_ui(companion_activity="calm")
+    config.save()
+    config._settings.setValue("ui/companion_pose_keys", raw)
+    config._settings.sync()
+    restored = ConfigManager(config._settings.fileName())
+    assert restored.ui.companion_pose_keys == expected
+    assert restored.ui.companion_activity == "calm"
 
 
 class TestConfigManagerInitialization:

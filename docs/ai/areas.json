@@ -226,7 +226,7 @@
       "tests/core/test_idle_behavior.py",
       "tests/ui/test_grounding.py"
     ],
-    "purpose": "核心事件協調、可調活潑節奏、短程散步與姿勢 Action、安靜原地小動作及自由休息點；底部互動停用。"
+    "purpose": "核心事件協調、可調活潑節奏與自主姿勢清單、短程散步、安靜原地休息及自由休息點；底部互動停用。"
   },
   {
     "id": "automation",
@@ -290,7 +290,7 @@
     "tests": [
       "tests/ui"
     ],
-    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs。"
+    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；陪伴姿勢設定、匯入與不受暫時動畫影響的腳底校正。"
   },
   {
     "id": "config",

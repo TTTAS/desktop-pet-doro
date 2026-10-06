@@ -210,3 +210,24 @@ def test_interruption_does_not_cancel_replacement_walk(pet_idle):
     p.idle.interrupt()
     assert p.movement.active_movement is replacement
     p.movement.cancel_active_movement.assert_not_called()
+
+
+@pytest.mark.parametrize("allowed", [["happy"], ["play"], [], ["deleted", "walking"]])
+def test_autonomous_poses_use_only_allowed_visible_nonmovement_states(pet_idle, allowed):
+    p = pet_idle
+    p.states.visible_state_keys.return_value = [
+        "idle",
+        "happy",
+        "angry",
+        "failure",
+        "play",
+        "walking",
+    ]
+    p.idle._pose_keys = lambda: allowed
+    p.idle._do_transition()
+    if allowed in (["happy"], ["play"]):
+        assert p.current[0] == allowed[0]
+    else:
+        assert p.current[0] == "idle"
+        assert p.dispatcher.is_idle
+        p.effect.assert_called_once()

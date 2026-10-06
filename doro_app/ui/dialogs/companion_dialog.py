@@ -101,7 +101,8 @@ class CompanionDialog(QtWidgets.QDialog):
         self._preview_state()
 
         self.anchor = None
-        pixmap = window._sprite_renderer.current_pixmap() if self._gif_key else None
+        movie = getattr(window.sprite_renderer, "base_movie", None) if self._gif_key else None
+        pixmap = movie.currentPixmap() if movie is not None else None
         if pixmap is not None and not pixmap.isNull():
             group = QtWidgets.QGroupBox("目前 GIF 的腳底校正")
             box = QtWidgets.QVBoxLayout(group)
@@ -110,7 +111,7 @@ class CompanionDialog(QtWidgets.QDialog):
             )
             description.setWordWrap(True)
             box.addWidget(description)
-            auto_bounds = window._sprite_renderer.contact_bounds()
+            auto_bounds = window.sprite_renderer.contact_bounds()
             self._auto_ratio = auto_bounds.bottom() / max(1, pixmap.height() - 1)
             ratio = config.ui.sprite_foot_overrides.get(self._gif_key, self._auto_ratio)
             self.foot_preview = FootPreview(pixmap, ratio)
@@ -129,6 +130,25 @@ class CompanionDialog(QtWidgets.QDialog):
             row.addWidget(reset)
             box.addLayout(row)
             tabs.addTab(group, "腳底校正")
+        poses_page = QtWidgets.QWidget()
+        poses_layout = QtWidgets.QVBoxLayout(poses_page)
+        poses_hint = QtWidgets.QLabel("只會自主播放勾選的姿勢。全部取消時仍可散步與做小動作。")
+        poses_hint.setWordWrap(True)
+        poses_layout.addWidget(poses_hint)
+        self.pose_list = QtWidgets.QListWidget()
+        for key in states.visible_state_keys():
+            state = states.get_state(key)
+            if state and not states.is_movement_only_state(key):
+                item = QtWidgets.QListWidgetItem(state.label or key, self.pose_list)
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, key)
+                item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(
+                    QtCore.Qt.CheckState.Checked
+                    if key in config.ui.companion_pose_keys
+                    else QtCore.Qt.CheckState.Unchecked
+                )
+        poses_layout.addWidget(self.pose_list)
+        tabs.addTab(poses_page, "自主姿勢")
         hint = QtWidgets.QLabel("休息點仍可放在螢幕任意位置；底部下落功能維持停用。")
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -183,6 +203,10 @@ class CompanionDialog(QtWidgets.QDialog):
             self._pending_gif = None
             if self._load_preview(path):
                 self._pending_gif = Path(path)
+            else:
+                QtWidgets.QMessageBox.warning(
+                    self, "匯入失敗", "無法讀取這個 GIF，請選擇有效的檔案。"
+                )
 
     def accept(self):
         key = self.rest_state.currentData() or "idle"
@@ -190,6 +214,7 @@ class CompanionDialog(QtWidgets.QDialog):
             self.cleanup()  # Release the preview file handle before copying on Windows.
             key = "rest_" + uuid4().hex[:8]
             if not self._states.add_state(key, "休息 · " + self._pending_gif.stem):
+                QtWidgets.QMessageBox.warning(self, "匯入失敗", "無法建立休息姿勢，請稍後再試。")
                 return
             if not self._states.set_gif(key, self._pending_gif):
                 self._states.remove_state(key)
@@ -205,6 +230,11 @@ class CompanionDialog(QtWidgets.QDialog):
             companion_activity=self.activity.currentData(),
             companion_effects=self.effects.isChecked(),
             companion_rest_state=key,
+            companion_pose_keys=[
+                self.pose_list.item(i).data(QtCore.Qt.ItemDataRole.UserRole)
+                for i in range(self.pose_list.count())
+                if self.pose_list.item(i).checkState() == QtCore.Qt.CheckState.Checked
+            ],
             sprite_foot_overrides=anchors,
         )
         self._config.save()

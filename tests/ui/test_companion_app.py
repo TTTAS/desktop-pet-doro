@@ -11,6 +11,7 @@ from doro_app.core.automation.foreground_tracker import ForegroundTracker
 from doro_app.core.chat.orchestrator import ChatOrchestrator
 from doro_app.core.movement.repository import MovementRepository
 from doro_app.core.state import GifRepository
+from doro_app.ui.dialogs.companion_dialog import CompanionDialog
 from doro_app.ui.theme.themed_menu import DoroMenu, build_context_menu_content
 from doro_app.utils.config_manager import ConfigManager
 from doro_app.utils.paths import STATE_DIR
@@ -27,8 +28,9 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
     )
     config = ConfigManager(tmp_path / "settings.ini")
     # Simulate upgrading a user who had the removed floor option enabled.
-    config.update_ui(companion_floor_interaction=True)
     config.save()
+    config._settings.setValue("ui/companion_floor_interaction", True)
+    config._settings.sync()
     config = ConfigManager(tmp_path / "settings.ini")
     default_gif = STATE_DIR / "idle.gif"
     deps = BootstrappedDependencies(
@@ -117,6 +119,33 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         app._companion.released()
         app._companion.tick(0.5)
         assert app.window.foot_position() == QtCore.QPoint(600, 750)
+        real_state_service.add_state("manual_pose", "手動姿勢")
+        for import_gif in [False, True]:
+            # Drive the real menu callback and dialog save without a nested UI loop.
+            def accept_preferences(dialog, import_gif=import_gif):
+                if import_gif:
+                    dialog._pending_gif = default_gif
+                else:
+                    dialog.rest_state.setCurrentIndex(dialog.rest_state.findData("manual_pose"))
+                dialog.accept()
+                return dialog.result()
+
+            foot = app.window.foot_position()
+            with monkeypatch.context() as patch:
+                patch.setattr(CompanionDialog, "exec", accept_preferences)
+                callbacks.show_companion_settings()
+            assert real_state_service.get_current_state_key() == config.ui.companion_rest_state
+            assert app.window.foot_position() == foot
+            assert not app._movement.has_active_movement
+
+        app._interrupt_background_companionship()
+        callbacks.set_state("manual_pose")
+        for _ in range(10):
+            app._companion.tick(0.05)
+        assert real_state_service.get_current_state_key() == "manual_pose"
+        app._companion.interrupt()
+        app._companion.tick(0.05)
+        assert real_state_service.get_current_state_key() == config.ui.companion_rest_state
         callbacks.toggle_quiet(False)
         assert not app._presence._quiet
         assert not config.ui.quiet_companion

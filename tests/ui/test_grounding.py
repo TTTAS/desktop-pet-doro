@@ -178,11 +178,17 @@ def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path,
     )
     place(window, 600, 799)
     controller.set_quiet(True)
+    previous = window.foot_position()
     for _ in range(600):
         movement.process_active_movement(0.05)
+        arrived = window.foot_position()
+        # At normal walk speed each frame is small, including the last frame.
+        assert (arrived - previous).manhattanLength() <= 30
         controller.tick(0.05)
+        assert window.foot_position() == arrived
+        previous = arrived
     assert not movement.has_active_movement
     movement.apply_directional_walk.assert_called_once()
     assert current[0] == "idle"
-    assert window.foot_position() == controller._home()
+    assert abs(window.foot_position().x() - controller._home().x()) > 30
     window.play_landing.assert_not_called()

@@ -29,6 +29,9 @@ class CompanionController:
         self._return_now = self._quiet
         self._return_movement = None
         self._parked = None
+        self._rest_pending = self._quiet
+        self._refresh_pending = False
+        self._manual_pose = False
 
     @property
     def quiet(self) -> bool:
@@ -80,8 +83,29 @@ class CompanionController:
         if owned is not None and self._movement.active_movement is owned:
             self._movement.cancel_active_movement()
         self._return_now = False
+        self._rest_pending = self._quiet
+        self._manual_pose = False
+
+    def preserve_manual_pose(self) -> None:
+        """Keep an explicitly selected pose until the next interaction."""
+        self._manual_pose = True
+        self._rest_pending = False
+        self._refresh_pending = False
+
+    def refresh_preferences(self) -> None:
+        """Apply a newly saved resting pose in place when user work permits."""
+        if not self._quiet:
+            return
+        self._manual_pose = False
+        self._refresh_pending = True
+        if not self._busy():
+            self._rest()
 
     def _rest(self) -> None:
+        self._rest_pending = False
+        self._refresh_pending = False
+        if self._manual_pose:
+            return
         key = self._config.ui.companion_rest_state
         if not self._states.get_state(key) or self._states.is_movement_only_state(key):
             key = "idle"
@@ -112,11 +136,13 @@ class CompanionController:
             self._config.ui.companion_home_y,
         )
 
-    def _finish_return(self) -> None:
+    def _finish_return(self, *, settle_small_gap: bool = False) -> None:
         self._rest()
-        # A wider walking sprite can stop short of the nest. Settle once using
-        # the resting bounds instead of scheduling another impossible walk.
-        self._movement.place_foot(self._home())
+        # Accept a wider walking sprite's reachable arrival. Never teleport
+        # across the gap left by changing back to a narrower resting sprite.
+        delta = self._home() - self._window.foot_position()
+        if settle_small_gap and math.hypot(delta.x(), delta.y()) <= 3:
+            self._movement.place_foot(self._home())
         # A deferred state transition can still change those bounds. Accept
         # this arrival until the foot, work area or saved nest actually moves.
         self._parked = self._location()
@@ -132,9 +158,14 @@ class CompanionController:
                     self._finish_return()
                     return
         if busy:
+            if self._quiet and not self._manual_pose:
+                self._rest_pending = True
             return
 
         if not self._quiet:
+            return
+        if self._refresh_pending:
+            self._rest()
             return
         if not self._return_now and (
             self._window.seconds_since_last_activity() < self.RETURN_DELAY or self._bubble.text
@@ -142,7 +173,13 @@ class CompanionController:
             return
         explicit_return = self._return_now
         self._return_now = False
+        if not self.has_rest_point:
+            if explicit_return or self._rest_pending:
+                self._rest()
+            return
         if not explicit_return and self._parked == self._location():
+            if self._rest_pending:
+                self._rest()
             return
         delta = self._home() - self._window.foot_position()
         distance = math.hypot(delta.x(), delta.y())
@@ -151,6 +188,8 @@ class CompanionController:
             self._return_movement = self._movement.active_movement
             if self._return_movement is None:
                 # MovementManager also declines walks below its threshold.
-                self._finish_return()
+                self._finish_return(settle_small_gap=True)
         elif explicit_return:
             self._finish_return()
+        elif self._rest_pending:
+            self._rest()

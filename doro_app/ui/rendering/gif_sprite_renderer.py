@@ -54,6 +54,11 @@ class GifSpriteRenderer:
         return QtCore.QRect(self._contact_bounds)
 
     @property
+    def base_movie(self) -> QtGui.QMovie | None:
+        """State/transition movie defining contact geometry, excluding gestures."""
+        return self._movie
+
+    @property
     def movie(self) -> QtGui.QMovie | None:
         """Direct access to underlying QMovie (needed by SpriteController)."""
         return self._temporary_movie if self._temporary_movie is not None else self._movie

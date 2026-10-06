@@ -190,6 +190,7 @@ class DoroApp:
                 or QtWidgets.QApplication.activePopupWidget() is not None
             ),
             profile_provider=lambda: self._config_manager.ui.companion_activity,
+            pose_keys_provider=lambda: self._config_manager.ui.companion_pose_keys,
             quiet_provider=lambda: self._companion.quiet,
             effects_enabled=lambda: self._config_manager.ui.companion_effects,
             micro_effect=self.window.play_expression,
