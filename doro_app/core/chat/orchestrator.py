@@ -140,6 +140,7 @@ class ChatOrchestrator(QtCore.QObject):
         # 這個旗標讓 _on_request_succeeded 知道「這則要完整顯示，不要只取第一行」。
         self._expect_web_answer = False
         self._presence = None
+        self._last_send_error = ""
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -156,19 +157,31 @@ class ChatOrchestrator(QtCore.QObject):
         """讀或操作網頁進行中？（給閒置行為判斷要不要安靜）"""
         return self._web_reading or self._operating
 
+    @property
+    def last_send_error(self) -> str:
+        """Reason for the latest synchronous send rejection; empty on acceptance."""
+        return self._last_send_error
+
     def send_message(
         self, user_message: str, *, silent: bool = False, is_auto: bool = False
     ) -> bool:
         logger.info(f"Sending chat message (auto={is_auto}, silent={silent})")
+        self._last_send_error = ""
 
         # 操作進行中：只收「好/不要」確認與「停/取消」中止，其它一律先擋（隔離規則 Q2）。
         if self._operating:
             if is_auto:
+                self._last_send_error = "Doro 正在操作網頁，請等操作結束後再送出。"
                 return False  # 自動/閒置訊息操作中一律忽略
-            return self._handle_message_while_operating(user_message)
+            return self._handle_message_while_operating(user_message, silent=silent)
 
         if self._controller.is_inflight or self._web_reading:
             logger.warning("Chat request rejected: previous request still in flight")
+            self._last_send_error = (
+                "Doro 正在讀取網頁，請等讀取結束後再送出。"
+                if self._web_reading
+                else "Doro 正在回覆上一則訊息，請稍後再送出。"
+            )
             if not silent:
                 self.notification_requested.emit(
                     "info",
@@ -227,6 +240,7 @@ class ChatOrchestrator(QtCore.QObject):
         started, error_message = self._controller.start_request(user_message, is_auto=is_auto)
         if not started:
             logger.error(f"Failed to start chat request: {error_message}")
+            self._last_send_error = error_message or "聊天請求未能啟動，未提供錯誤原因。"
             if not silent and error_message:
                 self.notification_requested.emit("warning", "Chat", error_message)
             return False
@@ -666,7 +680,7 @@ class ChatOrchestrator(QtCore.QObject):
 
         return ask
 
-    def _handle_message_while_operating(self, user_message: str) -> bool:
+    def _handle_message_while_operating(self, user_message: str, *, silent: bool = False) -> bool:
         """操作進行中收到訊息：只認「停/取消」與「好/不要」確認。"""
         runtime = self._web_runtime
         if is_stop(user_message):
@@ -685,8 +699,10 @@ class ChatOrchestrator(QtCore.QObject):
                 runtime.provide_confirm(yes)
             return True
         # 操作中、又不是停/確認 → 先擋著
-        self.notification_requested.emit("info", "Chat", "doro 正在操作網頁，稍等一下下～")
-        return True
+        self._last_send_error = "Doro 正在操作網頁，請等操作結束後再送出；也可以輸入「停」中止。"
+        if not silent:
+            self.notification_requested.emit("info", "Chat", self._last_send_error)
+        return False
 
     @QtCore.Slot(str)
     def _on_op_progress(self, text: str) -> None:

@@ -515,3 +515,62 @@ class TestSimulateResponse:
 
         assert orchestrator.simulate_response("早安！ [MOVE:dir=right]") is None
         text_listener.assert_not_called()
+
+
+@pytest.mark.parametrize("silent", [False, True])
+def test_operating_rejects_ordinary_chat_with_reason(orchestrator, mock_controller, silent):
+    notification = Mock()
+    orchestrator.notification_requested.connect(notification)
+    orchestrator._operating = True
+    orchestrator._web_runtime = Mock()
+    assert orchestrator.send_message("今天過得如何", silent=silent) is False
+    assert "操作網頁" in orchestrator.last_send_error
+    mock_controller.start_request.assert_not_called()
+    orchestrator._web_runtime.request_cancel.assert_not_called()
+    orchestrator._web_runtime.provide_confirm.assert_not_called()
+    assert notification.call_count == (0 if silent else 1)
+
+
+@pytest.mark.parametrize(
+    "text,confirm,expected", [("停", False, None), ("好", True, True), ("不要", True, False)]
+)
+def test_operation_controls_remain_accepted(orchestrator, mock_controller, text, confirm, expected):
+    orchestrator._operating = True
+    orchestrator._web_runtime = Mock()
+    assert not orchestrator.send_message("普通聊天", silent=True)
+    orchestrator._awaiting_confirm = confirm
+    assert orchestrator.send_message(text, silent=True)
+    assert not orchestrator.last_send_error
+    assert not orchestrator._awaiting_confirm
+    if expected is None:
+        orchestrator._web_runtime.request_cancel.assert_called_once()
+    else:
+        orchestrator._web_runtime.provide_confirm.assert_called_once_with(expected)
+    mock_controller.start_request.assert_not_called()
+
+
+@pytest.mark.parametrize("web_reading", [False, True])
+def test_busy_rejection_has_reason_even_when_silent(orchestrator, mock_controller, web_reading):
+    orchestrator._web_reading = web_reading
+    mock_controller.is_inflight = not web_reading
+    assert not orchestrator.send_message("你好", silent=True)
+    assert ("讀取網頁" if web_reading else "回覆上一則") in orchestrator.last_send_error
+
+
+def test_start_failure_reason_is_preserved_and_reset_on_next_send(orchestrator, mock_controller):
+    mock_controller.start_request.return_value = (False, "Chat server URL is not configured.")
+    assert not orchestrator.send_message("你好", silent=True)
+    assert orchestrator.last_send_error == "Chat server URL is not configured."
+    mock_controller.start_request.return_value = (True, None)
+    assert orchestrator.send_message("再試一次", silent=True)
+    assert orchestrator.last_send_error == ""
+
+
+def test_automatic_chat_cannot_cancel_or_confirm_operation(orchestrator):
+    orchestrator._operating = True
+    orchestrator._awaiting_confirm = True
+    orchestrator._web_runtime = Mock()
+    assert not orchestrator.send_message("停", is_auto=True)
+    orchestrator._web_runtime.request_cancel.assert_not_called()
+    orchestrator._web_runtime.provide_confirm.assert_not_called()
+    assert orchestrator._awaiting_confirm

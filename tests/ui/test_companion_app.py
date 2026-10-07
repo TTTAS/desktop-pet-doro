@@ -169,6 +169,27 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert app._companion_busy()
         app._idle_behavior._on_timer()
         app._idle_behavior._do_move.assert_not_called()
+        # Exercise the real helper -> core -> orchestrator rejection route.
+        floating.input.setPlainText("還沒送出去的話")
+        previous = list(floating._messages)
+        app._chat_orchestrator._operating = True
+        try:
+            floating.send()
+            assert floating.input.toPlainText() == "還沒送出去的話"
+            assert floating._messages == previous
+            assert "操作網頁" in floating.status.text()
+        finally:
+            app._chat_orchestrator._operating = False
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                app._chat_controller,
+                "start_request",
+                lambda *_, **__: (False, "Chat server URL is not configured."),
+            )
+            floating.send()
+        assert floating.input.toPlainText() == "還沒送出去的話"
+        assert floating._messages == previous
+        assert "Chat server URL is not configured." in floating.status.text()
         floating.input.setPlainText("陪我聊聊")
 
         def send_chat(text, **kwargs):
@@ -184,6 +205,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert floating.expanded
         app._chat_controller.request_failed.emit("offline", False)
         assert floating.input.toPlainText() == "陪我聊聊"
+        assert "offline" in floating.status.text()
         floating.close()
         assert not app._floating_chat_open()
         actions["與 Doro 說話…"].trigger()

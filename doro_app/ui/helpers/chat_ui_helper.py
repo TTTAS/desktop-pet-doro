@@ -69,7 +69,9 @@ class ChatUIHelper:
 
     def _ensure_chat(self) -> FloatingChatWindow:
         if self._chat_dialog is None:
-            self._chat_dialog = FloatingChatWindow(self._send, self.window)
+            self._chat_dialog = FloatingChatWindow(
+                self._send, self.window, rejection_reason=lambda: self._chat.last_send_error
+            )
             self._chat_dialog.interaction.connect(self._interact)
             self._chat_dialog.expanded_changed.connect(lambda _: self.window.mark_user_activity())
             self._chat_dialog.settings_requested.connect(self.open_settings_dialog)
