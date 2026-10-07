@@ -26,6 +26,8 @@ class MenuSnapshot:
     a11y_enabled: bool = False  # accessibility tree reading is on
     mouse_enabled: bool = False  # synthetic mouse-click automation is on
     web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
+    quiet_companion: bool = False
+    has_rest_point: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,6 +52,11 @@ class MenuCallbacks:
     inspect_position: Callable[[], None]
     quit_app: Callable[[], None]
     show_presence_settings: Callable[[], None] = lambda: None
+    toggle_quiet: Callable[[bool], None] = lambda _: None
+    save_nest: Callable[[], None] = lambda: None
+    save_rest_state: Callable[[], None] = lambda: None
+    clear_rest_point: Callable[[], None] = lambda: None
+    show_companion_settings: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -325,6 +332,21 @@ def build_context_menu_content(
         snapshot: Read-only data captured at menu-build time
         callbacks: Action callbacks for menu items
     """
+    quiet_action = menu.addAction("我先忙（安靜陪伴）")
+    quiet_action.setCheckable(True)
+    quiet_action.setChecked(snapshot.quiet_companion)
+    quiet_action.triggered.connect(callbacks.toggle_quiet)
+    settings_action = menu.addAction("陪伴設定…")
+    settings_action.triggered.connect(callbacks.show_companion_settings)
+    nest_action = menu.addAction("把這裡設為休息點")
+    nest_action.triggered.connect(callbacks.save_nest)
+    clear_rest_action = menu.addAction("清除休息點（原地陪伴）")
+    clear_rest_action.setEnabled(snapshot.has_rest_point)
+    clear_rest_action.triggered.connect(callbacks.clear_rest_point)
+    rest_action = menu.addAction("用目前姿勢休息")
+    rest_action.triggered.connect(callbacks.save_rest_state)
+    menu.addSeparator()
+
     # States submenu
     states_menu = menu.addMenu("States")
     for key, label in snapshot.visible_states:
@@ -374,11 +396,11 @@ def build_context_menu_content(
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(callbacks.show_rename_dialog)
 
+    # Direct entry also works while replying, to read or prepare the next message.
+    menu.addAction("與 Doro 說話…").triggered.connect(callbacks.prompt_chat)
+
     # Chat submenu
     chat_menu = menu.addMenu("Chat")
-    ask_action = chat_menu.addAction("Ask Doro")
-    ask_action.setEnabled(not snapshot.is_chat_inflight)
-    ask_action.triggered.connect(callbacks.prompt_chat)
 
     edit_prompt_action = chat_menu.addAction("Edit persona")
     edit_prompt_action.triggered.connect(callbacks.edit_chat_prompt)

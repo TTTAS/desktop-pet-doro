@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
-from ..dialogs.chat_dialog import DoroChatDialog
+from ..dialogs.floating_chat import FloatingChatWindow
 
 if TYPE_CHECKING:
     from ...core.core_manager import CoreManager
@@ -42,6 +42,7 @@ class ChatUIHelper:
         window: DoroWindow,
         core_manager: CoreManager,
         bubble_controller: BubbleController,
+        on_interaction=None,
     ) -> None:
         self.window = window
         self._core_manager = core_manager
@@ -49,11 +50,9 @@ class ChatUIHelper:
         # + 6-layer antialiased shadow + Qt stylesheet parse). Cache it after
         # first construction so subsequent opens are instant.
         self._settings_dialog = None
-        # DoroChatDialog is likewise heavy to build (translucent frameless
-        # QDialog + large Qt stylesheet parse). Cache it after first
-        # construction so subsequent "Ask Doro" opens are instant.
         self._chat_dialog = None
         self._bubble_controller = bubble_controller
+        self._on_interaction = on_interaction or (lambda: None)
 
     @property
     def _chat(self):
@@ -61,15 +60,50 @@ class ChatUIHelper:
         return self._core_manager.chat_orchestrator
 
     def prompt_chat(self) -> None:
-        """Show chat input dialog and send message."""
-        if self._chat_dialog is None:
-            self._chat_dialog = DoroChatDialog(self.window)
-        text, ok = self._chat_dialog.run()
-        if not ok or not text.strip():
-            return
+        """Reveal and focus the persistent input bar."""
+        self._ensure_chat().show_input(focus=True)
 
+    @property
+    def chat_open(self) -> bool:
+        return self._chat_dialog is not None and self._chat_dialog.interacting
+
+    def _ensure_chat(self) -> FloatingChatWindow:
+        if self._chat_dialog is None:
+            self._chat_dialog = FloatingChatWindow(
+                self._send, self.window, rejection_reason=lambda: self._chat.last_send_error
+            )
+            self._chat_dialog.interaction.connect(self._interact)
+            self._chat_dialog.expanded_changed.connect(lambda _: self.window.mark_user_activity())
+            self._chat_dialog.settings_requested.connect(self.open_settings_dialog)
+            self._core_manager.chat_response_received.connect(self._chat_dialog.receive_reply)
+            self._core_manager.chat_operation_completed.connect(self._chat_dialog.finish_processing)
+        return self._chat_dialog
+
+    def _interact(self):
         self.window.mark_user_activity()
-        self._core_manager.send_chat_message(text.strip(), silent=False, is_auto=False)
+        self._on_interaction()
+
+    def _send(self, text: str) -> bool:
+        # Busy rejection is shown inline; web-operation confirmations still
+        # pass through the orchestrator's existing routing and safeguards.
+        return self._core_manager.send_chat_message(text, silent=True, is_auto=False)
+
+    def show_input(self):
+        dialog = self._ensure_chat()
+        body = self.window.sprite_contact_rect().translated(self.window.current_position())
+        anchor = QtCore.QPoint(body.right() + 12, body.top())
+        area = self.window.floor_geometry()
+        if anchor.x() + dialog.width() > area.right():
+            anchor.setX(body.left() - dialog.width() - 12)
+        dialog.show_input(anchor)
+
+    def request_failed(self, error: str, was_auto: bool):
+        if self._chat_dialog is not None:
+            self._chat_dialog.request_failed(error, was_auto)
+
+    def shutdown(self):
+        if self._chat_dialog is not None:
+            self._chat_dialog.hide()
 
     def clear_chat_history(self) -> None:
         """Clear chat history after confirmation."""
@@ -82,6 +116,8 @@ class ChatUIHelper:
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             self._chat.clear_history()
             self._bubble_controller.clear_text()
+            if self._chat_dialog is not None:
+                self._chat_dialog.clear_history()
 
     def edit_chat_prompt(self) -> None:
         """Edit the chat system prompt."""

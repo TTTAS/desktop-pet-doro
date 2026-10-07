@@ -26,6 +26,7 @@ The implementation is intentionally Qt-agnostic. `schedule` is a
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ...utils.logger import get_logger
@@ -56,6 +57,7 @@ class Action:
     # introspection (which target a click is for, etc.). Not used by the
     # dispatcher itself.
     metadata: dict = field(default_factory=dict)
+    on_cancel: Callable[[], None] | None = None
 
 
 class ActionDispatcher:
@@ -111,15 +113,16 @@ class ActionDispatcher:
         if self._current is None:
             self._pop_and_start()
 
-    def cancel_current(self, reason: str = "esc") -> None:
-        """Abort the running action and clear the queue.
+    def cancel_current(self, reason: str = "esc", *, clear_queue: bool = True) -> None:
+        """Abort the running action, optionally preserving queued user work.
 
         Used for Esc — the user wants nothing more to happen. No failure
         GIF is shown; the pre-action state is restored and the dispatcher
         returns to idle.
         """
         if self._current is None:
-            self._queue.clear()
+            if clear_queue:
+                self._queue.clear()
             return
 
         # Cancel the current phase if any. We then short-circuit the
@@ -131,7 +134,15 @@ class ActionDispatcher:
             except Exception:  # pragma: no cover - cancel is best-effort
                 logger.exception("Phase cancel raised")
 
-        self._queue.clear()
+        if clear_queue:
+            self._queue.clear()
+        # Release action-owned resources before restoring the state or starting
+        # queued work. In particular, an old walk must not outlive its waiter.
+        if self._current.on_cancel is not None:
+            try:
+                self._current.on_cancel()
+            except Exception:  # pragma: no cover - cleanup must not strand the queue
+                logger.exception("Action cancellation cleanup raised")
         self._restore_and_finish()
 
     def clear_queue(self) -> None:

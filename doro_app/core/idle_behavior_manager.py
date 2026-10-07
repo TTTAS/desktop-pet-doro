@@ -1,28 +1,22 @@
-"""Idle behavior manager - triggers autonomous actions when the user is away."""
+"""Local, interruptible companionship with adjustable activity rhythms."""
 
 from __future__ import annotations
 
+import math
 import random
+import time
 from collections.abc import Callable
 from enum import Enum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from PySide6 import QtCore
 
-from ..constants import IDLE_BEHAVIOR_MAX_INTERVAL, IDLE_BEHAVIOR_MIN_INTERVAL
 from ..utils.actions import MOVE_DIRECTIONS
 from ..utils.logger import get_logger
-
-if TYPE_CHECKING:
-    from .action import ActionDispatcher
-    from .action.phases import ScheduleFn
-    from .chat.orchestrator import ChatOrchestrator
-    from .movement.manager import MovementManager
-    from .state import StateService
+from .action import Action, make_walk_and_speak_action
+from .action.phases import VisualPhase
 
 logger = get_logger(__name__)
-
 _DIRECTIONS = list(set(MOVE_DIRECTIONS.values()))
 
 
@@ -31,181 +25,248 @@ class IdleActionType(Enum):
     MOVE = auto()
     TRANSITION = auto()
     WALK_AND_SPEAK = auto()
-
-
-_IDLE_ACTIONS = list(IdleActionType)
-
-# How far each idle walk travels, in px. A random distance in this range is
-# picked per walk so the wandering varies instead of always the same hop.
-# Bump these to make Doro roam farther each time.
-IDLE_WALK_MIN_DISTANCE = 240.0
-IDLE_WALK_MAX_DISTANCE = 560.0
+    EXPRESSION = auto()
 
 
 class IdleBehaviorManager(QtCore.QObject):
-    """Triggers random autonomous actions (speak / move / transition) at idle intervals."""
+    """Offer small independent actions, yielding to explicit user interaction."""
 
     def __init__(
         self,
         *,
         companion_file: Path,
-        chat_orchestrator: ChatOrchestrator,
-        movement_manager: MovementManager,
-        state_service: StateService,
+        chat_orchestrator,
+        movement_manager,
+        state_service,
         idle_seconds_provider: Callable[[], float],
-        mark_activity: Callable[[], None],
-        action_dispatcher: ActionDispatcher | None = None,
-        schedule: ScheduleFn | None = None,
-        interaction_busy: Callable[[], bool] | None = None,
+        action_dispatcher=None,
+        schedule=None,
+        interaction_busy=None,
+        interval_provider=None,
+        pose_keys_provider=None,
+        quiet_provider=None,
+        effects_enabled=None,
+        micro_effect=None,
+        window=None,
+        clock=time.monotonic,
     ):
         super().__init__()
         self._chat_orchestrator = chat_orchestrator
         self._movement = movement_manager
         self._state_service = state_service
         self._idle_seconds = idle_seconds_provider
-        self._mark_activity = mark_activity
         self._action_dispatcher = action_dispatcher
         self._schedule = schedule
         self._interaction_busy = interaction_busy or (lambda: False)
-
-        self._lines: list[str] = []
-        self._load_lines(companion_file)
-
+        self._interval = interval_provider or (lambda: 9)
+        self._pose_keys = pose_keys_provider or (lambda: ["happy"])
+        self._quiet = quiet_provider or (lambda: False)
+        self._effects = effects_enabled or (lambda: False)
+        self._micro_effect = micro_effect or (lambda _: None)
+        self._window = window
+        self._clock = clock
+        self._last_action = None
+        self._resume_pending = False
+        self._last_line = None
+        self._last_speech = float("-inf")
+        self._owned_action = None
+        self._owned_movement = None
+        self._lines = []
+        try:
+            self._lines = list(
+                dict.fromkeys(
+                    line.strip()
+                    for line in companion_file.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                )
+            )
+        except (OSError, UnicodeError) as exc:
+            logger.debug("Companion lines unavailable: %s", exc)
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._on_timer)
         self._schedule_next()
 
-    def _load_lines(self, path: Path) -> None:
-        try:
-            raw = path.read_text(encoding="utf-8")
-            self._lines = [line.strip() for line in raw.splitlines() if line.strip()]
-            logger.debug("Loaded %d companion lines", len(self._lines))
-        except FileNotFoundError:
-            pass
-        except UnicodeDecodeError as e:
-            logger.warning("companion.txt is not valid UTF-8: %s", e)
-        except OSError as e:
-            logger.warning("Failed to load companion lines: %s", e)
-
-    def _schedule_next(self) -> None:
-        delay = random.uniform(IDLE_BEHAVIOR_MIN_INTERVAL, IDLE_BEHAVIOR_MAX_INTERVAL)
-        self._timer.start(int(delay * 1000))
+    def _schedule_next(self, *, retry: bool = False) -> None:
+        if self._quiet():
+            seconds = random.uniform(45, 90)
+        elif retry:
+            seconds = random.uniform(2, 3)
+        else:
+            seconds = self._interval()
+        self._timer.start(int(seconds * 1000))
 
     def reset(self) -> None:
-        """Reset the idle timer (call on user interaction)."""
         self._schedule_next()
+
+    def on_mode_changed(self, quiet: bool) -> None:
+        """Replace the old mode's timer and resume with a visible local action."""
+        self.interrupt()
+        self._resume_pending = not quiet
+        if not quiet:
+            self._timer.start(4000)
+
+    def interrupt(self) -> None:
+        """Cancel only our action, preserving any queued deliberate work."""
+        dispatcher = self._action_dispatcher
+        if (
+            dispatcher is not None
+            and self._owned_action is not None
+            and dispatcher.current is self._owned_action
+        ):
+            dispatcher.cancel_current("pet-interaction", clear_queue=False)
+        self._owned_action = None
+        self._owned_movement = None
+        self.reset()
 
     def _on_timer(self) -> None:
-        if self._interaction_busy():
-            self._schedule_next()
-            return
-        # No user-activity gate: Doro acts on her own 1-3 min rhythm whether
-        # or not you're using the computer. The checks below only defer when
-        # *Doro herself* is busy (mid-request / mid-move / mid-transition).
-        if self._chat_orchestrator.is_inflight:
-            self._schedule_next()
-            return
+        deferred = True
+        try:
+            if (
+                self._interaction_busy()
+                or self._idle_seconds() < (8 if self._quiet() else 4)
+                or self._chat_orchestrator.is_inflight
+                or getattr(self._chat_orchestrator, "is_web_busy", False)
+                or self._movement.has_active_movement
+                or self._state_service.is_transitioning()
+                or (self._action_dispatcher is not None and not self._action_dispatcher.is_idle)
+            ):
+                return
+            deferred = False
+            if self._quiet():
+                if self._effects():
+                    self._micro_effect("stretch")
+                return
+            choices = [IdleActionType.MOVE, IdleActionType.MOVE]
+            if (
+                self._eligible_poses()
+                and self._action_dispatcher is not None
+                and self._schedule is not None
+            ):
+                choices.append(IdleActionType.TRANSITION)
+            if self._effects():
+                choices.append(IdleActionType.EXPRESSION)
+            if self._lines and self._clock() - self._last_speech >= 90:
+                choices.extend([IdleActionType.SPEAK, IdleActionType.WALK_AND_SPEAK])
+            choices = [a for a in choices if a != self._last_action] or choices
+            action = IdleActionType.MOVE if self._resume_pending else random.choice(choices)
+            self._resume_pending = False
+            self._last_action = action
+            {
+                IdleActionType.MOVE: self._do_move,
+                IdleActionType.TRANSITION: self._do_transition,
+                IdleActionType.SPEAK: self._do_speak,
+                IdleActionType.WALK_AND_SPEAK: self._do_walk_and_speak,
+                IdleActionType.EXPRESSION: self._do_expression,
+            }[action]()
+        finally:
+            self._schedule_next(retry=deferred)
 
-        # 讀 / 操作網頁進行中也要安靜：不要在操作時插話、亂走，以免跟操作搶焦點
-        # 或干擾（隔離規則 Q2）。用 getattr 兼容沒有這個屬性的舊/假替身。
-        if getattr(self._chat_orchestrator, "is_web_busy", False):
-            self._schedule_next()
-            return
+    def _line(self) -> str | None:
+        choices = [line for line in self._lines if line != self._last_line] or self._lines
+        return random.choice(choices) if choices else None
 
-        if self._movement.has_active_movement:
-            self._schedule_next()
-            return
-
-        # When the dispatcher is wired, defer idle behavior whenever a
-        # user-initiated or LLM-initiated action is in flight. Idle is
-        # background fluff — it must not preempt deliberate work.
-        if self._action_dispatcher is not None and not self._action_dispatcher.is_idle:
-            self._schedule_next()
-            return
-
-        if self._state_service.is_transitioning():
-            self._schedule_next()
-            return
-
-        action = random.choice(_IDLE_ACTIONS)
-        logger.debug("Idle action: %s", action.name)
-
-        if action is IdleActionType.SPEAK:
-            self._do_speak()
-        elif action is IdleActionType.MOVE:
-            self._do_move()
-        elif action is IdleActionType.TRANSITION:
-            self._do_transition()
-        elif action is IdleActionType.WALK_AND_SPEAK:
-            self._do_walk_and_speak()
-
-        self._mark_activity()
-        self._schedule_next()
-
-    def _do_speak(self) -> None:
-        # No API: the companion lines are already finished dialogue, so we
-        # show one directly instead of round-tripping it through the LLM.
-        if not self._lines:
-            self._do_move()
-            return
-        line = random.choice(self._lines)
+    def _say(self, line: str) -> None:
+        self._last_line = line
+        self._last_speech = self._clock()
         self._chat_orchestrator.speak_line(line)
 
-    def _do_walk_and_speak(self) -> None:
-        # Walk somewhere, then say a line once she arrives. Falls back to a
-        # plain move when there's nothing to say.
-        if not self._lines:
-            self._do_move()
-            return
-        line = random.choice(self._lines)
-        direction = random.choice(_DIRECTIONS)
-        distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
-        if self._action_dispatcher is not None and self._schedule is not None:
-            from .action import make_walk_and_speak_action
+    def _do_speak(self) -> None:
+        line = self._line()
+        if line:
+            self._say(line)
+        else:
+            self._do_expression()
 
-            self._action_dispatcher.dispatch(
+    def _walk(self) -> tuple[tuple[int, int], float]:
+        distance = random.uniform(100, 240)
+        directions = _DIRECTIONS.copy()
+        random.shuffle(directions)
+        for direction in directions:
+            dx, dy = direction
+            length = math.hypot(dx, dy)
+            if not length:
+                continue
+            if self._window is None:
+                return direction, distance
+            start = self._window.current_position()
+            target = start + QtCore.QPoint(
+                round(dx / length * distance), round(dy / length * distance)
+            )
+            actual = self._window.clamp_window_position(target) - start
+            travel = math.hypot(actual.x(), actual.y())
+            if travel >= min(24, distance / 2):
+                return (actual.x(), actual.y()), travel
+        return (0, 0), 0
+
+    def _dispatch(self, action: Action) -> None:
+        action.on_cancel = self._cancel_owned_walk
+        self._owned_action = action
+        self._action_dispatcher.dispatch(action)
+        self._owned_movement = self._movement.active_movement
+
+    def _cancel_owned_walk(self) -> None:
+        if (
+            self._owned_movement is not None
+            and self._movement.active_movement is self._owned_movement
+        ):
+            self._movement.cancel_active_movement()
+
+    def _do_walk_and_speak(self) -> None:
+        self._start_walk(self._line())
+
+    def _do_move(self) -> None:
+        self._start_walk(None)
+
+    def _start_walk(self, line: str | None) -> None:
+        direction, distance = self._walk()
+        if distance == 0:
+            self._do_expression()
+            return
+        if self._action_dispatcher is not None and self._schedule is not None:
+            self._dispatch(
                 make_walk_and_speak_action(
                     self._movement,
                     self._schedule,
                     direction=direction,
                     distance=distance,
-                    speak=lambda: self._chat_orchestrator.speak_line(line),
-                )
-            )
-        else:
-            # Legacy / unit-test path with no dispatcher: kick off the walk,
-            # then speak. (Without the dispatcher there's no completion wait,
-            # so the strict "arrive first" ordering only holds on the
-            # dispatcher path above — which is what production uses.)
-            self._movement.apply_directional_walk(direction, distance)
-            self._chat_orchestrator.speak_line(line)
-
-    def _do_move(self) -> None:
-        # Animated wander (a visible walk), not the instant one-step hop —
-        # idle movement only makes sense if you can see it happen.
-        direction = random.choice(_DIRECTIONS)
-        distance = random.uniform(IDLE_WALK_MIN_DISTANCE, IDLE_WALK_MAX_DISTANCE)
-        if self._action_dispatcher is not None and self._schedule is not None:
-            from .action import make_walk_and_speak_action
-
-            self._action_dispatcher.dispatch(
-                make_walk_and_speak_action(
-                    self._movement, self._schedule, direction=direction, distance=distance
+                    speak=(lambda: self._say(line)) if line else None,
                 )
             )
         else:
             self._movement.apply_directional_walk(direction, distance)
+            if line:
+                self._say(line)
+
+    def _do_expression(self) -> None:
+        if self._effects():
+            self._micro_effect(random.choice(["stretch", "wiggle"]))
+
+    def _eligible_poses(self) -> list[str]:
+        allowed = self._pose_keys()
+        return [
+            key
+            for key in self._state_service.visible_state_keys()
+            if key in allowed
+            and not self._state_service.is_movement_only_state(key)
+            and key != self._state_service.get_current_state_key()
+        ]
 
     def _do_transition(self) -> None:
-        keys = [
-            k
-            for k in self._state_service.visible_state_keys()
-            if not self._state_service.is_movement_only_state(k)
-            and k != self._state_service.get_current_state_key()
-        ]
-        if not keys:
-            self._do_move()
+        keys = self._eligible_poses()
+        if not keys or self._action_dispatcher is None or self._schedule is None:
+            self._do_expression()
             return
-        target = random.choice(keys)
-        self._state_service.set_state(target)
+        self._dispatch(
+            Action(
+                kind="companion_pose",
+                phases=[
+                    VisualPhase(
+                        self._state_service,
+                        random.choice(keys),
+                        random.randint(1800, 3500),
+                        self._schedule,
+                    )
+                ],
+            )
+        )

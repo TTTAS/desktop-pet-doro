@@ -12,6 +12,7 @@ Benefits over direct QSettings access:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +50,34 @@ from .config_defaults import (
 from .config_schema import AppConfig, AutomationConfig, ChatConfig, DoroConfig, UIConfig, WebConfig
 
 logger = get_logger(__name__)
+
+
+def _companion_poses(value: Any) -> list[str]:
+    try:
+        parsed = json.loads(value) if value is not None else ["happy"]
+        if isinstance(parsed, list):
+            return list(dict.fromkeys(k for k in parsed if isinstance(k, str) and k.strip()))
+    except (TypeError, ValueError):
+        pass
+    return ["happy"]
+
+
+def _foot_overrides(value: Any) -> dict[str, float]:
+    try:
+        parsed = json.loads(value or "{}")
+        if not isinstance(parsed, dict):
+            return {}
+        return {
+            k: v
+            for k, v in parsed.items()
+            if isinstance(k, str)
+            and k
+            and isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and 0 <= v <= 1
+        }
+    except (TypeError, ValueError):
+        return {}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -258,6 +287,20 @@ class ConfigManager:
             "bubble_offset_x": kwargs.get("bubble_offset_x", current.bubble_offset_x),
             "bubble_offset_y": kwargs.get("bubble_offset_y", current.bubble_offset_y),
             "bubble_scale": kwargs.get("bubble_scale", current.bubble_scale),
+            "quiet_companion": kwargs.get("quiet_companion", current.quiet_companion),
+            "companion_home_x": kwargs.get("companion_home_x", current.companion_home_x),
+            "companion_home_y": kwargs.get("companion_home_y", current.companion_home_y),
+            "companion_interval_seconds": kwargs.get(
+                "companion_interval_seconds", current.companion_interval_seconds
+            ),
+            "companion_effects": kwargs.get("companion_effects", current.companion_effects),
+            "sprite_foot_overrides": kwargs.get(
+                "sprite_foot_overrides", current.sprite_foot_overrides
+            ),
+            "companion_pose_keys": kwargs.get("companion_pose_keys", current.companion_pose_keys),
+            "companion_rest_state": kwargs.get(
+                "companion_rest_state", current.companion_rest_state
+            ),
         }
 
         new_config = UIConfig(**updated_values)
@@ -383,6 +426,17 @@ class ConfigManager:
 
         # Load UI config
         try:
+            home_y = _safe_float(self._settings.value("ui/companion_home_y"), -1.0)
+            legacy_activity = _safe_str(self._settings.value("ui/companion_activity"), "lively")
+            interval = self._settings.value(
+                "ui/companion_interval_seconds",
+                {"lively": 9, "balanced": 60, "calm": 120}.get(legacy_activity, 9),
+            )
+            # QSettings may return integer strings; reject fractions and booleans.
+            if isinstance(interval, str) and interval.isascii() and interval.isdecimal():
+                interval = int(interval)
+            if type(interval) is not int or not 1 <= interval <= 3600:
+                interval = 9
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
                     self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
@@ -392,6 +446,20 @@ class ConfigManager:
                 ),
                 bubble_scale=_safe_float(
                     self._settings.value("ui/bubble_scale"), BUBBLE_DEFAULT_SCALE
+                ),
+                quiet_companion=_safe_bool(self._settings.value("ui/quiet_companion"), False),
+                companion_home_x=_safe_float(self._settings.value("ui/companion_home_x"), 0.9),
+                companion_home_y=home_y if 0 <= home_y <= 1 else None,
+                companion_interval_seconds=interval,
+                companion_effects=_safe_bool(self._settings.value("ui/companion_effects"), True),
+                sprite_foot_overrides=_foot_overrides(
+                    self._settings.value("ui/sprite_foot_overrides")
+                ),
+                companion_pose_keys=_companion_poses(
+                    self._settings.value("ui/companion_pose_keys")
+                ),
+                companion_rest_state=_safe_str(
+                    self._settings.value("ui/companion_rest_state"), "idle"
                 ),
             )
             self._config.ui = ui_config
@@ -496,6 +564,19 @@ class ConfigManager:
         self._settings.setValue("ui/bubble_offset_x", float(ui.bubble_offset_x))
         self._settings.setValue("ui/bubble_offset_y", float(ui.bubble_offset_y))
         self._settings.setValue("ui/bubble_scale", float(ui.bubble_scale))
+        self._settings.setValue("ui/quiet_companion", ui.quiet_companion)
+        self._settings.setValue("ui/companion_home_x", ui.companion_home_x)
+        if ui.companion_home_y is None:
+            self._settings.remove("ui/companion_home_y")
+        else:
+            self._settings.setValue("ui/companion_home_y", ui.companion_home_y)
+        self._settings.remove("ui/companion_floor_interaction")
+        self._settings.setValue("ui/companion_pose_keys", json.dumps(ui.companion_pose_keys))
+        self._settings.setValue("ui/companion_rest_state", ui.companion_rest_state)
+        self._settings.setValue("ui/companion_interval_seconds", ui.companion_interval_seconds)
+        self._settings.remove("ui/companion_activity")
+        self._settings.setValue("ui/companion_effects", ui.companion_effects)
+        self._settings.setValue("ui/sprite_foot_overrides", json.dumps(ui.sprite_foot_overrides))
 
         # Save automation config
         automation = self._config.automation

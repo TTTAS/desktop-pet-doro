@@ -50,6 +50,7 @@ class PresenceController(QtCore.QObject):
         self._gate = EventGate()
         self._running = False
         self._closed = False
+        self._quiet = False
         self._epoch = 0
         self._last_reaction = ""
         self._completed = None
@@ -138,6 +139,12 @@ class PresenceController(QtCore.QObject):
         self._epoch += 1
         self._completed = None
 
+    def set_quiet(self, quiet: bool) -> None:
+        """Pause proactive replies without disabling explicitly shared-page asks."""
+        self._quiet = bool(quiet)
+        self.interrupt()
+        self._gate.offer(None)
+
     @QtCore.Slot(object)
     def _on_page(self, page):
         if self._closed:
@@ -151,11 +158,17 @@ class PresenceController(QtCore.QObject):
             self._observed_page = current
             self.interrupt()
         self.status = "已連線，正在讀取目前分頁" if current else "沒有可分享的目前分頁"
-        self._gate.offer(current if self.settings["react"] else None)
+        self._gate.offer(current if self.settings["react"] and not self._quiet else None)
         self._pump()
 
     def _pump(self) -> None:
-        if self._closed or self._running or not self.settings["react"] or self._busy():
+        if (
+            self._closed
+            or self._quiet
+            or self._running
+            or not self.settings["react"]
+            or self._busy()
+        ):
             return
         if self._completed is not None:
             event, epoch, answer = self._completed
@@ -165,6 +178,7 @@ class PresenceController(QtCore.QObject):
                     answer,
                     should_present=lambda event=event, epoch=epoch: (
                         not self._closed
+                        and not self._quiet
                         and self.settings["react"]
                         and epoch == self._epoch
                         and event == self.current_page

@@ -15,6 +15,96 @@ from doro_app.utils.config_schema import AppConfig, ChatConfig, UIConfig
 pytestmark = pytest.mark.skipif(not HAS_PYSIDE6, reason="PySide6 not available")
 
 
+def test_companion_preferences_and_calibration_survive_unrelated_ui_changes(tmp_path):
+    path = tmp_path / "companion.ini"
+    config = ConfigManager(path)
+    config.update_ui(
+        companion_interval_seconds=120,
+        companion_effects=False,
+        sprite_foot_overrides={"c:/pet.gif": 0.82},
+    )
+    config.update_ui(bubble_scale=1.25)
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_interval_seconds == 120
+    assert not restored.ui.companion_effects
+    assert restored.ui.sprite_foot_overrides == {"c:/pet.gif": 0.82}
+
+
+def test_invalid_calibration_entries_do_not_discard_valid_preferences(tmp_path):
+    path = tmp_path / "companion.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/sprite_foot_overrides", '{"good": 0.8, "bad": "oops", "nan": NaN}')
+    settings.setValue("ui/companion_activity", "calm")
+    settings.sync()
+    restored = ConfigManager(path)
+    assert restored.ui.sprite_foot_overrides == {"good": 0.8}
+    assert restored.ui.companion_interval_seconds == 120
+
+
+@pytest.mark.parametrize("height", [0.0, 0.4, 1.0])
+def test_free_rest_point_round_trip_removes_legacy_floor_toggle(tmp_path, height):
+    path = tmp_path / "companion.ini"
+    manager = ConfigManager(path)
+    assert manager.ui.companion_home_y is None
+    manager._settings.setValue("ui/companion_floor_interaction", True)
+    manager.update_ui(companion_home_x=0.25, companion_home_y=height)
+    manager.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_home_x == 0.25
+    assert restored.ui.companion_home_y == height
+    assert not restored._settings.contains("ui/companion_floor_interaction")
+    restored.update_ui(companion_home_y=None)
+    restored.save()
+    cleared = ConfigManager(path)
+    assert cleared.ui.companion_home_y is None
+    assert not cleared._settings.contains("ui/companion_floor_interaction")
+
+
+@pytest.mark.parametrize("height", [None, "invalid", "nan", 2.0])
+def test_old_or_invalid_rest_point_does_not_force_floor_or_reset_other_settings(tmp_path, height):
+    path = tmp_path / "old.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/quiet_companion", True)
+    settings.setValue("ui/companion_home_x", 0.75)
+    settings.setValue("ui/bubble_scale", 1.5)
+    if height is not None:
+        settings.setValue("ui/companion_home_y", height)
+    settings.sync()
+    manager = ConfigManager(path)
+    assert manager.ui.quiet_companion
+    assert manager.ui.companion_home_x == 0.75
+    assert manager.ui.bubble_scale == 1.5
+    assert manager.ui.companion_home_y is None
+    assert not hasattr(manager.ui, "companion_floor_interaction")
+
+
+@pytest.mark.parametrize("keys", [[], ["happy"], ["custom", "idle"]])
+def test_companion_pose_list_round_trip(tmp_path, keys):
+    path = tmp_path / "poses.ini"
+    config = ConfigManager(path)
+    config.update_ui(companion_pose_keys=keys)
+    config.update_ui(companion_interval_seconds=120)
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.companion_pose_keys == keys
+    assert restored.ui.companion_interval_seconds == 120
+
+
+@pytest.mark.parametrize(
+    "raw, expected", [("invalid", ["happy"]), ('["play", 2, "", "play"]', ["play"])]
+)
+def test_invalid_pose_list_does_not_reset_other_settings(tmp_path, raw, expected):
+    config = ConfigManager(tmp_path / "poses.ini")
+    config.update_ui(companion_interval_seconds=120)
+    config.save()
+    config._settings.setValue("ui/companion_pose_keys", raw)
+    config._settings.sync()
+    restored = ConfigManager(config._settings.fileName())
+    assert restored.ui.companion_pose_keys == expected
+    assert restored.ui.companion_interval_seconds == 120
+
+
 class TestConfigManagerInitialization:
     """Tests for ConfigManager initialization."""
 
@@ -410,3 +500,44 @@ def test_web_config_roundtrip(tmp_path):
     m2 = ConfigManager(path)
     assert m2.web.tavily_api_key == "tvly-abc"
     assert m2.web.verify_search_depth == "advanced"
+
+
+@pytest.mark.parametrize(
+    "legacy,expected", [("lively", 9), ("balanced", 60), ("calm", 120), ("unknown", 9)]
+)
+def test_legacy_activity_migrates_once_and_custom_interval_wins(tmp_path, legacy, expected):
+    path = tmp_path / "legacy.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/companion_activity", legacy)
+    settings.sync()
+    config = ConfigManager(path)
+    assert config.ui.companion_interval_seconds == expected
+    config.update_ui(companion_interval_seconds=37)
+    config.save()
+    assert not config._settings.contains("ui/companion_activity")
+    config._settings.setValue("ui/companion_activity", legacy)
+    config._settings.sync()
+    assert ConfigManager(path).ui.companion_interval_seconds == 37
+
+
+@pytest.mark.parametrize("value", [0, -1, 3601, True, 1.5, "oops", "1.5"])
+def test_invalid_interval_preserves_other_preferences(tmp_path, value):
+    path = tmp_path / "invalid.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/companion_interval_seconds", value)
+    settings.setValue("ui/quiet_companion", True)
+    settings.setValue("ui/bubble_scale", 1.5)
+    settings.sync()
+    config = ConfigManager(path)
+    assert config.ui.companion_interval_seconds == 9
+    assert config.ui.quiet_companion
+    assert config.ui.bubble_scale == 1.5
+
+
+@pytest.mark.parametrize("value", [1, 37, 3600])
+def test_custom_interval_survives_reload(tmp_path, value):
+    path = tmp_path / "seconds.ini"
+    config = ConfigManager(path)
+    config.update_ui(companion_interval_seconds=value)
+    config.save()
+    assert ConfigManager(path).ui.companion_interval_seconds == value

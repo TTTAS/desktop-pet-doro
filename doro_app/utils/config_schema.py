@@ -31,15 +31,15 @@ from .config_defaults import (
     DEFAULT_CHAT_API_KEY,
     DEFAULT_CHAT_ENDPOINT_PATH,
     DEFAULT_CHAT_MAX_RETRIES,
-    DEFAULT_CHAT_STRUCTURED_MODE,
-    STRUCTURED_MODES,
     DEFAULT_CHAT_MAX_STOP_TOKENS,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_STOP_TOKENS,
+    DEFAULT_CHAT_STRUCTURED_MODE,
     DEFAULT_TAVILY_API_KEY,
     DEFAULT_VERIFY_SEARCH_DEPTH,
     DEFAULT_WEB_OPERATION_ENABLED,
+    STRUCTURED_MODES,
 )
 
 # ═══════════════════════════════════════════════════════════
@@ -128,6 +128,14 @@ class UIConfig:
 
     # Bubble appearance
     bubble_scale: float = BUBBLE_DEFAULT_SCALE
+    quiet_companion: bool = False
+    companion_home_x: float = 0.9
+    companion_home_y: float | None = None  # None means no saved resting point.
+    companion_rest_state: str = "idle"
+    companion_interval_seconds: int = 9
+    companion_effects: bool = True
+    companion_pose_keys: list[str] = field(default_factory=lambda: ["happy"])
+    sprite_foot_overrides: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate configuration values."""
@@ -141,6 +149,41 @@ class UIConfig:
         # Scale should be positive
         if not isinstance(self.bubble_scale, (int, float)) or self.bubble_scale <= 0:
             raise ValueError(f"bubble_scale must be positive number, got {self.bubble_scale}")
+        if not isinstance(self.quiet_companion, bool):
+            raise ValueError("quiet_companion must be bool")
+        if (
+            not isinstance(self.companion_home_x, (int, float))
+            or not 0 <= self.companion_home_x <= 1
+        ):
+            raise ValueError("companion_home_x must be between 0 and 1")
+        if self.companion_home_y is not None and (
+            not isinstance(self.companion_home_y, (int, float))
+            or isinstance(self.companion_home_y, bool)
+            or not 0 <= self.companion_home_y <= 1
+        ):
+            raise ValueError("companion_home_y must be None or between 0 and 1")
+        if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
+            raise ValueError("companion_rest_state must be a nonempty state key")
+        if (
+            type(self.companion_interval_seconds) is not int
+            or not 1 <= self.companion_interval_seconds <= 3600
+        ):
+            raise ValueError("companion_interval_seconds must be an integer from 1 to 3600")
+        if not isinstance(self.companion_effects, bool):
+            raise ValueError("companion_effects must be bool")
+        if not isinstance(self.companion_pose_keys, list) or any(
+            not isinstance(key, str) or not key.strip() for key in self.companion_pose_keys
+        ):
+            raise ValueError("companion_pose_keys must be a list of nonempty state keys")
+        if not isinstance(self.sprite_foot_overrides, dict) or any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not 0 <= value <= 1
+            for key, value in self.sprite_foot_overrides.items()
+        ):
+            raise ValueError("sprite_foot_overrides must map GIF paths to ratios")
 
     @property
     def config_key_prefix(self) -> str:

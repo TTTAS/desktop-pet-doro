@@ -27,6 +27,7 @@ class GifSpriteRenderer:
         self._view_model = view_model
         self._movie: QtGui.QMovie | None = None
         self._temporary_movie: QtGui.QMovie | None = None
+        self._contact_bounds = QtCore.QRect()
 
     @property
     def renderer_type(self) -> str:
@@ -38,6 +39,24 @@ class GifSpriteRenderer:
     def set_movie(self, movie: QtGui.QMovie | None) -> None:
         """Replace the active QMovie (or clear it)."""
         self._movie = movie
+        # Freeze the contact rectangle at load time. Sampling each GIF frame
+        # would make the desktop position jitter as paws/hair animate.
+        self._contact_bounds = QtCore.QRect()
+        if movie is not None:
+            pixmap = movie.currentPixmap()
+            if not pixmap.isNull():
+                self._contact_bounds = QtGui.QRegion(pixmap.mask()).boundingRect()
+                if self._contact_bounds.isEmpty():
+                    self._contact_bounds = pixmap.rect()
+
+    def contact_bounds(self) -> QtCore.QRect:
+        """Stable visible bounds in sprite pixels, excluding transparent padding."""
+        return QtCore.QRect(self._contact_bounds)
+
+    @property
+    def base_movie(self) -> QtGui.QMovie | None:
+        """State/transition movie defining contact geometry, excluding gestures."""
+        return self._movie
 
     @property
     def movie(self) -> QtGui.QMovie | None:

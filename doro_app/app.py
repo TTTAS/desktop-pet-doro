@@ -17,6 +17,7 @@ from .core.automation.foreground_tracker import ForegroundTracker
 from .core.automation.manager import AutomationManager
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
+from .core.companion import CompanionController
 from .core.core_manager import CoreManager
 from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
@@ -165,14 +166,35 @@ class DoroApp:
             actions_file=self._click_actions_path,
             chat_orchestrator=self._chat_orchestrator,
         )
+        self._companion = CompanionController(
+            window=self.window,
+            movement=self._movement,
+            states=self._state_service,
+            config=self._config_manager,
+            bubble=self._bubble_controller,
+            busy=self._companion_busy,
+            cancel=self._cancel_companion_activity,
+            silence=self._on_companion_mode_changed,
+        )
         self._idle_behavior = IdleBehaviorManager(
             companion_file=COMPANION_PROMPTS_PATH,
             chat_orchestrator=self._chat_orchestrator,
             movement_manager=self._movement,
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
-            mark_activity=lambda: self.window.mark_user_activity(),
-            interaction_busy=lambda: self._mouse_handler.is_dragging,
+            interaction_busy=lambda: (
+                self._mouse_handler.is_dragging
+                or self._floating_chat_open()
+                or bool(self._bubble_controller.text)
+                or QtWidgets.QApplication.activeModalWidget() is not None
+                or QtWidgets.QApplication.activePopupWidget() is not None
+            ),
+            interval_provider=lambda: self._config_manager.ui.companion_interval_seconds,
+            pose_keys_provider=lambda: self._config_manager.ui.companion_pose_keys,
+            quiet_provider=lambda: self._companion.quiet,
+            effects_enabled=lambda: self._config_manager.ui.companion_effects,
+            micro_effect=self.window.play_expression,
+            window=self.window,
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )
@@ -229,6 +251,7 @@ class DoroApp:
             ),
         )
         self._chat_orchestrator.set_presence(self._presence)
+        self._presence.set_quiet(self._companion.quiet)
 
         # Quit-time teardown: stop the pynput listener thread, the
         # a11y UIA worker pool, and the foreground-window poller before
@@ -271,7 +294,9 @@ class DoroApp:
         self._bubble_controller.text_changed.connect(
             lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
         )
-        self._bubble_controller.visibility_changed.connect(lambda *_: self.window.update())
+        self._bubble_controller.visibility_changed.connect(
+            lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
+        )
         self._bubble_controller.repaint_requested.connect(self.window.update)
         self._bubble_controller.update_bubble_side_requested.connect(
             self.window.update_bubble_side_from_offset
@@ -307,6 +332,9 @@ class DoroApp:
     def _on_chat_operation_started(self):
         """Translate chat operation started domain event to UI busy cursor."""
         self.window.set_busy_cursor(True)
+        self._idle_behavior.interrupt()
+        self._companion.interrupt()
+        self.window.clear_expression()
 
     def _on_chat_operation_completed(self):
         """Translate chat operation completed domain event to UI cursor reset."""
@@ -368,7 +396,10 @@ class DoroApp:
             window=self.window,
             core_manager=self.core_manager,
             bubble_controller=self._bubble_controller,
+            on_interaction=self._interrupt_background_companionship,
         )
+        self._chat_ui = chat_ui
+        self._chat_controller.request_failed.connect(chat_ui.request_failed)
 
         # ─────────────────────────────────────────────────────────
         # Context-menu controller (assembles snapshot/callbacks)
@@ -382,6 +413,9 @@ class DoroApp:
             core_manager=self.core_manager,
             chat_ui=chat_ui,
             default_idle_gif=STATE_DIR / "idle.gif",
+            companion=self._companion,
+            on_interaction=self._interrupt_background_companionship,
+            on_settings_changed=self._idle_behavior.reset,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -393,11 +427,13 @@ class DoroApp:
         mouse_handler.window_drag_requested.connect(self.window.move)
         mouse_handler.drag_started.connect(self._on_doro_dragged)
         mouse_handler.drag_finished.connect(self._sprite_controller.end_drag_animation)
+        mouse_handler.drag_finished.connect(self._companion.released)
         mouse_handler.click_detected.connect(self._on_doro_clicked)
         mouse_handler.user_activity_detected.connect(self.window.mark_user_activity)
-        # Idle behavior no longer resets on user activity: Doro acts on her
-        # own fixed 1-3 min rhythm regardless of whether you're using the
-        # computer, so this connection is intentionally omitted.
+        mouse_handler.user_activity_detected.connect(self._companion.interrupt)
+        mouse_handler.user_activity_detected.connect(self._idle_behavior.interrupt)
+        mouse_handler.user_activity_detected.connect(self.window.clear_expression)
+        self.window.tick_requested.connect(self._companion.tick)
 
         # ─────────────────────────────────────────────────────────
         # Connect UI controller signals → Window
@@ -425,9 +461,37 @@ class DoroApp:
             )
         )
 
+    def _on_companion_mode_changed(self, quiet: bool) -> None:
+        self._presence.set_quiet(quiet)
+        self._idle_behavior.on_mode_changed(quiet)
+
+    def _companion_busy(self) -> bool:
+        return (
+            self._mouse_handler.is_dragging
+            or self._floating_chat_open()
+            or self._chat_orchestrator.is_inflight
+            or self._chat_orchestrator.is_web_busy
+            or not self._action_dispatcher.is_idle
+            or self._movement.has_active_movement
+            or self._state_service.is_transitioning()
+            or QtWidgets.QApplication.activeModalWidget() is not None
+            or QtWidgets.QApplication.activePopupWidget() is not None
+        )
+
+    def _floating_chat_open(self) -> bool:
+        helper = getattr(self, "_chat_ui", None)
+        return helper is not None and helper.chat_open
+
+    def _cancel_companion_activity(self) -> None:
+        if self._automation is not None:
+            self._automation.cancel_pending_click("quiet-companion")
+        self._action_dispatcher.cancel_current("quiet-companion")
+        self._movement.cancel_active_movement()
+
     def run(self):
         """Start the application by showing the main window."""
         self.window.show()
+        self._chat_ui.show_input()
 
     # ═════════════════════════════════════════════════════════════════
     # Chat context injection (Phase 1c hotfix)
@@ -599,7 +663,13 @@ class DoroApp:
         path = self._action_service.resolve_action_gif_path(PET_CLICK_ACTION_KEY)
         if path is not None:
             self._sprite_controller.start_pet_click_animation(path)
+        self.window.play_expression("heart")
         self._click_action_controller.trigger_random_action()
+
+    def _interrupt_background_companionship(self) -> None:
+        self._idle_behavior.interrupt()
+        self._companion.interrupt()
+        self.window.clear_expression()
 
     def _on_doro_dragged(self) -> None:
         """User dragged Doro — kill any in-flight click, active movement,
@@ -652,6 +722,7 @@ class DoroApp:
         logger = _gl(__name__)
         # (subsystem, attribute-on-self, method-name-on-subsystem)
         shutters = [
+            ("floating_chat", "_chat_ui", "shutdown"),
             ("automation", "_automation", "shutdown"),
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),

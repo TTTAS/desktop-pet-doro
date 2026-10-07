@@ -5,6 +5,18 @@ import pytest
 from doro_app.utils.config_schema import AppConfig, ChatConfig, DoroConfig, UIConfig
 
 
+@pytest.mark.parametrize("height", [-0.1, 1.1, float("nan"), "middle", True])
+def test_rest_point_height_must_be_a_valid_ratio(height):
+    with pytest.raises(ValueError, match="companion_home_y"):
+        UIConfig(companion_home_y=height)
+
+
+@pytest.mark.parametrize("value", ["happy", [1], [""]])
+def test_companion_poses_require_nonempty_state_keys(value):
+    with pytest.raises(ValueError, match="companion_pose_keys"):
+        UIConfig(companion_pose_keys=value)
+
+
 class TestChatConfig:
     """Tests for ChatConfig validation."""
 
@@ -187,3 +199,9 @@ class TestDoroConfig:
         assert "AppConfig" in repr_str
         assert "lmstudio" in repr_str
         assert "idle" in repr_str
+
+
+@pytest.mark.parametrize("value", [0, -1, 3601, True, 1.5, "30"])
+def test_companion_interval_requires_integer_seconds_in_range(value):
+    with pytest.raises(ValueError, match="companion_interval_seconds"):
+        UIConfig(companion_interval_seconds=value)
