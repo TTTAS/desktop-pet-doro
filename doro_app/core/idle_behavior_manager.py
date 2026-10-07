@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 _DIRECTIONS = list(set(MOVE_DIRECTIONS.values()))
 # Seconds between attempts, followed by logical pixels per walk.
 ACTIVITY_PROFILES = {
-    "lively": (18, 35, 70, 180),
+    "lively": (6, 12, 100, 240),
     "balanced": (40, 75, 50, 130),
     "calm": (90, 150, 30, 80),
 }
@@ -74,6 +74,7 @@ class IdleBehaviorManager(QtCore.QObject):
         self._window = window
         self._clock = clock
         self._last_action = None
+        self._resume_pending = False
         self._last_line = None
         self._last_speech = float("-inf")
         self._owned_action = None
@@ -94,16 +95,25 @@ class IdleBehaviorManager(QtCore.QObject):
         self._timer.timeout.connect(self._on_timer)
         self._schedule_next()
 
-    def _schedule_next(self) -> None:
+    def _schedule_next(self, *, retry: bool = False) -> None:
         low, high = (
             (45, 90)
             if self._quiet()
             else ACTIVITY_PROFILES.get(self._profile(), ACTIVITY_PROFILES["lively"])[:2]
         )
+        if retry and not self._quiet():
+            low, high = 2, 3
         self._timer.start(int(random.uniform(low, high) * 1000))
 
     def reset(self) -> None:
         self._schedule_next()
+
+    def on_mode_changed(self, quiet: bool) -> None:
+        """Replace the old mode's timer and resume with a visible local action."""
+        self.interrupt()
+        self._resume_pending = not quiet
+        if not quiet:
+            self._timer.start(4000)
 
     def interrupt(self) -> None:
         """Cancel only our action, preserving any queued deliberate work."""
@@ -119,10 +129,11 @@ class IdleBehaviorManager(QtCore.QObject):
         self.reset()
 
     def _on_timer(self) -> None:
+        deferred = True
         try:
             if (
                 self._interaction_busy()
-                or self._idle_seconds() < 8
+                or self._idle_seconds() < (8 if self._quiet() else 4)
                 or self._chat_orchestrator.is_inflight
                 or getattr(self._chat_orchestrator, "is_web_busy", False)
                 or self._movement.has_active_movement
@@ -130,17 +141,25 @@ class IdleBehaviorManager(QtCore.QObject):
                 or (self._action_dispatcher is not None and not self._action_dispatcher.is_idle)
             ):
                 return
+            deferred = False
             if self._quiet():
                 if self._effects():
                     self._micro_effect("stretch")
                 return
-            choices = [IdleActionType.MOVE, IdleActionType.TRANSITION]
+            choices = [IdleActionType.MOVE, IdleActionType.MOVE]
+            if (
+                self._eligible_poses()
+                and self._action_dispatcher is not None
+                and self._schedule is not None
+            ):
+                choices.append(IdleActionType.TRANSITION)
             if self._effects():
                 choices.append(IdleActionType.EXPRESSION)
             if self._lines and self._clock() - self._last_speech >= 90:
                 choices.extend([IdleActionType.SPEAK, IdleActionType.WALK_AND_SPEAK])
-            choices = [a for a in choices if a != self._last_action]
-            action = random.choice(choices)
+            choices = [a for a in choices if a != self._last_action] or choices
+            action = IdleActionType.MOVE if self._resume_pending else random.choice(choices)
+            self._resume_pending = False
             self._last_action = action
             {
                 IdleActionType.MOVE: self._do_move,
@@ -151,7 +170,7 @@ class IdleBehaviorManager(QtCore.QObject):
             }[action]()
             self._mark_activity()
         finally:
-            self._schedule_next()
+            self._schedule_next(retry=deferred)
 
     def _line(self) -> str | None:
         choices = [line for line in self._lines if line != self._last_line] or self._lines
@@ -234,14 +253,18 @@ class IdleBehaviorManager(QtCore.QObject):
         if self._effects():
             self._micro_effect(random.choice(["stretch", "wiggle"]))
 
-    def _do_transition(self) -> None:
-        keys = [
+    def _eligible_poses(self) -> list[str]:
+        allowed = self._pose_keys()
+        return [
             key
             for key in self._state_service.visible_state_keys()
-            if key in self._pose_keys()
+            if key in allowed
             and not self._state_service.is_movement_only_state(key)
             and key != self._state_service.get_current_state_key()
         ]
+
+    def _do_transition(self) -> None:
+        keys = self._eligible_poses()
         if not keys or self._action_dispatcher is None or self._schedule is None:
             self._do_expression()
             return

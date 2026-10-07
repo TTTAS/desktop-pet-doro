@@ -114,9 +114,10 @@ def test_quiet_only_plays_local_effect_and_respects_switch(pet_idle):
 
 
 @pytest.mark.parametrize("gate", ["busy", "age", "chat", "web", "movement", "transition"])
-def test_busy_or_recent_interaction_defers_every_expression(pet_idle, gate):
+@pytest.mark.parametrize("quiet", [False, True])
+def test_busy_or_recent_interaction_defers_every_expression(pet_idle, gate, quiet):
     p = pet_idle
-    p.options["quiet"] = True
+    p.options["quiet"] = quiet
     if gate == "busy":
         p.options["busy"] = True
     elif gate == "age":
@@ -132,6 +133,9 @@ def test_busy_or_recent_interaction_defers_every_expression(pet_idle, gate):
     p.idle._on_timer()
     p.effect.assert_not_called()
     p.idle._mark_activity.assert_not_called()
+    p.movement.apply_directional_walk.assert_not_called()
+    if not quiet:
+        assert 2000 <= p.idle._timer.interval() <= 3000
 
 
 def test_speech_cooldown_and_no_consecutive_line_or_action(pet_idle, monkeypatch):
@@ -231,3 +235,75 @@ def test_autonomous_poses_use_only_allowed_visible_nonmovement_states(pet_idle, 
         assert p.current[0] == "idle"
         assert p.dispatcher.is_idle
         p.effect.assert_called_once()
+
+
+def test_leaving_quiet_replaces_long_timer_and_walks_only_after_grace(pet_idle):
+    p = pet_idle
+    p.options["quiet"] = True
+    p.idle.reset()
+    assert p.idle._timer.interval() >= 45000
+    p.options["quiet"] = False
+    p.idle.on_mode_changed(False)
+    assert p.idle._timer.interval() == 4000
+    p.options["age"] = 2
+    p.idle._on_timer()
+    p.movement.apply_directional_walk.assert_not_called()
+    p.options["age"] = 4
+    p.idle._on_timer()
+    p.movement.apply_directional_walk.assert_called_once()
+    p.chat.speak_line.assert_not_called()
+    assert 6000 <= p.idle._timer.interval() <= 12000
+
+
+def test_entering_quiet_cancels_resume_and_owned_walk(pet_idle):
+    p = pet_idle
+    p.idle.on_mode_changed(False)
+    p.idle._on_timer()
+    assert p.movement.has_active_movement
+    p.options["quiet"] = True
+    p.idle.on_mode_changed(True)
+    p.movement.cancel_active_movement.assert_called_once()
+    assert not p.movement.has_active_movement
+    assert 45000 <= p.idle._timer.interval() <= 90000
+    p.idle._on_timer()
+    p.movement.apply_directional_walk.assert_called_once()
+    p.effect.assert_called_once_with("stretch")
+
+
+def test_busy_resume_retries_promptly_without_losing_first_walk(pet_idle):
+    p = pet_idle
+    p.idle.on_mode_changed(False)
+    p.options["busy"] = True
+    p.idle._on_timer()
+    p.movement.apply_directional_walk.assert_not_called()
+    assert 2000 <= p.idle._timer.interval() <= 3000
+    p.options["busy"] = False
+    p.idle._on_timer()
+    p.movement.apply_directional_walk.assert_called_once()
+
+
+def test_no_pose_or_effect_does_not_waste_attempts_or_starve_walking(pet_idle, monkeypatch):
+    p = pet_idle
+    p.options["effects"] = False
+    p.idle._pose_keys = lambda: ["deleted", "walking"]
+    p.idle._last_speech = p.options["now"]
+    p.idle._last_action = IdleActionType.MOVE
+    choices = []
+    monkeypatch.setattr(
+        "doro_app.core.idle_behavior_manager.random.choice",
+        lambda items: choices.extend(items) or items[0],
+    )
+    p.idle._on_timer()
+    assert set(choices) == {IdleActionType.MOVE}
+    p.movement.apply_directional_walk.assert_called_once()
+
+
+def test_lively_profile_is_faster_but_other_preferences_are_preserved(pet_idle):
+    p = pet_idle
+    assert ACTIVITY_PROFILES["lively"] == (6, 12, 100, 240)
+    for profile, low, high in [("balanced", 40, 75), ("calm", 90, 150)]:
+        p.options["profile"] = profile
+        p.idle.on_mode_changed(False)
+        p.idle._on_timer()
+        assert low * 1000 <= p.idle._timer.interval() <= high * 1000
+        p.idle.interrupt()

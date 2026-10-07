@@ -63,6 +63,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         callbacks.toggle_quiet(True)
         assert app._context_menu_ctrl._build_snapshot().quiet_companion
         assert app._presence._quiet
+        assert 45000 <= app._idle_behavior._timer.interval() <= 90000
 
         app._idle_behavior._do_speak = Mock()
         app._idle_behavior._do_move = Mock()
@@ -149,6 +150,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         callbacks.toggle_quiet(False)
         assert not app._presence._quiet
         assert not config.ui.quiet_companion
+        assert app._idle_behavior._timer.interval() == 4000
 
         # Input is always available; menu entries reveal the same nonmodal bar.
         floating = app._chat_ui._chat_dialog

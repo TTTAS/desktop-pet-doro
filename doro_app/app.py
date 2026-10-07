@@ -174,7 +174,7 @@ class DoroApp:
             bubble=self._bubble_controller,
             busy=self._companion_busy,
             cancel=self._cancel_companion_activity,
-            silence=lambda quiet: self._presence.set_quiet(quiet),
+            silence=self._on_companion_mode_changed,
         )
         self._idle_behavior = IdleBehaviorManager(
             companion_file=COMPANION_PROMPTS_PATH,
@@ -435,9 +435,6 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(self._idle_behavior.interrupt)
         mouse_handler.user_activity_detected.connect(self.window.clear_expression)
         self.window.tick_requested.connect(self._companion.tick)
-        # Idle behavior no longer resets on user activity: Doro acts on her
-        # own fixed 1-3 min rhythm regardless of whether you're using the
-        # computer, so this connection is intentionally omitted.
 
         # ─────────────────────────────────────────────────────────
         # Connect UI controller signals → Window
@@ -464,6 +461,10 @@ class DoroApp:
                 auto_hide_ms=BUBBLE_AUTO_HIDE_MS,
             )
         )
+
+    def _on_companion_mode_changed(self, quiet: bool) -> None:
+        self._presence.set_quiet(quiet)
+        self._idle_behavior.on_mode_changed(quiet)
 
     def _companion_busy(self) -> bool:
         return (

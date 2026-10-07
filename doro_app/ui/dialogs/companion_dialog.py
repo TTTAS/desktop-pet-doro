@@ -69,7 +69,7 @@ class CompanionDialog(QtWidgets.QDialog):
         form = QtWidgets.QFormLayout()
         self.activity = QtWidgets.QComboBox()
         for label, key in [
-            ("活潑 · 18–35 秒", "lively"),
+            ("活潑 · 6–12 秒", "lively"),
             ("適中 · 40–75 秒", "balanced"),
             ("悠閒 · 90–150 秒", "calm"),
         ]:
