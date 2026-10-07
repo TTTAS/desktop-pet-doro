@@ -1,6 +1,6 @@
 # PR #63：桌面陪伴與懸浮聊天交接紀錄
 
-記錄日期：2026-10-07。程式基準：`333a9da394a7a2f7611b9dedc8071619a87ff23d`。
+記錄日期：2026-10-07。程式基準：`d06c4c9`（聊天拒收與錯誤回報修正）。先前基準為 `333a9da`。
 PR：[TTTAS/doro-exp- #63](https://github.com/TTTAS/doro-exp-/pull/63)。
 分支：`codex/quiet-companion-grounding`，目標分支：`master`。
 
@@ -38,24 +38,24 @@ PR：[TTTAS/doro-exp- #63](https://github.com/TTTAS/doro-exp-/pull/63)。
 - GIF 腳底校正按完整檔案路徑保存，搬移或重新匯入後可能需重設。點擊／拖曳暫時 GIF 沿用目前姿勢的校正。
 - 聊天顯示紀錄最多 200 則，只在本次執行的記憶體內；隱藏保留草稿與紀錄，重啟不保存這份顯示紀錄。
 
-## 已知待修與限制
+## 聊天審查修正與限制
 
-使用者已要求這輪先改秒數與選單，以下聊天問題尚未修正，不能因完整測試通過而視為已解決。
+先前依使用者要求只改秒數與選單，保留以下兩項問題；本輪已於 `d06c4c9` 修正並加回歸測試。下表保留原問題與修正結果供追溯。
 
-| 項目 | 重現／影響 | 後續處理位置與驗收 |
+| 項目 | 原問題重現／影響 | 已完成修正與驗收 |
 | --- | --- | --- |
-| 網頁操作中誤判普通聊天已送出 | Doro 操作網頁且不在等待確認時，送出普通訊息。操作處理回傳 True，但只提示稍等，輸入列因此清掉草稿並留下使用者訊息 | `core/chat/orchestrator.py` 的 `_handle_message_while_operating`、`floating_chat.py` 的 `send`；拒收應保留草稿且不新增假紀錄，停止與確認指令仍可接受 |
-| 失敗原因被通用文案遮住 | 未設定伺服器或請求失敗時，輸入列只顯示通用提示；`request_failed` 未呈現收到的錯誤原因 | 協調層拒收結果、`ui/helpers/chat_ui_helper.py`、`floating_chat.py`；顯示可理解的原因並保留草稿，不覆蓋新輸入 |
+| 網頁操作中誤判普通聊天已送出 | Doro 操作網頁且不在等待確認時，送出普通訊息。操作處理回傳 True，但只提示稍等，輸入列因此清掉草稿並留下使用者訊息 | `core/chat/orchestrator.py` 的 `_handle_message_while_operating`、`floating_chat.py` 的 `send`；現在回傳拒收並保留草稿，不新增假紀錄、不自動重送；實際 app 接線測試覆蓋此路徑。停止與確認指令仍可接受 |
+| 失敗原因被通用文案遮住 | 未設定伺服器或請求失敗時，輸入列只顯示通用提示；`request_failed` 未呈現收到的錯誤原因 | 協調層拒收結果、`ui/helpers/chat_ui_helper.py`、`floating_chat.py`；現在把同步拒收原因傳入狀態區，非同步失敗呈現原始錯誤文字；保留草稿、不覆蓋新輸入，重試成功清除舊提示。測試涵蓋缺少伺服器、忙碌、非同步失敗與自動請求隔離 |
 
 其他限制：聊天框不跟隨角色、隱藏狀態不跨重啟保存；目前沒有自動偵測其他程式是否正在打字或工作。這些是現況紀錄，本輪未另加功能。Windows 原生輸入法候選窗、跨程式置頂、混合 DPI、多螢幕與工作列自動隱藏仍待實機驗收。
 
 ## 驗證紀錄
 
-下列結果來自程式基準 `333a9da` 的本機驗證，不是 GitHub CI 結果。這次交接文件提交只修改文件，未重跑完整程式測試。
+下列結果來自程式基準 `d06c4c9` 的本機驗證，不是 GitHub CI 結果。本輪修正前先重現草稿清空與錯誤原因遺失，修正後重跑完整測試。後續交接文件提交僅更新紀錄。
 
 | 檢查 | 結果 |
 | --- | --- |
-| 完整 pytest（Qt offscreen，排除 manual） | **1108 passed、3 skipped**；3 項為未啟用的瀏覽器驗收 |
+| 完整 pytest（Qt offscreen，排除 manual） | **1120 passed、3 skipped**；3 項為未啟用的瀏覽器驗收 |
 | Black 26.3.1、Ruff 0.16.8 | `doro_app`、`tests` 通過；不包含根目錄與工具腳本的既有格式問題 |
 | repo_map、diff | `python scripts/repo_map.py --check`、`git diff --check` 通過 |
 | Qt 畫面 | 查看 450 × 499 的最新設定頁；先前已查看 460 × 72 輸入列與 460 × 352 展開紀錄。皆為離屏預覽 |
@@ -73,7 +73,7 @@ git diff --check
 
 建議 reviewer 依序查看：設定保存與舊值轉換 → 背景動作中斷／所有權 → GIF 邊界 → 聊天 UI 接線。關鍵測試在 `tests/test_config_manager.py`、`tests/core/test_companion.py`、`tests/core/test_idle_behavior.py`、`tests/ui/test_grounding.py`、`tests/ui/test_companion_preferences.py`、`tests/ui/test_companion_app.py`、`tests/ui/test_floating_chat.py`。
 
-實機驗收仍需確認：自訂 23 秒後儲存與重啟；切換安靜並在散步中拖曳／聊天；螢幕四角切換不同 GIF 與泡泡；中文組字、聊天紀錄展開、隱藏再叫回。網頁操作期間普通聊天的已知問題應按上表另行追蹤。
+實機驗收仍需確認：自訂 23 秒後儲存與重啟；切換安靜並在散步中拖曳／聊天；螢幕四角切換不同 GIF 與泡泡；中文組字、聊天紀錄展開、隱藏再叫回。網頁操作期間送普通聊天應保留草稿並顯示拒收原因；等待操作確認時仍沿用原本的肯定／否定處理。
 
 ## 提交里程碑
 
@@ -85,3 +85,4 @@ git diff --check
 | `bbbc8e6`、`535d738` | 懸浮聊天，接著依使用者要求改為常駐輸入列與向上紀錄 |
 | `a80100c` | 非安靜模式更活潑、切換後快速恢復 |
 | `333a9da` | 自訂活動秒數與舊設定轉換，移除 Chat → Ask Doro |
+| `d06c4c9` | 網頁操作中普通聊天拒收保留草稿；聊天框顯示真正拒收／失敗原因，補回歸測試 |
