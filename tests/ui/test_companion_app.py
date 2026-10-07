@@ -113,6 +113,10 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         actions = {action.text(): action for action in menu.actions()}
         assert "把這裡設為休息點" in actions
         assert "陪伴設定…" in actions
+        assert "與 Doro 說話…" in actions
+        chat_actions = {action.text() for action in actions["Chat"].menu().actions()}
+        assert "Ask Doro" not in chat_actions
+        assert "Clear conversation history" in chat_actions
         assert not any("底部互動" in label for label in actions)
         actions["清除休息點（原地陪伴）"].trigger()
         assert not app._context_menu_ctrl._build_snapshot().has_rest_point
@@ -128,6 +132,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
                     dialog._pending_gif = default_gif
                 else:
                     dialog.rest_state.setCurrentIndex(dialog.rest_state.findData("manual_pose"))
+                dialog.interval.setValue(23)
                 dialog.accept()
                 return dialog.result()
 
@@ -152,10 +157,13 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert not config.ui.quiet_companion
         assert app._idle_behavior._timer.interval() == 4000
 
-        # Input is always available; menu entries reveal the same nonmodal bar.
+        app._idle_behavior.reset()
+        assert app._idle_behavior._timer.interval() == 23000
+
+        # The remaining menu entry reveals the same nonmodal bar.
         floating = app._chat_ui._chat_dialog
         assert floating.isVisible() and not floating.expanded
-        callbacks.prompt_chat()
+        actions["與 Doro 說話…"].trigger()
         assert floating.input.isVisible() and not floating.expanded and not floating.isModal()
         floating.expand()
         assert app._companion_busy()
@@ -178,7 +186,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert floating.input.toPlainText() == "陪我聊聊"
         floating.close()
         assert not app._floating_chat_open()
-        callbacks.prompt_chat()
+        actions["與 Doro 說話…"].trigger()
         assert app._chat_ui._chat_dialog is floating
         with monkeypatch.context() as patch:
             patch.setattr(

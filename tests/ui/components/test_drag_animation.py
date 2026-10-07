@@ -161,14 +161,13 @@ def test_idle_defers_while_user_is_dragging(qapp, tmp_path):
         movement_manager=Mock(),
         state_service=Mock(),
         idle_seconds_provider=lambda: 999,
-        mark_activity=Mock(),
         interaction_busy=lambda: True,
     )
     try:
         idle._schedule_next = Mock()
         idle._on_timer()
         idle._schedule_next.assert_called_once()
-        idle._mark_activity.assert_not_called()
+        idle._movement.apply_directional_walk.assert_not_called()
     finally:
         idle._timer.stop()
 

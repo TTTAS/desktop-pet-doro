@@ -6,7 +6,6 @@ from PySide6 import QtCore
 
 from doro_app.core.action import Action, ActionDispatcher, VisualPhase
 from doro_app.core.idle_behavior_manager import (
-    ACTIVITY_PROFILES,
     IdleActionType,
     IdleBehaviorManager,
 )
@@ -52,7 +51,7 @@ def pet_idle(qapp, tmp_path):
         "effects": True,
         "busy": False,
         "age": 100,
-        "profile": "lively",
+        "interval": 9,
         "now": 0,
     }
     effect = Mock()
@@ -62,13 +61,12 @@ def pet_idle(qapp, tmp_path):
         movement_manager=movement,
         state_service=states,
         idle_seconds_provider=lambda: options["age"],
-        mark_activity=Mock(),
         action_dispatcher=dispatcher,
         schedule=schedule,
         interaction_busy=lambda: options["busy"],
         quiet_provider=lambda: options["quiet"],
         effects_enabled=lambda: options["effects"],
-        profile_provider=lambda: options["profile"],
+        interval_provider=lambda: options["interval"],
         micro_effect=effect,
         clock=lambda: options["now"],
     )
@@ -87,15 +85,14 @@ def pet_idle(qapp, tmp_path):
     idle._timer.stop()
 
 
-@pytest.mark.parametrize("profile", list(ACTIVITY_PROFILES))
-def test_profile_controls_timer_and_stride(pet_idle, profile):
+@pytest.mark.parametrize("seconds", [1, 3, 9, 37, 3600])
+def test_custom_seconds_control_timer_without_changing_stride(pet_idle, seconds):
     p = pet_idle
-    p.options["profile"] = profile
+    p.options["interval"] = seconds
     p.idle.reset()
-    low, high, short, long = ACTIVITY_PROFILES[profile]
-    assert low * 1000 <= p.idle._timer.interval() <= high * 1000
+    assert p.idle._timer.interval() == seconds * 1000
     _, distance = p.idle._walk()
-    assert short <= distance <= long
+    assert 100 <= distance <= 240
 
 
 def test_quiet_only_plays_local_effect_and_respects_switch(pet_idle):
@@ -132,7 +129,6 @@ def test_busy_or_recent_interaction_defers_every_expression(pet_idle, gate, quie
         p.states.is_transitioning.return_value = True
     p.idle._on_timer()
     p.effect.assert_not_called()
-    p.idle._mark_activity.assert_not_called()
     p.movement.apply_directional_walk.assert_not_called()
     if not quiet:
         assert 2000 <= p.idle._timer.interval() <= 3000
@@ -252,7 +248,7 @@ def test_leaving_quiet_replaces_long_timer_and_walks_only_after_grace(pet_idle):
     p.idle._on_timer()
     p.movement.apply_directional_walk.assert_called_once()
     p.chat.speak_line.assert_not_called()
-    assert 6000 <= p.idle._timer.interval() <= 12000
+    assert p.idle._timer.interval() == 9000
 
 
 def test_entering_quiet_cancels_resume_and_owned_walk(pet_idle):
@@ -298,12 +294,15 @@ def test_no_pose_or_effect_does_not_waste_attempts_or_starve_walking(pet_idle, m
     p.movement.apply_directional_walk.assert_called_once()
 
 
-def test_lively_profile_is_faster_but_other_preferences_are_preserved(pet_idle):
+def test_short_interval_runs_again_without_resetting_user_idle_time(pet_idle):
     p = pet_idle
-    assert ACTIVITY_PROFILES["lively"] == (6, 12, 100, 240)
-    for profile, low, high in [("balanced", 40, 75), ("calm", 90, 150)]:
-        p.options["profile"] = profile
-        p.idle.on_mode_changed(False)
-        p.idle._on_timer()
-        assert low * 1000 <= p.idle._timer.interval() <= high * 1000
-        p.idle.interrupt()
+    p.options["interval"] = 1
+    p.options["age"] = 4
+    p.idle._resume_pending = True
+    p.idle._do_move = Mock()
+    p.idle._on_timer()
+    assert p.idle._timer.interval() == 1000
+    p.idle._resume_pending = True
+    p.idle._on_timer()
+    assert p.idle._do_move.call_count == 2
+    assert p.options["age"] == 4

@@ -18,12 +18,6 @@ from .action.phases import VisualPhase
 
 logger = get_logger(__name__)
 _DIRECTIONS = list(set(MOVE_DIRECTIONS.values()))
-# Seconds between attempts, followed by logical pixels per walk.
-ACTIVITY_PROFILES = {
-    "lively": (6, 12, 100, 240),
-    "balanced": (40, 75, 50, 130),
-    "calm": (90, 150, 30, 80),
-}
 
 
 class IdleActionType(Enum):
@@ -45,11 +39,10 @@ class IdleBehaviorManager(QtCore.QObject):
         movement_manager,
         state_service,
         idle_seconds_provider: Callable[[], float],
-        mark_activity: Callable[[], None],
         action_dispatcher=None,
         schedule=None,
         interaction_busy=None,
-        profile_provider=None,
+        interval_provider=None,
         pose_keys_provider=None,
         quiet_provider=None,
         effects_enabled=None,
@@ -62,11 +55,10 @@ class IdleBehaviorManager(QtCore.QObject):
         self._movement = movement_manager
         self._state_service = state_service
         self._idle_seconds = idle_seconds_provider
-        self._mark_activity = mark_activity
         self._action_dispatcher = action_dispatcher
         self._schedule = schedule
         self._interaction_busy = interaction_busy or (lambda: False)
-        self._profile = profile_provider or (lambda: "lively")
+        self._interval = interval_provider or (lambda: 9)
         self._pose_keys = pose_keys_provider or (lambda: ["happy"])
         self._quiet = quiet_provider or (lambda: False)
         self._effects = effects_enabled or (lambda: False)
@@ -96,14 +88,13 @@ class IdleBehaviorManager(QtCore.QObject):
         self._schedule_next()
 
     def _schedule_next(self, *, retry: bool = False) -> None:
-        low, high = (
-            (45, 90)
-            if self._quiet()
-            else ACTIVITY_PROFILES.get(self._profile(), ACTIVITY_PROFILES["lively"])[:2]
-        )
-        if retry and not self._quiet():
-            low, high = 2, 3
-        self._timer.start(int(random.uniform(low, high) * 1000))
+        if self._quiet():
+            seconds = random.uniform(45, 90)
+        elif retry:
+            seconds = random.uniform(2, 3)
+        else:
+            seconds = self._interval()
+        self._timer.start(int(seconds * 1000))
 
     def reset(self) -> None:
         self._schedule_next()
@@ -168,7 +159,6 @@ class IdleBehaviorManager(QtCore.QObject):
                 IdleActionType.WALK_AND_SPEAK: self._do_walk_and_speak,
                 IdleActionType.EXPRESSION: self._do_expression,
             }[action]()
-            self._mark_activity()
         finally:
             self._schedule_next(retry=deferred)
 
@@ -189,8 +179,7 @@ class IdleBehaviorManager(QtCore.QObject):
             self._do_expression()
 
     def _walk(self) -> tuple[tuple[int, int], float]:
-        low, high = ACTIVITY_PROFILES.get(self._profile(), ACTIVITY_PROFILES["lively"])[2:]
-        distance = random.uniform(low, high)
+        distance = random.uniform(100, 240)
         directions = _DIRECTIONS.copy()
         random.shuffle(directions)
         for direction in directions:

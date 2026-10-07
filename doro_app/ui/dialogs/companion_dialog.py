@@ -67,15 +67,16 @@ class CompanionDialog(QtWidgets.QDialog):
         intro.setWordWrap(True)
         layout.addWidget(intro)
         form = QtWidgets.QFormLayout()
-        self.activity = QtWidgets.QComboBox()
-        for label, key in [
-            ("活潑 · 6–12 秒", "lively"),
-            ("適中 · 40–75 秒", "balanced"),
-            ("悠閒 · 90–150 秒", "calm"),
-        ]:
-            self.activity.addItem(label, key)
-        self.activity.setCurrentIndex(max(0, self.activity.findData(config.ui.companion_activity)))
-        form.addRow("活動節奏", self.activity)
+        self.interval = QtWidgets.QSpinBox()
+        self.interval.setRange(1, 3600)
+        self.interval.setSuffix(" 秒")
+        self.interval.setValue(config.ui.companion_interval_seconds)
+        form.addRow("活動間隔", self.interval)
+        interval_hint = QtWidgets.QLabel(
+            "非安靜時每隔幾秒嘗試活動；聊天、拖曳或動作未結束時會延後。"
+        )
+        interval_hint.setWordWrap(True)
+        form.addRow(interval_hint)
         self.effects = QtWidgets.QCheckBox("小動作與摸摸愛心（安靜時也會偶爾伸展）")
         self.effects.setChecked(config.ui.companion_effects)
         form.addRow(self.effects)
@@ -227,7 +228,7 @@ class CompanionDialog(QtWidgets.QDialog):
             else:
                 anchors[self._gif_key] = self.anchor.value() / 100
         self._config.update_ui(
-            companion_activity=self.activity.currentData(),
+            companion_interval_seconds=self.interval.value(),
             companion_effects=self.effects.isChecked(),
             companion_rest_state=key,
             companion_pose_keys=[

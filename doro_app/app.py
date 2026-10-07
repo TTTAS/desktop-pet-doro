@@ -182,7 +182,6 @@ class DoroApp:
             movement_manager=self._movement,
             state_service=self._state_service,
             idle_seconds_provider=lambda: self.window.seconds_since_last_activity(),
-            mark_activity=lambda: self.window.mark_user_activity(),
             interaction_busy=lambda: (
                 self._mouse_handler.is_dragging
                 or self._floating_chat_open()
@@ -190,7 +189,7 @@ class DoroApp:
                 or QtWidgets.QApplication.activeModalWidget() is not None
                 or QtWidgets.QApplication.activePopupWidget() is not None
             ),
-            profile_provider=lambda: self._config_manager.ui.companion_activity,
+            interval_provider=lambda: self._config_manager.ui.companion_interval_seconds,
             pose_keys_provider=lambda: self._config_manager.ui.companion_pose_keys,
             quiet_provider=lambda: self._companion.quiet,
             effects_enabled=lambda: self._config_manager.ui.companion_effects,

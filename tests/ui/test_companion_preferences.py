@@ -32,12 +32,12 @@ def test_cancel_keeps_settings_and_does_not_import_gif(preferences, monkeypatch)
     monkeypatch.setattr(
         QtWidgets.QFileDialog, "getOpenFileName", lambda *_: (str(STATE_DIR / "idle.gif"), "")
     )
-    dialog.activity.setCurrentIndex(dialog.activity.findData("calm"))
+    dialog.interval.setValue(120)
     dialog.effects.setChecked(False)
     dialog._choose_gif()
     assert dialog._pending_gif is not None
     dialog.reject()
-    assert window._config_manager.ui.companion_activity == "lively"
+    assert window._config_manager.ui.companion_interval_seconds == 9
     assert window._config_manager.ui.companion_effects
     assert states.visible_state_keys() == before
     assert dialog._movie is None
@@ -49,11 +49,11 @@ def test_import_on_accept_creates_rest_state_and_persists_preferences(preference
         QtWidgets.QFileDialog, "getOpenFileName", lambda *_: (str(STATE_DIR / "idle.gif"), "")
     )
     dialog._choose_gif()
-    dialog.activity.setCurrentIndex(dialog.activity.findData("balanced"))
+    dialog.interval.setValue(37)
     dialog.effects.setChecked(False)
     dialog.accept()
     restored = ConfigManager(window._config_manager._settings.fileName())
-    assert restored.ui.companion_activity == "balanced"
+    assert restored.ui.companion_interval_seconds == 37
     assert not restored.ui.companion_effects
     assert restored.ui.companion_rest_state.startswith("rest_")
     assert states.get_gif_path(restored.ui.companion_rest_state).is_file()
@@ -221,3 +221,14 @@ def test_expression_painting_keeps_foot_and_disabled_effects_clear(pet, x):
     assert not window._pet_expression.kind
     window.play_expression("stretch")
     assert not window._pet_expression.kind
+
+
+def test_interval_can_be_typed_directly(preferences, qtbot):
+    dialog, _, _ = preferences
+    editor = dialog.interval.lineEdit()
+    editor.selectAll()
+    qtbot.keyClicks(editor, "23")
+    dialog.interval.interpretText()
+    assert dialog.interval.value() == 23
+    dialog.accept()
+    assert dialog._config.ui.companion_interval_seconds == 23

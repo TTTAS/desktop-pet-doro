@@ -132,7 +132,7 @@ class UIConfig:
     companion_home_x: float = 0.9
     companion_home_y: float | None = None  # None means no saved resting point.
     companion_rest_state: str = "idle"
-    companion_activity: str = "lively"
+    companion_interval_seconds: int = 9
     companion_effects: bool = True
     companion_pose_keys: list[str] = field(default_factory=lambda: ["happy"])
     sprite_foot_overrides: dict[str, float] = field(default_factory=dict)
@@ -164,12 +164,11 @@ class UIConfig:
             raise ValueError("companion_home_y must be None or between 0 and 1")
         if not isinstance(self.companion_rest_state, str) or not self.companion_rest_state.strip():
             raise ValueError("companion_rest_state must be a nonempty state key")
-        if not isinstance(self.companion_activity, str) or self.companion_activity not in {
-            "lively",
-            "balanced",
-            "calm",
-        }:
-            raise ValueError("companion_activity must be lively, balanced or calm")
+        if (
+            type(self.companion_interval_seconds) is not int
+            or not 1 <= self.companion_interval_seconds <= 3600
+        ):
+            raise ValueError("companion_interval_seconds must be an integer from 1 to 3600")
         if not isinstance(self.companion_effects, bool):
             raise ValueError("companion_effects must be bool")
         if not isinstance(self.companion_pose_keys, list) or any(

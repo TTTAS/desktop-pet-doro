@@ -290,7 +290,9 @@ class ConfigManager:
             "quiet_companion": kwargs.get("quiet_companion", current.quiet_companion),
             "companion_home_x": kwargs.get("companion_home_x", current.companion_home_x),
             "companion_home_y": kwargs.get("companion_home_y", current.companion_home_y),
-            "companion_activity": kwargs.get("companion_activity", current.companion_activity),
+            "companion_interval_seconds": kwargs.get(
+                "companion_interval_seconds", current.companion_interval_seconds
+            ),
             "companion_effects": kwargs.get("companion_effects", current.companion_effects),
             "sprite_foot_overrides": kwargs.get(
                 "sprite_foot_overrides", current.sprite_foot_overrides
@@ -425,7 +427,16 @@ class ConfigManager:
         # Load UI config
         try:
             home_y = _safe_float(self._settings.value("ui/companion_home_y"), -1.0)
-            activity = _safe_str(self._settings.value("ui/companion_activity"), "lively")
+            legacy_activity = _safe_str(self._settings.value("ui/companion_activity"), "lively")
+            interval = self._settings.value(
+                "ui/companion_interval_seconds",
+                {"lively": 9, "balanced": 60, "calm": 120}.get(legacy_activity, 9),
+            )
+            # QSettings may return integer strings; reject fractions and booleans.
+            if isinstance(interval, str) and interval.isascii() and interval.isdecimal():
+                interval = int(interval)
+            if type(interval) is not int or not 1 <= interval <= 3600:
+                interval = 9
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
                     self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
@@ -439,9 +450,7 @@ class ConfigManager:
                 quiet_companion=_safe_bool(self._settings.value("ui/quiet_companion"), False),
                 companion_home_x=_safe_float(self._settings.value("ui/companion_home_x"), 0.9),
                 companion_home_y=home_y if 0 <= home_y <= 1 else None,
-                companion_activity=(
-                    activity if activity in {"lively", "balanced", "calm"} else "lively"
-                ),
+                companion_interval_seconds=interval,
                 companion_effects=_safe_bool(self._settings.value("ui/companion_effects"), True),
                 sprite_foot_overrides=_foot_overrides(
                     self._settings.value("ui/sprite_foot_overrides")
@@ -564,7 +573,8 @@ class ConfigManager:
         self._settings.remove("ui/companion_floor_interaction")
         self._settings.setValue("ui/companion_pose_keys", json.dumps(ui.companion_pose_keys))
         self._settings.setValue("ui/companion_rest_state", ui.companion_rest_state)
-        self._settings.setValue("ui/companion_activity", ui.companion_activity)
+        self._settings.setValue("ui/companion_interval_seconds", ui.companion_interval_seconds)
+        self._settings.remove("ui/companion_activity")
         self._settings.setValue("ui/companion_effects", ui.companion_effects)
         self._settings.setValue("ui/sprite_foot_overrides", json.dumps(ui.sprite_foot_overrides))
 

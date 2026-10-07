@@ -199,3 +199,9 @@ class TestDoroConfig:
         assert "AppConfig" in repr_str
         assert "lmstudio" in repr_str
         assert "idle" in repr_str
+
+
+@pytest.mark.parametrize("value", [0, -1, 3601, True, 1.5, "30"])
+def test_companion_interval_requires_integer_seconds_in_range(value):
+    with pytest.raises(ValueError, match="companion_interval_seconds"):
+        UIConfig(companion_interval_seconds=value)
