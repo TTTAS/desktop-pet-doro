@@ -150,11 +150,12 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         assert not app._presence._quiet
         assert not config.ui.quiet_companion
 
-        # The launcher is nonmodal; both menu entries reuse one floating window.
+        # Input is always available; menu entries reveal the same nonmodal bar.
         floating = app._chat_ui._chat_dialog
         assert floating.isVisible() and not floating.expanded
         callbacks.prompt_chat()
-        assert floating.expanded and not floating.isModal()
+        assert floating.input.isVisible() and not floating.expanded and not floating.isModal()
+        floating.expand()
         assert app._companion_busy()
         app._idle_behavior._on_timer()
         app._idle_behavior._do_move.assert_not_called()

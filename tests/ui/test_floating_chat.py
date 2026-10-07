@@ -11,31 +11,37 @@ def chat(qtbot):
     send = Mock(return_value=True)
     window = FloatingChatWindow(send)
     qtbot.addWidget(window)
-    window.show_launcher(QtCore.QPoint(300, 300))
+    window.show_input(QtCore.QPoint(200, 400))
     yield window, send
     window.hide()
 
 
-def test_launcher_expands_nonmodal_and_close_preserves_draft(chat, qtbot):
+def test_persistent_input_history_and_hide_preserve_draft(chat, qtbot):
     window, send = chat
     assert not window.expanded
     assert window.testAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
-    qtbot.mouseClick(window.launcher, QtCore.Qt.MouseButton.LeftButton)
+    assert window.input.isVisible()
+    assert not window.history_panel.isVisible()
+    qtbot.mouseClick(window.history_button, QtCore.Qt.MouseButton.LeftButton)
     assert window.expanded
     assert not window.isModal()
     window.input.setPlainText("還沒說完")
-    window.close()
+    qtbot.mouseClick(window.hide_button, QtCore.Qt.MouseButton.LeftButton)
+    assert not window.isVisible()
+    window.show_input(focus=True)
     assert window.isVisible() and not window.expanded
-    window.expand()
     assert window.input.toPlainText() == "還沒說完"
+    window.expand()
     qtbot.keyClick(window.input, QtCore.Qt.Key.Key_Escape)
     assert not window.expanded
+    assert window.input.isVisible()
+    qtbot.keyClick(window.input, QtCore.Qt.Key.Key_Escape)
+    assert not window.isVisible()
     send.assert_not_called()
 
 
 def test_enter_sends_shift_enter_adds_line_and_ime_does_not_send(chat, qtbot):
     window, send = chat
-    window.expand()
     window.input.setPlainText("你好")
     window.input.moveCursor(QtGui.QTextCursor.MoveOperation.End)
     qtbot.keyClick(window.input, QtCore.Qt.Key.Key_Return, QtCore.Qt.KeyboardModifier.ShiftModifier)
@@ -50,7 +56,7 @@ def test_enter_sends_shift_enter_adds_line_and_ime_does_not_send(chat, qtbot):
     qtbot.keyClick(window.input, QtCore.Qt.Key.Key_Return)
     send.assert_called_once_with("你好\n的")
     assert not window.input.toPlainText()
-    assert window.expanded
+    assert window.input.isVisible() and not window.expanded
     assert not window.send_button.isEnabled()
 
 
@@ -73,6 +79,7 @@ def test_rejected_send_retains_draft_without_duplicate_user_entry(chat):
     assert window.input.toPlainText() == "等一下"
     assert not window._messages
     assert "未送出" in window.status.text()
+    assert window.history_button.text() == "!"
     send.return_value = True
     window.send()
     assert window._messages == [("你", "等一下")]
@@ -109,16 +116,16 @@ def test_status_is_separate_and_history_is_bounded_and_clearable(chat):
 def test_launch_and_expand_stay_inside_work_area(chat):
     window, _ = chat
     area = window.screen().availableGeometry()
-    window.show_launcher(area.bottomRight())
+    window.show_input(area.bottomRight())
     assert area.contains(window.geometry())
     window.expand()
     assert area.contains(window.geometry())
 
 
-def test_launcher_drag_does_not_open_chat(chat):
+def test_handle_drags_input_without_opening_history(chat):
     window, _ = chat
     origin = window.pos()
-    press = window.launcher.mapToGlobal(QtCore.QPoint(20, 15))
+    press = window.drag_handle.mapToGlobal(QtCore.QPoint(7, 15))
     for kind, global_pos, buttons in [
         (QtCore.QEvent.Type.MouseButtonPress, press, QtCore.Qt.MouseButton.LeftButton),
         (
@@ -134,7 +141,7 @@ def test_launcher_drag_does_not_open_chat(chat):
     ]:
         event = QtGui.QMouseEvent(
             kind,
-            QtCore.QPointF(window.launcher.mapFromGlobal(global_pos)),
+            QtCore.QPointF(window.drag_handle.mapFromGlobal(global_pos)),
             QtCore.QPointF(global_pos),
             (
                 QtCore.Qt.MouseButton.LeftButton
@@ -144,6 +151,33 @@ def test_launcher_drag_does_not_open_chat(chat):
             buttons,
             QtCore.Qt.KeyboardModifier.NoModifier,
         )
-        QtWidgets.QApplication.sendEvent(window.launcher, event)
+        QtWidgets.QApplication.sendEvent(window.drag_handle, event)
     assert window.pos() == origin + QtCore.QPoint(60, 0)
     assert not window.expanded
+
+
+def test_history_expands_upward_and_input_stays_in_place(chat):
+    window, _ = chat
+    window.layout().activate()
+    input_pos = window.input.mapToGlobal(QtCore.QPoint())
+    before = window.geometry()
+    window.expand()
+    assert window.geometry().top() < before.top()
+    assert window.input.mapToGlobal(QtCore.QPoint()) == input_pos
+    window.collapse()
+    assert window.geometry() == before
+    assert window.input.mapToGlobal(QtCore.QPoint()) == input_pos
+
+
+def test_inactive_input_bar_does_not_pause_pet_and_hidden_reply_stays_hidden(chat, monkeypatch):
+    window, _ = chat
+    monkeypatch.setattr(window, "isActiveWindow", lambda: False)
+    assert not window.interacting
+    window.expand()
+    assert window.interacting
+    window.close()
+    window.receive_reply("我在這裡。", {})
+    assert not window.isVisible()
+    assert not window.interacting
+    window.show_input()
+    assert "我在這裡。" in window.transcript.toPlainText()

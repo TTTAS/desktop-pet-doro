@@ -60,12 +60,12 @@ class ChatUIHelper:
         return self._core_manager.chat_orchestrator
 
     def prompt_chat(self) -> None:
-        """Expand the reusable nonmodal chat window."""
-        self._ensure_chat().expand()
+        """Reveal and focus the persistent input bar."""
+        self._ensure_chat().show_input(focus=True)
 
     @property
     def chat_open(self) -> bool:
-        return self._chat_dialog is not None and self._chat_dialog.expanded
+        return self._chat_dialog is not None and self._chat_dialog.interacting
 
     def _ensure_chat(self) -> FloatingChatWindow:
         if self._chat_dialog is None:
@@ -86,14 +86,14 @@ class ChatUIHelper:
         # pass through the orchestrator's existing routing and safeguards.
         return self._core_manager.send_chat_message(text, silent=True, is_auto=False)
 
-    def show_launcher(self):
+    def show_input(self):
         dialog = self._ensure_chat()
         body = self.window.sprite_contact_rect().translated(self.window.current_position())
         anchor = QtCore.QPoint(body.right() + 12, body.top())
         area = self.window.floor_geometry()
         if anchor.x() + dialog.width() > area.right():
             anchor.setX(body.left() - dialog.width() - 12)
-        dialog.show_launcher(anchor)
+        dialog.show_input(anchor)
 
     def request_failed(self, error: str, was_auto: bool):
         if self._chat_dialog is not None:

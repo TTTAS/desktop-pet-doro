@@ -491,7 +491,7 @@ class DoroApp:
     def run(self):
         """Start the application by showing the main window."""
         self.window.show()
-        self._chat_ui.show_launcher()
+        self._chat_ui.show_input()
 
     # ═════════════════════════════════════════════════════════════════
     # Chat context injection (Phase 1c hotfix)

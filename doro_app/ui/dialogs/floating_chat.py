@@ -2,17 +2,20 @@
 
 from html import escape
 
-from PySide6 import QtCore, QtWidgets
-
-from ..components.frameless_dialog import FramelessDialog
+from PySide6 import QtCore, QtGui, QtWidgets
 
 
 class ChatInput(QtWidgets.QPlainTextEdit):
     send_requested = QtCore.Signal()
+    focus_entered = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._composing = False
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.focus_entered.emit()
 
     def inputMethodEvent(self, event):
         self._composing = bool(event.preeditString())
@@ -30,64 +33,60 @@ class ChatInput(QtWidgets.QPlainTextEdit):
         super().keyPressEvent(event)
 
 
-class ChatLauncher(QtWidgets.QPushButton):
-    """A click opens chat; a drag only moves the floating launcher."""
+class ChatDragHandle(QtWidgets.QWidget):
+    """Move the input bar without interfering with text selection."""
 
     def __init__(self, window):
-        super().__init__("聊聊 · Doro", window)
+        super().__init__(window)
         self._window = window
         self._press = None
-        self._dragged = False
-        self.setToolTip("點一下與 Doro 說話；拖曳可移動")
-        self.setAccessibleName("開啟 Doro 聊天窗")
+        self.setFixedWidth(14)
+        self.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        self.setToolTip("拖曳移動輸入框")
+        self.setAccessibleName("移動聊天輸入框")
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor("#be819b"))
+        for y in (-6, 0, 6):
+            painter.drawEllipse(QtCore.QPointF(7, self.height() / 2 + y), 1.5, 1.5)
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._press = event.globalPosition().toPoint()
             self._origin = self._window.pos()
-            self._dragged = False
-        super().mousePressEvent(event)
+            self._window.interaction.emit()
+            event.accept()
 
     def mouseMoveEvent(self, event):
         if self._press is not None and event.buttons() & QtCore.Qt.MouseButton.LeftButton:
-            delta = event.globalPosition().toPoint() - self._press
-            if delta.manhattanLength() > QtWidgets.QApplication.startDragDistance():
-                self._dragged = True
-            if self._dragged:
-                self._window.move(self._origin + delta)
-                event.accept()
-                return
-        super().mouseMoveEvent(event)
+            self._window.move(self._origin + event.globalPosition().toPoint() - self._press)
+            event.accept()
 
     def mouseReleaseEvent(self, event):
         self._press = None
-        if self._dragged:
-            self._dragged = False
-            self.setDown(False)
-            self._window.keep_on_screen()
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
+        self._window.keep_on_screen()
 
 
-class FloatingChatWindow(FramelessDialog):
+class FloatingChatWindow(QtWidgets.QDialog):
     interaction = QtCore.Signal()
     expanded_changed = QtCore.Signal(bool)
     settings_requested = QtCore.Signal()
+    BAR_HEIGHT = 72
+    HISTORY_HEIGHT = 280
 
     def __init__(self, send_message, parent=None):
-        super().__init__("Doro · 陪你聊聊", parent)
-        self.setWindowTitle("Doro · 陪你聊聊")
+        super().__init__(parent)
+        self.setWindowTitle("Doro · 說點什麼")
         self.setWindowFlags(
             QtCore.Qt.WindowType.Tool
             | QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
         )
         self.setModal(False)
-        close = self._title_bar.findChild(QtWidgets.QPushButton)
-        close.setText("×")
-        close.setToolTip("收起聊天窗")
-        close.setAccessibleName("收起聊天窗")
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._send_message = send_message
         self._expanded = False
@@ -95,65 +94,105 @@ class FloatingChatWindow(FramelessDialog):
         self._processing = False
         self._last_sent = ""
         self._messages: list[tuple[str, str]] = []
-        self._full_size = QtCore.QSize(410, 520)
         self.setStyleSheet("""
+            QFrame#inputBar, QFrame#historyPanel {
+                background: #fff0f6; border: 1px solid #d995b4; border-radius: 14px;
+            }
             QLabel { color: #683e52; background: transparent; }
             QTextBrowser, QPlainTextEdit {
                 background: #fffafd; color: #422837; border: 1px solid #e9bfd0;
-                border-radius: 12px; padding: 9px; font-size: 14px;
+                border-radius: 10px; padding: 6px; font-size: 14px;
                 selection-background-color: #edb0c8; selection-color: #422837;
             }
-            QPlainTextEdit:focus { border: 2px solid #cf789b; }
-            QPushButton {
-                background: #e7a0bc; color: #432536; border: 1px solid #cf789b;
-                border-radius: 12px; padding: 8px 14px; font-weight: bold;
+            QPlainTextEdit:focus { border: 1px solid #bf638b; }
+            QPushButton, QToolButton {
+                background: #edb0c8; color: #432536; border: none;
+                border-radius: 9px; padding: 5px; font-weight: bold;
             }
-            QPushButton:hover { background: #f1bad0; }
-            QPushButton:pressed { background: #d88caa; }
-            QPushButton:disabled { color: #977c87; background: #f4e5ec; border-color: #ead4dd; }
+            QPushButton:hover, QToolButton:hover { background: #f6c6da; }
+            QPushButton:pressed, QToolButton:pressed { background: #d88caa; }
+            QPushButton:disabled { color: #977c87; background: #f4e5ec; }
         """)
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(6)
+        self.history_panel = QtWidgets.QFrame()
+        self.history_panel.setObjectName("historyPanel")
+        history = QtWidgets.QVBoxLayout(self.history_panel)
+        history.setContentsMargins(12, 10, 12, 10)
+        history.setSpacing(6)
+        header = QtWidgets.QHBoxLayout()
+        header.addWidget(QtWidgets.QLabel("Doro · 聊天紀錄"))
+        header.addStretch()
+        settings = QtWidgets.QPushButton("連線設定")
+        settings.setAutoDefault(False)
+        settings.clicked.connect(self.settings_requested)
+        header.addWidget(settings)
+        history.addLayout(header)
         self.transcript = QtWidgets.QTextBrowser()
         self.transcript.setOpenLinks(False)
         self.transcript.setAccessibleName("本次對話紀錄")
-        self.content_layout.addWidget(self.transcript, 1)
+        history.addWidget(self.transcript, 1)
         self.status = QtWidgets.QLabel("想說什麼都可以，我在這裡。")
         self.status.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
-        self.content_layout.addWidget(self.status)
+        self.status.setMaximumHeight(40)
+        history.addWidget(self.status)
+        root.addWidget(self.history_panel, 1)
+        self.history_panel.hide()
+        self.bar = QtWidgets.QFrame()
+        self.bar.setObjectName("inputBar")
+        self.bar.setFixedHeight(self.BAR_HEIGHT - 8)
+        row = QtWidgets.QHBoxLayout(self.bar)
+        row.setContentsMargins(6, 8, 8, 8)
+        row.setSpacing(6)
+        self.drag_handle = ChatDragHandle(self)
+        row.addWidget(self.drag_handle)
         self.input = ChatInput()
         self.input.setPlaceholderText("跟 Doro 說點什麼…")
         self.input.setAccessibleName("給 Doro 的訊息")
-        self.input.setFixedHeight(94)
+        self.input.setToolTip("Enter 送出；Shift+Enter 換行")
+        self.input.setFixedHeight(46)
         self.input.textChanged.connect(self._input_changed)
         self.input.send_requested.connect(self.send)
-        self.content_layout.addWidget(self.input)
-        row = QtWidgets.QHBoxLayout()
-        settings = QtWidgets.QPushButton("連線設定")
-        settings.clicked.connect(self.settings_requested)
-        row.addWidget(settings)
-        row.addStretch()
+        self.input.focus_entered.connect(self.interaction)
+        row.addWidget(self.input, 1)
         self.send_button = QtWidgets.QPushButton("送出")
+        self.send_button.setFixedSize(48, 34)
         self.send_button.setEnabled(False)
         self.send_button.setAutoDefault(False)
         self.send_button.clicked.connect(self.send)
         row.addWidget(self.send_button)
-        self.content_layout.addLayout(row)
-        hint = QtWidgets.QLabel("Enter 送出 · Shift+Enter 換行 · Esc 收起")
-        hint.setWordWrap(True)
-        self.content_layout.addWidget(hint)
-        self.launcher = ChatLauncher(self)
-        self.launcher.clicked.connect(self.expand)
-        self._outer_layout.addWidget(self.launcher)
-        self._card.hide()
-        self.setFixedSize(142, 64)
+        self.history_button = QtWidgets.QToolButton()
+        self.history_button.setText("↑")
+        self.history_button.setToolTip("向上展開聊天紀錄")
+        self.history_button.setAccessibleName("展開或收起聊天紀錄")
+        self.history_button.setFixedSize(28, 34)
+        self.history_button.clicked.connect(
+            lambda: self.collapse() if self._expanded else self.expand()
+        )
+        row.addWidget(self.history_button)
+        self.hide_button = QtWidgets.QToolButton()
+        self.hide_button.setText("×")
+        self.hide_button.setToolTip("隱藏輸入框；右鍵 Doro 可重新開啟")
+        self.hide_button.setAccessibleName("隱藏聊天輸入框")
+        self.hide_button.setFixedSize(28, 34)
+        self.hide_button.clicked.connect(self.close)
+        row.addWidget(self.hide_button)
+        root.addWidget(self.bar)
+        self.setFixedSize(460, self.BAR_HEIGHT)
         self._render_messages()
 
     @property
     def expanded(self) -> bool:
         return self.isVisible() and self._expanded
 
+    @property
+    def interacting(self) -> bool:
+        return self.isVisible() and (self._expanded or self.isActiveWindow())
+
     def keep_on_screen(self):
-        screen = QtWidgets.QApplication.screenAt(self.pos()) or self.screen()
+        screen = QtWidgets.QApplication.screenAt(self.geometry().bottomLeft()) or self.screen()
         if screen is None:
             return
         area = screen.availableGeometry()
@@ -162,52 +201,61 @@ class FloatingChatWindow(FramelessDialog):
             max(area.top(), min(self.y(), area.bottom() - self.height() + 1)),
         )
 
-    def show_launcher(self, anchor: QtCore.QPoint):
-        self.move(anchor)
+    def show_input(self, anchor: QtCore.QPoint | None = None, *, focus: bool = False):
+        if anchor is not None:
+            self.move(anchor)
         self.keep_on_screen()
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, not focus)
         self.show()
+        if focus:
+            self.interaction.emit()
+            self.raise_()
+            self.activateWindow()
+            self.input.setFocus()
+
+    def _set_history(self, visible: bool):
+        if self._expanded == visible:
+            return
+        bottom = self.geometry().bottom()
+        screen = QtWidgets.QApplication.screenAt(self.geometry().bottomLeft()) or self.screen()
+        area = screen.availableGeometry()
+        extra = min(self.HISTORY_HEIGHT, max(0, area.height() - self.BAR_HEIGHT)) if visible else 0
+        self._expanded = visible
+        self.history_panel.setVisible(visible)
+        self.history_button.setText("↓" if visible else "↑")
+        self.history_button.setToolTip("收起聊天紀錄" if visible else "向上展開聊天紀錄")
+        self.setFixedSize(self.width(), self.BAR_HEIGHT + extra)
+        self.move(self.x(), bottom - self.height() + 1)
+        self.keep_on_screen()
+        self.layout().activate()
+        self.expanded_changed.emit(visible)
 
     def expand(self):
         self.interaction.emit()
-        self._expanded = True
-        self.launcher.hide()
-        self._card.show()
-        self.setMinimumSize(320, 430)
-        self.setMaximumSize(16777215, 16777215)
-        self.resize(self._full_size)
-        self.keep_on_screen()
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
-        self.show()
-        self.raise_()
-        self.activateWindow()
-        self.input.setFocus()
-        self.expanded_changed.emit(True)
+        self._set_history(True)
 
     def collapse(self):
-        if self._expanded:
-            self._full_size = self.size()
-        self._expanded = False
-        self._card.hide()
-        self.launcher.show()
-        self.setFixedSize(142, 64)
-        self.keep_on_screen()
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.expanded_changed.emit(False)
+        self._set_history(False)
 
     def reject(self):
-        self.collapse()
+        if self._expanded:
+            self.collapse()
+        else:
+            self.close()
 
     def closeEvent(self, event):
-        event.ignore()
         self.collapse()
-
-    def paintEvent(self, event):
-        if self._expanded:
-            super().paintEvent(event)
+        event.accept()
+        self.expanded_changed.emit(False)
 
     def _input_changed(self):
         self.send_button.setEnabled(bool(self.input.toPlainText().strip()) and not self._sending)
         self.interaction.emit()
+
+    def _set_status(self, text: str, *, attention: bool = False):
+        self.status.setText(text)
+        self.history_button.setText("!" if attention else ("↓" if self._expanded else "↑"))
+        self.history_button.setToolTip(text + "\n點此展開／收起紀錄")
 
     def _render_messages(self):
         self._messages = self._messages[-200:]
@@ -232,17 +280,17 @@ class FloatingChatWindow(FramelessDialog):
             return
         if options.get("auto_hide") is False:
             self._processing = True
-            self.status.setText("Doro 正在想…" if text == "Thinking..." else text)
+            self._set_status("Doro 正在想…" if text == "Thinking..." else text)
             return
         self._messages.append(("Doro", text))
         self._processing = False
         self._render_messages()
-        self.status.setText("我在，繼續說吧。")
+        self._set_status("我在，繼續說吧。")
 
     def finish_processing(self):
         if self._processing:
             self._processing = False
-            self.status.setText("處理完成，可以繼續聊。")
+            self._set_status("處理完成，可以繼續聊。")
 
     def send(self):
         text = self.input.toPlainText().strip()
@@ -264,7 +312,9 @@ class FloatingChatWindow(FramelessDialog):
         else:
             # No new entry for a rejected send; the input remains available.
             self._messages = [message for message in self._messages if message is not entry]
-            self.status.setText("這次未送出，草稿已保留。請等 Doro 忙完，或檢查連線設定。")
+            self._set_status(
+                "這次未送出，草稿已保留。請等 Doro 忙完，或檢查連線設定。", attention=True
+            )
         self._render_messages()
         self.send_button.setEnabled(bool(self.input.toPlainText().strip()))
 
@@ -273,11 +323,11 @@ class FloatingChatWindow(FramelessDialog):
             return
         if not self.input.toPlainText().strip() and self._last_sent:
             self.input.setPlainText(self._last_sent)
-        self.status.setText("暫時沒收到回覆，請檢查連線後再試；草稿已保留。")
+        self._set_status("暫時沒收到回覆，請檢查連線後再試；草稿已保留。", attention=True)
 
     def clear_history(self):
         self._messages.clear()
         self._last_sent = ""
         self._processing = False
         self._render_messages()
-        self.status.setText("對話紀錄已清除。")
+        self._set_status("對話紀錄已清除。")
