@@ -49,6 +49,18 @@ python doro.py
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
 
+### 懸浮聊天窗
+
+啟動後點粉紅色「聊聊 · Doro」小浮鈕，就能展開可拖曳、置頂的聊天窗，不用再進 Chat 子選單。右鍵「與 Doro 說話…」及原 Ask Doro 都會開啟同一個視窗。
+
+- Enter 送出，Shift+Enter 換行；中文輸入法組字中的 Enter 不送出。送出後視窗保持開啟，可繼續聊天。
+- × 或 Esc 收起，保留草稿與本次紀錄；浮鈕可拖到順手的位置，回覆不會自動展開或搶焦點。
+- 訊息與 Doro 的泡泡回覆顯示在窗內，處理中的訊息顯示在狀態區。拒收保留輸入；連線失敗時，若未開始寫下一句，會恢復剛送出的內容。網頁操作中的確認／取消仍沿用原流程。
+- 展開期間暫停自主散步與回休息點；收起後恢復原有陪伴節奏。聊天窗獨立於角色視窗，不影響腳底位置。
+- 顯示紀錄限最近 200 則，只保留於本次執行記憶體。Chat → Clear conversation history 同步清除模型紀錄與視窗紀錄；連線設定可直接在聊天窗開啟。
+
+設計與驗收見 [懸浮聊天窗計畫](docs/floating-chat-plan.md)。
+
 ### 安靜陪伴與自由休息點
 
 - 右鍵「陪伴設定…」可選活動節奏：活潑（預設，18–35 秒嘗試一次）、適中（40–75 秒）、悠閒（90–150 秒）。她會交替短程散步、短暫換姿勢、原地小動作與本機台詞；說話至少間隔 90 秒，避免連續重複同一句。聊天、泡泡、拖曳、選單、設定視窗、移動或轉場忙碌時延後動作，與 Doro 互動後至少等 8 秒。

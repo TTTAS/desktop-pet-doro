@@ -180,7 +180,9 @@ class CoreManager(QtCore.QObject):
             self.state_changed.emit(state_key)
             return False
 
-    def send_chat_message(self, message: str, *, silent: bool = False, is_auto: bool = False):
+    def send_chat_message(
+        self, message: str, *, silent: bool = False, is_auto: bool = False
+    ) -> bool:
         """
         Send chat message (called by UI).
 
@@ -189,7 +191,7 @@ class CoreManager(QtCore.QObject):
             silent: If True, suppress notifications
             is_auto: If True, this is an automatic message
         """
-        self._chat_orchestrator.send_message(message, silent=silent, is_auto=is_auto)
+        return self._chat_orchestrator.send_message(message, silent=silent, is_auto=is_auto)
 
     def on_user_clicked(self) -> bool:
         """Handle a pet click (not an AutomationManager desktop click).

@@ -149,6 +149,43 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
         callbacks.toggle_quiet(False)
         assert not app._presence._quiet
         assert not config.ui.quiet_companion
+
+        # The launcher is nonmodal; both menu entries reuse one floating window.
+        floating = app._chat_ui._chat_dialog
+        assert floating.isVisible() and not floating.expanded
+        callbacks.prompt_chat()
+        assert floating.expanded and not floating.isModal()
+        assert app._companion_busy()
+        app._idle_behavior._on_timer()
+        app._idle_behavior._do_move.assert_not_called()
+        floating.input.setPlainText("陪我聊聊")
+
+        def send_chat(text, **kwargs):
+            assert text == "陪我聊聊"
+            assert kwargs == {"silent": True, "is_auto": False}
+            app._chat_orchestrator.bubble_text_requested.emit("我在這裡陪你。", {})
+            return True
+
+        with monkeypatch.context() as patch:
+            patch.setattr(app._chat_orchestrator, "send_message", send_chat)
+            floating.send()
+        assert floating._messages[-2:] == [("你", "陪我聊聊"), ("Doro", "我在這裡陪你。")]
+        assert floating.expanded
+        app._chat_controller.request_failed.emit("offline", False)
+        assert floating.input.toPlainText() == "陪我聊聊"
+        floating.close()
+        assert not app._floating_chat_open()
+        callbacks.prompt_chat()
+        assert app._chat_ui._chat_dialog is floating
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                QtWidgets.QMessageBox,
+                "question",
+                lambda *_: QtWidgets.QMessageBox.StandardButton.Yes,
+            )
+            app._chat_ui.clear_chat_history()
+        assert not floating._messages
+        floating.collapse()
     finally:
         app._idle_behavior._timer.stop()
         app._on_about_to_quit()

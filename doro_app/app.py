@@ -185,6 +185,7 @@ class DoroApp:
             mark_activity=lambda: self.window.mark_user_activity(),
             interaction_busy=lambda: (
                 self._mouse_handler.is_dragging
+                or self._floating_chat_open()
                 or bool(self._bubble_controller.text)
                 or QtWidgets.QApplication.activeModalWidget() is not None
                 or QtWidgets.QApplication.activePopupWidget() is not None
@@ -396,7 +397,10 @@ class DoroApp:
             window=self.window,
             core_manager=self.core_manager,
             bubble_controller=self._bubble_controller,
+            on_interaction=self._interrupt_background_companionship,
         )
+        self._chat_ui = chat_ui
+        self._chat_controller.request_failed.connect(chat_ui.request_failed)
 
         # ─────────────────────────────────────────────────────────
         # Context-menu controller (assembles snapshot/callbacks)
@@ -464,6 +468,7 @@ class DoroApp:
     def _companion_busy(self) -> bool:
         return (
             self._mouse_handler.is_dragging
+            or self._floating_chat_open()
             or self._chat_orchestrator.is_inflight
             or self._chat_orchestrator.is_web_busy
             or not self._action_dispatcher.is_idle
@@ -472,6 +477,10 @@ class DoroApp:
             or QtWidgets.QApplication.activeModalWidget() is not None
             or QtWidgets.QApplication.activePopupWidget() is not None
         )
+
+    def _floating_chat_open(self) -> bool:
+        helper = getattr(self, "_chat_ui", None)
+        return helper is not None and helper.chat_open
 
     def _cancel_companion_activity(self) -> None:
         if self._automation is not None:
@@ -482,6 +491,7 @@ class DoroApp:
     def run(self):
         """Start the application by showing the main window."""
         self.window.show()
+        self._chat_ui.show_launcher()
 
     # ═════════════════════════════════════════════════════════════════
     # Chat context injection (Phase 1c hotfix)
@@ -712,6 +722,7 @@ class DoroApp:
         logger = _gl(__name__)
         # (subsystem, attribute-on-self, method-name-on-subsystem)
         shutters = [
+            ("floating_chat", "_chat_ui", "shutdown"),
             ("automation", "_automation", "shutdown"),
             ("a11y", "_a11y", "shutdown"),
             ("foreground_tracker", "_fg_tracker", "stop"),

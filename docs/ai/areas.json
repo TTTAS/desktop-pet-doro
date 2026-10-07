@@ -285,12 +285,14 @@
       "doro_app/ui/window.py",
       "doro_app/ui/components/bubble_controller.py",
       "doro_app/ui/components/context_menu_controller.py",
+      "doro_app/ui/helpers/chat_ui_helper.py",
+      "doro_app/ui/dialogs/floating_chat.py",
       "doro_app/ui/viewmodels/doro_viewmodel.py"
     ],
     "tests": [
       "tests/ui"
     ],
-    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；陪伴姿勢設定、匯入與不受暫時動畫影響的腳底校正。"
+    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；可收起的懸浮聊天窗、陪伴設定與腳底校正。"
   },
   {
     "id": "config",

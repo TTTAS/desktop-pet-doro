@@ -396,10 +396,12 @@ def build_context_menu_content(
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(callbacks.show_rename_dialog)
 
+    # Direct entry also works while replying, to read or prepare the next message.
+    menu.addAction("與 Doro 說話…").triggered.connect(callbacks.prompt_chat)
+
     # Chat submenu
     chat_menu = menu.addMenu("Chat")
     ask_action = chat_menu.addAction("Ask Doro")
-    ask_action.setEnabled(not snapshot.is_chat_inflight)
     ask_action.triggered.connect(callbacks.prompt_chat)
 
     edit_prompt_action = chat_menu.addAction("Edit persona")
