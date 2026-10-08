@@ -232,3 +232,40 @@ def test_interval_can_be_typed_directly(preferences, qtbot):
     assert dialog.interval.value() == 23
     dialog.accept()
     assert dialog._config.ui.companion_interval_seconds == 23
+
+
+def test_heartbeat_tab_saves_settings_and_opens_checklist(
+    pet, real_state_service, qtbot, tmp_path, monkeypatch
+):
+    window, _, sprite = pet
+    real_state_service.initialize(STATE_DIR / "idle.gif")
+    checklist = tmp_path / "heartbeat.md"
+    opened = []
+    monkeypatch.setattr(
+        QtGui.QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()) or True
+    )
+    dialog = CompanionDialog(
+        window._config_manager, real_state_service, window, checklist_path=checklist
+    )
+    qtbot.addWidget(dialog)
+    try:
+        assert not dialog.heartbeat_enabled.isChecked()
+        assert dialog.heartbeat_interval.value() == 30
+        dialog.checklist_button.click()
+        assert checklist.is_file()
+        assert opened == [str(checklist)]
+        dialog.heartbeat_enabled.setChecked(True)
+        dialog.heartbeat_interval.setValue(15)
+        dialog.accept()
+        restored = ConfigManager(window._config_manager._settings.fileName())
+        assert restored.ui.heartbeat_enabled
+        assert restored.ui.heartbeat_interval_minutes == 15
+    finally:
+        dialog.cleanup()
+        sprite.dispose_all()
+        sprite.gif_player.clear()
+
+
+def test_checklist_button_disabled_without_path(preferences):
+    dialog, _window, _states = preferences
+    assert not dialog.checklist_button.isEnabled()

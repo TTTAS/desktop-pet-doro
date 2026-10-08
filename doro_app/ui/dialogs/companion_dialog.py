@@ -47,7 +47,7 @@ class FootPreview(QtWidgets.QWidget):
 
 
 class CompanionDialog(QtWidgets.QDialog):
-    def __init__(self, config, states, window, parent=None):
+    def __init__(self, config, states, window, parent=None, *, checklist_path=None):
         super().__init__(parent)
         self.setWindowTitle("陪伴設定")
         self.setMinimumWidth(450)
@@ -150,6 +150,7 @@ class CompanionDialog(QtWidgets.QDialog):
                 )
         poses_layout.addWidget(self.pose_list)
         tabs.addTab(poses_page, "自主姿勢")
+        tabs.addTab(self._build_heartbeat_page(config, checklist_path), "心跳")
         hint = QtWidgets.QLabel("休息點仍可放在螢幕任意位置；底部下落功能維持停用。")
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -162,6 +163,48 @@ class CompanionDialog(QtWidgets.QDialog):
         buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText("儲存")
         buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).setText("取消")
         root.addWidget(buttons)
+
+    def _build_heartbeat_page(self, config, checklist_path):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        intro = QtWidgets.QLabel(
+            "開啟後，Doro 會每隔一段時間自己醒來，看看時間、最近的聊天和你的心跳清單，"
+            "再決定要不要主動找你。每次心跳都會呼叫一次模型；沒事時她會保持安靜。"
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        form = QtWidgets.QFormLayout()
+        self.heartbeat_enabled = QtWidgets.QCheckBox("開啟心跳（讓 Doro 定時主動看看你）")
+        self.heartbeat_enabled.setChecked(config.ui.heartbeat_enabled)
+        form.addRow(self.heartbeat_enabled)
+        self.heartbeat_interval = QtWidgets.QSpinBox()
+        self.heartbeat_interval.setRange(1, 1440)
+        self.heartbeat_interval.setSuffix(" 分鐘")
+        self.heartbeat_interval.setValue(config.ui.heartbeat_interval_minutes)
+        form.addRow("心跳間隔", self.heartbeat_interval)
+        layout.addLayout(form)
+        hint = QtWidgets.QLabel(
+            "安靜陪伴、正在聊天或拖曳、剛剛才互動過，或電腦閒置超過 10 分鐘時，這次心跳會跳過。"
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.checklist_button = QtWidgets.QPushButton("編輯心跳清單…")
+        self.checklist_button.setEnabled(checklist_path is not None)
+        self.checklist_button.clicked.connect(lambda: self._open_checklist(checklist_path))
+        layout.addWidget(self.checklist_button)
+        layout.addStretch(1)
+        return page
+
+    def _open_checklist(self, path):
+        from ...core.heartbeat.context import ensure_checklist
+
+        try:
+            ensure_checklist(path)
+        except OSError:
+            QtWidgets.QMessageBox.warning(self, "無法開啟", "心跳清單檔案無法建立。")
+            return
+        if not QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(path))):
+            QtWidgets.QMessageBox.information(self, "心跳清單位置", f"請手動開啟：\n{path}")
 
     def _anchor_value(self, value):
         self._anchor_changed = True
@@ -237,6 +280,8 @@ class CompanionDialog(QtWidgets.QDialog):
                 if self.pose_list.item(i).checkState() == QtCore.Qt.CheckState.Checked
             ],
             sprite_foot_overrides=anchors,
+            heartbeat_enabled=self.heartbeat_enabled.isChecked(),
+            heartbeat_interval_minutes=self.heartbeat_interval.value(),
         )
         self._config.save()
         self._window.clear_expression()

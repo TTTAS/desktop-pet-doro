@@ -2,7 +2,7 @@
 
 對應 [Open Claw TODO](TODO_OPEN_CLAW.md) 柱子 ③。規格由 2026-10-08 的 grill 討論（Q1～Q18）釘定；本文件分三段：**改動目標**（要做成什麼樣）、**驗收清單**（我與他人如何確認）、**修改紀錄**（實際動了什麼、驗證結果）。
 
-狀態：規格已定，尚未實作（基準 `034c638`）。
+狀態：v1 已實作，自動驗證通過；人工體驗項目待使用者在 Windows 實機確認（規格基準 `034c638`）。
 
 ## 一、改動目標
 
@@ -60,16 +60,16 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 
 自動驗證（每項應有對應測試）：
 
-- [ ] 心跳預設關閉；開啟後依設定間隔排程，修改間隔後重新計時，取消不生效。
-- [ ] 安靜模式、「我先忙」、聊天／拖曳／選單／動作進行中、上次請求未回、最近互動、系統閒置過久，各自跳過且不呼叫模型。
-- [ ] 送給模型的內容包含時間、互動間隔、最近聊天、心跳清單、心跳日誌；有有效分享頁時含標題，沒有時不含。
-- [ ] 心跳回覆的結構沒有 `tool` 欄位；模型硬塞工具內容也不會觸發讀頁、查證、登入或操作。
-- [ ] `[SILENT]` 不顯示泡泡、不移動，只寫 log／日誌。
-- [ ] 有台詞時經 `present_character_reply` 顯示；狀態不合法時不換狀態。
-- [ ] 等待模型期間使用者開始發問或切到安靜模式，回來的結果不發言。
-- [ ] 心跳日誌跨重啟保留、只保留最近幾筆；清單檔不存在時自動建立範例。
-- [ ] 手動「立刻跳一次心跳」遵守相同跳過規則。
-- [ ] 完整離屏測試、Black／Ruff、`repo_map.py --check`、`git diff --check` 通過。
+- [x] 心跳預設關閉；開啟後依設定間隔排程，修改間隔後重新計時，取消不生效。
+- [x] 安靜模式、「我先忙」、聊天／拖曳／選單／動作進行中、上次請求未回、最近互動、系統閒置過久，各自跳過且不呼叫模型。
+- [x] 送給模型的內容包含時間、互動間隔、最近聊天、心跳清單、心跳日誌；有有效分享頁時含標題，沒有時不含。
+- [x] 心跳回覆的結構沒有 `tool` 欄位；模型硬塞工具內容也不會觸發讀頁、查證、登入或操作。
+- [x] `[SILENT]` 不顯示泡泡、不移動，只寫 log／日誌。
+- [x] 有台詞時經 `present_character_reply` 顯示；狀態不合法時不換狀態。
+- [x] 等待模型期間使用者開始發問或切到安靜模式，回來的結果不發言。
+- [x] 心跳日誌跨重啟保留、只保留最近幾筆；清單檔不存在時自動建立範例。
+- [x] 手動「立刻跳一次心跳」遵守安靜、忙碌與一次一個；略過開關、近期互動與系統閒置（見修改紀錄第 2 點）。
+- [x] 完整離屏測試、Black／Ruff、`repo_map.py --check`、`git diff --check` 通過。
 
 人工體驗（需實機，自動測試無法取代）：
 
@@ -82,4 +82,44 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 
 實作時逐次補上：日期、基準 commit、改了哪些檔案、驗證命令與結果、未做或與目標不同之處。
 
-（尚無）
+### 2026-10-08：心跳 v1（基準 `1e7ed06`，規格文件 commit）
+
+**新增檔案**
+
+| 檔案 | 內容 |
+| --- | --- |
+| `doro_app/core/heartbeat/controller.py` | `HeartbeatController`：`QTimer` 排程、跳過規則、背景模型請求（一次一個）、忙碌時等待發言、過時失效、手動觸發 `beat_now`。 |
+| `doro_app/core/heartbeat/context.py` | 心跳清單（建立範例、去掉 `#` 說明行、2000 字上限）、心跳日誌（最近 8 筆、原子寫入）、組提示詞。純函式，不依賴 Qt。 |
+| `doro_app/core/heartbeat/system_idle.py` | Windows `GetLastInputInfo` 讀系統閒置秒數；其他平台回 `None`。 |
+| `docs/adr/0006-timed-heartbeat.md` | 心跳決策、考慮過的選項與限制。 |
+| `tests/core/heartbeat/test_heartbeat_context.py`、`test_heartbeat_controller.py` | 清單、日誌、提示詞、排程、各跳過規則、沉默、發言、過時、等待、逾期、失敗、手動觸發。 |
+| `tests/core/chat/test_heartbeat_request.py` | 結構沒有 `tool`、硬塞的 `tool` 被丟掉、沉默回覆合法、聊天紀錄只取 Doro 的台詞。 |
+| `tests/ui/test_heartbeat_app.py` | 在真實 `DoroApp` 組裝中驗證選單項目、設定重排程、失效接線與手動心跳發言＋日誌。 |
+
+**修改檔案**
+
+| 檔案 | 改了什麼 |
+| --- | --- |
+| `doro_app/core/chat/orchestrator.py` | 新增 `_HEARTBEAT_TASK`、`make_heartbeat_request`（`HeartbeatReply`，無 `tool`）、`recent_chat_lines`。 |
+| `doro_app/core/chat/controller.py` | 新增 `recent_history(limit)`（回傳複本）。 |
+| `doro_app/utils/config_schema.py`、`config_manager.py` | `UIConfig.heartbeat_enabled`（預設 False）、`heartbeat_interval_minutes`（預設 30，1～1440）；讀寫與無效值回預設。 |
+| `doro_app/ui/dialogs/companion_dialog.py` | 「陪伴設定」新增「心跳」分頁：開關、間隔、「編輯心跳清單…」。 |
+| `doro_app/ui/theme/themed_menu.py`、`ui/components/context_menu_controller.py` | 右鍵「立刻跳一次心跳」（等選單關閉後才觸發）。 |
+| `doro_app/app.py` | 組裝 `HeartbeatController`；接上失效、設定重排程、關閉。 |
+| `README.md`、`CONTEXT.md`、`docs/ai/FEATURE_GUIDE.md`、`docs/ai/areas.json`、`docs/REPO_MAP.md`、`docs/INDEX.md`、`docs/TODO_OPEN_CLAW.md` | 使用說明、語彙、功能導覽、地圖、索引與 TODO 狀態。 |
+
+**與目標不同之處（請驗收時特別看）**
+
+1. **沉默不是 `[SILENT]` 字串**：沿用現有結構化格式的 `worth_saying=false`（分頁陪伴已在用）。效果相同，但不用另外解析字串。
+2. **手動觸發會略過三項檢查**：目標寫「手動觸發同樣遵守跳過規則」，但按選單的當下一定「剛剛互動過」，照規則會永遠跳過。因此手動觸發略過「心跳開關」「90 秒內互動」「系統閒置」，仍遵守安靜陪伴、忙碌與一次一個。跳過或沉默時用泡泡說明原因。
+3. **聊天輸入列取得焦點不讓心跳失效**：實機測試發現選單關閉後焦點回到輸入列，心跳結果就被當成「有互動」丟掉。改成輸入列焦點只算忙碌（延後），真的送出聊天才失效。已加回歸測試。
+4. **補上的細節數值**：「最近互動」為 90 秒、「人不在」為系統閒置 600 秒、聊天取最近 6 則、日誌保留 8 筆、忙碌造成的跳過 20 秒後重試、等待發言最多 120 秒。都寫在 `controller.py`／`context.py` 開頭的常數，可直接調整。
+5. **檔案位置**：`heartbeat.md` 和 `heartbeat_journal.json` 放在 `presence.json` 同一個 Doro 使用者資料夾（Windows 通常是 `%APPDATA%` 底下的 Doro 資料夾）。
+
+**驗證**
+
+- `QT_QPA_PLATFORM=offscreen python -m pytest tests --ignore=tests/manual -o addopts= -q`：**1164 passed、3 skipped**（實作前為 1120 passed）。
+- `black --check doro_app tests`、`ruff check doro_app tests`、`python scripts/repo_map.py --check`、`git diff --check`：通過。
+- 離屏實際啟動 `DoroApp`（假模型伺服器）：預設不排程；手動心跳送出 `HeartbeatReply` 結構、提示詞含清單、Doro 說出台詞並寫入日誌；安靜模式時泡泡顯示「心跳先跳過：安靜陪伴中」；開啟並設 5 分鐘後計時器為 300000 ms。
+
+**未驗證**：Windows 實機的系統閒置偵測、真實模型的開口品質、「編輯心跳清單…」在 Windows 開啟記事本。請依上方「人工體驗」清單確認。

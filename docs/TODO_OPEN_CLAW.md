@@ -5,7 +5,7 @@
 > 改採：**把它那幾個讓 agent 活起來的機制，用 Python 內化進 Doro**，
 > 保留既有安全閘與測試。相關評估：`docs/`（OpenClaw 可行性分析那次對話）。
 >
-> 狀態：尚未動工（VERIFY 搜尋重構只是把一個工具修穩，不屬於下列任何一根柱子）。
+> 狀態：③ 心跳 v1 已完成；其餘尚未動工（VERIFY 搜尋重構只是把一個工具修穩，不屬於下列任何一根柱子）。
 
 ## 四根柱子（依「活靈活現 / 投入」CP 值）
 
@@ -24,7 +24,7 @@
 - ⚠️ 代價：能讀網頁 / 點擊的多步迴圈一樣會被 prompt injection 打到。
   **安全閘要跟迴圈一起長，不能事後補。** 守門的是自家 code，改得動、測得到。
 
-### ③ 自主心跳
+### ③ 自主心跳 — v1 已完成（[ADR 0006](adr/0006-timed-heartbeat.md)、[heartbeat-plan.md](heartbeat-plan.md)）
 - OpenClaw：heartbeat 讀 `HEARTBEAT.md` 清單，決定要不要主動找你；也吃 cron/webhook。
 - Doro 現況：**已有 `idle_behavior_manager`** 這個雛形（閒置會自己講話 / 走動）。
 - 要做：把「隨機閒置行為」升級成「有目標 / 清單」的行為——閒下來能推進交代的事、
@@ -39,7 +39,7 @@
 ## 建議起手順序
 ② 記憶（地基）→ ③ 心跳（借用 idle_behavior_manager）→ ① agent 迴圈（含安全閘）→ ④ 人格組裝。
 
-> 2026-10-08 更新：③ 心跳已完成 grill，規格與驗收見 [heartbeat-plan.md](heartbeat-plan.md)。
+> 2026-10-08 更新：③ 心跳 v1 已實作，規格、驗收與修改紀錄見 [heartbeat-plan.md](heartbeat-plan.md)。
 > 起手順序調整為 **③ 心跳 v1（附只記 Doro 自己發言的心跳日誌）→ ② 記憶 → ① → ④**：
 > 心跳 v1 的「目標」先由使用者可編輯的心跳清單提供，不等記憶地基。
 

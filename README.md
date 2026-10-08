@@ -85,6 +85,15 @@ Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, m
 
 本次設計與驗收項目見 [活潑陪伴計畫](docs/companion-liveliness-plan.md)。
 
+### 定時心跳
+
+- 「陪伴設定… → 心跳」勾選開啟（預設關閉），間隔 1–1440 分鐘，預設 30 分鐘。每次心跳呼叫一次模型，Doro 看看時間、最近聊天與心跳清單，自己決定要不要說一句話；沒事就保持安靜。
+- 按「編輯心跳清單…」用系統編輯器開啟清單，一行寫一件希望她留意的事，例如「晚上 11 點以後提醒我睡覺」；`#` 開頭的行只是說明。
+- 安靜陪伴、聊天或拖曳中、90 秒內剛互動過，或電腦閒置超過 10 分鐘（Windows）時跳過。心跳只會說話、換姿勢或走一小段，不會上網或操作電腦。
+- 右鍵「立刻跳一次心跳」可馬上試；跳過或她決定不說話時，泡泡會告訴你原因。
+
+設計見 [ADR 0006](docs/adr/0006-timed-heartbeat.md)，驗收見 [心跳計畫](docs/heartbeat-plan.md)。
+
 ## Project Structure
 
 For AI-assisted work, start with [AGENTS.md](AGENTS.md) and the compact

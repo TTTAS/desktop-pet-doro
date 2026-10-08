@@ -205,3 +205,14 @@ class TestDoroConfig:
 def test_companion_interval_requires_integer_seconds_in_range(value):
     with pytest.raises(ValueError, match="companion_interval_seconds"):
         UIConfig(companion_interval_seconds=value)
+
+
+@pytest.mark.parametrize("value", [0, 1441, True, 1.5, "30"])
+def test_heartbeat_interval_requires_integer_minutes_in_range(value):
+    with pytest.raises(ValueError, match="heartbeat_interval_minutes"):
+        UIConfig(heartbeat_interval_minutes=value)
+
+
+def test_heartbeat_enabled_must_be_bool():
+    with pytest.raises(ValueError, match="heartbeat_enabled"):
+        UIConfig(heartbeat_enabled="yes")

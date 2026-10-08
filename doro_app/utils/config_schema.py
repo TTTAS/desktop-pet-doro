@@ -136,6 +136,9 @@ class UIConfig:
     companion_effects: bool = True
     companion_pose_keys: list[str] = field(default_factory=lambda: ["happy"])
     sprite_foot_overrides: dict[str, float] = field(default_factory=dict)
+    # Heartbeat (ADR 0006): off by default because every beat is a model request.
+    heartbeat_enabled: bool = False
+    heartbeat_interval_minutes: int = 30
 
     def __post_init__(self):
         """Validate configuration values."""
@@ -184,6 +187,13 @@ class UIConfig:
             for key, value in self.sprite_foot_overrides.items()
         ):
             raise ValueError("sprite_foot_overrides must map GIF paths to ratios")
+        if not isinstance(self.heartbeat_enabled, bool):
+            raise ValueError("heartbeat_enabled must be bool")
+        if (
+            type(self.heartbeat_interval_minutes) is not int
+            or not 1 <= self.heartbeat_interval_minutes <= 1440
+        ):
+            raise ValueError("heartbeat_interval_minutes must be an integer from 1 to 1440")
 
     @property
     def config_key_prefix(self) -> str:
