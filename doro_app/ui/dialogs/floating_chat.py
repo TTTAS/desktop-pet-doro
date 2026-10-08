@@ -77,7 +77,7 @@ class FloatingChatWindow(QtWidgets.QDialog):
     BAR_HEIGHT = 72
     HISTORY_HEIGHT = 280
 
-    def __init__(self, send_message, parent=None):
+    def __init__(self, send_message, parent=None, *, rejection_reason=None):
         super().__init__(parent)
         self.setWindowTitle("Doro · 說點什麼")
         self.setWindowFlags(
@@ -89,6 +89,7 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._send_message = send_message
+        self._rejection_reason = rejection_reason or (lambda: "")
         self._expanded = False
         self._sending = False
         self._processing = False
@@ -299,6 +300,7 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.interaction.emit()
         self._sending = True
         self.send_button.setEnabled(False)
+        self._set_status("正在送出…")
         # Add first: local commands can reply synchronously inside send_message.
         entry = ("你", text)
         self._messages.append(entry)
@@ -309,21 +311,24 @@ class FloatingChatWindow(QtWidgets.QDialog):
         if accepted:
             self._last_sent = text
             self.input.clear()
+            if self.status.text() == "正在送出…":
+                self._set_status("已送出，等 Doro 回覆。")
         else:
             # No new entry for a rejected send; the input remains available.
             self._messages = [message for message in self._messages if message is not entry]
-            self._set_status(
-                "這次未送出，草稿已保留。請等 Doro 忙完，或檢查連線設定。", attention=True
-            )
+            reason = self._rejection_reason() or "未提供拒收原因，請稍後再試。"
+            self._set_status(f"這次未送出，草稿已保留。原因：{reason}", attention=True)
         self._render_messages()
         self.send_button.setEnabled(bool(self.input.toPlainText().strip()))
 
-    def request_failed(self, _error: str, was_auto: bool):
+    def request_failed(self, error: str, was_auto: bool):
         if was_auto:
             return
         if not self.input.toPlainText().strip() and self._last_sent:
             self.input.setPlainText(self._last_sent)
-        self._set_status("暫時沒收到回覆，請檢查連線後再試；草稿已保留。", attention=True)
+        self._processing = False
+        reason = error.strip() or "未提供錯誤原因，請稍後再試。"
+        self._set_status(f"暫時沒收到回覆，草稿已保留。原因：{reason}", attention=True)
 
     def clear_history(self):
         self._messages.clear()

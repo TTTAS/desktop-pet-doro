@@ -69,6 +69,7 @@ def test_synchronous_reply_follows_user_and_is_plain_text(chat):
     plain = window.transcript.toPlainText()
     assert "<img src=" in plain and "<b>陪你</b>" in plain
     assert not window.expanded  # A reply never steals focus or opens the window.
+    assert window.status.text() == "我在，繼續說吧。"
 
 
 def test_rejected_send_retains_draft_without_duplicate_user_entry(chat):
@@ -93,7 +94,8 @@ def test_async_failure_restores_sent_text_without_overwriting_new_draft(chat, ne
     window.input.setPlainText(new_draft)
     window.request_failed("offline", False)
     assert window.input.toPlainText() == (new_draft or "上一句")
-    assert "暫時沒收到" in window.status.text()
+    assert "offline" in window.status.text()
+    assert "offline" in window.history_button.toolTip()
 
 
 def test_status_is_separate_and_history_is_bounded_and_clearable(chat):
@@ -181,3 +183,41 @@ def test_inactive_input_bar_does_not_pause_pet_and_hidden_reply_stays_hidden(cha
     assert not window.interacting
     window.show_input()
     assert "我在這裡。" in window.transcript.toPlainText()
+
+
+def test_rejection_reason_is_shown_and_success_clears_old_error(chat):
+    window, send = chat
+    window._rejection_reason = lambda: "Chat server URL is not configured."
+    send.return_value = False
+    window.input.setPlainText("你好")
+    window.send()
+    assert "Chat server URL is not configured." in window.status.text()
+    assert "Chat server URL is not configured." in window.history_button.toolTip()
+    assert not window._messages
+    send.return_value = True
+    window.send()
+    assert window.history_button.text() != "!"
+    assert "not configured" not in window.status.text()
+    assert window._messages == [("你", "你好")]
+
+
+def test_auto_failure_does_not_change_manual_draft_or_status(chat):
+    window, _ = chat
+    window.input.setPlainText("正在打字")
+    previous = window.status.text()
+    window.request_failed("background failed", True)
+    assert window.input.toPlainText() == "正在打字"
+    assert window.status.text() == previous
+
+
+def test_async_error_is_plain_text_and_completion_does_not_hide_it(chat):
+    window, _ = chat
+    window.input.setPlainText("你好")
+    window.send()
+    window.receive_reply("Thinking...", {"auto_hide": False})
+    reason = "HTTP 503: <b>Service unavailable</b>"
+    window.request_failed(reason, False)
+    window.finish_processing()
+    assert reason in window.status.text()
+    assert window.status.textFormat() == QtCore.Qt.TextFormat.PlainText
+    assert window.history_button.text() == "!"
