@@ -1,0 +1,474 @@
+"""Doro2's local media pipeline, presented in Doro's Qt interface."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from threading import Event
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from ...core.gif_factory.config import load_config, save_config
+from ...core.gif_factory.frames import extract_frames
+from ...core.gif_factory.matting import MattingOptions, remove_background
+from ...core.gif_factory.output import save_image
+from ...core.gif_factory.pipeline import (
+    available_output_path,
+    check_cancelled,
+    process_video,
+)
+from ...core.gif_factory.preview import composite_on_checker, fit_within
+from ..components.frameless_dialog import FramelessDialog
+
+
+class MediaJob(QtCore.QThread):
+    """Only plain image/file data crosses the worker boundary."""
+
+    progress = QtCore.Signal(int, str)
+    exported = QtCore.Signal(str)
+
+    def __init__(self, operation, parent=None):
+        super().__init__(parent)
+        self.operation = operation
+        self.cancel = Event()
+        self.result = None
+        self.error = None
+
+    def run(self):
+        try:
+            self.result = self.operation(self)
+            check_cancelled(self.cancel)
+        except Exception as exc:
+            self.error = exc
+
+
+class SourcePreview(QtWidgets.QLabel):
+    color_picked = QtCore.Signal(object)
+
+    def __init__(self):
+        super().__init__("選擇影片後顯示原圖；顏色模式可點圖取色")
+        self.source = None
+        self.scale = 1.0
+        self.setFixedSize(300, 260)
+        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+    def mousePressEvent(self, event):
+        pixmap = self.pixmap()
+        if self.source is not None and pixmap and not pixmap.isNull():
+            x = event.position().x() - (self.width() - pixmap.width()) / 2
+            y = event.position().y() - (self.height() - pixmap.height()) / 2
+            if 0 <= x < pixmap.width() and 0 <= y < pixmap.height():
+                self.color_picked.emit(
+                    self.source.convert("RGB").getpixel(
+                        (
+                            min(self.source.width - 1, int(x / self.scale)),
+                            min(self.source.height - 1, int(y / self.scale)),
+                        )
+                    )
+                )
+        super().mousePressEvent(event)
+
+
+def _pixmap(image):
+    rgba = image.convert("RGBA")
+    qimage = QtGui.QImage(
+        rgba.tobytes(), rgba.width, rgba.height, rgba.width * 4, QtGui.QImage.Format.Format_RGBA8888
+    ).copy()
+    return QtGui.QPixmap.fromImage(qimage)
+
+
+class AssetFactoryDialog(FramelessDialog):
+    """Serial jobs and queued Qt signals keep all widget changes on the GUI thread."""
+
+    def __init__(self, state_service, parent=None):
+        super().__init__("素材工廠 · 影片去背", parent)
+        self.service = state_service
+        self._job = None
+        self._frames = []
+        self._paths = []
+        self._loaded_path = None
+        self._color = (255, 255, 255)
+        self._close_pending = False
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(300)
+        self._timer.timeout.connect(self._preview)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = self.content_layout
+        self.controls = QtWidgets.QWidget()
+        form = QtWidgets.QVBoxLayout(self.controls)
+        form.setContentsMargins(0, 0, 0, 0)
+        choose = QtWidgets.QPushButton("選擇 MP4 影片（可多選）…")
+        choose.clicked.connect(self._choose)
+        form.addWidget(choose)
+        self.videos = QtWidgets.QComboBox()
+        self.videos.currentIndexChanged.connect(self._load_video)
+        form.addWidget(self.videos)
+        previews = QtWidgets.QHBoxLayout()
+        self.source = SourcePreview()
+        self.source.color_picked.connect(self._pick_color)
+        self.preview = QtWidgets.QLabel("去背預覽（棋盤格代表透明）")
+        self.preview.setFixedSize(300, 260)
+        self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        previews.addWidget(self.source)
+        previews.addWidget(self.preview)
+        form.addLayout(previews)
+        self.frame_label = QtWidgets.QLabel("尚未讀取影片")
+        form.addWidget(self.frame_label)
+        self.frame = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.frame.setRange(0, 0)
+        self.frame.valueChanged.connect(self._frame_changed)
+        form.addWidget(self.frame)
+        options = QtWidgets.QFormLayout()
+        self.mode = QtWidgets.QComboBox()
+        self.mode.addItem("AI 去背（isnet-anime）", "ai")
+        self.mode.addItem("顏色去背（點左圖取色）", "color")
+        self.mode.currentIndexChanged.connect(self._schedule_preview)
+        options.addRow("去背方式", self.mode)
+        self.color_label = QtWidgets.QLabel("取色：255, 255, 255")
+        options.addRow(self.color_label)
+        self.tolerance = QtWidgets.QSpinBox()
+        self.tolerance.setRange(0, 442)
+        self.tolerance.setValue(30)
+        self.tolerance.valueChanged.connect(self._schedule_preview)
+        options.addRow("顏色容差", self.tolerance)
+        self.erode = QtWidgets.QSpinBox()
+        self.erode.setRange(0, 20)
+        self.erode.valueChanged.connect(self._schedule_preview)
+        options.addRow("邊緣內縮（像素）", self.erode)
+        self.soft = QtWidgets.QCheckBox("AI 邊緣柔化")
+        self.soft.toggled.connect(self._schedule_preview)
+        options.addRow(self.soft)
+        config = load_config()
+        self.fmt = QtWidgets.QComboBox()
+        self.fmt.addItems(["webp", "apng"])
+        self.fmt.setCurrentText(str(config.get("fmt", "webp")))
+        options.addRow("動畫格式", self.fmt)
+        self.resize_output = QtWidgets.QCheckBox("縮小輸出長邊（只縮不放）")
+        self.resize_output.setChecked(bool(config.get("resize", True)))
+        self.size = QtWidgets.QSpinBox()
+        self.size.setRange(1, 8192)
+        try:
+            self.size.setValue(int(config.get("output_size", 200)))
+        except (ValueError, TypeError):
+            self.size.setValue(200)
+        options.addRow(self.resize_output, self.size)
+        output_row = QtWidgets.QHBoxLayout()
+        self.output_dir = QtWidgets.QLineEdit(str(config.get("output_dir", Path.home())))
+        browse = QtWidgets.QPushButton("瀏覽…")
+        browse.clicked.connect(self._choose_output)
+        output_row.addWidget(self.output_dir)
+        output_row.addWidget(browse)
+        options.addRow("輸出資料夾", output_row)
+        form.addLayout(options)
+        buttons = QtWidgets.QHBoxLayout()
+        self.animate = QtWidgets.QPushButton("處理全部影片")
+        self.animate.clicked.connect(self._export_animation)
+        self.still = QtWidgets.QPushButton("這一格存成 PNG")
+        self.still.clicked.connect(self._export_frame)
+        buttons.addWidget(self.animate)
+        buttons.addWidget(self.still)
+        form.addLayout(buttons)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.controls)
+        scroll.setMinimumWidth(650)
+        scroll.setMinimumHeight(420)
+        layout.addWidget(scroll, 1)
+        self.resize(730, 820)
+        self.progress = QtWidgets.QProgressBar()
+        layout.addWidget(self.progress)
+        self.status = QtWidgets.QLabel("全程本機處理；首次 AI 去背需下載模型。")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.results = QtWidgets.QListWidget()
+        self.results.setMaximumHeight(85)
+        self.results.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        layout.addWidget(self.results)
+        self.import_controls = QtWidgets.QWidget()
+        imports = QtWidgets.QHBoxLayout(self.import_controls)
+        imports.setContentsMargins(0, 0, 0, 0)
+        self.target = QtWidgets.QComboBox()
+        self.target.addItem("建立新姿勢…", None)
+        for key in self.service.visible_state_keys():
+            state = self.service.get_state(key)
+            self.target.addItem(state.label or key, key)
+        imports.addWidget(self.target)
+        import_button = QtWidgets.QPushButton("將選取動畫匯入姿勢")
+        import_button.clicked.connect(self._import_selected)
+        imports.addWidget(import_button)
+        layout.addWidget(self.import_controls)
+        self.cancel_button = QtWidgets.QPushButton("取消處理")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self._cancel)
+        layout.addWidget(self.cancel_button)
+        self._set_busy(False)
+
+    def _set_busy(self, busy):
+        self.controls.setEnabled(not busy)
+        self.import_controls.setEnabled(not busy)
+        self.cancel_button.setEnabled(busy)
+        self.animate.setEnabled(bool(self._frames))
+        self.still.setEnabled(bool(self._frames))
+
+    def _start_job(self, operation, completed):
+        if self._job is not None:
+            return
+        self._timer.stop()
+        self._set_busy(True)
+        self.progress.setValue(0)
+        self._job = MediaJob(operation, self)
+        self._completed = completed
+        self._job.progress.connect(self._progress)
+        self._job.exported.connect(self._add_result)
+        self._job.finished.connect(self._job_finished)
+        self._job.start()
+
+    @QtCore.Slot(int, str)
+    def _progress(self, value, message):
+        self.progress.setValue(value)
+        self.status.setText(message)
+
+    @QtCore.Slot()
+    def _job_finished(self):
+        job = self._job
+        self._job = None
+        self._set_busy(False)
+        if self._close_pending:
+            job.deleteLater()
+            super().reject()
+            return
+        if job.error:
+            message = str(job.error)
+            if isinstance(job.error, ImportError):
+                message += '\nAI 去背請先執行：python -m pip install -e ".[factory-ai]"'
+            self.status.setText(message)
+        else:
+            self._completed(job.result)
+        job.deleteLater()
+
+    def _cancel(self):
+        if self._job:
+            self._job.cancel.set()
+            self.status.setText("正在取消，等待目前影格或編碼完成…")
+
+    def reject(self):
+        self._timer.stop()
+        if self._job:
+            self._close_pending = True
+            self._cancel()
+        else:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self._job:
+            self.reject()
+            event.ignore()
+        else:
+            self._timer.stop()
+            super().closeEvent(event)
+
+    def shutdown(self):
+        """Also protect worker lifetime if QApplication exits during dialog.exec()."""
+        self._timer.stop()
+        if self._job:
+            self._job.cancel.set()
+            self._job.wait()
+
+    def _choose(self):
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, "選擇影片", "", "MP4 影片 (*.mp4);;所有檔案 (*)"
+        )
+        if paths:
+            self._paths = [Path(p) for p in paths]
+            self.videos.blockSignals(True)
+            self.videos.clear()
+            self.videos.addItems([p.name for p in self._paths])
+            self.videos.blockSignals(False)
+            self._load_video(0)
+
+    def _load_video(self, index):
+        if index < 0 or self._job:
+            return
+        path = self._paths[index]
+        self._frames = []
+        self._loaded_path = None
+        self.source.source = None
+        self.source.clear()
+        self.preview.clear()
+        self.status.setText(f"正在讀取 {path.name}…")
+
+        def loaded(video):
+            self._frames = video.frames
+            self._loaded_path = path
+            self.frame.setRange(0, len(video.frames) - 1)
+            self.frame.setValue(len(video.frames) // 2)
+            self._set_busy(False)
+            self._frame_changed()
+
+        self._start_job(lambda job: extract_frames(path, cancel=job.cancel), loaded)
+
+    def _frame_changed(self, *_):
+        if not self._frames:
+            return
+        image = self._frames[self.frame.value()]
+        small, scale = fit_within(image, 250)
+        self.source.source, self.source.scale = image, scale
+        self.source.setPixmap(_pixmap(small))
+        self.frame_label.setText(f"第 {self.frame.value() + 1} / {len(self._frames)} 格")
+        self._schedule_preview()
+
+    def _pick_color(self, color):
+        if self.mode.currentData() == "color":
+            self._color = color
+            self.color_label.setText("取色：" + ", ".join(map(str, color)))
+            self._schedule_preview()
+
+    def _schedule_preview(self, *_):
+        color_mode = self.mode.currentData() == "color"
+        self.tolerance.setEnabled(color_mode)
+        self.soft.setEnabled(not color_mode)
+        if self._frames and not self._job:
+            self._timer.start()
+
+    def _options(self):
+        return MattingOptions(
+            mode=self.mode.currentData(),
+            color_key=self._color,
+            tolerance=self.tolerance.value(),
+            erode=self.erode.value(),
+            alpha_matting=self.soft.isChecked(),
+        )
+
+    def _preview(self):
+        if not self._frames or self._job:
+            return
+        image, options = self._frames[self.frame.value()], self._options()
+        self.preview.clear()
+        self.status.setText("去背預覽中；首次 AI 去背可能需要下載模型…")
+
+        def completed(rgba):
+            small, _ = fit_within(rgba, 250)
+            self.preview.setPixmap(_pixmap(composite_on_checker(small)))
+            self.status.setText("預覽完成；可調整設定或輸出。")
+
+        self._start_job(lambda job: remove_background(image, options), completed)
+
+    def _choose_output(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "輸出資料夾", self.output_dir.text()
+        )
+        if path:
+            self.output_dir.setText(path)
+
+    def _export_settings(self):
+        if not self.output_dir.text().strip():
+            self.status.setText("請選擇輸出資料夾。")
+            return None
+        folder = Path(self.output_dir.text().strip()).expanduser()
+        size = self.size.value() if self.resize_output.isChecked() else None
+        try:
+            save_config(
+                {
+                    "output_dir": str(folder),
+                    "fmt": self.fmt.currentText(),
+                    "resize": self.resize_output.isChecked(),
+                    "output_size": self.size.value(),
+                }
+            )
+        except OSError:
+            pass  # Export remains available when preferences cannot be written.
+        return folder, size
+
+    def _export_animation(self):
+        settings = self._export_settings()
+        if not settings or not self._frames or self._job:
+            return
+        folder, size = settings
+        paths, fmt, options = list(self._paths), self.fmt.currentText(), self._options()
+        self.status.setText("處理影片中…")
+
+        def operation(job):
+            for index, path in enumerate(paths):
+                check_cancelled(job.cancel)
+                output = available_output_path(folder / f"{path.stem}.{fmt}")
+
+                def progress(done, total, file_index=index, name=path.name):
+                    job.progress.emit(
+                        int(100 * (file_index + done / total) / len(paths)),
+                        f"{file_index + 1}/{len(paths)} · {name} · {done}/{total} 格",
+                    )
+
+                result = process_video(
+                    path,
+                    output,
+                    fmt=fmt,
+                    options=options,
+                    progress=progress,
+                    size=size,
+                    cancel=job.cancel,
+                )
+                job.exported.emit(str(result))
+
+        self._start_job(operation, lambda _: self.status.setText("輸出完成，可選取動畫匯入姿勢。"))
+
+    def _export_frame(self):
+        settings = self._export_settings()
+        if not settings or not self._frames or self._job:
+            return
+        folder, size = settings
+        image, options = self._frames[self.frame.value()], self._options()
+        output = available_output_path(
+            folder / f"{self._loaded_path.stem}_frame{self.frame.value() + 1}.png"
+        )
+        self.status.setText("正在輸出 PNG…")
+
+        def operation(job):
+            rgba = remove_background(image, options)
+            check_cancelled(job.cancel)
+            result = save_image(rgba, output, size=size)
+            job.exported.emit(str(result))
+
+        self._start_job(operation, lambda _: self.status.setText("PNG 已儲存。"))
+
+    @QtCore.Slot(str)
+    def _add_result(self, path):
+        item = QtWidgets.QListWidgetItem(path)
+        self.results.addItem(item)
+        item.setSelected(True)
+
+    def _import_selected(self):
+        paths = [
+            Path(item.text())
+            for item in self.results.selectedItems()
+            if Path(item.text()).suffix.lower() in {".webp", ".apng"}
+        ]
+        if not paths:
+            self.status.setText("請選取已輸出的 WebP／APNG 動畫；PNG 保留為單張圖片。")
+            return
+        key = self.target.currentData()
+        if key is None:
+            from .state.add_dialog import AddStateDialog
+
+            dialog = AddStateDialog(self.service, self)
+            dialog.selected_gif_paths = paths
+            dialog.gif_label.setText(f"已選取 {len(paths)} 個成品")
+            if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                key = dialog.key_edit.text().strip()
+                state = self.service.get_state(key)
+                if state:
+                    self.target.addItem(state.label or key, key)
+                    self.target.setCurrentIndex(self.target.count() - 1)
+            return
+        failed = []
+        for path in paths:
+            try:
+                if not self.service.add_gif(key, path):
+                    failed.append(path.name)
+            except (OSError, ValueError):
+                failed.append(path.name)
+        if failed:
+            self.status.setText("部分匯入失敗：" + ", ".join(failed))
+        else:
+            self.status.setText(f"已新增 {len(paths)} 個動畫至姿勢 {key}，可從 States 選單切換。")

@@ -49,6 +49,16 @@ def _callbacks():
     return MenuCallbacks(**{f.name: Mock() for f in dataclasses.fields(MenuCallbacks)})
 
 
+def test_menu_opens_asset_factory(qtbot):
+    window = QtWidgets.QWidget()
+    qtbot.addWidget(window)
+    menu = DoroMenu(window)
+    callbacks = _callbacks()
+    build_context_menu_content(menu, window, _snapshot(), callbacks)
+    _find(menu, "素材工廠（影片去背）…").trigger()
+    callbacks.show_asset_factory.assert_called_once()
+
+
 def test_menu_has_a11y_toggle_reflecting_snapshot(qtbot):
     window = QtWidgets.QWidget()
     qtbot.addWidget(window)

@@ -52,6 +52,25 @@ class DialogManager:
 
         show_state_manager(self._state_service, parent=self._parent)
 
+    def show_asset_factory(self) -> None:
+        """Load optional media dependencies only when the factory is opened."""
+        try:
+            from ..dialogs.asset_factory_dialog import AssetFactoryDialog
+        except ImportError as exc:
+            QtWidgets.QMessageBox.information(
+                self._parent,
+                "素材工廠",
+                f"素材工廠套件尚未就緒：{exc}\n\n"
+                '請在 doro 專案環境執行：\npython -m pip install -e ".[factory]"\n'
+                '需要 AI 去背時改裝：\npython -m pip install -e ".[factory-ai]"',
+            )
+            return
+        dialog = AssetFactoryDialog(self._state_service, self._parent)
+        try:
+            dialog.exec()
+        finally:
+            dialog.shutdown()
+
     def show_move_state_manager(self) -> None:
         """Show the move state manager dialog."""
         from ..dialogs.move_state import show_move_state_manager

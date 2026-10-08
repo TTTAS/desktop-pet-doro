@@ -11,6 +11,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+factory = [
+    "opencv-python-headless>=4.10",
+    "Pillow>=10.2",
+    "numpy>=1.26",
+]
+factory-ai = [
+    "doro[factory]",
+    "rembg[cpu]>=2.0",
+]
 automation = [
     "pynput>=1.7.6",
 ]
