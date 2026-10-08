@@ -15,6 +15,7 @@
 | PR #63 review、範圍與待修交接 | [桌面陪伴與懸浮聊天交接紀錄](pr-63-handoff.md)（程式基準 `d06c4c9`） |
 | 活潑節奏、休息 GIF 與腳底校正 | [活潑陪伴計畫與驗收](companion-liveliness-plan.md) |
 | 懸浮聊天窗與直接聊天入口 | [懸浮聊天窗計畫與驗收](floating-chat-plan.md) |
+| 定時自主心跳（規劃中） | [心跳 v1 改動目標與驗收紀錄](heartbeat-plan.md) |
 | 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
 ## 架構決策（已採用）
