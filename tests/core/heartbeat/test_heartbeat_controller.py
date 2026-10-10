@@ -9,6 +9,7 @@ from doro_app.core.heartbeat import controller as heartbeat_module
 from doro_app.core.heartbeat.context import load_journal
 from doro_app.core.heartbeat.controller import HeartbeatController
 from doro_app.core.llm import character_reply_model
+from doro_app.core.presence.models import PageEvent
 
 HeartbeatReply = character_reply_model(["happy"], decide_worth_saying=True, name="HeartbeatReply")
 
@@ -29,7 +30,7 @@ class World:
         self.quiet = False
         self.since_interaction = 3600.0
         self.system_idle = 5.0
-        self.page_title = None
+        self.page = None
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def heartbeat(tmp_path, qtbot):
         quiet=lambda: world.quiet,
         seconds_since_interaction=lambda: world.since_interaction,
         system_idle=lambda: world.system_idle,
-        page_title=lambda: world.page_title,
+        page=lambda: world.page,
         clock=lambda: datetime(2026, 10, 8, 23, 30, tzinfo=TAIPEI),
     )
     yield SimpleNamespace(
@@ -126,7 +127,7 @@ def test_only_one_request_at_a_time(heartbeat, qtbot):
 
 
 def test_prompt_contains_context(heartbeat, qtbot):
-    heartbeat.world.page_title = "影片網站"
+    heartbeat.world.page = PageEvent(1, "https://v.test", "影片網站", "內容")
     heartbeat.orch.make_heartbeat_request.return_value = lambda: reply("", worth_saying=False)
     heartbeat.controller.beat()
     prompt = heartbeat.orch.make_heartbeat_request.call_args.args[0]
@@ -244,3 +245,83 @@ def test_shutdown_stops_everything(heartbeat):
     heartbeat.controller.shutdown()
     assert not heartbeat.controller.is_scheduled
     assert heartbeat.controller.beat(manual=True) == "已關閉"
+
+
+def _slow(answer_factory):
+    release = threading.Event()
+
+    def ask():
+        release.wait(2)
+        return answer_factory()
+
+    return release, ask
+
+
+@pytest.mark.parametrize("next_page", [PageEvent(2, "https://b.test", "B", "b"), None])
+def test_page_change_while_waiting_drops_reply(heartbeat, qtbot, next_page):
+    """Review #2: a reply about page A must not be spoken once the user is on B."""
+    heartbeat.world.page = PageEvent(1, "https://a.test", "A", "a")
+    release, ask = _slow(lambda: reply("A 頁好有趣"))
+    heartbeat.orch.make_heartbeat_request.return_value = ask
+    heartbeat.controller.beat()
+    heartbeat.world.page = next_page
+    release.set()
+    qtbot.waitUntil(lambda: not heartbeat.controller._running)
+    qtbot.wait(50)
+    assert heartbeat.presented == []
+
+
+def test_page_change_while_reply_waits_for_busy_drops_it(heartbeat, qtbot):
+    heartbeat.world.page = PageEvent(1, "https://a.test", "A", "a")
+    heartbeat.orch.make_heartbeat_request.return_value = lambda: reply("A 頁好有趣")
+    heartbeat.controller.beat()
+    heartbeat.world.busy = True
+    qtbot.waitUntil(lambda: heartbeat.controller._pending is not None)
+    heartbeat.world.page = PageEvent(2, "https://b.test", "B", "b")
+    heartbeat.world.busy = False
+    qtbot.waitUntil(lambda: heartbeat.controller._pending is None, timeout=3000)
+    assert heartbeat.presented == []
+
+
+def test_beat_without_page_is_not_dropped_when_a_page_appears(heartbeat, qtbot):
+    heartbeat.orch.make_heartbeat_request.return_value = lambda: reply("該喝水了")
+    heartbeat.controller.beat()
+    heartbeat.world.page = PageEvent(2, "https://b.test", "B", "b")
+    qtbot.waitUntil(lambda: heartbeat.presented == ["該喝水了"])
+
+
+@pytest.mark.parametrize("cancel", ["quiet", "interrupt"])
+def test_failed_manual_beat_respects_cancel_and_quiet(heartbeat, qtbot, cancel):
+    """Review #4: no failure bubble after the user cancelled or went quiet."""
+    release, ask = _slow(lambda: None)
+    heartbeat.orch.make_heartbeat_request.return_value = ask
+    heartbeat.controller.beat_now()
+    if cancel == "quiet":
+        heartbeat.world.quiet = True
+    else:
+        heartbeat.controller.interrupt()
+    release.set()
+    qtbot.waitUntil(lambda: not heartbeat.controller._running)
+    qtbot.wait(50)
+    heartbeat.orch.speak_line.assert_not_called()
+
+
+def test_silent_manual_beat_after_quiet_says_nothing(heartbeat, qtbot):
+    release, ask = _slow(lambda: reply("", worth_saying=False))
+    heartbeat.orch.make_heartbeat_request.return_value = ask
+    heartbeat.controller.beat_now()
+    heartbeat.world.quiet = True
+    release.set()
+    qtbot.waitUntil(lambda: not heartbeat.controller._running)
+    qtbot.wait(50)
+    heartbeat.orch.speak_line.assert_not_called()
+
+
+def test_non_utf8_checklist_skips_instead_of_raising(heartbeat, tmp_path):
+    """Review #5: a Big5/ANSI checklist must not escape the Qt callback."""
+    (tmp_path / "heartbeat.md").write_bytes("- 晚上提醒我睡覺".encode("big5"))
+    reason = heartbeat.controller.beat()
+    assert reason is not None and "UTF-8" in reason
+    heartbeat.orch.make_heartbeat_request.assert_not_called()
+    heartbeat.controller.beat_now()
+    assert "UTF-8" in heartbeat.orch.speak_line.call_args.args[0]

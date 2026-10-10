@@ -46,7 +46,7 @@
 - 門：`doro_app/core/heartbeat/controller.py` 的 `HeartbeatController`；`app.py` 組裝，忙碌判斷沿用 `_companion_busy`。
 - 提示詞資料由 `heartbeat/context.py` 組成（時間、互動間隔、最近聊天、心跳清單、心跳日誌、分享頁標題）；模型請求在 `ChatOrchestrator.make_heartbeat_request`，結構 `HeartbeatReply` 沒有 `tool`。
 - 設定：`UIConfig.heartbeat_enabled`／`heartbeat_interval_minutes`，介面在「陪伴設定… → 心跳」；右鍵「立刻跳一次心跳」手動觸發。
-- 送出聊天、按住／拖曳 Doro、切換安靜模式會 `interrupt()`，讓等待中的心跳結果失效；輸入列取得焦點只算忙碌（延後），不接 `_interrupt_background_companionship`，否則選單關閉後焦點回到輸入列就會把手動心跳作廢。
+- 使用者訊息被接受（`user_message_accepted`，含分頁提問等提前返回的路徑）、按住／拖曳 Doro、切換安靜模式會 `interrupt()`；看過的分頁已改變也算過時，讓等待中的心跳結果失效；輸入列取得焦點只算忙碌（延後），不接 `_interrupt_background_companionship`，否則選單關閉後焦點回到輸入列就會把手動心跳作廢。
 - 地雷：不要在心跳結構加 `tool`，也不要讓心跳取代 `IdleBehaviorManager` 或 `PresenceController`。
 
 ### 🗨️ 聊天

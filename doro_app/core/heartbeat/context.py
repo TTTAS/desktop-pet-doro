@@ -25,6 +25,10 @@ DEFAULT_CHECKLIST = """\
 """
 
 
+class ChecklistUnreadable(ValueError):
+    """The checklist exists but cannot be decoded; the user has to re-save it."""
+
+
 @dataclass(frozen=True)
 class JournalEntry:
     at: str  # ISO time, local
@@ -50,9 +54,15 @@ def ensure_checklist(path: Path) -> Path:
 
 
 def read_checklist(path: Path) -> str:
-    """Checklist lines for the model: comments and blanks dropped, length capped."""
+    """Checklist lines for the model: comments and blanks dropped, length capped.
+
+    Raises ``ChecklistUnreadable`` when the file is not UTF-8 (e.g. saved as
+    Big5/ANSI); a UTF-8 BOM from Notepad is accepted.
+    """
     try:
-        text = ensure_checklist(path).read_text(encoding="utf-8")
+        text = ensure_checklist(path).read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ChecklistUnreadable("心跳清單不是 UTF-8 編碼，請用 UTF-8 重新存檔") from exc
     except OSError as exc:
         logger.warning("Heartbeat checklist unreadable (%s)", type(exc).__name__)
         return ""

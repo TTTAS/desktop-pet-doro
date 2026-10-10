@@ -19,6 +19,7 @@ from pathlib import Path
 from PySide6 import QtCore
 
 from .context import (
+    ChecklistUnreadable,
     HeartbeatContext,
     JournalEntry,
     append_journal,
@@ -55,7 +56,7 @@ class HeartbeatController(QtCore.QObject):
         quiet: Callable[[], bool],
         seconds_since_interaction: Callable[[], float],
         system_idle: Callable[[], float | None] = system_idle_seconds,
-        page_title: Callable[[], str | None] = lambda: None,
+        page: Callable[[], object | None] = lambda: None,
         clock: Callable[[], datetime] = datetime.now,
         parent=None,
     ):
@@ -68,12 +69,13 @@ class HeartbeatController(QtCore.QObject):
         self._quiet = quiet
         self._since_interaction = seconds_since_interaction
         self._system_idle = system_idle
-        self._page_title = page_title
+        # The currently shared page (anything with ``title``), or None.
+        self._page = page
         self._clock = clock
         self._running = False
         self._closed = False
         self._epoch = 0
-        self._pending = None  # (answer, epoch, deadline)
+        self._pending = None  # (answer, epoch, page, deadline)
         self.last_status = "尚未跳過心跳"
         self.result_ready.connect(self._on_result, QtCore.Qt.ConnectionType.QueuedConnection)
         self._timer = QtCore.QTimer(self)
@@ -146,14 +148,22 @@ class HeartbeatController(QtCore.QObject):
             self.last_status = f"心跳跳過：{reason}"
             logger.info(self.last_status)
             return reason
+        try:
+            checklist = read_checklist(self.checklist_path)
+        except ChecklistUnreadable as exc:
+            reason = str(exc)
+            self.last_status = f"心跳跳過：{reason}"
+            logger.warning(self.last_status)
+            return reason
+        page = self._page()
         prompt = build_prompt(
             HeartbeatContext(
                 now=self._clock(),
                 seconds_since_interaction=self._since_interaction(),
                 chat=self._orchestrator.recent_chat_lines(),
-                checklist=read_checklist(self.checklist_path),
+                checklist=checklist,
                 journal=load_journal(self._journal_path),
-                page_title=self._page_title(),
+                page_title=getattr(page, "title", None) if page is not None else None,
             )
         )
         try:
@@ -176,7 +186,7 @@ class HeartbeatController(QtCore.QObject):
             except Exception as exc:
                 logger.warning("Heartbeat model unavailable (%s)", type(exc).__name__)
             if not self._closed:
-                self.result_ready.emit(epoch, answer, ok, manual)
+                self.result_ready.emit(epoch, (answer, page), ok, manual)
 
         threading.Thread(target=run, daemon=True, name="doro-heartbeat-llm").start()
         return None
@@ -205,10 +215,31 @@ class HeartbeatController(QtCore.QObject):
         elif reason.startswith("正在忙") and not self._retry.isActive():
             self._retry.start(BUSY_RETRY_SECONDS * 1000)
 
+    def _stale_reason(self, epoch: int, page) -> str | None:
+        """Why a result asked for at ``epoch`` about ``page`` must not be shown now."""
+        if self._closed:
+            return "已關閉"
+        if epoch != self._epoch:
+            return "期間有互動"
+        if self._quiet():
+            return "已切到安靜陪伴"
+        # A beat that saw no page may still speak when a page appears later; one
+        # that saw page A must not talk about it once the user is elsewhere.
+        if page is not None and self._page() != page:
+            return "分頁已改變"
+        return None
+
     @QtCore.Slot(int, object, bool, bool)
-    def _on_result(self, epoch, answer, ok, manual):
+    def _on_result(self, epoch, result, ok, manual):
         self._running = False
         if self._closed:
+            return
+        answer, page = result
+        # Check staleness before anything else: no failure or "stayed silent"
+        # notice either, once the user cancelled or went quiet.
+        stale = self._stale_reason(epoch, page)
+        if stale is not None:
+            self.last_status = f"心跳結果已過時（{stale}），不發言"
             return
         if not ok:
             self.last_status = "心跳沒有拿到可用的模型回覆"
@@ -222,16 +253,13 @@ class HeartbeatController(QtCore.QObject):
             answer.state,
             answer.line,
         )
-        if epoch != self._epoch:
-            self.last_status = "心跳結果已過時（期間有互動），不發言"
-            return
         if not answer.worth_saying:
             self.last_status = "心跳完成：決定先不打擾"
             self._record("")
             if manual:
                 self._orchestrator.speak_line("（Doro 想了想，決定先不打擾你）")
             return
-        self._pending = (answer, epoch, time.monotonic() + PENDING_TTL_SECONDS)
+        self._pending = (answer, epoch, page, time.monotonic() + PENDING_TTL_SECONDS)
         self._pump()
         if self._pending is not None:
             self._pump_timer.start()
@@ -240,9 +268,12 @@ class HeartbeatController(QtCore.QObject):
         if self._pending is None:
             self._pump_timer.stop()
             return
-        answer, epoch, deadline = self._pending
-        if epoch != self._epoch or self._quiet() or time.monotonic() > deadline:
-            self.last_status = "心跳台詞等太久或已過時，不發言"
+        answer, epoch, page, deadline = self._pending
+        stale = self._stale_reason(epoch, page)
+        if stale is None and time.monotonic() > deadline:
+            stale = "等太久"
+        if stale is not None:
+            self.last_status = f"心跳台詞已過時（{stale}），不發言"
             self._drop_pending()
             return
         if self._busy():
@@ -250,9 +281,7 @@ class HeartbeatController(QtCore.QObject):
         self._drop_pending()
         self._orchestrator.present_structured_reply(
             answer,
-            should_present=lambda epoch=epoch: (
-                not self._closed and epoch == self._epoch and not self._quiet()
-            ),
+            should_present=lambda epoch=epoch, page=page: self._stale_reason(epoch, page) is None,
             on_present=self._on_spoken,
         )
 

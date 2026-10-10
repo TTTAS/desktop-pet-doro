@@ -107,6 +107,10 @@ class ChatOrchestrator(QtCore.QObject):
     bubble_clear_requested = QtCore.Signal()
     busy_cursor_requested = QtCore.Signal(bool)  # enabled
     notification_requested = QtCore.Signal(str, str, str)  # (severity, title, message)
+    # A user (not auto) message was accepted on any path: chat, page ask, web
+    # command or an operation confirmation. Background replies asked for
+    # earlier (heartbeat) must not speak over it.
+    user_message_accepted = QtCore.Signal()
 
     def __init__(
         self,
@@ -184,6 +188,7 @@ class ChatOrchestrator(QtCore.QObject):
             if is_auto:
                 self._last_send_error = "Doro 正在操作網頁，請等操作結束後再送出。"
                 return False  # 自動/閒置訊息操作中一律忽略
+            self.user_message_accepted.emit()
             return self._handle_message_while_operating(user_message, silent=silent)
 
         if self._controller.is_inflight or self._web_reading:
@@ -201,8 +206,10 @@ class ChatOrchestrator(QtCore.QObject):
                 )
             return False
 
-        if not is_auto and self._presence is not None:
-            self._presence.interrupt()
+        if not is_auto:
+            self.user_message_accepted.emit()
+            if self._presence is not None:
+                self._presence.interrupt()
 
         # 網頁能力的觸發（每一輪重置「本輪已自動讀過」旗標，並記住原始問題）：
         #  - 讀：明確路 `parse_web_read_command`（讀取動詞＋http 網址）＋ LLM 吐 [read:] 路。

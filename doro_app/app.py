@@ -205,14 +205,16 @@ class DoroApp:
             self._config_manager,
             checklist_path=user_data_dir / "heartbeat.md",
             journal_path=user_data_dir / "heartbeat_journal.json",
-            busy=self._companion_busy,
+            # A visible bubble (idle line, tab reaction) is busy too: the heartbeat
+            # waits for it to hide instead of replacing it.
+            busy=lambda: self._companion_busy() or bool(self._bubble_controller.text),
             quiet=lambda: self._companion.quiet,
             seconds_since_interaction=lambda: self.window.seconds_since_last_activity(),
-            page_title=self._shared_page_title,
+            page=self._shared_page,
         )
         # Focusing the input bar only delays a heartbeat (it counts as busy);
-        # actually sending a message makes the pending heartbeat stale.
-        self._chat_controller.request_started.connect(lambda *_: self._heartbeat.interrupt())
+        # a user message accepted on any path makes the pending heartbeat stale.
+        self._chat_orchestrator.user_message_accepted.connect(self._heartbeat.interrupt)
 
         # ═════════════════════════════════════════════════════════════
         # Phase 5: Create CoreManager (Business Logic Coordinator)
@@ -487,10 +489,9 @@ class DoroApp:
         self._idle_behavior.reset()
         self._heartbeat.reschedule()
 
-    def _shared_page_title(self) -> str | None:
+    def _shared_page(self):
         presence = getattr(self, "_presence", None)
-        page = presence.current_page if presence is not None else None
-        return page.title if page is not None else None
+        return presence.current_page if presence is not None else None
 
     def _companion_busy(self) -> bool:
         return (

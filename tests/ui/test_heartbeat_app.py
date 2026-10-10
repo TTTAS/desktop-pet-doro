@@ -1,7 +1,10 @@
 """Heartbeat wiring inside the real application, with isolated settings and files."""
 
+from types import SimpleNamespace
+
 from PySide6 import QtCore, QtWidgets
 
+import doro_app.core.chat.orchestrator as orch_mod
 from doro_app.app import DoroApp
 from doro_app.bootstrap import BootstrappedDependencies
 from doro_app.core.action import ActionRepository, ActionService
@@ -11,6 +14,7 @@ from doro_app.core.heartbeat.context import load_journal
 from doro_app.core.llm import structured
 from doro_app.core.llm.transport import Completion
 from doro_app.core.movement.repository import MovementRepository
+from doro_app.core.presence.models import PageEvent
 from doro_app.core.state import GifRepository
 from doro_app.ui.theme.themed_menu import DoroMenu, build_context_menu_content
 from doro_app.utils.config_manager import ConfigManager
@@ -71,15 +75,30 @@ def test_heartbeat_menu_settings_and_interrupts(qtbot, tmp_path, real_state_serv
         app._on_companion_settings_changed()
         assert heartbeat.is_scheduled and heartbeat._timer.interval() == 7 * 60 * 1000
 
-        # Focusing the chat bar delays a heartbeat; only sending a message cancels it.
+        # Focusing the chat bar delays a heartbeat; only sending a message cancels it,
+        # including a shared-page question that never starts a chat request.
         epoch = heartbeat._epoch
         app._interrupt_background_companionship()
         assert heartbeat._epoch == epoch
-        app._chat_controller.request_started.emit("hi", False)
+        page = PageEvent(1, "https://a.test", "A", "body")
+        app._presence._bridge = SimpleNamespace(
+            current_page=page, recent_page=lambda *_: None, shutdown=lambda: None
+        )
+        monkeypatch.setattr(orch_mod, "parse_web_read_command", lambda _m: None)
+        monkeypatch.setattr(orch_mod, "parse_read_current_command", lambda m: m)
+        monkeypatch.setattr(app._chat_orchestrator, "_on_web_read_result", lambda *_: None)
+        assert app._chat_orchestrator.send_message("這頁在說什麼")
         assert heartbeat._epoch == epoch + 1
+        assert app._shared_page() is page
+        app._presence._bridge = None
         app._companion.set_quiet(True)
         assert heartbeat._epoch == epoch + 2
         app._companion.set_quiet(False)
+
+        # A bubble already on screen (idle line, tab reaction) makes the heartbeat wait.
+        app._chat_orchestrator.speak_line("待機台詞")
+        assert heartbeat.skip_reason(manual=True).startswith("正在忙")
+        app._bubble_controller.clear_text()
 
         app._chat_orchestrator.settings.set_server_url("http://127.0.0.1:9")
         spoken = []

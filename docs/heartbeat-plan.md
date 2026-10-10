@@ -17,7 +17,7 @@
 | 介面 | 「陪伴設定… → 心跳」分頁（開關、間隔、編輯心跳清單）；右鍵「立刻跳一次心跳」 |
 | 設定 | `heartbeat_enabled`（預設關）、`heartbeat_interval_minutes`（預設 30，1～1440） |
 | 文件 | ADR 0006、README、CONTEXT 語彙、FEATURE_GUIDE、repo 地圖、INDEX、TODO_OPEN_CLAW |
-| 測試 | 新增 44 個（1120 → 1164 passed），含真實 `DoroApp` 組裝測試 |
+| 測試 | 新增 56 個（1120 → 1176 passed），含真實 `DoroApp` 組裝測試與 5 項審查問題的回歸測試 |
 
 **每次心跳做什麼**：檢查跳過規則 → 組「現況」（時間、互動間隔、最近聊天、清單、心跳日誌、分享頁標題）→ 模型回 `HeartbeatReply` → 不開口就只記日誌；開口就照角色回覆走路／換姿勢／說話並記日誌；期間使用者送出聊天、拖曳或切安靜模式則作廢。
 
@@ -144,6 +144,24 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 - 離屏實際啟動 `DoroApp`（假模型伺服器）：預設不排程；手動心跳送出 `HeartbeatReply` 結構、提示詞含清單、Doro 說出台詞並寫入日誌；安靜模式時泡泡顯示「心跳先跳過：安靜陪伴中」；開啟並設 5 分鐘後計時器為 300000 ms。
 
 **未驗證**：Windows 實機的系統閒置偵測、真實模型的開口品質、「編輯心跳清單…」在 Windows 開啟記事本。請依上方「人工體驗」清單確認。
+
+### 2026-10-10：審查修正（基準 `f8bb4ab`）
+
+外部審查以額外測試重現 5 個問題，主要是「心跳回覆過時後仍發言」。全部修正，每項各有回歸測試。
+
+| # | 問題 | 修正 | 回歸測試 |
+| --- | --- | --- | --- |
+| 1 | 只聽 `ChatController.request_started`；分頁提問等提前返回的路徑不發此訊號，舊心跳仍會蓋掉泡泡 | `ChatOrchestrator` 新增 `user_message_accepted`，在使用者訊息被接受的共同入口發出（一般聊天、分頁提問、網頁指令、操作中的確認），心跳改接這個訊號；自動訊息與被拒絕的訊息不發 | `test_page_question_announces_accepted_user_message`、`test_auto_and_rejected_messages_are_not_announced`、`test_heartbeat_app.py`（真的送出分頁提問） |
+| 2 | 只比對互動版本，換頁後仍會評論上一個分頁 | 心跳記下送出時的分頁；結果回來、等待忙碌期間、真正發言前都比對目前分頁，不同（含已無分頁）就丟棄。送出時沒有分頁的心跳，之後出現分頁仍可發言 | `test_page_change_while_waiting_drops_reply`（換到 B／無分頁）、`test_page_change_while_reply_waits_for_busy_drops_it`、`test_beat_without_page_is_not_dropped_when_a_page_appears` |
+| 3 | 忙碌判斷沒含泡泡，會蓋掉待機或分頁陪伴的台詞 | `app.py` 的心跳忙碌條件加上 `bubble_controller.text`；沿用 120 秒等待期限，逾時丟棄 | `test_heartbeat_app.py`（顯示待機台詞時心跳為忙碌） |
+| 4 | 先顯示失敗訊息才檢查過時，切到安靜模式後仍冒出「沒有拿到模型回覆」 | `_on_result` 先統一檢查過時（關閉／互動／安靜／換頁），再處理成功、沉默或失敗 | `test_failed_manual_beat_respects_cancel_and_quiet`（安靜／中斷）、`test_silent_manual_beat_after_quiet_says_nothing` |
+| 5 | 清單固定 UTF-8 且只捕捉 `OSError`，Big5／ANSI 存檔會拋出 `UnicodeDecodeError` 離開 Qt 回呼 | 以 `utf-8-sig` 讀取（接受記事本 BOM）；解碼失敗拋 `ChecklistUnreadable`，心跳視為跳過原因「心跳清單不是 UTF-8 編碼，請用 UTF-8 重新存檔」，手動觸發時以泡泡提示 | `test_checklist_saved_as_big5_raises_a_clear_error`、`test_checklist_with_utf8_bom_is_read`、`test_non_utf8_checklist_skips_instead_of_raising` |
+
+**其他改動**：`HeartbeatController` 的 `page_title` 參數改為 `page`（目前分享頁物件，標題取自其 `title`）；`tests/core/chat/test_presence_ask_path.py` 的半初始化 orchestrator 補上 `QObject.__init__`，因為 `send_message` 現在會發訊號。ADR 0006、FEATURE_GUIDE、README 同步更新。
+
+**驗證**：完整離屏測試 **1176 passed、3 skipped**；Black、Ruff、repo map、`git diff --check` 通過。把 `doro_app/` 改動暫存後用舊程式跑新測試，#1 的三個測試失敗（含 App 組裝測試 `assert 0 == (0 + 1)`），還原後通過。#2、#4、#5 的測試使用新介面（`page=`、`ChecklistUnreadable`），無法直接在舊程式上執行。離屏實際啟動 `DoroApp` 再跑一次手動心跳流程，結果與先前相同。
+
+**仍未處理**（審查也提到）：待機與心跳的發話冷卻未共享，見第四段「待決 1」。Windows 閒置偵測、實機開啟清單與真實模型品質仍待人工驗證。
 
 ## 四、後續討論與待決事項
 

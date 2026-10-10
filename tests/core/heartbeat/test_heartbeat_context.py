@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from doro_app.core.heartbeat.context import (
     DEFAULT_CHECKLIST,
     JOURNAL_SIZE,
+    ChecklistUnreadable,
     HeartbeatContext,
     JournalEntry,
     append_journal,
@@ -89,3 +92,16 @@ def test_describe_duration():
     assert describe_duration(30) == "不到 1 分鐘"
     assert describe_duration(3600) == "約 1 小時"
     assert describe_duration(3600 + 5 * 60) == "約 1 小時 5 分鐘"
+
+
+def test_checklist_saved_as_big5_raises_a_clear_error(tmp_path):
+    path = tmp_path / "heartbeat.md"
+    path.write_bytes("- 晚上提醒我睡覺".encode("big5"))
+    with pytest.raises(ChecklistUnreadable, match="UTF-8"):
+        read_checklist(path)
+
+
+def test_checklist_with_utf8_bom_is_read(tmp_path):
+    path = tmp_path / "heartbeat.md"
+    path.write_bytes("- 下午提醒我喝水".encode("utf-8-sig"))
+    assert read_checklist(path) == "- 下午提醒我喝水"

@@ -10,6 +10,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from PySide6 import QtCore
+
 import doro_app.core.chat.orchestrator as orch_mod
 from doro_app.core.chat.orchestrator import ChatOrchestrator
 from doro_app.core.presence.models import PageEvent
@@ -17,6 +19,7 @@ from doro_app.core.presence.models import PageEvent
 
 def _bare_orchestrator(presence):
     orch = ChatOrchestrator.__new__(ChatOrchestrator)
+    QtCore.QObject.__init__(orch)  # send_message emits user_message_accepted
     orch._operating = False
     orch._web_reading = False
     orch._controller = SimpleNamespace(is_inflight=False)

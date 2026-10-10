@@ -108,3 +108,41 @@ def test_recent_chat_lines_use_doro_line_only():
         ("Doro", "抱抱"),
         ("Doro", "舊格式文字"),
     ]
+
+
+def _real_orchestrator(presence):
+    controller = Mock()
+    controller.is_inflight = False
+    orch = ChatOrchestrator(controller, Mock(), Mock())
+    orch.set_presence(presence)
+    return orch
+
+
+def test_page_question_announces_accepted_user_message(qapp, monkeypatch):
+    """Review #1: a shared-page ask returns early but must still cancel a heartbeat."""
+    import doro_app.core.chat.orchestrator as orch_mod
+    from doro_app.core.presence.models import PageEvent
+
+    monkeypatch.setattr(orch_mod, "parse_web_read_command", lambda _m: None)
+    monkeypatch.setattr(orch_mod, "parse_read_current_command", lambda _m: "這頁在說什麼")
+    presence = Mock()
+    presence.current_page = PageEvent(1, "https://ex.test", "T", "body")
+    orch = _real_orchestrator(presence)
+    orch._on_web_read_result = lambda *_: None
+    accepted = []
+    orch.user_message_accepted.connect(lambda: accepted.append(True))
+
+    assert orch.send_message("這頁在說什麼") is True
+    assert accepted == [True]
+
+
+def test_auto_and_rejected_messages_are_not_announced(qapp):
+    orch = _real_orchestrator(None)
+    accepted = []
+    orch.user_message_accepted.connect(lambda: accepted.append(True))
+    orch._controller.is_inflight = True
+    assert orch.send_message("嗨") is False
+    orch._controller.is_inflight = False
+    orch._controller.start_request.return_value = (True, None)
+    orch.send_message("自動", is_auto=True)
+    assert accepted == []
