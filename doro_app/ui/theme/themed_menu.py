@@ -57,6 +57,7 @@ class MenuCallbacks:
     save_rest_state: Callable[[], None] = lambda: None
     clear_rest_point: Callable[[], None] = lambda: None
     show_companion_settings: Callable[[], None] = lambda: None
+    show_asset_factory: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -348,6 +349,8 @@ def build_context_menu_content(
     menu.addSeparator()
 
     # States submenu
+    factory_action = menu.addAction("素材工廠（影片去背）…")
+    factory_action.triggered.connect(callbacks.show_asset_factory)
     states_menu = menu.addMenu("States")
     for key, label in snapshot.visible_states:
         action = states_menu.addAction(label)
