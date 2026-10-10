@@ -274,6 +274,7 @@ class EditMoveStateDialog(FramelessDialog):
             text = (
                 "拖曳 Doro 時從清單隨機挑一張循環播放，放開後恢復。"
                 "用 'Manage GIFs...' 新增或移除；清單空白時保留目前外觀。"
+                "圖庫按 OK 立即儲存，外層 Cancel 不會復原圖庫變更。"
             )
         else:
             text = "Doro 幫你點畫面前播放的動作；未綁定時使用站立動畫備援。"
@@ -365,7 +366,7 @@ class EditMoveStateDialog(FramelessDialog):
 
     def _on_manage_transition_gifs(self):
         """Open GIF gallery dialog for transition multi-GIF management."""
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         if self.action_type == "action":
             return self._manage_drag_gifs()
@@ -378,19 +379,13 @@ class EditMoveStateDialog(FramelessDialog):
         gif_paths = self.service.list_transition_gif_paths(key)
         dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            # Release file handles before deleting GIFs (prevents WinError 32)
-            dialog.cleanup()
-            self._gif_player.clear()
-
-            for filename in removed:
-                try:
-                    self.service.remove_transition_gif(key, filename)
-                except Exception:
-                    pass  # File locked — will be cleaned up next launch
-            for path in added:
-                self.service.add_transition_gif(key, path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                lambda filename: self.service.remove_transition_gif(key, filename),
+                lambda path: self.service.add_transition_gif(key, path),
+            )
 
             # Update status label
             new_count = len(self.service.list_transition_gif_paths(key))
@@ -403,25 +398,20 @@ class EditMoveStateDialog(FramelessDialog):
 
     def _manage_drag_gifs(self):
         """Gallery edits to the drag pool apply immediately, like transitions."""
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         if self._action_service is None:
             return
         gif_paths = self._action_service.list_drag_gif_paths()
-        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self)
+        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self, allow_empty=True)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            dialog.cleanup()
-            self._gif_player.clear()
-
-            for filename in removed:
-                try:
-                    self._action_service.remove_drag_gif(filename)
-                except Exception:
-                    pass  # File locked — will be cleaned up next launch
-            for path in added:
-                self._action_service.add_drag_gif(path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                self._action_service.remove_drag_gif,
+                self._action_service.add_drag_gif,
+            )
             self._load_action_data()
 
     def _load_action_data(self) -> None:
@@ -649,7 +639,15 @@ class EditMoveStateDialog(FramelessDialog):
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Save", f"Failed to save transition: {e}")
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up GIF resources to prevent memory leaks."""
+    def cleanup(self) -> None:
+        """Release preview handles on OK, Cancel, window close and before file edits."""
+        self.preview_label.setMovie(None)
         self._gif_player.clear()
+
+    def done(self, result: int) -> None:
+        self.cleanup()
+        super().done(result)
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.cleanup()
         super().closeEvent(event)

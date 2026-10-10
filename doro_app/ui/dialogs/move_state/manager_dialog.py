@@ -42,6 +42,7 @@ class _ActionCard(QtWidgets.QFrame):
         extra_info: str = "",
         removable: bool = True,
         manage_gifs: bool = False,
+        editable: bool = True,
         parent: QtWidgets.QWidget | None = None,
     ):
         super().__init__(parent)
@@ -49,6 +50,7 @@ class _ActionCard(QtWidgets.QFrame):
         self._key = key
         self._removable = removable
         self._manage_gifs = manage_gifs or action_type == "transition"
+        self._editable = editable
         self._gif_paths = gif_paths
         self._gif_player = gif_player
         self._preview_index = 0
@@ -157,11 +159,13 @@ class _ActionCard(QtWidgets.QFrame):
             gifs_btn.clicked.connect(lambda: self.manage_gifs_clicked.emit(self._key))
             btn_row.addWidget(gifs_btn)
 
-        edit_btn = QtWidgets.QPushButton("Edit")
-        edit_btn.setFixedHeight(26)
-        edit_btn.setStyleSheet(self._small_btn_style())
-        edit_btn.clicked.connect(lambda: self.edit_clicked.emit(self._action_type, self._key))
-        btn_row.addWidget(edit_btn)
+        if self._editable:
+            edit_btn = QtWidgets.QPushButton("Edit")
+            edit_btn.setToolTip("Edit action settings")
+            edit_btn.setFixedHeight(26)
+            edit_btn.setStyleSheet(self._small_btn_style())
+            edit_btn.clicked.connect(lambda: self.edit_clicked.emit(self._action_type, self._key))
+            btn_row.addWidget(edit_btn)
 
         if self._removable:
             del_btn = QtWidgets.QPushButton("Del")
@@ -258,6 +262,7 @@ class MoveStateManagerDialog(FramelessDialog):
         self.setMinimumHeight(500)
         self._gif_player = GifPlayer()
         self._cards: list[_ActionCard] = []
+        self._editor_open = False
         self._setup_ui()
         self._populate()
 
@@ -293,6 +298,8 @@ class MoveStateManagerDialog(FramelessDialog):
         layout.addLayout(button_row)
 
     def _populate(self):
+        if self._editor_open:
+            return  # Resizing the manager must not reopen files while an editor owns them.
         self._gif_player.clear()
         self._cards.clear()
         while self._grid_layout.count():
@@ -374,6 +381,7 @@ class MoveStateManagerDialog(FramelessDialog):
                 extra_info="" if drag_paths else "尚未設定 GIF，拖曳時保留目前外觀",
                 removable=False,
                 manage_gifs=True,
+                editable=False,
                 parent=self._grid_container,
             )
             card.edit_clicked.connect(self._on_edit)
@@ -445,8 +453,7 @@ class MoveStateManagerDialog(FramelessDialog):
             self,
             action_service=self._action_service,
         )
-        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            self._populate()
+        self._exec_editor(dialog)
 
     def _on_edit(self, action_type: str, key: str):
         from .edit_dialog import EditMoveStateDialog
@@ -466,7 +473,17 @@ class MoveStateManagerDialog(FramelessDialog):
                 self,
                 action_service=self._action_service,
             )
-        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+        self._exec_editor(dialog)
+
+    def _exec_editor(self, dialog):
+        self._editor_open = True
+        self._gif_player.clear()
+        try:
+            dialog.exec()
+        finally:
+            dialog.cleanup()
+            self._editor_open = False
+            # Gallery OK writes immediately, even when the outer editor is cancelled.
             self._populate()
 
     def _on_remove(self, action_type: str, key: str):
@@ -498,47 +515,35 @@ class MoveStateManagerDialog(FramelessDialog):
                 )
 
     def _on_manage_transition_gifs(self, key: str):
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         gif_paths = self._get_transition_gif_paths(key)
         dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            dialog.cleanup()
-            self._gif_player.clear()
-            self._cards.clear()
-
-            for filename in removed:
-                try:
-                    self.service.remove_transition_gif(key, filename)
-                except Exception:
-                    pass
-            for path in added:
-                self.service.add_transition_gif(key, path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self._gif_player.clear,
+                lambda filename: self.service.remove_transition_gif(key, filename),
+                lambda path: self.service.add_transition_gif(key, path),
+            )
             self._populate()
 
     def _on_manage_drag_gifs(self, _key: str):
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         if self._action_service is None:
             return
         gif_paths = self._action_service.list_drag_gif_paths()
-        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self)
+        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self, allow_empty=True)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            dialog.cleanup()
-            self._gif_player.clear()
-            self._cards.clear()
-
-            for filename in removed:
-                try:
-                    self._action_service.remove_drag_gif(filename)
-                except Exception:
-                    pass
-            for path in added:
-                self._action_service.add_drag_gif(path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self._gif_player.clear,
+                self._action_service.remove_drag_gif,
+                self._action_service.add_drag_gif,
+            )
             self._populate()
 
     # ── Lifecycle ──

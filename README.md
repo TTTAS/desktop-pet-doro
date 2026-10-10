@@ -76,6 +76,12 @@ python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
 命令列沿用 AI 預設去背；調色、柔化及內縮請使用素材工廠視窗。
 快速驗證：`python -m pytest tests/gif_factory tests/ui/dialogs/test_asset_factory_dialog.py -m "not slow" -o addopts= -q`。
 
+### 拖曳動畫素材
+
+右鍵 Doro → Actions → Edit actions → `pet_drag` 卡片的 **GIFs**，可新增或刪除拖曳時隨機播放的動畫。
+圖庫按 **OK** 儲存，按 **Cancel** 放棄本次圖庫變更；可刪除全部素材，讓拖曳時維持目前外觀。
+拖曳動作只有素材清單可設定，因此只保留 GIFs；其他動作的 Edit 用於速度、方向或轉場等設定。
+
 ### Chat setup
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
