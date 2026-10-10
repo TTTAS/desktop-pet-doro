@@ -77,6 +77,50 @@ class ChatDragHandle(QtWidgets.QWidget):
             self._window.commit_geometry()
 
 
+class ChatResizeHandle(QtWidgets.QWidget):
+    """A narrow edge hit area, separate from editing and moving the chat input."""
+
+    def __init__(self, window, *, left: bool):
+        super().__init__(window)
+        self._window = window
+        self.left = left
+        self._press = None
+        self.setCursor(QtCore.Qt.CursorShape.SizeHorCursor)
+        self.setToolTip("拖曳調整聊天框寬度，放開自動儲存")
+        self.setAccessibleName("聊天框左側拉伸邊緣" if left else "聊天框右側拉伸邊緣")
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#d995b4"), 2))
+        y = self.height() - self._window.BAR_HEIGHT // 2
+        painter.drawLine(self.width() // 2, y - 8, self.width() // 2, y + 8)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._press = event.globalPosition().toPoint().x()
+            self._origin = self._window.geometry()
+            self._area = self._window._available_area()
+            self._window.interaction.emit()
+            event.accept()
+
+    def _resize_to(self, event):
+        self._window._resize_from_edge(
+            self._origin, self._area, self.left, event.globalPosition().toPoint().x() - self._press
+        )
+
+    def mouseMoveEvent(self, event):
+        if self._press is not None and event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+            self._resize_to(event)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if self._press is not None and event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._resize_to(event)
+            self._press = None
+            self._window.commit_geometry()
+            event.accept()
+
+
 class FloatingChatWindow(QtWidgets.QDialog):
     interaction = QtCore.Signal()
     expanded_changed = QtCore.Signal(bool)
@@ -98,6 +142,7 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._send_message = send_message
         self._rejection_reason = rejection_reason or (lambda: "")
+        self._resize_handles = []
         self._bar_position = None
         self._preferred_width = DEFAULT_CHAT_WINDOW_WIDTH
         self._expanded = False
@@ -174,21 +219,6 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.send_button.setAutoDefault(False)
         self.send_button.clicked.connect(self.send)
         row.addWidget(self.send_button)
-        sizing = QtWidgets.QVBoxLayout()
-        sizing.setSpacing(2)
-        self.widen_button = QtWidgets.QToolButton()
-        self.narrow_button = QtWidgets.QToolButton()
-        for button, text, delta, label in [
-            (self.widen_button, "＋", 40, "加寬聊天框"),
-            (self.narrow_button, "-", -40, "縮窄聊天框"),
-        ]:
-            button.setText(text)
-            button.setFixedSize(24, 22)
-            button.setToolTip(label + "（每次 40 像素，自動儲存）")
-            button.setAccessibleName(label)
-            button.clicked.connect(lambda checked=False, delta=delta: self.adjust_width(delta))
-            sizing.addWidget(button)
-        row.addLayout(sizing)
         self.history_button = QtWidgets.QToolButton()
         self.history_button.setText("↑")
         self.history_button.setToolTip("向上展開聊天紀錄")
@@ -206,6 +236,10 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.hide_button.clicked.connect(self.close)
         row.addWidget(self.hide_button)
         root.addWidget(self.bar)
+        self._resize_handles = [
+            ChatResizeHandle(self, left=True),
+            ChatResizeHandle(self, left=False),
+        ]
         self.setFixedSize(self._preferred_width, self.BAR_HEIGHT)
         self._render_messages()
 
@@ -257,8 +291,6 @@ class FloatingChatWindow(QtWidgets.QDialog):
             max(area.left(), min(self.x(), area.right() - self.width() + 1)),
             max(area.top(), min(self.y(), area.bottom() - self.height() + 1)),
         )
-        self.narrow_button.setEnabled(self.width() > MIN_CHAT_WINDOW_WIDTH)
-        self.widen_button.setEnabled(self.width() < min(MAX_CHAT_WINDOW_WIDTH, area.width()))
 
     def keep_on_screen(self):
         self._fit_area(self._available_area())
@@ -271,17 +303,22 @@ class FloatingChatWindow(QtWidgets.QDialog):
             self._bar_position.x(), self._bar_position.y(), self._preferred_width
         )
 
-    def adjust_width(self, delta: int):
-        self.interaction.emit()
-        area = self._available_area()
-        width = max(
-            MIN_CHAT_WINDOW_WIDTH, min(MAX_CHAT_WINDOW_WIDTH, area.width(), self.width() + delta)
-        )
-        old_width = self.width()
-        self._preferred_width = width
-        self.move(self.x() - (width - old_width) // 2, self.y())
-        self._fit_area(area)
-        self.commit_geometry()
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        for handle in self._resize_handles:
+            handle.setGeometry(0 if handle.left else self.width() - 7, 0, 7, self.height())
+            handle.raise_()
+
+    def _resize_from_edge(self, origin: QtCore.QRect, area: QtCore.QRect, left: bool, delta: int):
+        # Keep the opposite edge fixed; don't quantize the mouse's movement.
+        fixed_edge = origin.x() + origin.width() if left else origin.x()
+        available = fixed_edge - area.left() if left else area.right() + 1 - fixed_edge
+        maximum = max(1, min(MAX_CHAT_WINDOW_WIDTH, available))
+        minimum = min(MIN_CHAT_WINDOW_WIDTH, maximum)
+        width = max(minimum, min(maximum, origin.width() + (-delta if left else delta)))
+        self._preferred_width = max(MIN_CHAT_WINDOW_WIDTH, width)
+        self.setFixedSize(width, origin.height())
+        self.move(fixed_edge - width if left else fixed_edge, origin.y())
         self.layout().activate()
 
     def show_input(self, anchor: QtCore.QPoint | None = None, *, focus: bool = False):
