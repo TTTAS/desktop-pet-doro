@@ -36,9 +36,12 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_STRUCTURED_MODE,
+    DEFAULT_CHAT_WINDOW_WIDTH,
     DEFAULT_TAVILY_API_KEY,
     DEFAULT_VERIFY_SEARCH_DEPTH,
     DEFAULT_WEB_OPERATION_ENABLED,
+    MAX_CHAT_WINDOW_WIDTH,
+    MIN_CHAT_WINDOW_WIDTH,
     STRUCTURED_MODES,
 )
 
@@ -128,6 +131,8 @@ class UIConfig:
 
     # Bubble appearance
     bubble_scale: float = BUBBLE_DEFAULT_SCALE
+    chat_window_width: int = DEFAULT_CHAT_WINDOW_WIDTH
+    chat_window_position: list[int] | None = None  # Collapsed input bar's global top-left.
     quiet_companion: bool = False
     companion_home_x: float = 0.9
     companion_home_y: float | None = None  # None means no saved resting point.
@@ -149,6 +154,17 @@ class UIConfig:
         # Scale should be positive
         if not isinstance(self.bubble_scale, (int, float)) or self.bubble_scale <= 0:
             raise ValueError(f"bubble_scale must be positive number, got {self.bubble_scale}")
+        if (
+            type(self.chat_window_width) is not int
+            or not MIN_CHAT_WINDOW_WIDTH <= self.chat_window_width <= MAX_CHAT_WINDOW_WIDTH
+        ):
+            raise ValueError("chat_window_width is outside the supported integer range")
+        if self.chat_window_position is not None and (
+            not isinstance(self.chat_window_position, list)
+            or len(self.chat_window_position) != 2
+            or any(type(v) is not int or abs(v) > 1_000_000 for v in self.chat_window_position)
+        ):
+            raise ValueError("chat_window_position must contain two integer coordinates")
         if not isinstance(self.quiet_companion, bool):
             raise ValueError("quiet_companion must be bool")
         if (

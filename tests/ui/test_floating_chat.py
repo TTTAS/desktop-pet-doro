@@ -127,6 +127,8 @@ def test_launch_and_expand_stay_inside_work_area(chat):
 def test_handle_drags_input_without_opening_history(chat):
     window, _ = chat
     origin = window.pos()
+    committed = Mock()
+    window.geometry_committed.connect(committed)
     press = window.drag_handle.mapToGlobal(QtCore.QPoint(7, 15))
     for kind, global_pos, buttons in [
         (QtCore.QEvent.Type.MouseButtonPress, press, QtCore.Qt.MouseButton.LeftButton),
@@ -155,6 +157,7 @@ def test_handle_drags_input_without_opening_history(chat):
         )
         QtWidgets.QApplication.sendEvent(window.drag_handle, event)
     assert window.pos() == origin + QtCore.QPoint(60, 0)
+    committed.assert_called_once_with(window.x(), window.y(), window.width())
     assert not window.expanded
 
 

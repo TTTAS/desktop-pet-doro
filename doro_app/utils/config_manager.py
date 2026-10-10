@@ -42,14 +42,39 @@ from .config_defaults import (
     DEFAULT_CHAT_SERVER_URL,
     DEFAULT_CHAT_STOP_TOKENS,
     DEFAULT_CHAT_STRUCTURED_MODE,
+    DEFAULT_CHAT_WINDOW_WIDTH,
     DEFAULT_MOUSE_AUTOMATION_ENABLED,
     DEFAULT_TAVILY_API_KEY,
     DEFAULT_VERIFY_SEARCH_DEPTH,
     DEFAULT_WEB_OPERATION_ENABLED,
+    MAX_CHAT_WINDOW_WIDTH,
+    MIN_CHAT_WINDOW_WIDTH,
 )
 from .config_schema import AppConfig, AutomationConfig, ChatConfig, DoroConfig, UIConfig, WebConfig
 
 logger = get_logger(__name__)
+
+
+def _chat_window_width(value: Any) -> int:
+    if isinstance(value, str) and value.isascii() and value.isdecimal():
+        value = int(value)
+    if type(value) is int and MIN_CHAT_WINDOW_WIDTH <= value <= MAX_CHAT_WINDOW_WIDTH:
+        return value
+    return DEFAULT_CHAT_WINDOW_WIDTH
+
+
+def _chat_window_position(value: Any) -> list[int] | None:
+    try:
+        position = json.loads(value) if value is not None else None
+        if (
+            isinstance(position, list)
+            and len(position) == 2
+            and all(type(v) is int and abs(v) <= 1_000_000 for v in position)
+        ):
+            return position
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def _companion_poses(value: Any) -> list[str]:
@@ -287,6 +312,10 @@ class ConfigManager:
             "bubble_offset_x": kwargs.get("bubble_offset_x", current.bubble_offset_x),
             "bubble_offset_y": kwargs.get("bubble_offset_y", current.bubble_offset_y),
             "bubble_scale": kwargs.get("bubble_scale", current.bubble_scale),
+            "chat_window_width": kwargs.get("chat_window_width", current.chat_window_width),
+            "chat_window_position": kwargs.get(
+                "chat_window_position", current.chat_window_position
+            ),
             "quiet_companion": kwargs.get("quiet_companion", current.quiet_companion),
             "companion_home_x": kwargs.get("companion_home_x", current.companion_home_x),
             "companion_home_y": kwargs.get("companion_home_y", current.companion_home_y),
@@ -447,6 +476,10 @@ class ConfigManager:
                 bubble_scale=_safe_float(
                     self._settings.value("ui/bubble_scale"), BUBBLE_DEFAULT_SCALE
                 ),
+                chat_window_width=_chat_window_width(self._settings.value("ui/chat_window_width")),
+                chat_window_position=_chat_window_position(
+                    self._settings.value("ui/chat_window_position")
+                ),
                 quiet_companion=_safe_bool(self._settings.value("ui/quiet_companion"), False),
                 companion_home_x=_safe_float(self._settings.value("ui/companion_home_x"), 0.9),
                 companion_home_y=home_y if 0 <= home_y <= 1 else None,
@@ -564,6 +597,11 @@ class ConfigManager:
         self._settings.setValue("ui/bubble_offset_x", float(ui.bubble_offset_x))
         self._settings.setValue("ui/bubble_offset_y", float(ui.bubble_offset_y))
         self._settings.setValue("ui/bubble_scale", float(ui.bubble_scale))
+        self._settings.setValue("ui/chat_window_width", ui.chat_window_width)
+        if ui.chat_window_position is None:
+            self._settings.remove("ui/chat_window_position")
+        else:
+            self._settings.setValue("ui/chat_window_position", json.dumps(ui.chat_window_position))
         self._settings.setValue("ui/quiet_companion", ui.quiet_companion)
         self._settings.setValue("ui/companion_home_x", ui.companion_home_x)
         if ui.companion_home_y is None:
