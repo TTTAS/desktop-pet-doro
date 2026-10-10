@@ -205,3 +205,15 @@ class TestDoroConfig:
 def test_companion_interval_requires_integer_seconds_in_range(value):
     with pytest.raises(ValueError, match="companion_interval_seconds"):
         UIConfig(companion_interval_seconds=value)
+
+
+@pytest.mark.parametrize("value", [False, 0, 359, 1201, 460.5, "460"])
+def test_chat_width_requires_valid_integer(value):
+    with pytest.raises(ValueError, match="chat_window_width"):
+        UIConfig(chat_window_width=value)
+
+
+@pytest.mark.parametrize("value", [False, [], [0], [0, 1, 2], [True, 1], [1.5, 2], [1000001, 0]])
+def test_chat_position_requires_integer_pair(value):
+    with pytest.raises(ValueError, match="chat_window_position"):
+        UIConfig(chat_window_position=value)

@@ -24,6 +24,9 @@ STRUCTURED_MODES = ("auto", "json_schema", "text")
 DEFAULT_CHAT_STRUCTURED_MODE = "auto"
 DEFAULT_CHAT_STOP_TOKENS = ["\n人：", "\n人:", "\n你：", "\n你:", "\nUser:", "\nHuman:"]
 DEFAULT_CHAT_MAX_STOP_TOKENS = 0  # 0 = no limit
+DEFAULT_CHAT_WINDOW_WIDTH = 460
+MIN_CHAT_WINDOW_WIDTH = 360
+MAX_CHAT_WINDOW_WIDTH = 1200
 
 
 # ═══════════════════════════════════════════════════════════

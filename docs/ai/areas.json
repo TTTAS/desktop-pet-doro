@@ -292,7 +292,7 @@
     "tests": [
       "tests/ui"
     ],
-    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；常駐輸入列、向上展開的聊天紀錄、陪伴設定與腳底校正。"
+    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；常駐輸入列、寬度與位置保存、向上展開的聊天紀錄、陪伴設定與腳底校正。"
   },
   {
     "id": "config",

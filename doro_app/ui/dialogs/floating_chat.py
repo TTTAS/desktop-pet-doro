@@ -1,8 +1,14 @@
-"""A persistent, collapsible conversation window beside the desktop pet."""
+"""A persistent conversation input with adjustable, remembered geometry."""
 
 from html import escape
 
 from PySide6 import QtCore, QtGui, QtWidgets
+
+from ...utils.config_defaults import (
+    DEFAULT_CHAT_WINDOW_WIDTH,
+    MAX_CHAT_WINDOW_WIDTH,
+    MIN_CHAT_WINDOW_WIDTH,
+)
 
 
 class ChatInput(QtWidgets.QPlainTextEdit):
@@ -66,14 +72,16 @@ class ChatDragHandle(QtWidgets.QWidget):
             event.accept()
 
     def mouseReleaseEvent(self, event):
-        self._press = None
-        self._window.keep_on_screen()
+        if self._press is not None and event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._press = None
+            self._window.commit_geometry()
 
 
 class FloatingChatWindow(QtWidgets.QDialog):
     interaction = QtCore.Signal()
     expanded_changed = QtCore.Signal(bool)
     settings_requested = QtCore.Signal()
+    geometry_committed = QtCore.Signal(int, int, int)  # input x, input y, preferred width
     BAR_HEIGHT = 72
     HISTORY_HEIGHT = 280
 
@@ -90,6 +98,8 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._send_message = send_message
         self._rejection_reason = rejection_reason or (lambda: "")
+        self._bar_position = None
+        self._preferred_width = DEFAULT_CHAT_WINDOW_WIDTH
         self._expanded = False
         self._sending = False
         self._processing = False
@@ -164,6 +174,21 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.send_button.setAutoDefault(False)
         self.send_button.clicked.connect(self.send)
         row.addWidget(self.send_button)
+        sizing = QtWidgets.QVBoxLayout()
+        sizing.setSpacing(2)
+        self.widen_button = QtWidgets.QToolButton()
+        self.narrow_button = QtWidgets.QToolButton()
+        for button, text, delta, label in [
+            (self.widen_button, "＋", 40, "加寬聊天框"),
+            (self.narrow_button, "-", -40, "縮窄聊天框"),
+        ]:
+            button.setText(text)
+            button.setFixedSize(24, 22)
+            button.setToolTip(label + "（每次 40 像素，自動儲存）")
+            button.setAccessibleName(label)
+            button.clicked.connect(lambda checked=False, delta=delta: self.adjust_width(delta))
+            sizing.addWidget(button)
+        row.addLayout(sizing)
         self.history_button = QtWidgets.QToolButton()
         self.history_button.setText("↑")
         self.history_button.setToolTip("向上展開聊天紀錄")
@@ -181,7 +206,7 @@ class FloatingChatWindow(QtWidgets.QDialog):
         self.hide_button.clicked.connect(self.close)
         row.addWidget(self.hide_button)
         root.addWidget(self.bar)
-        self.setFixedSize(460, self.BAR_HEIGHT)
+        self.setFixedSize(self._preferred_width, self.BAR_HEIGHT)
         self._render_messages()
 
     @property
@@ -192,19 +217,80 @@ class FloatingChatWindow(QtWidgets.QDialog):
     def interacting(self) -> bool:
         return self.isVisible() and (self._expanded or self.isActiveWindow())
 
-    def keep_on_screen(self):
-        screen = QtWidgets.QApplication.screenAt(self.geometry().bottomLeft()) or self.screen()
-        if screen is None:
-            return
-        area = screen.availableGeometry()
+    def _available_area(self, point=None):
+        if point is None:
+            point = QtCore.QPoint(self.geometry().center().x(), self.geometry().bottom())
+        screen = QtWidgets.QApplication.screenAt(point) or self.screen()
+        return screen.availableGeometry()
+
+    def restore_layout(
+        self, width: int, position: QtCore.QPoint | None, default_area: QtCore.QRect
+    ):
+        """Restore the collapsed input geometry, or place it lower-center on first use."""
+        self._preferred_width = max(MIN_CHAT_WINDOW_WIDTH, min(MAX_CHAT_WINDOW_WIDTH, width))
+        area = (
+            self._available_area(position + QtCore.QPoint(width // 2, self.BAR_HEIGHT // 2))
+            if position is not None
+            else default_area
+        )
+        self.setFixedSize(min(self._preferred_width, area.width()), self.BAR_HEIGHT)
+        anchor = (
+            position
+            if position is not None
+            else QtCore.QPoint(
+                area.left() + (area.width() - self.width()) // 2,
+                area.top() + round(area.height() * 0.78) - self.BAR_HEIGHT // 2,
+            )
+        )
+        self.move(anchor)
+        self._fit_area(area)
+        self._bar_position = self.pos()
+
+    def _fit_area(self, area):
+        extra = (
+            min(self.HISTORY_HEIGHT, max(0, area.height() - self.BAR_HEIGHT))
+            if self._expanded
+            else 0
+        )
+        self.setFixedSize(min(self._preferred_width, area.width()), self.BAR_HEIGHT + extra)
         self.move(
             max(area.left(), min(self.x(), area.right() - self.width() + 1)),
             max(area.top(), min(self.y(), area.bottom() - self.height() + 1)),
         )
+        self.narrow_button.setEnabled(self.width() > MIN_CHAT_WINDOW_WIDTH)
+        self.widen_button.setEnabled(self.width() < min(MAX_CHAT_WINDOW_WIDTH, area.width()))
+
+    def keep_on_screen(self):
+        self._fit_area(self._available_area())
+
+    def commit_geometry(self):
+        """Persist only a finished user move/resize, never history expansion."""
+        self.keep_on_screen()
+        self._bar_position = QtCore.QPoint(self.x(), self.y() + self.height() - self.BAR_HEIGHT)
+        self.geometry_committed.emit(
+            self._bar_position.x(), self._bar_position.y(), self._preferred_width
+        )
+
+    def adjust_width(self, delta: int):
+        self.interaction.emit()
+        area = self._available_area()
+        width = max(
+            MIN_CHAT_WINDOW_WIDTH, min(MAX_CHAT_WINDOW_WIDTH, area.width(), self.width() + delta)
+        )
+        old_width = self.width()
+        self._preferred_width = width
+        self.move(self.x() - (width - old_width) // 2, self.y())
+        self._fit_area(area)
+        self.commit_geometry()
+        self.layout().activate()
 
     def show_input(self, anchor: QtCore.QPoint | None = None, *, focus: bool = False):
         if anchor is not None:
-            self.move(anchor)
+            self._bar_position = QtCore.QPoint(anchor)
+        if self._bar_position is not None:
+            self.move(
+                self._bar_position.x(), self._bar_position.y() - self.height() + self.BAR_HEIGHT
+            )
         self.keep_on_screen()
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, not focus)
         self.show()
@@ -217,16 +303,16 @@ class FloatingChatWindow(QtWidgets.QDialog):
     def _set_history(self, visible: bool):
         if self._expanded == visible:
             return
-        bottom = self.geometry().bottom()
-        screen = QtWidgets.QApplication.screenAt(self.geometry().bottomLeft()) or self.screen()
-        area = screen.availableGeometry()
+        if self._bar_position is None:
+            self._bar_position = QtCore.QPoint(self.x(), self.y() + self.height() - self.BAR_HEIGHT)
+        area = self._available_area()
         extra = min(self.HISTORY_HEIGHT, max(0, area.height() - self.BAR_HEIGHT)) if visible else 0
         self._expanded = visible
         self.history_panel.setVisible(visible)
         self.history_button.setText("↓" if visible else "↑")
         self.history_button.setToolTip("收起聊天紀錄" if visible else "向上展開聊天紀錄")
         self.setFixedSize(self.width(), self.BAR_HEIGHT + extra)
-        self.move(self.x(), bottom - self.height() + 1)
+        self.move(self._bar_position.x(), self._bar_position.y() - extra)
         self.keep_on_screen()
         self.layout().activate()
         self.expanded_changed.emit(visible)

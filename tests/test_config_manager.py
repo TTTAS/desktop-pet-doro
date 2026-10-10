@@ -541,3 +541,50 @@ def test_custom_interval_survives_reload(tmp_path, value):
     config.update_ui(companion_interval_seconds=value)
     config.save()
     assert ConfigManager(path).ui.companion_interval_seconds == value
+
+
+@pytest.mark.parametrize("position", [[-900, 420], [0, -300], None])
+def test_chat_layout_survives_unrelated_settings_and_reload(tmp_path, position):
+    path = tmp_path / "chat-layout.ini"
+    config = ConfigManager(path)
+    config.update_ui(chat_window_width=740, chat_window_position=position)
+    config.update_ui(companion_interval_seconds=23)
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.chat_window_width == 740
+    assert restored.ui.chat_window_position == position
+    assert restored.ui.companion_interval_seconds == 23
+
+
+@pytest.mark.parametrize(
+    "width,position",
+    [(False, "oops"), (0, "[1]"), (1201, "[true, 4]"), (1.5, "[1.5, 2]"), ("oops", "[1000001, 2]")],
+)
+def test_invalid_chat_geometry_does_not_reset_other_preferences(tmp_path, width, position):
+    path = tmp_path / "invalid-chat.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/chat_window_width", width)
+    settings.setValue("ui/chat_window_position", position)
+    settings.setValue("ui/companion_interval_seconds", 23)
+    settings.sync()
+    config = ConfigManager(path)
+    assert config.ui.chat_window_width == 460
+    assert config.ui.chat_window_position is None
+    assert config.ui.companion_interval_seconds == 23
+
+
+@pytest.mark.parametrize(
+    "width,position,expected_width,expected_position",
+    [(740, "oops", 740, None), (0, "[-900, 200]", 460, [-900, 200])],
+)
+def test_chat_geometry_fields_fall_back_independently(
+    tmp_path, width, position, expected_width, expected_position
+):
+    path = tmp_path / "partial-chat.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/chat_window_width", width)
+    settings.setValue("ui/chat_window_position", position)
+    settings.sync()
+    config = ConfigManager(path)
+    assert config.ui.chat_window_width == expected_width
+    assert config.ui.chat_window_position == expected_position

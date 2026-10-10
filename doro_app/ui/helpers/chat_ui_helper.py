@@ -72,6 +72,14 @@ class ChatUIHelper:
             self._chat_dialog = FloatingChatWindow(
                 self._send, self.window, rejection_reason=lambda: self._chat.last_send_error
             )
+            config = self._core_manager.config_manager.ui
+            position = config.chat_window_position
+            self._chat_dialog.restore_layout(
+                config.chat_window_width,
+                QtCore.QPoint(*position) if position is not None else None,
+                self.window.floor_geometry(),
+            )
+            self._chat_dialog.geometry_committed.connect(self._save_chat_geometry)
             self._chat_dialog.interaction.connect(self._interact)
             self._chat_dialog.expanded_changed.connect(lambda _: self.window.mark_user_activity())
             self._chat_dialog.settings_requested.connect(self.open_settings_dialog)
@@ -88,14 +96,13 @@ class ChatUIHelper:
         # pass through the orchestrator's existing routing and safeguards.
         return self._core_manager.send_chat_message(text, silent=True, is_auto=False)
 
+    def _save_chat_geometry(self, x: int, y: int, width: int):
+        config = self._core_manager.config_manager
+        config.update_ui(chat_window_width=width, chat_window_position=[x, y])
+        config.save()
+
     def show_input(self):
-        dialog = self._ensure_chat()
-        body = self.window.sprite_contact_rect().translated(self.window.current_position())
-        anchor = QtCore.QPoint(body.right() + 12, body.top())
-        area = self.window.floor_geometry()
-        if anchor.x() + dialog.width() > area.right():
-            anchor.setX(body.left() - dialog.width() - 12)
-        dialog.show_input(anchor)
+        self._ensure_chat().show_input()
 
     def request_failed(self, error: str, was_auto: bool):
         if self._chat_dialog is not None:

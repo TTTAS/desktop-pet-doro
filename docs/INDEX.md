@@ -14,6 +14,7 @@
 | 分頁陪伴配對、驗收 | [分頁陪伴設定](web-presence-setup.md) |
 | PR #63 review、範圍與待修交接 | [桌面陪伴與懸浮聊天交接紀錄](pr-63-handoff.md)（程式基準 `d06c4c9`） |
 | 活潑節奏、休息 GIF 與腳底校正 | [活潑陪伴計畫與驗收](companion-liveliness-plan.md) |
+| 聊天輸入列位置、寬度與記憶 | [位置與寬度計畫、驗收](chat-window-geometry-plan.md) |
 | 懸浮聊天窗與直接聊天入口 | [懸浮聊天窗計畫與驗收](floating-chat-plan.md) |
 | 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
