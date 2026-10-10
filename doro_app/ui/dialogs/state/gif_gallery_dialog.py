@@ -98,9 +98,12 @@ class GifGalleryDialog(FramelessDialog):
         state_label: str,
         gif_paths: list[Path],
         parent: QtWidgets.QWidget | None = None,
+        *,
+        allow_empty: bool = False,
     ):
         super().__init__(f"GIF Gallery - {state_label}", parent)
         self.state_key = state_key
+        self._allow_empty = allow_empty
         self._gif_paths = list(gif_paths)
         self._gif_player = GifPlayer()
         self._added: list[Path] = []  # GIFs to add
@@ -251,7 +254,7 @@ class GifGalleryDialog(FramelessDialog):
         remaining_new = len(self._added)
         total_remaining = remaining_original + remaining_new
 
-        if total_remaining == 0:
+        if total_remaining == 0 and not self._allow_empty:
             QtWidgets.QMessageBox.warning(self, "Cannot remove", "At least one GIF must remain.")
             return
 
@@ -268,6 +271,30 @@ class GifGalleryDialog(FramelessDialog):
         """Release GIF file handles (call before deleting GIF files)."""
         self._gif_player.clear()
 
+    def done(self, result: int) -> None:
+        self.cleanup()
+        super().done(result)
+
     def closeEvent(self, event: QtGui.QCloseEvent):
         self.cleanup()
         super().closeEvent(event)
+
+
+def apply_gallery_changes(dialog, parent, release_previews, remove_gif, add_gif) -> None:
+    """Release every caller-owned preview before writing; report unsuccessful edits."""
+    removed, added = dialog.removed_filenames, dialog.added_paths
+    dialog.cleanup()
+    release_previews()
+    failures = []
+    for items, operation, label in (
+        (removed, remove_gif, "刪除"),
+        (added, add_gif, "新增"),
+    ):
+        for item in items:
+            try:
+                if not operation(item):
+                    failures.append(f"{label} {Path(item).name}：未成功")
+            except Exception as exc:
+                failures.append(f"{label} {Path(item).name}：{exc}")
+    if failures:
+        QtWidgets.QMessageBox.warning(parent, "部分 GIF 變更未完成", "\n".join(failures))
