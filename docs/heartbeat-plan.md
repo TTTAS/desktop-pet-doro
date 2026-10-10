@@ -163,6 +163,12 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 
 **仍未處理**（審查也提到）：待機與心跳的發話冷卻未共享，見第四段「待決 1」。Windows 閒置偵測、實機開啟清單與真實模型品質仍待人工驗證。
 
+### 2026-10-10：合併 master（PR #64 素材工廠）
+
+- 衝突三處，皆為兩邊在同一位置各加一行：`MenuCallbacks` 與 `ContextMenuController` 同時保留 `heartbeat_now` 與 `show_asset_factory`；`docs/REPO_MAP.md` 由 `repo_map.py --write` 重新產生（`areas.json` 自動合併出 `heartbeat` 與 `factory` 兩區）。
+- 驗證：安裝 `.[dev,web,factory,factory-ai]` 後完整離屏測試 **1233 passed、3 skipped**；Black、Ruff、repo map 通過。
+- 備註：只裝 `factory` 而未裝 `factory-ai`（`rembg`）時，`tests/gif_factory` 有 3 個測試因 `ModuleNotFoundError: rembg` 失敗；在未合併的 master 上同樣失敗，與本分支無關。
+
 ## 四、後續討論與待決事項
 
 v1 完成後的問答整理（2026-10-10）。這段記錄理解與方向，不代表已實作。

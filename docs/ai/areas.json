@@ -341,5 +341,30 @@
       "tests/test_config_schema.py"
     ],
     "purpose": "設定讀寫、schema、資源定位、提示詞載入與共用解析。"
+  },
+  {
+    "id": "factory",
+    "name": "素材工廠",
+    "aliases": [
+      "素材",
+      "去背",
+      "DORO2",
+      "gif_factory"
+    ],
+    "scope": [
+      "doro_app/core/gif_factory/*.py",
+      "doro_app/ui/controllers/dialog_manager.py",
+      "doro_app/ui/dialogs/asset_factory_dialog.py"
+    ],
+    "entries": [
+      "doro_app/ui/dialogs/asset_factory_dialog.py",
+      "doro_app/core/gif_factory/pipeline.py",
+      "doro_app/ui/controllers/dialog_manager.py"
+    ],
+    "tests": [
+      "tests/gif_factory",
+      "tests/ui/dialogs/test_asset_factory_dialog.py"
+    ],
+    "purpose": "本機影片拆格、AI／顏色去背、批次動畫與單格 PNG 輸出；Qt 背景工作、取消及透過 StateService 匯入姿勢。"
   }
 ]

@@ -134,6 +134,7 @@ class ContextMenuController:
             clear_rest_point=self._companion.clear_rest_point if self._companion else lambda: None,
             show_companion_settings=self._show_companion_settings,
             heartbeat_now=self._heartbeat_now,
+            show_asset_factory=self._dialog_manager.show_asset_factory,
         )
 
     def _select_state(self, key: str) -> None:

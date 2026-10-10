@@ -45,6 +45,37 @@ python doro.py
 | `--not-topmost` | Don't keep the window always on top |
 | `--test-chat [MESSAGE]` | Send a test chat request and exit |
 
+### 素材工廠（整合 DORO2）
+
+右鍵 Doro →「素材工廠（影片去背）…」，可直接製作及匯入桌寵動畫。
+
+先在 doro 的 Python 環境安裝素材套件：
+
+```bash
+python -m pip install -e ".[factory]"
+# 需要 AI 去背時（包含上述素材套件）：
+python -m pip install -e ".[factory-ai]"
+```
+
+- 多選 MP4，以清單切換影片、滑桿挑影格，對照原圖與透明棋盤格預覽。
+- 支援 isnet-anime AI 去背、AI 邊緣柔化、點圖取色、顏色容差與邊緣內縮。
+- 全部影片使用同一組設定，輸出透明 WebP／APNG；也可把目前影格存成 PNG。
+- 在原尺寸去背後才縮小（預設長邊 200 像素）；記住輸出資料夾、格式及尺寸，沿用 DORO2 的 `.gif_factory.json`。
+- 輸出同名時自動加編號，不覆蓋之前的成品。取消批次會保留已完成的檔案；取消或關閉時需等目前影格／編碼完成。
+- 選取成品後，可匯入既有姿勢或建立新姿勢，再從 States 切換。PNG 作為單張圖片儲存，不匯入動畫姿勢。
+- 處理都在本機；第一次 AI 去背會下載模型，圖片與影片不會上傳。未裝 AI 套件仍可使用顏色去背。
+
+命令列功能也已移入 doro，不需要另外保留 DORO2 才能使用：
+
+```bash
+python -m doro_app.core.gif_factory input.mp4 output.webp --size 200
+python -m doro_app.core.gif_factory a.mp4 b.mp4 --out-dir output --fmt apng
+python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
+```
+
+命令列沿用 AI 預設去背；調色、柔化及內縮請使用素材工廠視窗。
+快速驗證：`python -m pytest tests/gif_factory tests/ui/dialogs/test_asset_factory_dialog.py -m "not slow" -o addopts= -q`。
+
 ### Chat setup
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
