@@ -858,6 +858,18 @@ class StateService:
         if not state:
             return False
 
+        # Preserve legacy movement/bound artwork too, not just {key}.gif.
+        pool_prefix = self._gif_repo.sanitize_filename(state_key) + "/"
+        was_pool = bool(state.gif_id and state.gif_id.replace("\\", "/").startswith(pool_prefix))
+        if not was_pool and not self._gif_repo.list_gifs(state_key):
+            existing = self.get_gif_path(state_key)
+            primary = self._gif_repo.get_state_storage_path(state_key)
+            if (
+                existing
+                and existing.resolve() != primary.resolve()
+                and not self._add_gif(self._gif_repo, existing, state_key)
+            ):
+                return False
         resource_id = self._add_gif(self._gif_repo, gif_path, state_key)
         if not resource_id:
             return False
@@ -888,7 +900,18 @@ class StateService:
         Returns:
             True if removed
         """
-        return self._gif_repo.remove_gif(state_key, filename)
+        if self._gif_repo.list_gifs(state_key):
+            return self._gif_repo.remove_gif(state_key, filename)
+        # Galleries also display older single-file and movement artwork.
+        # Resolve the actual registered asset, never an arbitrary input path.
+        existing = self.get_gif_path(state_key)
+        if existing is None or existing.name != filename:
+            return False
+        try:
+            existing.unlink()
+        except OSError as exc:
+            raise GifStorageError(f"Failed to delete GIF: {exc}") from exc
+        return True
 
     def delete_all_gifs(self, state_key: str) -> bool:
         """

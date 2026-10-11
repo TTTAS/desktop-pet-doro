@@ -41,7 +41,7 @@ class _ActionCard(QtWidgets.QFrame):
         details: str = "",
         extra_info: str = "",
         removable: bool = True,
-        manage_gifs: bool = False,
+        manage_gifs: bool = True,
         editable: bool = True,
         parent: QtWidgets.QWidget | None = None,
     ):
@@ -159,21 +159,23 @@ class _ActionCard(QtWidgets.QFrame):
             gifs_btn.clicked.connect(lambda: self.manage_gifs_clicked.emit(self._key))
             btn_row.addWidget(gifs_btn)
 
-        if self._editable:
-            edit_btn = QtWidgets.QPushButton("Edit")
-            edit_btn.setToolTip("Edit action settings")
-            edit_btn.setFixedHeight(26)
-            edit_btn.setStyleSheet(self._small_btn_style())
-            edit_btn.clicked.connect(lambda: self.edit_clicked.emit(self._action_type, self._key))
-            btn_row.addWidget(edit_btn)
+        edit_btn = QtWidgets.QPushButton("設定")
+        edit_btn.setEnabled(self._editable)
+        edit_btn.setToolTip("編輯方向、速度或轉場" if self._editable else "此動作只需設定 GIFs")
+        edit_btn.setFixedHeight(26)
+        edit_btn.setStyleSheet(self._small_btn_style())
+        edit_btn.clicked.connect(lambda: self.edit_clicked.emit(self._action_type, self._key))
+        btn_row.addWidget(edit_btn)
 
-        if self._removable:
-            del_btn = QtWidgets.QPushButton("Del")
-            del_btn.setToolTip("Remove action")
-            del_btn.setFixedHeight(26)
-            del_btn.setStyleSheet(self._small_btn_danger_style())
-            del_btn.clicked.connect(lambda: self.remove_clicked.emit(self._action_type, self._key))
-            btn_row.addWidget(del_btn)
+        del_btn = QtWidgets.QPushButton("刪除")
+        del_btn.setEnabled(self._removable)
+        del_btn.setToolTip(
+            "刪除整個動作" if self._removable else "內建動作不能刪除；可在 GIFs 移除素材"
+        )
+        del_btn.setFixedHeight(26)
+        del_btn.setStyleSheet(self._small_btn_danger_style())
+        del_btn.clicked.connect(lambda: self.remove_clicked.emit(self._action_type, self._key))
+        btn_row.addWidget(del_btn)
 
         layout.addLayout(btn_row)
 
@@ -228,6 +230,7 @@ class _ActionCard(QtWidgets.QFrame):
             " border: none; border-radius: 6px; padding: 2px 8px;"
             " font-size: 11px; font-weight: 600; }"
             "QPushButton:hover { background: rgba(232,96,156,0.25); }"
+            "QPushButton:disabled { background: #f4f1f3; color: #aaa0a7; }"
         )
 
     @staticmethod
@@ -237,6 +240,7 @@ class _ActionCard(QtWidgets.QFrame):
             " border: none; border-radius: 6px; padding: 2px 8px;"
             " font-size: 11px; font-weight: 600; }"
             "QPushButton:hover { background: rgba(200,40,40,0.22); }"
+            "QPushButton:disabled { background: #f4f1f3; color: #aaa0a7; }"
         )
 
 
@@ -268,6 +272,12 @@ class MoveStateManagerDialog(FramelessDialog):
 
     def _setup_ui(self):
         layout = self.content_layout
+
+        help_label = QtWidgets.QLabel(
+            "GIFs：管理多張動畫　｜　設定：方向、速度或轉場　｜　刪除：整個動作\n灰色按鈕表示不適用；內建動作可清空素材，但不能刪除動作。"
+        )
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
 
         # Scroll area
         scroll = QtWidgets.QScrollArea()
@@ -333,6 +343,7 @@ class MoveStateManagerDialog(FramelessDialog):
             )
             card.edit_clicked.connect(self._on_edit)
             card.remove_clicked.connect(self._on_remove)
+            card.manage_gifs_clicked.connect(self._on_manage_movement_gifs)
             self._grid_layout.addWidget(card, idx // cols, idx % cols)
             self._cards.append(card)
             idx += 1
@@ -349,8 +360,7 @@ class MoveStateManagerDialog(FramelessDialog):
                 (PET_CLICK_ACTION_KEY, "Doro 被點擊時的反應"),
                 (CLICK_ACTION_KEY, "Doro 幫你點畫面前的動作"),
             ):
-                path = self._action_service.resolve_action_gif_path(action_key)
-                gif_paths = [path] if path else []
+                gif_paths = self._action_service.list_action_gif_paths(action_key)
                 empty_hint = (
                     "尚未設定 GIF，點擊時保留目前外觀"
                     if action_key == PET_CLICK_ACTION_KEY
@@ -362,11 +372,13 @@ class MoveStateManagerDialog(FramelessDialog):
                     gif_paths,
                     self._gif_player,
                     details=description,
-                    extra_info=empty_hint if not path else "",
+                    extra_info=empty_hint if not gif_paths else "多張動畫：每次觸發隨機選擇",
                     removable=False,
+                    editable=False,
                     parent=self._grid_container,
                 )
                 card.edit_clicked.connect(self._on_edit)
+                card.manage_gifs_clicked.connect(self._on_manage_action_gifs)
                 self._grid_layout.addWidget(card, idx // cols, idx % cols)
                 self._cards.append(card)
                 idx += 1
@@ -416,6 +428,9 @@ class MoveStateManagerDialog(FramelessDialog):
     # ── GIF path helpers ──
 
     def _get_state_gif_paths(self, state: State, key: str) -> list[Path]:
+        pool = self.service.list_gif_paths(key)
+        if pool:
+            return pool
         if state.gif_id:
             gif_path = self.service.get_gif_path_by_id(state.gif_id)
             if gif_path and gif_path.exists():
@@ -472,7 +487,19 @@ class MoveStateManagerDialog(FramelessDialog):
                 key,
                 self,
                 action_service=self._action_service,
+                settings_only=True,
             )
+            if action_type == "transition":
+                transition = self.service.get_transition(key)
+                dialog._on_action_type_changed("Transition")
+                dialog.key_edit.setText(key)
+                for combo, state_key in (
+                    (dialog.from_state_combo, transition.from_state),
+                    (dialog.to_state_combo, transition.to_state),
+                ):
+                    if combo.findText(state_key) < 0:
+                        combo.addItem(state_key)
+                    combo.setCurrentText(state_key)
         self._exec_editor(dialog)
 
     def _exec_editor(self, dialog):
@@ -513,6 +540,52 @@ class MoveStateManagerDialog(FramelessDialog):
                 QtWidgets.QMessageBox.warning(
                     self, "Remove action", f"Failed to remove {action_type_text}."
                 )
+
+    def _on_manage_movement_gifs(self, key: str):
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
+
+        movement = self.service.get_move_state(key)
+        state = self.service.get_state(movement.state_key) if movement else None
+        if state is None:
+            return
+        state_key = movement.state_key
+        dialog = GifGalleryDialog(
+            state_key,
+            f"{key}（共用姿勢：{state_key}）",
+            self._get_state_gif_paths(state, state_key),
+            parent=self,
+        )
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            apply_gallery_changes(
+                dialog,
+                self,
+                self._gif_player.clear,
+                lambda filename: self.service.remove_gif(state_key, filename),
+                lambda path: self.service.add_gif(state_key, path),
+            )
+            self._populate()
+
+    def _on_manage_action_gifs(self, key: str):
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
+
+        if self._action_service is None:
+            return
+        dialog = GifGalleryDialog(
+            key,
+            key,
+            self._action_service.list_action_gif_paths(key),
+            parent=self,
+            allow_empty=True,
+        )
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            apply_gallery_changes(
+                dialog,
+                self,
+                self._gif_player.clear,
+                lambda filename: self._action_service.remove_action_gif(key, filename),
+                lambda path: self._action_service.add_action_gif(key, path),
+            )
+            self._populate()
 
     def _on_manage_transition_gifs(self, key: str):
         from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes

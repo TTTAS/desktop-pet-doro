@@ -283,6 +283,13 @@ class GifRepository:
         state_dir = self._state_dir(state_key)
         target = state_dir / filename
         if not target.is_file():
+            primary = self._primary_path(state_key)
+            if primary.is_file() and primary.name == filename:
+                try:
+                    primary.unlink()
+                except OSError as exc:
+                    raise GifStorageError(f"Failed to delete GIF: {exc}") from exc
+                return True
             return False
 
         # Security: ensure target is within state_dir

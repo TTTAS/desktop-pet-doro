@@ -25,6 +25,7 @@ def fake_action_service(tmp_path):
     """Minimal ActionService stand-in."""
     svc = Mock()
     svc.resolve_action_gif_path.return_value = None  # no GIF yet bound
+    svc.list_action_gif_paths.return_value = []
     svc.bind_click_gif.return_value = True
     return svc
 
@@ -88,7 +89,7 @@ def test_action_edit_mode_loads_existing_binding_path(
     EditMoveStateDialog = _import_dialog()
     existing_gif = tmp_path / "currently_bound.gif"
     existing_gif.write_bytes(b"gif")
-    fake_action_service.resolve_action_gif_path.return_value = existing_gif
+    fake_action_service.list_action_gif_paths.return_value = [existing_gif]
 
     dialog = EditMoveStateDialog(
         fake_state_service,
@@ -98,10 +99,10 @@ def test_action_edit_mode_loads_existing_binding_path(
     )
     qtbot.addWidget(dialog)
 
-    # The dialog should have asked the ActionService for the current path.
-    fake_action_service.resolve_action_gif_path.assert_called_with(CLICK_ACTION_KEY)
-    # And surfaced its filename in the status label.
-    assert "currently_bound.gif" in dialog.gif_status_label.text()
+    # Preview the persisted pool, never a randomly chosen fallback pose.
+    fake_action_service.list_action_gif_paths.assert_called_with(CLICK_ACTION_KEY)
+    fake_action_service.resolve_action_gif_path.assert_not_called()
+    assert dialog.gif_status_label.text() == "1 GIF(s)"
     # Action mode is active without the user touching the combo.
     assert dialog.action_type == "action"
     assert dialog.key_edit.text() == CLICK_ACTION_KEY

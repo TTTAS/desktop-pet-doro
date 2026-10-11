@@ -11,7 +11,8 @@ Responsibilities:
 2. **GIF resolution.** :meth:`resolve_action_gif_path` returns a Path
    that is *always* playable, even when the user has not bound a GIF:
 
-   - Step 1: the user-bound ``gif_id`` (if any) → resolved via
+   - Step 1: a random animation from the action's pool, or its legacy
+     user-bound ``gif_id`` (if any) → resolved via
      :class:`GifRepository`.
    - Step 2: ``pick_random_gif("stand")`` — random GIF from the user's
      stand subfolder (matches how ``stand`` is already populated).
@@ -27,6 +28,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 from ...utils.logger import get_logger
@@ -151,6 +153,11 @@ class ActionService:
         Returns ``None`` only if every fallback also fails (very unusual —
         means the ``res/state/`` directory is empty).
         """
+        # Both click gestures choose anew from their independent animation pool.
+        pool = self._gif_repo.list_gifs(self._pool_key(action_key))
+        if pool:
+            return random.choice(pool)
+
         # Step 1: user-bound gif_id on the ActionEntry.
         entry = self._actions.get(action_key)
         if entry and entry.gif_id:
@@ -181,6 +188,8 @@ class ActionService:
 
     def bind_pet_click_gif(self, source_path: Path) -> bool:
         """Persist the pet-click gesture asset without changing display state."""
+        if self._gif_repo.list_gifs(self._pool_key(PET_CLICK_ACTION_KEY)):
+            return self._replace_action_pool(PET_CLICK_ACTION_KEY, source_path)
         if not source_path.is_file():
             return False
         gif_id = self._state_service.store_gif(source_path, "pet_click_action")
@@ -190,6 +199,9 @@ class ActionService:
 
     def unbind_pet_click_gif(self) -> bool:
         """Remove the optional gesture binding; keep the current sprite on click."""
+        for path in self.list_action_gif_paths(PET_CLICK_ACTION_KEY):
+            if not self.remove_action_gif(PET_CLICK_ACTION_KEY, path.name):
+                return False
         return self._actions.update_gif_id(PET_CLICK_ACTION_KEY, None)
 
     def bind_click_gif(self, source_path: Path) -> bool:
@@ -201,6 +213,8 @@ class ActionService:
 
         Returns ``True`` on success.
         """
+        if self._gif_repo.list_gifs(self._pool_key(CLICK_ACTION_KEY)):
+            return self._replace_action_pool(CLICK_ACTION_KEY, source_path)
         if not source_path.is_file():
             logger.warning(f"bind_click_gif: source not found: {source_path}")
             return False
@@ -218,10 +232,90 @@ class ActionService:
 
     def unbind_click_gif(self) -> bool:
         """Clear the user-bound GIF; subsequent clicks fall back to stand."""
+        for path in self.list_action_gif_paths(CLICK_ACTION_KEY):
+            if not self.remove_action_gif(CLICK_ACTION_KEY, path.name):
+                return False
         if not self._actions.update_gif_id(CLICK_ACTION_KEY, None):
             return False
         self._state_service.update_state(CLICK_ACTION_STATE_KEY, gif_id=None)
         return True
+
+    def _replace_action_pool(self, action_key: str, source_path: Path) -> bool:
+        previous = self.list_action_gif_paths(action_key)
+        # Copy before deleting, including when source_path is itself in the pool.
+        if not self.add_action_gif(action_key, source_path):
+            return False
+        return all(self.remove_action_gif(action_key, path.name) for path in previous)
+
+    @staticmethod
+    def _pool_key(action_key: str) -> str:
+        if action_key == CLICK_ACTION_KEY:
+            return CLICK_ACTION_STATE_KEY
+        if action_key == PET_CLICK_ACTION_KEY:
+            return "pet_click_action"
+        raise ValueError(f"Unknown action: {action_key}")
+
+    def list_action_gif_paths(self, action_key: str) -> list[Path]:
+        """List owned artwork, without displaying fallback poses as editable assets."""
+        pool = self._gif_repo.list_gifs(self._pool_key(action_key))
+        if pool:
+            return pool
+        entry = self._actions.get(action_key)
+        path = self._gif_repo.get_path(entry.gif_id) if entry and entry.gif_id else None
+        return [path] if path else []
+
+    def _sync_action_pool(self, action_key: str) -> bool:
+        pool = self._gif_repo.list_gifs(self._pool_key(action_key))
+        gif_id = pool[0].relative_to(self._gif_repo.storage_dir).as_posix() if pool else None
+        previous = self._actions.get(action_key)
+        old_id = previous.gif_id if previous else None
+        if not self._actions.update_gif_id(action_key, gif_id):
+            return False
+        if action_key == CLICK_ACTION_KEY:
+            effective = gif_id or self._select_fallback_gif_id()
+            if not self._state_service.update_state(CLICK_ACTION_STATE_KEY, gif_id=effective):
+                return False
+            failure = self._state_service.get_state(CLICK_FAILED_STATE_KEY)
+            # Bootstrap may have shared the old click binding with the failure
+            # pose. Keep that reference valid without replacing custom artwork.
+            if old_id and failure and failure.gif_id == old_id:
+                return self._state_service.update_state(CLICK_FAILED_STATE_KEY, gif_id=effective)
+        return True
+
+    def add_action_gif(self, action_key: str, source_path: Path) -> bool:
+        """Append artwork, preserving the former single-file binding on first use."""
+        key = self._pool_key(action_key)
+        if not source_path.is_file():
+            return False
+        existing = self.list_action_gif_paths(action_key)
+        try:
+            if not self._gif_repo.list_gifs(key) and existing:
+                primary = self._gif_repo.get_state_storage_path(key)
+                # Canonical single files migrate automatically in add_gif. Older
+                # bindings elsewhere are copied so shared state artwork survives.
+                if existing[0].resolve() != primary.resolve():
+                    self._gif_repo.add_gif(existing[0], key)
+            self._gif_repo.add_gif(source_path, key)
+        except (GifNotFoundError, GifStorageError) as exc:
+            logger.error(f"Failed to add action GIF: {exc}")
+            return False
+        return self._sync_action_pool(action_key)
+
+    def remove_action_gif(self, action_key: str, filename: str) -> bool:
+        """Remove a pool item or detach a legacy binding; never delete shared artwork."""
+        key = self._pool_key(action_key)
+        if self._gif_repo.list_gifs(key):
+            if not self._gif_repo.remove_gif(key, filename):
+                return False
+        else:
+            existing = self.list_action_gif_paths(action_key)
+            if not existing or existing[0].name != filename:
+                return False
+            if existing[0].resolve() == self._gif_repo.get_state_storage_path(key).resolve():
+                entry = self._actions.get(action_key)
+                if not self._gif_repo.delete(entry.gif_id):
+                    return False
+        return self._sync_action_pool(action_key)
 
     # ─── Drag pool ─────────────────────────────────────────────────
 

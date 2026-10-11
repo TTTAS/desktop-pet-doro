@@ -30,6 +30,9 @@ class FakeGifRepository:
     def pick_random_gif(self, state_key: str) -> Path | None:
         return self._random_gif_for_state.get(state_key)
 
+    def list_gifs(self, state_key: str) -> list[Path]:
+        return []
+
 
 class RecordingStateService:
     """Captures ensure_action_state / update_state / store_gif calls."""
