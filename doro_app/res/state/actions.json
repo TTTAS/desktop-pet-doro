@@ -9,7 +9,7 @@
     {
       "key": "pet_click",
       "display_name": "Doro 被點擊",
-      "gif_id": "pet_click_action.gif",
+      "gif_id": "pet_click_action/pet_click_action_1.gif",
       "is_builtin": true
     }
   ]
