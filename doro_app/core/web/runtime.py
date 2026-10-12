@@ -72,6 +72,10 @@ class WebRuntime(QtCore.QObject):
         self._cancel.set()
         self._confirm_event.set()
         self._queue.put(_SHUTDOWN)
+        # A daemon worker must get time to remove an active command container
+        # before the Qt application exits. A pending LLM cannot act after cancel.
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=30)
 
     def submit_read(self, request_id: str, url: str) -> None:
         self._queue.put(lambda: self._do_read(request_id, url))
@@ -85,6 +89,45 @@ class WebRuntime(QtCore.QObject):
     def submit_operation(self, goal: str, ask_llm: AskLLM) -> None:
         self._cancel.clear()
         self._queue.put(lambda: self._do_operation(goal, ask_llm))
+
+    def submit_task(
+        self, task_id, store, workspace, ask_llm, *, ask_web=None, search_provider=None
+    ):
+        """Local and web tools share one queue; browser objects never cross threads."""
+        self._cancel.clear()
+        self._queue.put(
+            lambda: self._do_task(task_id, store, workspace, ask_llm, ask_web, search_provider)
+        )
+
+    def _do_task(self, task_id, store, workspace, ask_llm, ask_web, search_provider):
+        from ..agent.engine import TaskRunner
+        from ..agent.tools import Workspace, local_tools
+        from ..agent.web_tools import add_web_tools
+
+        try:
+            registry = local_tools(Workspace(workspace), self._cancel.is_set)
+            add_web_tools(
+                registry,
+                self._get_session,
+                search_provider,
+                ask_web,
+                self._confirm_bridge,
+                self.op_progress.emit,
+                self._cancel.is_set,
+            )
+            TaskRunner(
+                store,
+                registry,
+                ask_llm,
+                self._confirm_bridge,
+                self.op_progress.emit,
+                self._cancel.is_set,
+            ).run(task_id)
+        except Exception:
+            store.update(task_id, "failed", "任務無法啟動，請檢查工作目錄與設定。")
+            self.op_progress.emit("任務無法啟動，進度已保留。")
+        finally:
+            self.op_finished.emit()
 
     def submit_verify(self, request_id: str, query: str, ask_llm: AskLLM, search_provider) -> None:
         self._queue.put(lambda: self._do_verify(request_id, query, ask_llm, search_provider))

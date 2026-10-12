@@ -96,6 +96,7 @@ class ContextMenuController:
             has_chat_history=self._core_manager.has_chat_history,
             quiet_companion=bool(self._companion and self._companion.quiet),
             has_rest_point=bool(self._companion and self._companion.has_rest_point),
+            task_assistant_enabled=self._core_manager.chat_orchestrator.task_assistant_enabled(),
             a11y_enabled=bool(self._core_manager.config_manager.automation.a11y_enabled),
             mouse_enabled=bool(self._core_manager.config_manager.automation.mouse_enabled),
             web_operation_enabled=bool(
@@ -124,6 +125,8 @@ class ContextMenuController:
             preview_a11y=self._preview_a11y,
             toggle_mouse_enabled=self._toggle_mouse_enabled,
             toggle_web_operation=self._toggle_web_operation,
+            toggle_task_assistant=self._toggle_task_assistant,
+            show_task_assistant=self._show_task_assistant,
             show_presence_settings=self._show_presence_settings,
             simulate_response=self._simulate_response,
             inspect_position=self._inspect_position,
@@ -205,6 +208,20 @@ class ContextMenuController:
         cm = self._core_manager.config_manager
         cm.update_automation(web_operation_enabled=bool(checked))
         cm.save()
+        if not checked and self._core_manager.chat_orchestrator.is_web_busy:
+            self._core_manager.chat_orchestrator.send_message("停")
+
+    def _toggle_task_assistant(self, checked: bool) -> None:
+        cm = self._core_manager.config_manager
+        cm.update_automation(task_assistant_enabled=bool(checked))
+        cm.save()
+        if not checked and self._core_manager.chat_orchestrator.is_web_busy:
+            self._core_manager.chat_orchestrator.send_message("停")
+
+    def _show_task_assistant(self) -> None:
+        from ..dialogs.task_assistant_dialog import TaskAssistantDialog
+
+        TaskAssistantDialog(self._core_manager.chat_orchestrator, self._window).exec()
 
     def _preview_a11y(self) -> None:
         """Run the diagnostic read and show the result in a popup.

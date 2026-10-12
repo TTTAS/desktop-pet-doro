@@ -44,6 +44,35 @@
     "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現。"
   },
   {
+    "id": "agent",
+    "name": "任務助理與持久記憶",
+    "aliases": [
+      "任務",
+      "agent",
+      "openclaw",
+      "記憶",
+      "本機工具"
+    ],
+    "scope": [
+      "doro_app/core/agent/*.py",
+      "doro_app/ui/dialogs/task_assistant_dialog.py"
+    ],
+    "entries": [
+      "doro_app/core/agent/engine.py",
+      "doro_app/core/agent/store.py",
+      "doro_app/core/agent/tools.py",
+      "doro_app/core/agent/sandbox.py",
+      "doro_app/core/agent/web_tools.py",
+      "doro_app/ui/dialogs/task_assistant_dialog.py"
+    ],
+    "tests": [
+      "tests/core/agent",
+      "tests/core/chat/test_task_assistant.py",
+      "tests/browser/test_web_automation.py"
+    ],
+    "purpose": "明確使用者任務的多步工具迴圈、工作目錄檔案及隔離指令、跨網頁工具、持久進度、接續與記憶管理。"
+  },
+  {
     "id": "llm",
     "name": "模型呼叫與結構化回覆",
     "aliases": [

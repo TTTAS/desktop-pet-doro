@@ -60,6 +60,93 @@ def open_fixture(session):
     return session.snapshot()
 
 
+def test_agent_reads_browser_then_writes_and_verifies_file(session, tmp_path):
+    from doro_app.core.agent.engine import TaskRunner
+    from doro_app.core.agent.models import TaskDecision
+    from doro_app.core.agent.store import TaskStore
+    from doro_app.core.agent.tools import Workspace, local_tools
+    from doro_app.core.agent.web_tools import add_web_tools
+
+    store = TaskStore(tmp_path / "journal")
+    workspace = Workspace(tmp_path / "workspace")
+    registry = local_tools(workspace, lambda: False)
+    add_web_tools(
+        registry, lambda: session, None, None, lambda _: True, lambda _: None, lambda: False
+    )
+    decisions = iter(
+        [
+            TaskDecision(
+                action="tool",
+                tool="web.read",
+                arguments={"url": "http://doro.test/form"},
+                plan=["讀網站", "保存摘要並讀回"],
+            ),
+            TaskDecision(
+                action="tool",
+                tool="file.write",
+                arguments={"path": "summary.txt", "text": "網站有分類與勾選功能。"},
+            ),
+            TaskDecision(action="tool", tool="file.read", arguments={"path": "summary.txt"}),
+            TaskDecision(action="done", summary="已保存摘要並讀回。"),
+        ]
+    )
+    prompts, confirms = [], []
+
+    def ask(prompt):
+        prompts.append(prompt)
+        return next(decisions)
+
+    task_id = store.create("讀這個網站，把摘要存到 summary.txt")
+    TaskRunner(
+        store,
+        registry,
+        ask,
+        lambda text: confirms.append(text) or True,
+        lambda _: None,
+        lambda: False,
+    ).run(task_id)
+    assert store.get(task_id)["state"] == "done"
+    assert "Category" in prompts[1]
+    assert "PRIVATE_PASSWORD" not in prompts[1]
+    assert (workspace.root / "summary.txt").read_text(encoding="utf-8") == "網站有分類與勾選功能。"
+    assert len(confirms) == 1
+
+
+def test_agent_refusing_nested_browser_step_stops_whole_task(session, tmp_path):
+    from doro_app.core.agent.engine import TaskRunner
+    from doro_app.core.agent.models import TaskDecision
+    from doro_app.core.agent.store import TaskStore
+    from doro_app.core.agent.tools import Workspace, local_tools
+    from doro_app.core.agent.web_tools import add_web_tools
+
+    open_fixture(session)
+    store = TaskStore(tmp_path / "journal")
+    registry = local_tools(Workspace(tmp_path / "workspace"), lambda: False)
+    add_web_tools(
+        registry,
+        lambda: session,
+        None,
+        lambda _: WebStep(action="click", n=index(session, "#submit")),
+        lambda _: False,
+        lambda _: None,
+        lambda: False,
+    )
+    task_id = store.create("送出示範表單")
+    TaskRunner(
+        store,
+        registry,
+        lambda _: TaskDecision(
+            action="tool", tool="web.operate", arguments={"goal": "送出表單"}, plan=["操作表單"]
+        ),
+        lambda _: True,
+        lambda _: None,
+        lambda: False,
+    ).run(task_id)
+    assert store.get(task_id)["state"] == "blocked"
+    assert store.steps(task_id)[0]["state"] == "denied"
+    assert session._page.evaluate("document.body.dataset.sent") is None
+
+
 def test_complete_task_from_blank_page_with_forms_wait_and_tabs(session):
     confirmations, replies, prompts = [], [], []
     decisions = iter(["goto", "select", "check", "hover", "wait", "new_tab", "switch_tab", "done"])

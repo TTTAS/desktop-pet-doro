@@ -28,6 +28,7 @@ class MenuSnapshot:
     web_operation_enabled: bool = False  # 網頁操作總開關（第 3 層）
     quiet_companion: bool = False
     has_rest_point: bool = False
+    task_assistant_enabled: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -59,6 +60,8 @@ class MenuCallbacks:
     show_companion_settings: Callable[[], None] = lambda: None
     heartbeat_now: Callable[[], None] = lambda: None
     show_asset_factory: Callable[[], None] = lambda: None
+    toggle_task_assistant: Callable[[bool], None] = lambda _: None
+    show_task_assistant: Callable[[], None] = lambda: None
 
 
 class DoroMenu(QtWidgets.QMenu):
@@ -436,6 +439,13 @@ def build_context_menu_content(
     web_op_toggle_action.setCheckable(True)
     web_op_toggle_action.setChecked(snapshot.web_operation_enabled)
     web_op_toggle_action.triggered.connect(callbacks.toggle_web_operation)
+
+    task_toggle = chat_menu.addAction("啟用任務助理（檔案、指令與記憶）")
+    task_toggle.setCheckable(True)
+    task_toggle.setChecked(snapshot.task_assistant_enabled)
+    task_toggle.triggered.connect(callbacks.toggle_task_assistant)
+    task_panel = chat_menu.addAction("任務與記憶說明…")
+    task_panel.triggered.connect(callbacks.show_task_assistant)
 
     presence_action = chat_menu.addAction("分頁陪伴設定…")
     presence_action.triggered.connect(callbacks.show_presence_settings)

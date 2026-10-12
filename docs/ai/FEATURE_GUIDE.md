@@ -5,6 +5,16 @@
 
 ## 功能地圖（改功能時先看這裡）
 
+### 任務助理與持久記憶
+- 入口：ChatOrchestrator 的直接任務指令或使用者聊天 `tool.kind=task`；`AutomationConfig.task_assistant_enabled` 預設關。
+- `core/agent/engine.py` 的 TaskRunner 依工具表逐步執行，原始使用者目標不可由路由模型改寫。24 步／連續三次錯誤停止、確認拒絕即停止、取消後不執行晚到決策。
+- `store.py` 在工具工作目錄外保存 SQLite：任務、計畫、intent、結果及明確使用者記憶。重啟標記 interrupted，接續先唯讀觀察，不重播 pending 副作用；上限及刪除方式見 ADR 0008。
+- `tools.py` 提供專用目錄的文字檔讀寫與列表；`sandbox.py` 的可選指令只進本機 Docker，無網路、固定映像、資源上限、取消清理，沒有主機 fallback。
+- `web_tools.py` 銜接搜尋／讀頁及另行啟用的 WebOperator。共用 WebRuntime 佇列，Playwright 全程維持執行緒歸屬。子步驟拒絕會停止父任務。
+- UI：聊天子選單的任務開關與 TaskAssistantDialog；列出紀錄、接續、刪除、記住、忘記與開啟工作目錄。聊天指令與面板使用同一資料庫。
+- 記憶僅由使用者新增，開關啟用時透過 ChatController 的 memory_context_provider 組入參考資料。一般頁面回答／心跳／分頁陪伴仍沒有工具權限。
+- 參考：[任務助理計畫](../agent-plan.md)、[ADR 0008](../adr/0008-persistent-task-assistant.md)；測試 `tests/core/agent`、`tests/core/chat/test_task_assistant.py` 及 `tests/browser/test_web_automation.py`。
+
 ### Doro 被點擊的 ACTION
 - 設定入口：動作管理的 `pet_click` 卡片「Doro 被點擊時的反應」→ GIFs，可新增／移除多張 GIF／APNG／WebP，每次點擊隨機選擇；沒有素材時保留目前外觀。
 - `ActionService` 的 `list_action_gif_paths`／`add_action_gif`／`remove_action_gif` 管理兩種點擊素材池，分別儲存於 `res/state/click_action/`、`res/state/pet_click_action/`。第一次新增保留舊的單張綁定；actions.json 保留代表性的 gif_id，不變更格式。桌面點擊的隱藏 State 同步使用 click_action 池，備援站立動畫不列入可刪除素材。

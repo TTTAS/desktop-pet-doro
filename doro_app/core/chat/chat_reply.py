@@ -1,8 +1,8 @@
 """Chat's reply schema and task descriptions (ADR 0005).
 
 Chat is the only feature whose character reply may carry a ``tool``: reading a
-page, searching, operating a site, opening a site to log in, or clicking the
-desktop. A page answer uses the plain character reply, so it cannot launch
+page, searching, operating a site, opening a site to log in, clicking the
+desktop, or starting an explicit task. A page answer uses the plain character reply, so it cannot launch
 another tool (ADR 0004).
 """
 
@@ -48,16 +48,18 @@ class ChatMove(BaseModel):
 class ChatTool(BaseModel):
     """聊天時要 doro 另外去做的一件事。"""
 
-    kind: Literal["read", "verify", "operate", "login", "click"] = Field(
+    kind: Literal["read", "verify", "operate", "login", "click", "task"] = Field(
         description=(
             "read 讀使用者給的網址、verify 上網搜尋（探索推薦／查資料／查證）、"
             "operate 在網站上實際辦事、login 開網站讓使用者自己登入、"
-            "click 點一下 move 走到的桌面位置"
+            "click 點一下 move 走到的桌面位置、task 處理本機檔案／指令與跨工具任務"
         )
     )
     url: str | None = Field(default=None, description="read／login 的完整網址")
     query: str | None = Field(default=None, description="verify 的搜尋任務：目的、主題、限制")
-    goal: str | None = Field(default=None, description="operate 要在網站上完成的目標")
+    goal: str | None = Field(
+        default=None, description="operate／task 的目標摘要；task 保留使用者原文作為執行目標"
+    )
 
     @model_validator(mode="after")
     def _needs_url(self):
@@ -87,6 +89,7 @@ CHAT_TASK = """\
 - 狀態從最接近當下情緒的挑；找不到完全符合的就挑最接近的。
 
 【什麼時候用 tool（一次最多一個；不確定就填 null，正常聊天）】
+- task：使用者要求處理本機工作目錄的檔案、執行程式、或接續多個工具完成任務時用。goal 描述需求；執行器保留使用者原文作為授權目標。不能假裝有任意主機或桌面控制權。單純問方法或聊天不用 task。
 - read：使用者給了網址，而且要那頁的實際內容才能好好回答（「這頁在說什麼」「幫我看看」「摘要」）時用，url 照抄使用者給的完整網址，不要自己編。line 先簡短說要去看（例：「好，doro去看看～」）。只是順口提到網站就不要用。
 - 點「這台電腦畫面上」的東西（瀏覽器工具列、書籤、視窗按鈕、別的程式）是桌面點擊：move 給 x、y 走到目標中心，tool 用 click。座標只能抄提示詞裡的 [前景視窗元件樹]；沒有那棵樹就代表 doro 看不到畫面，老實說「doro 現在看不到你的螢幕，要先開啟『讓 Doro 看畫面』和『讓 Doro 幫忙點滑鼠』喔」，不要亂點。
 - operate：要在「某個網站上實際執行動作」（加購物車、填寫並送出表單、下單、報名、發文、一步步完成某件事）時用，goal 用一句話描述目標。搜尋資料與推薦不用 operate。

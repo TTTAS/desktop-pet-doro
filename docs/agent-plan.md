@@ -48,3 +48,27 @@
 - 容器指令：成功、非零退出、逾時、取消、無 Docker／映像的錯誤與資源限制。
 - Qt 接線：自然語言／直接命令入口、開關、busy 結束、頁面回答和 auto 回覆不能啟動任務。
 - 完整現有測試、Chromium、本次新測試、Black、Ruff、repo map 及 diff 檢查後更新 PR。
+
+## 實作與驗收紀錄
+
+已完成本計畫的任務核心、專用工作目錄檔案工具、可選 Docker 指令工具、跨網站工具、
+持久任務／記憶，以及聊天和管理面板入口。設計邊界記錄於 ADR 0008。
+
+- 最終 Linux／Python 3.12 完整測試：**1377 passed, 3 skipped**，其中 17 項為真實
+  Chromium 測試。相較網站階段新增 56 項已執行案例，以及 3 項可選 Docker 驗收。
+- 已驗證真實檔案／SQLite、讀頁→寫檔→讀回、子網站步驟拒絕、取消、重啟接續、
+  逃逸與連結限制、Windows 保留名稱、確認期間檔案改變、記憶刪除、Qt 佇列及 UI。
+- 指令工具以替身 Docker CLI 驗證成功／失敗、輸出上限、取消／逾時、清理、
+  缺少安裝與遠端 context 拒絕。這些不等於實際容器隔離驗收。
+- 3 項跳過皆為 `DORO_DOCKER_TESTS=1` 的真實容器驗收：檔案範圍／無網路／權限、
+  逾時清理、取消清理。測試環境沒有既有映像，自動核准審查拒絕下載測試映像，
+  因而等待使用者授權下載後補跑；測試本身不會下載映像。
+- Black（297 個 Python 檔）、Ruff、`repo_map.py --check`、`git diff --check` 通過。
+- 尚未進行 Windows 真機及真實模型的任務完成率驗收；未使用真帳號或私有資料。
+
+完整測試沿用 `AGENTS.md` 命令並啟用 `DORO_BROWSER_TESTS=1`。
+可選容器驗收（需預先安裝本機 Docker 和官方 `python:3.12-slim`）：
+
+```bash
+DORO_DOCKER_TESTS=1 QT_QPA_PLATFORM=offscreen python -m pytest tests/core/agent/test_docker_integration.py -o addopts= -q
+```

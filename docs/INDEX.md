@@ -17,6 +17,7 @@
 | 懸浮聊天窗與直接聊天入口 | [懸浮聊天窗計畫與驗收](floating-chat-plan.md) |
 | 定時心跳 | [心跳 v1 改動目標與驗收紀錄](heartbeat-plan.md)、[ADR 0006](adr/0006-timed-heartbeat.md) |
 | 多步網站操作與後續自動化路線 | [自動操作計畫](automation-plan.md)、[ADR 0007](adr/0007-extended-web-operations.md) |
+| 本機任務、持久記憶、接續與指令隔離 | [任務助理計畫](agent-plan.md)、[ADR 0008](adr/0008-persistent-task-assistant.md) |
 | 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
 ## 架構決策（已採用）
@@ -28,6 +29,7 @@
 - [0005：結構化回覆與提示詞分層](adr/0005-structured-llm-replies.md)
 - [0006：定時心跳只做角色表現](adr/0006-timed-heartbeat.md)
 - [0007：擴充網站操作與快照綁定](adr/0007-extended-web-operations.md)
+- [0008：持久任務與隔離本機工具](adr/0008-persistent-task-assistant.md)
 
 ## 按需參考
 

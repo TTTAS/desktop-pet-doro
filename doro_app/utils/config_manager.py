@@ -324,6 +324,9 @@ class ConfigManager:
         """
         current = self._config.automation
         updated_values = {
+            "task_assistant_enabled": kwargs.get(
+                "task_assistant_enabled", current.task_assistant_enabled
+            ),
             "mouse_enabled": kwargs.get("mouse_enabled", current.mouse_enabled),
             "mouse_target_allowlist": kwargs.get(
                 "mouse_target_allowlist", current.mouse_target_allowlist
@@ -494,6 +497,9 @@ class ConfigManager:
             )
 
             automation_config = AutomationConfig(
+                task_assistant_enabled=_safe_bool(
+                    self._settings.value("automation/task_assistant_enabled"), False
+                ),
                 mouse_enabled=_safe_bool(
                     self._settings.value("automation/mouse_enabled"),
                     DEFAULT_MOUSE_AUTOMATION_ENABLED,
@@ -597,6 +603,9 @@ class ConfigManager:
 
         # Save automation config
         automation = self._config.automation
+        self._settings.setValue(
+            "automation/task_assistant_enabled", automation.task_assistant_enabled
+        )
         self._settings.setValue("automation/mouse_enabled", bool(automation.mouse_enabled))
         # Stored as a comma string, not a list: QSettings serializes an
         # empty list as an invalid variant that reads back None, which

@@ -85,6 +85,7 @@ class ChatController(QtCore.QObject):
         config_manager: ConfigManager,
         doro_state_provider: TextProvider | None = None,
         a11y_tree_provider: TextProvider | None = None,
+        memory_context_provider: TextProvider | None = None,
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
@@ -98,6 +99,7 @@ class ChatController(QtCore.QObject):
         self._movement_hint_provider = movement_hint_provider
         self._doro_state_provider: TextProvider = doro_state_provider or (lambda: "")
         self._a11y_tree_provider: TextProvider = a11y_tree_provider or (lambda: "")
+        self._memory_context_provider: TextProvider = memory_context_provider or (lambda: "")
 
         # User-configurable settings live in their own module (backlog #5).
         self._settings = ChatSettings(
@@ -362,6 +364,7 @@ class ChatController(QtCore.QObject):
             self._movement_hint_provider,
             self._doro_state_provider,
             self._a11y_tree_provider,
+            self._memory_context_provider,
         ):
             block = self._safe_call_provider(provider)
             if block:

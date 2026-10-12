@@ -225,8 +225,11 @@ class AutomationConfig:
     # 操作指令去點/填/送出網頁（送出類仍會逐一問使用者）。跟 mouse/a11y 同樣是
     # 保守的 opt-in。
     web_operation_enabled: bool = DEFAULT_WEB_OPERATION_ENABLED
+    task_assistant_enabled: bool = False
 
     def __post_init__(self):
+        if not isinstance(self.task_assistant_enabled, bool):
+            raise ValueError("task_assistant_enabled must be bool")
         if not isinstance(self.mouse_enabled, bool):
             raise ValueError(f"mouse_enabled must be bool, got {type(self.mouse_enabled)}")
         if not isinstance(self.mouse_target_allowlist, (tuple, list)):

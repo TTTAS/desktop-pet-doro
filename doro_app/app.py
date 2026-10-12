@@ -131,6 +131,7 @@ class DoroApp:
             config_manager=self._config_manager,
             doro_state_provider=lambda: self._build_doro_state_text(),
             a11y_tree_provider=lambda: self._a11y.read_foreground_tree() if self._a11y else "",
+            memory_context_provider=lambda: self._chat_orchestrator.task_memory_context(),
         )
         # ─── Automation (Phase 1c) ───────────────────────────────
         # Optional: only constructed if mouse_enabled is True or the env var
