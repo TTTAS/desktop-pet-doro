@@ -28,9 +28,11 @@ class EditMoveStateDialog(FramelessDialog):
         *,
         action_service: ActionService | None = None,
         edit_action_key: str | None = None,
+        settings_only: bool = False,
     ):
         # action edit mode wins over move_state edit semantics.
         self._edit_action_key = edit_action_key
+        self._settings_only = settings_only
         is_action_edit = edit_action_key is not None
         title = "Edit Action" if (move_state_key is not None or is_action_edit) else "Add Action"
         super().__init__(title, parent)
@@ -56,6 +58,7 @@ class EditMoveStateDialog(FramelessDialog):
             self._on_action_type_changed("Action")
             self._load_action_data()
         elif self.is_edit:
+            self._on_action_type_changed("Movement")
             self._load_data()
         else:
             # For new actions, default to movement type
@@ -174,6 +177,7 @@ class EditMoveStateDialog(FramelessDialog):
         gif_upload_layout.addWidget(self.manage_gifs_btn)
 
         main_layout.addWidget(gif_upload_group)
+        gif_upload_group.setVisible(not self._settings_only)
 
         # GIF Preview
         preview_group = QtWidgets.QGroupBox("GIF Preview")
@@ -187,6 +191,7 @@ class EditMoveStateDialog(FramelessDialog):
         preview_layout.addWidget(self.preview_label)
 
         main_layout.addWidget(preview_group)
+        preview_group.setVisible(not self._settings_only)
 
         # Info label (dynamic based on action type)
         self.info_label = QtWidgets.QLabel()
@@ -257,14 +262,14 @@ class EditMoveStateDialog(FramelessDialog):
                 "💡 Transition: Animation plays when changing from one state to another. "
                 "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
+        if self._settings_only:
+            self.info_label.setText("這裡只編輯動作設定。新增或刪除動畫，請使用卡片上的 GIFs。")
 
     def _update_gif_buttons(self):
-        """Single-file actions pick one GIF; transitions and drag use the gallery."""
-        named = self.named_action_combo.currentData() if self.action_type == "action" else None
-        is_drag = named == PET_DRAG_ACTION_KEY
-        self.manage_gifs_btn.setVisible(self.action_type == "transition" or is_drag)
-        self.select_gif_btn.setVisible(not is_drag)
-        self.clear_pet_gif_btn.setVisible(named == PET_CLICK_ACTION_KEY)
+        """All animation editing uses the same multi-file gallery."""
+        self.manage_gifs_btn.setVisible(True)
+        self.select_gif_btn.setVisible(False)
+        self.clear_pet_gif_btn.setVisible(False)
 
     def _update_action_info(self):
         action_key = self.named_action_combo.currentData()
@@ -274,9 +279,12 @@ class EditMoveStateDialog(FramelessDialog):
             text = (
                 "拖曳 Doro 時從清單隨機挑一張循環播放，放開後恢復。"
                 "用 'Manage GIFs...' 新增或移除；清單空白時保留目前外觀。"
+                "圖庫按 OK 立即儲存，外層 Cancel 不會復原圖庫變更。"
             )
         else:
             text = "Doro 幫你點畫面前播放的動作；未綁定時使用站立動畫備援。"
+        if action_key != PET_DRAG_ACTION_KEY:
+            text += "可在 Manage GIFs... 加入多張動畫，每次觸發隨機選擇。圖庫按 OK 立即儲存。"
         self.info_label.setText(text)
 
     def _on_named_action_changed(self, _index: int):
@@ -365,10 +373,14 @@ class EditMoveStateDialog(FramelessDialog):
 
     def _on_manage_transition_gifs(self):
         """Open GIF gallery dialog for transition multi-GIF management."""
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         if self.action_type == "action":
-            return self._manage_drag_gifs()
+            if self.named_action_combo.currentData() == PET_DRAG_ACTION_KEY:
+                return self._manage_drag_gifs()
+            return self._manage_action_gifs()
+        if self.action_type == "movement":
+            return self._manage_movement_gifs()
 
         key = self.key_edit.text().strip()
         if not key:
@@ -378,19 +390,13 @@ class EditMoveStateDialog(FramelessDialog):
         gif_paths = self.service.list_transition_gif_paths(key)
         dialog = GifGalleryDialog(key, key, gif_paths, parent=self)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            # Release file handles before deleting GIFs (prevents WinError 32)
-            dialog.cleanup()
-            self._gif_player.clear()
-
-            for filename in removed:
-                try:
-                    self.service.remove_transition_gif(key, filename)
-                except Exception:
-                    pass  # File locked — will be cleaned up next launch
-            for path in added:
-                self.service.add_transition_gif(key, path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                lambda filename: self.service.remove_transition_gif(key, filename),
+                lambda path: self.service.add_transition_gif(key, path),
+            )
 
             # Update status label
             new_count = len(self.service.list_transition_gif_paths(key))
@@ -401,27 +407,67 @@ class EditMoveStateDialog(FramelessDialog):
                 self.gif_status_label.setText("No GIF selected")
                 self.gif_status_label.setStyleSheet("color: #9c6b8a;")
 
+    def _manage_movement_gifs(self):
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
+
+        key = self.state_combo.currentText()
+        state = self.service.get_state(key)
+        if state is None:
+            return
+        paths = self.service.list_gif_paths(key)
+        if not paths:
+            path = self.service.get_gif_path(key)
+            paths = [path] if path else []
+        dialog = GifGalleryDialog(key, f"共用姿勢：{key}", paths, parent=self)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                lambda filename: self.service.remove_gif(key, filename),
+                lambda path: self.service.add_gif(key, path),
+            )
+            self._update_preview(key)
+
+    def _manage_action_gifs(self):
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
+
+        if self._action_service is None:
+            return
+        key = self.named_action_combo.currentData()
+        dialog = GifGalleryDialog(
+            key,
+            key,
+            self._action_service.list_action_gif_paths(key),
+            parent=self,
+            allow_empty=True,
+        )
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                lambda filename: self._action_service.remove_action_gif(key, filename),
+                lambda path: self._action_service.add_action_gif(key, path),
+            )
+            self._load_action_data()
+
     def _manage_drag_gifs(self):
         """Gallery edits to the drag pool apply immediately, like transitions."""
-        from ..state.gif_gallery_dialog import GifGalleryDialog
+        from ..state.gif_gallery_dialog import GifGalleryDialog, apply_gallery_changes
 
         if self._action_service is None:
             return
         gif_paths = self._action_service.list_drag_gif_paths()
-        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self)
+        dialog = GifGalleryDialog("drag", "Doro 被拖曳", gif_paths, parent=self, allow_empty=True)
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            removed = dialog.removed_filenames
-            added = dialog.added_paths
-            dialog.cleanup()
-            self._gif_player.clear()
-
-            for filename in removed:
-                try:
-                    self._action_service.remove_drag_gif(filename)
-                except Exception:
-                    pass  # File locked — will be cleaned up next launch
-            for path in added:
-                self._action_service.add_drag_gif(path)
+            apply_gallery_changes(
+                dialog,
+                self,
+                self.cleanup,
+                self._action_service.remove_drag_gif,
+                self._action_service.add_drag_gif,
+            )
             self._load_action_data()
 
     def _load_action_data(self) -> None:
@@ -445,10 +491,11 @@ class EditMoveStateDialog(FramelessDialog):
                 self.gif_status_label.setStyleSheet("color: #9c6b8a;")
                 self.preview_label.setText("拖曳時保留目前外觀；可以之後再設定 GIF。")
             return
-        path = self._action_service.resolve_action_gif_path(action_key)
+        paths = self._action_service.list_action_gif_paths(action_key)
+        path = paths[0] if paths else None
         if path is not None:
             self._load_preview_movie(path)
-            self.gif_status_label.setText(f"Current: {path.name}")
+            self.gif_status_label.setText(f"{len(paths)} GIF(s)")
             self.gif_status_label.setStyleSheet("color: #2e7d32;")
         else:
             self.gif_status_label.setText("尚未設定 GIF")
@@ -471,6 +518,9 @@ class EditMoveStateDialog(FramelessDialog):
 
         # Set state combo
         index = self.state_combo.findText(move_state.state_key)
+        if index < 0:
+            self.state_combo.addItem(move_state.state_key)
+            index = self.state_combo.findText(move_state.state_key)
         if index >= 0:
             self.state_combo.setCurrentIndex(index)
 
@@ -649,7 +699,15 @@ class EditMoveStateDialog(FramelessDialog):
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Save", f"Failed to save transition: {e}")
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
-        """Clean up GIF resources to prevent memory leaks."""
+    def cleanup(self) -> None:
+        """Release preview handles on OK, Cancel, window close and before file edits."""
+        self.preview_label.setMovie(None)
         self._gif_player.clear()
+
+    def done(self, result: int) -> None:
+        self.cleanup()
+        super().done(result)
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.cleanup()
         super().closeEvent(event)

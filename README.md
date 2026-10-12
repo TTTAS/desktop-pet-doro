@@ -76,6 +76,17 @@ python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
 命令列沿用 AI 預設去背；調色、柔化及內縮請使用素材工廠視窗。
 快速驗證：`python -m pytest tests/gif_factory tests/ui/dialogs/test_asset_factory_dialog.py -m "not slow" -o addopts= -q`。
 
+### 動作動畫素材
+
+右鍵 Doro → Actions → Edit actions，每張卡片固定提供 **GIFs／設定／刪除**：
+
+- **GIFs**：管理多張 GIF／APNG／WebP，可一次選取多個檔案；卡片左右箭頭可預覽整個清單。點擊、被點擊、拖曳、移動及轉場均支援多張動畫，每次觸發隨機選擇。
+- **設定**：編輯移動的方向、速度、關聯姿勢，或轉場的起訖姿勢；素材統一從 GIFs 管理。
+- **刪除**：刪除整個動作。內建動作的設定及刪除按鈕呈灰色，滑鼠移上會說明原因。
+
+圖庫按 **OK** 儲存，按 **Cancel** 放棄本次圖庫變更。`pet_click`、`pet_drag` 可清空素材並保留目前外觀；`click` 清空後使用站立動畫備援。移動動作使用關聯姿勢的共用素材，圖庫標題會顯示該姿勢。
+舊有單張動畫會保留，新增時轉為多張清單。新增動作視窗內的圖庫按 OK 也會立即儲存，外層 Cancel 不會撤銷圖庫已儲存的變更。
+
 ### Chat setup
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.

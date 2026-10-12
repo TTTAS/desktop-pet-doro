@@ -180,7 +180,7 @@
       "tests/core/action",
       "tests/ui/components/test_pet_click_animation.py"
     ],
-    "purpose": "序列化動作、等待完成與取消；管理桌面點擊及 Doro 被點擊的獨立素材綁定。"
+    "purpose": "序列化動作、等待完成與取消；管理桌面點擊及 Doro 被點擊的獨立多張素材池與隨機播放。"
   },
   {
     "id": "reaction",
@@ -316,7 +316,7 @@
     "tests": [
       "tests/ui"
     ],
-    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；常駐輸入列、向上展開的聊天紀錄、陪伴設定與腳底校正。"
+    "purpose": "Qt 視窗、GIF、泡泡、選單及 dialogs；常駐輸入列、向上展開的聊天紀錄、陪伴設定與腳底校正。所有動作統一 GIFs／設定／刪除入口，支援多張素材；圖庫共用增刪與錯誤提示，編輯時釋放父層預覽。"
   },
   {
     "id": "config",

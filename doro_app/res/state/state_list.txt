@@ -1,4 +1,4 @@
-[2026-10-07 22:41:17] 可使用的狀態為:
+[2026-10-11 23:35:32] 可使用的狀態為:
 - (idle) Idle | type: transition | GIF: 4 GIFs
 - (stand) stand | type: transition | GIF: 2 GIFs
 

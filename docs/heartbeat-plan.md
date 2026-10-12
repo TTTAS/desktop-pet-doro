@@ -169,6 +169,11 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 - 驗證：安裝 `.[dev,web,factory,factory-ai]` 後完整離屏測試 **1233 passed、3 skipped**；Black、Ruff、repo map 通過。
 - 備註：只裝 `factory` 而未裝 `factory-ai`（`rembg`）時，`tests/gif_factory` 有 3 個測試因 `ModuleNotFoundError: rembg` 失敗；在未合併的 master 上同樣失敗，與本分支無關。
 
+### 2026-10-12：再次合併 master（PR #67、#68 動作控制與點擊／拖曳 GIF）
+
+- 程式碼自動合併，沒有衝突；只有自動產生的 `docs/REPO_MAP.md` 衝突，以 `repo_map.py --write` 重新產生。
+- 驗證：完整離屏測試 **1257 passed、3 skipped**（含心跳的 App 組裝測試，確認右鍵選單仍有「立刻跳一次心跳」）；Black、Ruff、repo map、`git diff --check` 通過。
+
 ## 四、後續討論與待決事項
 
 v1 完成後的問答整理（2026-10-10）。這段記錄理解與方向，不代表已實作。

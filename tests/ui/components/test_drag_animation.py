@@ -78,10 +78,14 @@ def test_click_does_not_play_drag_and_reset_is_idempotent(qapp):
 
 
 @pytest.mark.parametrize("ending", ["release", "reset", "deactivate", "ungrab"])
-def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending):
+def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending, tmp_path):
     sprite = SpriteController(DoroViewModel())
     handler = MouseEventHandler()
-    assets = sorted(DRAG_DIR.glob("*.webp"))
+    # User-editable bundled pools may legitimately contain only one animation.
+    source = next(DRAG_DIR.glob("*.webp"))
+    assets = [tmp_path / "normal.webp", tmp_path / "next.webp"]
+    for path in assets:
+        path.write_bytes(source.read_bytes())
     app = SimpleNamespace(
         _action_service=Mock(list_drag_gif_paths=Mock(return_value=list(assets))),
         _automation=Mock(),
@@ -251,6 +255,8 @@ def test_drag_card_and_editor_manage_the_pool(qtbot, drag_service, monkeypatch):
     qtbot.addWidget(manager)
     card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
     assert card._manage_gifs and not card._gif_paths
+    button_labels = [b.text() for b in card.findChildren(QtWidgets.QPushButton)]
+    assert "GIFs" in button_labels and "Edit" not in button_labels
     card.manage_gifs_clicked.emit(PET_DRAG_ACTION_KEY)
     assert len(service.list_drag_gif_paths()) == 1
     card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
@@ -268,3 +274,156 @@ def test_drag_card_and_editor_manage_the_pool(qtbot, drag_service, monkeypatch):
     assert editor.gif_status_label.text() == "2 GIF(s)"
     editor._save_action()
     assert editor.result() == QtWidgets.QDialog.DialogCode.Accepted
+
+
+@pytest.mark.parametrize("accept_editor", [True, False])
+def test_nested_drag_gallery_releases_previews_and_refreshes_after_editor(
+    qtbot, drag_service, monkeypatch, accept_editor
+):
+
+    from doro_app.core.action.repository import PET_DRAG_ACTION_KEY
+    from doro_app.ui.dialogs.move_state.edit_dialog import EditMoveStateDialog
+    from doro_app.ui.dialogs.move_state.manager_dialog import MoveStateManagerDialog
+    from doro_app.ui.dialogs.state.gif_gallery_dialog import GifGalleryDialog
+
+    service, state, _ = drag_service
+    source = next(DRAG_DIR.glob("*.webp"))
+    assert service.add_drag_gif(source)
+    assert service.add_drag_gif(source)
+    first, remaining = service.list_drag_gif_paths()
+    manager = MoveStateManagerDialog(state, action_service=service)
+    qtbot.addWidget(manager)
+    assert manager._gif_player.count() > 0
+
+    def gallery_exec(gallery):
+        gallery._on_remove_gif(first.name)
+        gallery.accept()
+        return gallery.result()
+
+    def editor_exec(editor):
+        # Even a parent resize must not reopen the preview files during edits.
+        manager._populate()
+        assert manager._gif_player.count() == 0
+        editor._manage_drag_gifs()
+        assert not first.exists()
+        assert editor.gif_status_label.text() == "1 GIF(s)"
+        editor.accept() if accept_editor else editor.reject()
+        return editor.result()
+
+    monkeypatch.setattr(GifGalleryDialog, "exec", gallery_exec)
+    monkeypatch.setattr(EditMoveStateDialog, "exec", editor_exec)
+    manager._on_edit("action", PET_DRAG_ACTION_KEY)
+    card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
+    assert card._gif_paths == [remaining]
+
+
+@pytest.mark.parametrize("nested", [True, False])
+def test_drag_gallery_can_clear_last_gif(qtbot, drag_service, monkeypatch, nested):
+    from doro_app.core.action.repository import PET_DRAG_ACTION_KEY
+    from doro_app.ui.dialogs.move_state.edit_dialog import EditMoveStateDialog
+    from doro_app.ui.dialogs.move_state.manager_dialog import MoveStateManagerDialog
+    from doro_app.ui.dialogs.state.gif_gallery_dialog import GifGalleryDialog
+
+    service, state, _ = drag_service
+    assert service.add_drag_gif(next(DRAG_DIR.glob("*.webp")))
+    path = service.list_drag_gif_paths()[0]
+
+    def gallery_exec(gallery):
+        gallery._on_remove_gif(path.name)
+        assert gallery.removed_filenames == [path.name]
+        gallery.accept()
+        return gallery.result()
+
+    def editor_exec(editor):
+        editor._manage_drag_gifs()
+        assert editor.gif_status_label.text() == "尚未設定 GIF"
+        editor.accept()
+        return editor.result()
+
+    monkeypatch.setattr(GifGalleryDialog, "exec", gallery_exec)
+    monkeypatch.setattr(EditMoveStateDialog, "exec", editor_exec)
+    manager = MoveStateManagerDialog(state, action_service=service)
+    qtbot.addWidget(manager)
+    if nested:
+        manager._on_edit("action", PET_DRAG_ACTION_KEY)
+    else:
+        manager._on_manage_drag_gifs(PET_DRAG_ACTION_KEY)
+    assert not path.exists()
+    assert service.list_drag_gif_paths() == []
+    card = next(c for c in manager._cards if c._key == PET_DRAG_ACTION_KEY)
+    assert card._gif_paths == []
+
+
+def test_drag_gallery_cancel_preserves_files_and_releases_handles(qtbot, drag_service, monkeypatch):
+    from doro_app.core.action.repository import PET_DRAG_ACTION_KEY
+    from doro_app.ui.dialogs.move_state.manager_dialog import MoveStateManagerDialog
+    from doro_app.ui.dialogs.state.gif_gallery_dialog import GifGalleryDialog
+
+    service, state, _ = drag_service
+    source = next(DRAG_DIR.glob("*.webp"))
+    assert service.add_drag_gif(source)
+    assert service.add_drag_gif(source)
+    paths = service.list_drag_gif_paths()
+
+    def gallery_exec(gallery):
+        gallery._on_remove_gif(paths[0].name)
+        gallery.reject()
+        assert gallery._gif_player.count() == 0
+        return gallery.result()
+
+    monkeypatch.setattr(GifGalleryDialog, "exec", gallery_exec)
+    manager = MoveStateManagerDialog(state, action_service=service)
+    qtbot.addWidget(manager)
+    manager._on_manage_drag_gifs(PET_DRAG_ACTION_KEY)
+    assert service.list_drag_gif_paths() == paths
+    manager._gif_player.clear()
+    assert service.remove_drag_gif(paths[0].name)
+    assert service.remove_drag_gif(paths[1].name)
+
+
+@pytest.mark.parametrize("raises", [True, False])
+def test_drag_gallery_reports_failed_delete(qtbot, drag_service, monkeypatch, raises):
+    from PySide6 import QtWidgets
+
+    from doro_app.core.action.repository import PET_DRAG_ACTION_KEY
+    from doro_app.ui.dialogs.move_state.manager_dialog import MoveStateManagerDialog
+    from doro_app.ui.dialogs.state.gif_gallery_dialog import GifGalleryDialog
+
+    service, state, _ = drag_service
+    assert service.add_drag_gif(next(DRAG_DIR.glob("*.webp")))
+    path = service.list_drag_gif_paths()[0]
+    warning = Mock()
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", warning)
+
+    def gallery_exec(gallery):
+        gallery._on_remove_gif(path.name)
+        gallery.accept()
+        return gallery.result()
+
+    failed_remove = (
+        Mock(side_effect=PermissionError("locked")) if raises else Mock(return_value=False)
+    )
+    monkeypatch.setattr(service, "remove_drag_gif", failed_remove)
+    monkeypatch.setattr(GifGalleryDialog, "exec", gallery_exec)
+    manager = MoveStateManagerDialog(state, action_service=service)
+    qtbot.addWidget(manager)
+    manager._on_manage_drag_gifs(PET_DRAG_ACTION_KEY)
+    warning.assert_called_once()
+    assert path.name in warning.call_args.args[2]
+    assert path.exists()
+
+
+def test_state_gallery_still_requires_one_gif(qtbot, monkeypatch):
+    from PySide6 import QtWidgets
+
+    from doro_app.ui.dialogs.state.gif_gallery_dialog import GifGalleryDialog
+
+    source = next(DRAG_DIR.glob("*.webp"))
+    gallery = GifGalleryDialog("idle", "Idle", [source])
+    qtbot.addWidget(gallery)
+    warning = Mock()
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", warning)
+    gallery._on_remove_gif(source.name)
+    assert gallery.removed_filenames == []
+    warning.assert_called_once()
+    gallery.reject()

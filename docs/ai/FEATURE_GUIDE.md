@@ -6,7 +6,8 @@
 ## 功能地圖（改功能時先看這裡）
 
 ### Doro 被點擊的 ACTION
-- 設定入口：動作管理的 `pet_click` 卡片「Doro 被點擊時的反應」，可選擇或清除 GIF／APNG／WebP；沒有素材時保留目前外觀。
+- 設定入口：動作管理的 `pet_click` 卡片「Doro 被點擊時的反應」→ GIFs，可新增／移除多張 GIF／APNG／WebP，每次點擊隨機選擇；沒有素材時保留目前外觀。
+- `ActionService` 的 `list_action_gif_paths`／`add_action_gif`／`remove_action_gif` 管理兩種點擊素材池，分別儲存於 `res/state/click_action/`、`res/state/pet_click_action/`。第一次新增保留舊的單張綁定；actions.json 保留代表性的 gif_id，不變更格式。桌面點擊的隱藏 State 同步使用 click_action 池，備援站立動畫不列入可刪除素材。
 - 與 `click`（Doro 幫忙點畫面的 wind-up）獨立儲存。舊 actions.json 由 ActionRepository 自動補上 pet_click，不覆蓋既有 click 綁定。
 - 實際事件：MouseEventHandler.click_detected → DoroApp._on_doro_clicked → SpriteController.start_pet_click_animation。這是暫時手勢覆蓋，不切永久狀態、不呼叫桌面自動化；原 click.txt 聊天仍可另外觸發。
 - 動畫播一次後恢復最新正常／轉場素材，連續點擊重新播放，拖曳會取消。靜態圖顯示 400ms；異常播放最多 30 秒後清理。
@@ -15,7 +16,9 @@
 
 ### 拖曳動畫
 - 入口：`ui/events/mouse_event_handler.py` 以螢幕座標判斷拖曳，發出 `drag_started`／`drag_finished`。
-- 設定入口：動作管理的 `pet_drag` 卡片「Doro 被拖曳時的反應」，按 GIFs 或 Edit → Manage GIFs 新增／移除多張 GIF／APNG／WebP。素材池就是 `res/drag/` 資料夾（同 TRANSITION 的多 GIF 作法），不寫入 actions.json；清單空白時保留目前外觀。
+- 所有動作卡片固定排列 GIFs／設定／刪除；GIFs 均開啟多張圖庫，設定僅編輯移動／轉場參數。內建動作的設定與刪除停用並顯示原因。移動素材使用關聯姿勢的共用池，卡片預覽列出整個池；新增動作編輯器也統一使用圖庫。轉場設定正確載入起訖姿勢，不使用移動編輯模式。
+- 素材池就是 `res/drag/` 資料夾，不寫入 actions.json；可刪除最後一張，清單空白時保留目前外觀。圖庫 OK 立即儲存、Cancel 不更動檔案；從新增動作編輯器進入圖庫時，外層 Cancel 不會撤銷已按 OK 的圖庫變更。
+- 開啟動作編輯器時釋放後方卡片的 QMovie 檔案控制代碼，並在編輯器開啟期間暫停卡片重建；圖庫與編輯器按 OK／Cancel 都釋放預覽。外層編輯器關閉後重新讀取素材池，刪除／新增失敗會顯示檔名及錯誤，不再靜默忽略。
 - `app.py` 先取消移動及待執行點擊，再由 `ActionService.list_drag_gif_paths()` 隨機挑一張；`SpriteController` 透過暫時的 renderer movie 播放。
 - 這是手勢期間的顯示覆蓋，不寫入永久狀態；放開、失去抓取、視窗停用或隱藏後，恢復最新的正常／轉場素材。
 - 拖曳期間不啟動閒置動作或分頁主動回應。素材缺失時保留原角色，視窗仍可拖曳。
