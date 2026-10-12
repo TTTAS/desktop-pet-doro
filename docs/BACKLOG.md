@@ -13,39 +13,14 @@ This document tracks feature requests and known gaps extracted from code comment
 **Priority:** Medium
 **Category:** Testing
 
-Missing test coverage for UI dialogs:
+Missing test coverage for UI dialogs (MoveStateManagerDialog, AddStateDialog and
+EditMoveStateDialog are now covered under `tests/ui/dialogs/`, running offscreen):
 
-1. **MoveStateManagerDialog** (`tests/ui/dialogs/move_state/test_manager_dialog.py`)
-   - Test dialog initialization
-   - Test movement and transition display
-   - Test add/edit/remove operations
-   - Test GIF preview for both types
-   - Test QMovie cleanup on close
-
-2. **AddStateDialog** (`tests/ui/dialogs/state/test_add_dialog.py`)
-   - Test dialog initialization
-   - Test state creation flow
-   - Test input validation
-   - Test GIF selection
-
-3. **StateManagerDialog** (`tests/ui/dialogs/state/test_manager_dialog.py`)
+1. **StateManagerDialog** (`tests/ui/dialogs/state/test_manager_dialog.py`)
    - Test state list display
    - Test add/remove operations
    - Test state selection
    - Test GIF preview
-
-4. **EditMoveStateDialog** (`tests/ui/dialogs/move_state/test_edit_dialog.py`)
-   - Test editing movement states
-   - Test direction configuration
-   - Test distance/speed parameters
-
-**Blocker:** Qt UI testing requires X server or offscreen platform (see `docs/TESTING.md`)
-
-**Next Steps:**
-1. Set up Qt offscreen testing environment
-2. Create test fixtures for dialog testing
-3. Implement basic smoke tests
-4. Add comprehensive interaction tests
 
 ---
 
