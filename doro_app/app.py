@@ -266,6 +266,7 @@ class DoroApp:
                 or self._movement.has_active_movement
                 or self._state_service.is_transitioning()
             ),
+            bubble_busy=lambda: bool(self._bubble_controller.text),
         )
         self._chat_orchestrator.set_presence(self._presence)
         self._presence.set_quiet(self._companion.quiet)
@@ -287,6 +288,7 @@ class DoroApp:
 
         # Chat domain events
         self.core_manager.chat_response_received.connect(self._on_chat_response_received)
+        self.core_manager.chat_bubble_cleared.connect(self._bubble_controller.clear_text)
         self.core_manager.chat_operation_started.connect(self._on_chat_operation_started)
         self.core_manager.chat_operation_completed.connect(self._on_chat_operation_completed)
         self.core_manager.chat_error_occurred.connect(self._on_chat_error_occurred)

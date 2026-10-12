@@ -39,7 +39,7 @@
 - **回覆與角色動作**：模型回覆都經 `core/llm` 驗證成結構（ADR 0005）。門為 `ChatOrchestrator.present_structured_reply`（純文字台詞走 `present_character_reply`）。讀頁／查證答覆與存在感的結構只有合法狀態及一個方向型 `move`，沒有 `tool`；生產環境先走再說。
 - **你正在看的分頁／存在感**：`extensions/doro-presence/` → `core/presence/bridge.py` → `PresenceController`。App 是 loopback WS server，token＋精確 extension Origin 配對；擴充只讀 active＋visible＋focused 分頁。設定入口為聊天子選單的「分頁陪伴設定」。
   - 明講「你剛開的頁」讀 Doro 分頁；分享啟用後「這頁」取擴充目前頁，沒有有效來源就說明，不混用。
-  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、模型以 `worth_saying` 做開口判斷（ADR 0005），忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。
+  - 基本活潑仍走 `IdleBehaviorManager`；情境活潑由頁面事件觸發。同內容本機去重、模型以 `worth_saying` 做開口判斷（ADR 0005），忙時保留最新頁，過時答案丟棄，失敗降級但下一事件可恢復。畫面上已有泡泡（待機、心跳或上一則反應）時，已拿到的反應等泡泡消失才說；新的模型請求不受影響。
   - 兩端預設停用；不分享輸入框或編輯內容，不提供擴充 click/type 入口。
 - 依賴：`pip install -e ".[web]"`，指令上網另需 `playwright install chromium`。缺少可選依賴不影響一般桌寵。
 - App 關閉會收掉 WebRuntime 和 PresenceController。語彙表不放這些實作細節。
@@ -50,6 +50,7 @@
 - 提示詞資料由 `heartbeat/context.py` 組成（時間、互動間隔、最近聊天、心跳清單、心跳日誌、分享頁標題）；模型請求在 `ChatOrchestrator.make_heartbeat_request`，結構 `HeartbeatReply` 沒有 `tool`。
 - 設定：`UIConfig.heartbeat_enabled`／`heartbeat_interval_minutes`，介面在「陪伴設定… → 心跳」；右鍵「立刻跳一次心跳」手動觸發。
 - 使用者訊息被接受（`user_message_accepted`，含分頁提問等提前返回的路徑）、按住／拖曳 Doro、切換安靜模式會 `interrupt()`；看過的分頁已改變也算過時，讓等待中的心跳結果失效；輸入列取得焦點只算忙碌（延後），不接 `_interrupt_background_companionship`，否則選單關閉後焦點回到輸入列就會把手動心跳作廢。
+- 泡泡：不自動消失（`auto_hide: False`）的只限「進行中」提示，每條路結束時都要換掉或清除；`ChatOrchestrator.bubble_clear_requested` 經 `CoreManager.chat_bubble_cleared` 接到 `BubbleController.clear_text`。待機、分頁陪伴、心跳都把畫面上的泡泡當成忙碌，泡泡卡住會讓三者一起停住。
 - 地雷：不要在心跳結構加 `tool`，也不要讓心跳取代 `IdleBehaviorManager` 或 `PresenceController`。
 
 ### 🗨️ 聊天

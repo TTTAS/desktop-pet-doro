@@ -51,6 +51,7 @@ class CoreManager(QtCore.QObject):
     # Chat domain events
     chat_message_sent = QtCore.Signal(str)  # message
     chat_response_received = QtCore.Signal(str, dict)  # response_text, kwargs
+    chat_bubble_cleared = QtCore.Signal()  # a progress bubble ended without a line
     chat_operation_started = QtCore.Signal()
     chat_operation_completed = QtCore.Signal()
     chat_error_occurred = QtCore.Signal(str)  # error_message
@@ -123,6 +124,7 @@ class CoreManager(QtCore.QObject):
         self._chat_orchestrator.bubble_text_requested.connect(
             lambda text, kwargs: self.chat_response_received.emit(text, kwargs)
         )
+        self._chat_orchestrator.bubble_clear_requested.connect(self.chat_bubble_cleared.emit)
         self._chat_orchestrator.busy_cursor_requested.connect(
             lambda enabled: (
                 self.chat_operation_started.emit()

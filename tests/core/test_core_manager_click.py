@@ -11,6 +11,8 @@ def _manager(reaction_runner=None) -> CoreManager:
     orchestrator = Mock(spec=QObject)
     orchestrator.bubble_text_requested = Mock()
     orchestrator.bubble_text_requested.connect = Mock()
+    orchestrator.bubble_clear_requested = Mock()
+    orchestrator.bubble_clear_requested.connect = Mock()
     orchestrator.busy_cursor_requested = Mock()
     orchestrator.busy_cursor_requested.connect = Mock()
     orchestrator.notification_requested = Mock()

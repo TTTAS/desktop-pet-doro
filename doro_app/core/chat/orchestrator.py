@@ -156,6 +156,7 @@ class ChatOrchestrator(QtCore.QObject):
         self._expect_web_answer = False
         self._presence = None
         self._last_send_error = ""
+        self._op_start_bubble_up = False
 
         controller.request_started.connect(self._on_request_started)
         controller.request_succeeded.connect(self._on_request_succeeded)
@@ -377,7 +378,7 @@ class ChatOrchestrator(QtCore.QObject):
                 self._on_op_progress, QtCore.Qt.ConnectionType.QueuedConnection
             )
             self._web_runtime.op_reply.connect(
-                self.present_character_reply, QtCore.Qt.ConnectionType.QueuedConnection
+                self._on_op_reply, QtCore.Qt.ConnectionType.QueuedConnection
             )
             self._web_runtime.op_confirm.connect(
                 self._on_op_confirm, QtCore.Qt.ConnectionType.QueuedConnection
@@ -668,6 +669,13 @@ class ChatOrchestrator(QtCore.QObject):
             logger.error(f"讀完網頁但送不出聊天請求：{error_message}")
             self._expect_web_answer = False
             self.busy_cursor_requested.emit(False)
+            # Replace the "reading…" bubble: it never auto-hides, and idle,
+            # tab reactions and the heartbeat all wait while a bubble shows.
+            self.bubble_text_requested.emit(
+                "doro 讀完這頁了，可是沒辦法回答…"
+                + (f"（{error_message}）" if error_message else ""),
+                {"auto_hide": True, "hide_delay_ms": BUBBLE_ERROR_HIDE_MS},
+            )
             if error_message:
                 self.notification_requested.emit("warning", "Chat", error_message)
 
@@ -716,6 +724,9 @@ class ChatOrchestrator(QtCore.QObject):
         ask = self._make_operation_ask()
         self._operating = True
         self._awaiting_confirm = False
+        # The start bubble never auto-hides; progress, a confirmation or the final
+        # reply replaces it. If none comes, _on_op_finished clears it.
+        self._op_start_bubble_up = True
         self.bubble_text_requested.emit(
             "好，doro開始幫你操作囉～（想喊卡就打「停」）", {"auto_hide": False}
         )
@@ -771,6 +782,7 @@ class ChatOrchestrator(QtCore.QObject):
         cleaned = self._strip_markdown((text or "").strip())
         if not cleaned:
             return
+        self._op_start_bubble_up = False
         self.bubble_text_requested.emit(
             cleaned,
             {
@@ -781,12 +793,18 @@ class ChatOrchestrator(QtCore.QObject):
         )
 
     @QtCore.Slot(str)
+    def _on_op_reply(self, text: str) -> None:
+        if self.present_character_reply(text):
+            self._op_start_bubble_up = False
+
+    @QtCore.Slot(str)
     def _on_op_confirm(self, text: str) -> None:
         """操作要送出前、或碰到驗證/登入牆時，問使用者（等你打字回覆）。
 
         ``text`` 已是完整泡泡文字（operator 那邊組好），這裡照顯示即可。
         """
         self._awaiting_confirm = True
+        self._op_start_bubble_up = False
         self.bubble_text_requested.emit(text, {"override_visibility": True, "auto_hide": False})
 
     @QtCore.Slot()
@@ -796,6 +814,10 @@ class ChatOrchestrator(QtCore.QObject):
         self._operating = False
         self._awaiting_confirm = False
         self.busy_cursor_requested.emit(False)
+        if self._op_start_bubble_up:
+            # Ended before saying anything: don't leave "starting…" up forever.
+            self._op_start_bubble_up = False
+            self.bubble_clear_requested.emit()
 
     # ------------------------------------------------------------------ Configuration API
 
@@ -932,6 +954,10 @@ class ChatOrchestrator(QtCore.QObject):
             self.bubble_text_requested.emit(
                 fallback_text, {"auto_hide": True, "hide_delay_ms": BUBBLE_ERROR_HIDE_MS}
             )
+        else:
+            # An automatic request shows no error, but its "Thinking..." bubble
+            # never auto-hides: clear it instead of leaving it up.
+            self.bubble_clear_requested.emit()
 
     # ------------------------------------------------------------------ Response processing
 
