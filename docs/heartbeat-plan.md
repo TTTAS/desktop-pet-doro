@@ -174,6 +174,23 @@ MCP、定時提醒（cron）、長期記憶、執行腳本或指令、使用者�
 - 程式碼自動合併，沒有衝突；只有自動產生的 `docs/REPO_MAP.md` 衝突，以 `repo_map.py --write` 重新產生。
 - 驗證：完整離屏測試 **1257 passed、3 skipped**（含心跳的 App 組裝測試，確認右鍵選單仍有「立刻跳一次心跳」）；Black、Ruff、repo map、`git diff --check` 通過。
 
+### 2026-10-12：複審修正（基準 `9c3fb52`）
+
+複審確認上次 5 項已修正，另指出第 3 項的漏網路徑：手動心跳的**失敗／沉默提示**直接呼叫 `speak_line()`，等模型期間若待機或分頁陪伴先說話，提示會蓋掉原台詞。
+
+自查同類路徑時另找到第三處：**手動心跳被跳過時的提示**。泡泡正在顯示 → 心跳判定「正在忙」跳過 → 立刻用「（心跳先跳過：正在忙…）」蓋掉那個泡泡，等於保護泡泡的規則自己把泡泡蓋掉。
+
+**修正**：三種提示（跳過、沉默、失敗）一律改走 `_notify()`，和角色回覆共用同一個等待迴圈：
+- 畫面上有泡泡或忙碌時先等，空閒才顯示；最多等 `NOTICE_TTL_SECONDS = 15` 秒，逾時只寫 log 不顯示（遲到的點擊回饋只是雜訊）。
+- 等待期間使用者互動（`interrupt()`）或改切到安靜模式就取消；本來就在安靜模式下的「跳過：安靜陪伴中」提示照常顯示。
+- 等待中的提示不會擋住下一次心跳。
+
+**回歸測試**：`test_manual_result_notice_waits_for_busy_bubble`（失敗／沉默）、`test_manual_skip_notice_does_not_cover_the_bubble_that_made_it_busy`、`test_notice_is_dropped_when_busy_too_long`、`test_waiting_notice_is_dropped_on_cancel`（安靜／中斷）、`test_waiting_notice_does_not_block_the_next_beat`，以及真實 `DoroApp` 組裝的 `test_manual_notice_never_covers_an_idle_line`（失敗／沉默）。將 `controller.py` 暫存後用舊程式跑 App 測試，兩案例以 `'（心跳沒有拿到模型回覆）' == '待機台詞'`、`'（Doro 想了想，決定先不打擾你）' == '待機台詞'` 失敗，與複審描述一致；還原後通過。
+
+**驗證**：完整離屏測試 **1266 passed、3 skipped**（含選配 AI 測試）；Black、Ruff、repo map、`git diff --check` 通過。
+
+**發現但未修改（不屬心跳範圍）**：分頁陪伴（`PresenceController`）的忙碌條件同樣沒有包含泡泡文字，所以分頁反應仍可能蓋掉待機台詞或心跳台詞。這是既有行為；若要一併處理，需確認畫面上沒有長時間不消失的泡泡（例如查證時的「我去查囉」），否則分頁陪伴可能一直等。待使用者決定。
+
 ## 四、後續討論與待決事項
 
 v1 完成後的問答整理（2026-10-10）。這段記錄理解與方向，不代表已實作。

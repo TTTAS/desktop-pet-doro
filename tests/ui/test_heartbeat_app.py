@@ -1,7 +1,9 @@
 """Heartbeat wiring inside the real application, with isolated settings and files."""
 
+import threading
 from types import SimpleNamespace
 
+import pytest
 from PySide6 import QtCore, QtWidgets
 
 import doro_app.core.chat.orchestrator as orch_mod
@@ -109,6 +111,52 @@ def test_heartbeat_menu_settings_and_interrupts(qtbot, tmp_path, real_state_serv
         qtbot.waitUntil(lambda: spoken == ["休息一下吧"], timeout=3000)
         assert load_journal(tmp_path / "heartbeat_journal.json")[0].line == "休息一下吧"
     finally:
+        app._on_about_to_quit()
+        structured.forget_detected_modes()
+        QtCore.QCoreApplication.processEvents()
+
+
+@pytest.mark.parametrize(
+    "server_reply",
+    [
+        Completion(None, "down", 500),
+        Completion('{"worth_saying":false,"state":null,"line":"","move":null}', None, 200),
+    ],
+    ids=["failure", "silent"],
+)
+def test_manual_notice_never_covers_an_idle_line(
+    qtbot, tmp_path, real_state_service, monkeypatch, server_reply
+):
+    """Review of 9c3fb52: a line spoken while the model thinks must survive the notice."""
+    structured.forget_detected_modes()
+    release = threading.Event()
+
+    def slow_server(*_):
+        release.wait(3)
+        return server_reply
+
+    monkeypatch.setattr(structured.transport, "request_completion", slow_server)
+    app = _app(tmp_path, real_state_service, monkeypatch)
+    qtbot.addWidget(app.window)
+    heartbeat = app._heartbeat
+    try:
+        app.window._timer.stop()
+        app._idle_behavior._timer.stop()
+        app._chat_orchestrator.settings.set_server_url("http://127.0.0.1:9")
+        # Only the bubble decides busy here; offscreen focus would otherwise mark
+        # the floating chat as active.
+        heartbeat._busy = lambda: bool(app._bubble_controller.text)
+        app._context_menu_ctrl._build_callbacks().heartbeat_now()
+        qtbot.waitUntil(lambda: heartbeat._running, timeout=3000)
+        app._chat_orchestrator.speak_line("待機台詞")
+        release.set()
+        qtbot.waitUntil(lambda: not heartbeat._running, timeout=3000)
+        qtbot.wait(200)
+        assert app._bubble_controller.text == "待機台詞"
+        app._bubble_controller.clear_text()
+        qtbot.waitUntil(lambda: app._bubble_controller.text.startswith("（"), timeout=3000)
+    finally:
+        release.set()
         app._on_about_to_quit()
         structured.forget_detected_modes()
         QtCore.QCoreApplication.processEvents()

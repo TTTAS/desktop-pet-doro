@@ -325,3 +325,68 @@ def test_non_utf8_checklist_skips_instead_of_raising(heartbeat, tmp_path):
     heartbeat.orch.make_heartbeat_request.assert_not_called()
     heartbeat.controller.beat_now()
     assert "UTF-8" in heartbeat.orch.speak_line.call_args.args[0]
+
+
+# Review of 9c3fb52: every manual notice must wait for the bubble like a reply does.
+
+
+@pytest.mark.parametrize(
+    "answer, notice",
+    [(lambda: None, "（心跳沒有拿到模型回覆）"), (lambda: reply("", worth_saying=False), None)],
+    ids=["failure", "silent"],
+)
+def test_manual_result_notice_waits_for_busy_bubble(heartbeat, qtbot, answer, notice):
+    release, ask = _slow(answer)
+    heartbeat.orch.make_heartbeat_request.return_value = ask
+    heartbeat.controller.beat_now()
+    heartbeat.world.busy = True  # an idle line or tab reaction appeared meanwhile
+    release.set()
+    qtbot.waitUntil(lambda: not heartbeat.controller._running)
+    qtbot.wait(100)
+    heartbeat.orch.speak_line.assert_not_called()
+    heartbeat.world.busy = False
+    qtbot.waitUntil(lambda: heartbeat.orch.speak_line.called, timeout=3000)
+    shown = heartbeat.orch.speak_line.call_args.args[0]
+    assert shown == (notice or "（Doro 想了想，決定先不打擾你）")
+    heartbeat.orch.speak_line.assert_called_once()
+
+
+def test_manual_skip_notice_does_not_cover_the_bubble_that_made_it_busy(heartbeat, qtbot):
+    heartbeat.world.busy = True
+    heartbeat.controller.beat_now()
+    qtbot.wait(100)
+    heartbeat.orch.speak_line.assert_not_called()
+    heartbeat.world.busy = False
+    qtbot.waitUntil(lambda: heartbeat.orch.speak_line.called, timeout=3000)
+    assert "正在忙" in heartbeat.orch.speak_line.call_args.args[0]
+
+
+def test_notice_is_dropped_when_busy_too_long(heartbeat, qtbot, monkeypatch):
+    monkeypatch.setattr(heartbeat_module, "NOTICE_TTL_SECONDS", 0.2)
+    heartbeat.world.busy = True
+    heartbeat.controller.beat_now()
+    qtbot.waitUntil(lambda: heartbeat.controller._notice is None, timeout=3000)
+    heartbeat.world.busy = False
+    qtbot.wait(700)
+    heartbeat.orch.speak_line.assert_not_called()
+
+
+@pytest.mark.parametrize("cancel", ["quiet", "interrupt"])
+def test_waiting_notice_is_dropped_on_cancel(heartbeat, qtbot, cancel):
+    heartbeat.world.busy = True
+    heartbeat.controller.beat_now()
+    if cancel == "quiet":
+        heartbeat.world.quiet = True
+    else:
+        heartbeat.controller.interrupt()
+    heartbeat.world.busy = False
+    qtbot.wait(700)
+    heartbeat.orch.speak_line.assert_not_called()
+
+
+def test_waiting_notice_does_not_block_the_next_beat(heartbeat):
+    heartbeat.world.busy = True
+    heartbeat.controller.beat_now()
+    heartbeat.world.busy = False
+    heartbeat.orch.make_heartbeat_request.return_value = lambda: reply("", worth_saying=False)
+    assert heartbeat.controller.beat(manual=True) is None

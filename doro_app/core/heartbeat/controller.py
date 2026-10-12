@@ -40,6 +40,9 @@ AWAY_SECONDS = 600
 BUSY_RETRY_SECONDS = 20
 # A spoken reply waits for Doro to finish what she is doing, but not forever.
 PENDING_TTL_SECONDS = 120
+# A manual-beat notice ("skipped", "stayed silent", "no reply") also waits for the
+# bubble to clear, but only briefly: late feedback about a click is just noise.
+NOTICE_TTL_SECONDS = 15
 
 
 class HeartbeatController(QtCore.QObject):
@@ -76,6 +79,7 @@ class HeartbeatController(QtCore.QObject):
         self._closed = False
         self._epoch = 0
         self._pending = None  # (answer, epoch, page, deadline)
+        self._notice = None  # (text, epoch, quiet_when_queued, deadline)
         self.last_status = "尚未跳過心跳"
         self.result_ready.connect(self._on_result, QtCore.Qt.ConnectionType.QueuedConnection)
         self._timer = QtCore.QTimer(self)
@@ -83,7 +87,7 @@ class HeartbeatController(QtCore.QObject):
         self._retry = QtCore.QTimer(self)
         self._retry.setSingleShot(True)
         self._retry.timeout.connect(self._on_timer)
-        # Only runs while a spoken reply waits for Doro to be free.
+        # Only runs while a spoken reply or a notice waits for Doro to be free.
         self._pump_timer = QtCore.QTimer(self)
         self._pump_timer.setInterval(500)
         self._pump_timer.timeout.connect(self._pump)
@@ -115,6 +119,7 @@ class HeartbeatController(QtCore.QObject):
         """The user started interacting: results asked for before now must not speak."""
         self._epoch += 1
         self._drop_pending()
+        self._notice = None
 
     def skip_reason(self, *, manual: bool = False) -> str | None:
         """Why a heartbeat would not run right now, or ``None`` when it would.
@@ -195,13 +200,14 @@ class HeartbeatController(QtCore.QObject):
         """Menu entry: beat once and tell the user when nothing will happen."""
         reason = self.beat(manual=True)
         if reason is not None:
-            self._orchestrator.speak_line(f"（心跳先跳過：{reason}）")
+            self._notify(f"（心跳先跳過：{reason}）")
 
     def shutdown(self) -> None:
         self._closed = True
         self.interrupt()
         self._timer.stop()
         self._retry.stop()
+        self._pump_timer.stop()
 
     # ------------------------------------------------------------------ internals
 
@@ -244,7 +250,7 @@ class HeartbeatController(QtCore.QObject):
         if not ok:
             self.last_status = "心跳沒有拿到可用的模型回覆"
             if manual:
-                self._orchestrator.speak_line("（心跳沒有拿到模型回覆）")
+                self._notify("（心跳沒有拿到模型回覆）")
             return
         # 開口判斷記進 log，方便日後檢查她怎麼決定。
         logger.info(
@@ -257,16 +263,46 @@ class HeartbeatController(QtCore.QObject):
             self.last_status = "心跳完成：決定先不打擾"
             self._record("")
             if manual:
-                self._orchestrator.speak_line("（Doro 想了想，決定先不打擾你）")
+                self._notify("（Doro 想了想，決定先不打擾你）")
             return
         self._pending = (answer, epoch, page, time.monotonic() + PENDING_TTL_SECONDS)
         self._pump()
-        if self._pending is not None:
-            self._pump_timer.start()
+
+    def _notify(self, text: str) -> None:
+        """Feedback for a manual beat; never covers a bubble that is still showing."""
+        self._notice = (text, self._epoch, self._quiet(), time.monotonic() + NOTICE_TTL_SECONDS)
+        self._pump()
 
     def _pump(self) -> None:
-        if self._pending is None:
+        self._pump_notice()
+        self._pump_reply()
+        if self._pending is None and self._notice is None:
             self._pump_timer.stop()
+        elif not self._pump_timer.isActive():
+            self._pump_timer.start()
+
+    def _pump_notice(self) -> None:
+        if self._notice is None:
+            return
+        text, epoch, was_quiet, deadline = self._notice
+        # Unlike a reply, a notice may show in quiet mode when it was queued there
+        # ("skipped: quiet"); turning quiet on afterwards still cancels it.
+        if (
+            self._closed
+            or epoch != self._epoch
+            or (self._quiet() and not was_quiet)
+            or time.monotonic() > deadline
+        ):
+            logger.info("心跳提示未顯示（已過時或等太久）：%s", text)
+            self._notice = None
+            return
+        if self._busy():
+            return
+        self._notice = None
+        self._orchestrator.speak_line(text)
+
+    def _pump_reply(self) -> None:
+        if self._pending is None:
             return
         answer, epoch, page, deadline = self._pending
         stale = self._stale_reason(epoch, page)
@@ -291,7 +327,8 @@ class HeartbeatController(QtCore.QObject):
 
     def _drop_pending(self) -> None:
         self._pending = None
-        self._pump_timer.stop()
+        if self._notice is None:
+            self._pump_timer.stop()
 
     def _record(self, line: str) -> None:
         append_journal(
