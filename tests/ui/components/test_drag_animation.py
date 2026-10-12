@@ -78,10 +78,14 @@ def test_click_does_not_play_drag_and_reset_is_idempotent(qapp):
 
 
 @pytest.mark.parametrize("ending", ["release", "reset", "deactivate", "ungrab"])
-def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending):
+def test_real_drag_movie_plays_and_restores_latest_sprite(qtbot, ending, tmp_path):
     sprite = SpriteController(DoroViewModel())
     handler = MouseEventHandler()
-    assets = sorted(DRAG_DIR.glob("*.webp"))
+    # User-editable bundled pools may legitimately contain only one animation.
+    source = next(DRAG_DIR.glob("*.webp"))
+    assets = [tmp_path / "normal.webp", tmp_path / "next.webp"]
+    for path in assets:
+        path.write_bytes(source.read_bytes())
     app = SimpleNamespace(
         _action_service=Mock(list_drag_gif_paths=Mock(return_value=list(assets))),
         _automation=Mock(),
