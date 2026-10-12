@@ -77,5 +77,22 @@ def get_logger(name: str = "doro") -> logging.Logger:
     global _default_logger
     if _default_logger is None:
         _default_logger = setup_logger()
+        _share_handlers_with_package(_default_logger)
 
     return logging.getLogger(name)
+
+
+def _share_handlers_with_package(default: logging.Logger) -> None:
+    """Send ``doro_app.*`` module loggers to the same log file.
+
+    Modules log under their import path (``get_logger(__name__)`` or
+    ``logging.getLogger(__name__)``), which is not a child of ``doro``; without
+    this their INFO lines (heartbeat decisions, tab-reaction choices, chat flow)
+    were silently dropped. INFO rather than DEBUG keeps per-tick debug noise out.
+    """
+    package = logging.getLogger("doro_app")
+    if package.handlers:
+        return
+    package.setLevel(logging.INFO)
+    for handler in default.handlers:
+        package.addHandler(handler)
