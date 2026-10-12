@@ -143,6 +143,10 @@ class ChatController(QtCore.QObject):
     def has_history(self) -> bool:
         return bool(self._history)
 
+    def recent_history(self, limit: int) -> list[dict[str, str]]:
+        """Copy of the newest ``limit`` history entries, oldest first."""
+        return [dict(entry) for entry in self._history[-limit:]] if limit > 0 else []
+
     def clear_history(self):
         self._history.clear()
         self._last_user_message = ""

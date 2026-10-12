@@ -19,6 +19,7 @@ from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.companion import CompanionController
 from .core.core_manager import CoreManager
+from .core.heartbeat.controller import HeartbeatController
 from .core.idle_behavior_manager import IdleBehaviorManager
 from .core.movement.manager import MovementManager
 from .core.state import StateService
@@ -193,11 +194,31 @@ class DoroApp:
             pose_keys_provider=lambda: self._config_manager.ui.companion_pose_keys,
             quiet_provider=lambda: self._companion.quiet,
             effects_enabled=lambda: self._config_manager.ui.companion_effects,
+            # 待決 1 / B: canned lines only while the heartbeat cannot speak.
+            speech_allowed=lambda: not (
+                getattr(self, "_heartbeat", None) is not None and self._heartbeat.owns_speech
+            ),
             micro_effect=self.window.play_expression,
             window=self.window,
             action_dispatcher=self._action_dispatcher,
             schedule=self._dispatcher_schedule,
         )
+        user_data_dir = self._chat_orchestrator._default_web_profile_dir().parent
+        self._heartbeat = HeartbeatController(
+            self._chat_orchestrator,
+            self._config_manager,
+            checklist_path=user_data_dir / "heartbeat.md",
+            journal_path=user_data_dir / "heartbeat_journal.json",
+            # A visible bubble (idle line, tab reaction) is busy too: the heartbeat
+            # waits for it to hide instead of replacing it.
+            busy=lambda: self._companion_busy() or bool(self._bubble_controller.text),
+            quiet=lambda: self._companion.quiet,
+            seconds_since_interaction=lambda: self.window.seconds_since_last_activity(),
+            page=self._shared_page,
+        )
+        # Focusing the input bar only delays a heartbeat (it counts as busy);
+        # a user message accepted on any path makes the pending heartbeat stale.
+        self._chat_orchestrator.user_message_accepted.connect(self._heartbeat.interrupt)
 
         # ═════════════════════════════════════════════════════════════
         # Phase 5: Create CoreManager (Business Logic Coordinator)
@@ -249,6 +270,7 @@ class DoroApp:
                 or self._movement.has_active_movement
                 or self._state_service.is_transitioning()
             ),
+            bubble_busy=lambda: bool(self._bubble_controller.text),
         )
         self._chat_orchestrator.set_presence(self._presence)
         self._presence.set_quiet(self._companion.quiet)
@@ -270,6 +292,7 @@ class DoroApp:
 
         # Chat domain events
         self.core_manager.chat_response_received.connect(self._on_chat_response_received)
+        self.core_manager.chat_bubble_cleared.connect(self._bubble_controller.clear_text)
         self.core_manager.chat_operation_started.connect(self._on_chat_operation_started)
         self.core_manager.chat_operation_completed.connect(self._on_chat_operation_completed)
         self.core_manager.chat_error_occurred.connect(self._on_chat_error_occurred)
@@ -415,7 +438,8 @@ class DoroApp:
             default_idle_gif=STATE_DIR / "idle.gif",
             companion=self._companion,
             on_interaction=self._interrupt_background_companionship,
-            on_settings_changed=self._idle_behavior.reset,
+            on_settings_changed=self._on_companion_settings_changed,
+            heartbeat=self._heartbeat,
         )
         self.window.context_menu_requested.connect(context_menu_ctrl.show)
         # prevent GC of controller while window is alive
@@ -432,6 +456,7 @@ class DoroApp:
         mouse_handler.user_activity_detected.connect(self.window.mark_user_activity)
         mouse_handler.user_activity_detected.connect(self._companion.interrupt)
         mouse_handler.user_activity_detected.connect(self._idle_behavior.interrupt)
+        mouse_handler.user_activity_detected.connect(self._heartbeat.interrupt)
         mouse_handler.user_activity_detected.connect(self.window.clear_expression)
         self.window.tick_requested.connect(self._companion.tick)
 
@@ -464,6 +489,15 @@ class DoroApp:
     def _on_companion_mode_changed(self, quiet: bool) -> None:
         self._presence.set_quiet(quiet)
         self._idle_behavior.on_mode_changed(quiet)
+        self._heartbeat.interrupt()
+
+    def _on_companion_settings_changed(self) -> None:
+        self._idle_behavior.reset()
+        self._heartbeat.reschedule()
+
+    def _shared_page(self):
+        presence = getattr(self, "_presence", None)
+        return presence.current_page if presence is not None else None
 
     def _companion_busy(self) -> bool:
         return (
@@ -703,6 +737,9 @@ class DoroApp:
         presence = getattr(self, "_presence", None)
         if presence is not None:
             presence.interrupt()
+        heartbeat = getattr(self, "_heartbeat", None)
+        if heartbeat is not None:
+            heartbeat.interrupt()
         animations = self._action_service.list_drag_gif_paths()
         random.shuffle(animations)
         for path in animations:
@@ -728,6 +765,7 @@ class DoroApp:
             ("foreground_tracker", "_fg_tracker", "stop"),
             ("web", "_chat_orchestrator", "shutdown_web"),
             ("presence", "_presence", "shutdown"),
+            ("heartbeat", "_heartbeat", "shutdown"),
         ]
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)

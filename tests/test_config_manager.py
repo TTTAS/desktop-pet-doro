@@ -541,3 +541,28 @@ def test_custom_interval_survives_reload(tmp_path, value):
     config.update_ui(companion_interval_seconds=value)
     config.save()
     assert ConfigManager(path).ui.companion_interval_seconds == value
+
+
+def test_heartbeat_settings_default_off_and_round_trip(tmp_path):
+    path = tmp_path / "heartbeat.ini"
+    config = ConfigManager(path)
+    assert not config.ui.heartbeat_enabled
+    assert config.ui.heartbeat_interval_minutes == 30
+    config.update_ui(heartbeat_enabled=True, heartbeat_interval_minutes=45)
+    config.update_ui(bubble_scale=1.25)
+    config.save()
+    restored = ConfigManager(path)
+    assert restored.ui.heartbeat_enabled
+    assert restored.ui.heartbeat_interval_minutes == 45
+
+
+@pytest.mark.parametrize("raw", ["0", "abc", "1441", "2.5"])
+def test_invalid_heartbeat_interval_falls_back_without_resetting_ui(tmp_path, raw):
+    path = tmp_path / "heartbeat.ini"
+    settings = QtCore.QSettings(str(path), QtCore.QSettings.Format.IniFormat)
+    settings.setValue("ui/heartbeat_interval_minutes", raw)
+    settings.setValue("ui/companion_interval_seconds", 120)
+    settings.sync()
+    restored = ConfigManager(path)
+    assert restored.ui.heartbeat_interval_minutes == 30
+    assert restored.ui.companion_interval_seconds == 120

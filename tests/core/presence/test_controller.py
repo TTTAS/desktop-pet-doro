@@ -260,3 +260,33 @@ def test_unusable_reply_degrades_until_next_event(qapp, tmp_path):
         assert controller._gate.degraded
     finally:
         controller.shutdown()
+
+
+def test_reaction_waits_for_bubble_but_next_request_may_start(qtbot, tmp_path):
+    """A visible line (idle, heartbeat) is not covered by a tab reaction."""
+    controller, orch, bridge, _busy = make_controller(tmp_path)
+    bubble = [True]
+    controller._bubble_busy = lambda: bubble[0]
+    try:
+        orch.make_presence_request.return_value = lambda: reply("好看的頁面")
+        bridge.current_page = page("first")
+        controller._on_page(bridge.current_page)
+        qtbot.waitUntil(lambda: controller._completed is not None)
+        qtbot.wait(600)  # several pump ticks while the bubble is still up
+        orch.present_structured_reply.assert_not_called()
+        bubble[0] = False
+        qtbot.waitUntil(lambda: orch.present_structured_reply.call_count == 1, timeout=2000)
+    finally:
+        controller.shutdown()
+
+
+def test_bubble_does_not_block_starting_a_request(qtbot, tmp_path):
+    controller, orch, bridge, _busy = make_controller(tmp_path)
+    controller._bubble_busy = lambda: True
+    try:
+        orch.make_presence_request.return_value = lambda: reply("嗨")
+        bridge.current_page = page("first")
+        controller._on_page(bridge.current_page)
+        orch.make_presence_request.assert_called_once()
+    finally:
+        controller.shutdown()

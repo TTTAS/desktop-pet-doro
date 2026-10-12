@@ -49,6 +49,7 @@ class IdleBehaviorManager(QtCore.QObject):
         micro_effect=None,
         window=None,
         clock=time.monotonic,
+        speech_allowed=None,
     ):
         super().__init__()
         self._chat_orchestrator = chat_orchestrator
@@ -65,6 +66,9 @@ class IdleBehaviorManager(QtCore.QObject):
         self._micro_effect = micro_effect or (lambda _: None)
         self._window = window
         self._clock = clock
+        # False while the heartbeat owns speaking (ADR 0006): idle then only moves,
+        # so every line Doro says on her own is one the model chose for the moment.
+        self._speech_allowed = speech_allowed or (lambda: True)
         self._last_action = None
         self._resume_pending = False
         self._last_line = None
@@ -146,7 +150,7 @@ class IdleBehaviorManager(QtCore.QObject):
                 choices.append(IdleActionType.TRANSITION)
             if self._effects():
                 choices.append(IdleActionType.EXPRESSION)
-            if self._lines and self._clock() - self._last_speech >= 90:
+            if self._lines and self._clock() - self._last_speech >= 90 and self._speech_allowed():
                 choices.extend([IdleActionType.SPEAK, IdleActionType.WALK_AND_SPEAK])
             choices = [a for a in choices if a != self._last_action] or choices
             action = IdleActionType.MOVE if self._resume_pending else random.choice(choices)

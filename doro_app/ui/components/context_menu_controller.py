@@ -40,6 +40,7 @@ class ContextMenuController:
         companion=None,
         on_interaction=None,
         on_settings_changed=None,
+        heartbeat=None,
     ) -> None:
         self._window = window
         self._state_service = state_service
@@ -52,6 +53,7 @@ class ContextMenuController:
         self._companion = companion
         self._on_interaction = on_interaction or (lambda: None)
         self._on_settings_changed = on_settings_changed or (lambda: None)
+        self._heartbeat = heartbeat
 
     # ──────────────────────────────────────────────────────────
     # Public API
@@ -131,6 +133,7 @@ class ContextMenuController:
             save_rest_state=self._companion.save_rest_state if self._companion else lambda: None,
             clear_rest_point=self._companion.clear_rest_point if self._companion else lambda: None,
             show_companion_settings=self._show_companion_settings,
+            heartbeat_now=self._heartbeat_now,
             show_asset_factory=self._dialog_manager.show_asset_factory,
         )
 
@@ -144,7 +147,11 @@ class ContextMenuController:
 
         self._on_interaction()
         dialog = CompanionDialog(
-            self._core_manager.config_manager, self._state_service, self._window, self._window
+            self._core_manager.config_manager,
+            self._state_service,
+            self._window,
+            self._window,
+            checklist_path=self._heartbeat.checklist_path if self._heartbeat else None,
         )
         try:
             if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
@@ -153,6 +160,11 @@ class ContextMenuController:
                     self._companion.refresh_preferences()
         finally:
             dialog.cleanup()
+
+    def _heartbeat_now(self) -> None:
+        if self._heartbeat is not None:
+            # Let the menu finish closing first; an open popup counts as busy.
+            QtCore.QTimer.singleShot(0, self._heartbeat.beat_now)
 
     def _show_presence_settings(self) -> None:
         from ..dialogs.presence_dialog import PresenceDialog

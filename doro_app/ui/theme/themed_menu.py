@@ -57,6 +57,7 @@ class MenuCallbacks:
     save_rest_state: Callable[[], None] = lambda: None
     clear_rest_point: Callable[[], None] = lambda: None
     show_companion_settings: Callable[[], None] = lambda: None
+    heartbeat_now: Callable[[], None] = lambda: None
     show_asset_factory: Callable[[], None] = lambda: None
 
 
@@ -339,6 +340,8 @@ def build_context_menu_content(
     quiet_action.triggered.connect(callbacks.toggle_quiet)
     settings_action = menu.addAction("陪伴設定…")
     settings_action.triggered.connect(callbacks.show_companion_settings)
+    heartbeat_action = menu.addAction("立刻跳一次心跳")
+    heartbeat_action.triggered.connect(callbacks.heartbeat_now)
     nest_action = menu.addAction("把這裡設為休息點")
     nest_action.triggered.connect(callbacks.save_nest)
     clear_rest_action = menu.addAction("清除休息點（原地陪伴）")

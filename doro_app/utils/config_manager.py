@@ -301,6 +301,10 @@ class ConfigManager:
             "companion_rest_state": kwargs.get(
                 "companion_rest_state", current.companion_rest_state
             ),
+            "heartbeat_enabled": kwargs.get("heartbeat_enabled", current.heartbeat_enabled),
+            "heartbeat_interval_minutes": kwargs.get(
+                "heartbeat_interval_minutes", current.heartbeat_interval_minutes
+            ),
         }
 
         new_config = UIConfig(**updated_values)
@@ -437,6 +441,15 @@ class ConfigManager:
                 interval = int(interval)
             if type(interval) is not int or not 1 <= interval <= 3600:
                 interval = 9
+            heartbeat_minutes = self._settings.value("ui/heartbeat_interval_minutes", 30)
+            if (
+                isinstance(heartbeat_minutes, str)
+                and heartbeat_minutes.isascii()
+                and heartbeat_minutes.isdecimal()
+            ):
+                heartbeat_minutes = int(heartbeat_minutes)
+            if type(heartbeat_minutes) is not int or not 1 <= heartbeat_minutes <= 1440:
+                heartbeat_minutes = 30
             ui_config = UIConfig(
                 bubble_offset_x=_safe_float(
                     self._settings.value("ui/bubble_offset_x"), BUBBLE_DEFAULT_OFFSET_X
@@ -461,6 +474,8 @@ class ConfigManager:
                 companion_rest_state=_safe_str(
                     self._settings.value("ui/companion_rest_state"), "idle"
                 ),
+                heartbeat_enabled=_safe_bool(self._settings.value("ui/heartbeat_enabled"), False),
+                heartbeat_interval_minutes=heartbeat_minutes,
             )
             self._config.ui = ui_config
         except ValueError as e:
@@ -577,6 +592,8 @@ class ConfigManager:
         self._settings.remove("ui/companion_activity")
         self._settings.setValue("ui/companion_effects", ui.companion_effects)
         self._settings.setValue("ui/sprite_foot_overrides", json.dumps(ui.sprite_foot_overrides))
+        self._settings.setValue("ui/heartbeat_enabled", ui.heartbeat_enabled)
+        self._settings.setValue("ui/heartbeat_interval_minutes", ui.heartbeat_interval_minutes)
 
         # Save automation config
         automation = self._config.automation

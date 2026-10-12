@@ -229,6 +229,30 @@
     "purpose": "核心事件協調、可調活潑節奏與自主姿勢清單、短程散步、安靜原地休息及自由休息點；底部互動停用。"
   },
   {
+    "id": "heartbeat",
+    "name": "定時心跳",
+    "aliases": [
+      "心跳",
+      "heartbeat",
+      "自主心跳",
+      "心跳清單"
+    ],
+    "scope": [
+      "doro_app/core/heartbeat/*.py"
+    ],
+    "entries": [
+      "doro_app/core/heartbeat/controller.py",
+      "doro_app/core/heartbeat/context.py",
+      "doro_app/core/heartbeat/system_idle.py"
+    ],
+    "tests": [
+      "tests/core/heartbeat",
+      "tests/core/chat/test_heartbeat_request.py",
+      "tests/ui/test_heartbeat_app.py"
+    ],
+    "purpose": "定時叫醒模型做開口判斷；心跳清單、心跳日誌與跳過規則，只允許角色表現。"
+  },
+  {
     "id": "automation",
     "name": "桌面自動化",
     "aliases": [

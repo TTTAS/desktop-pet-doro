@@ -306,3 +306,27 @@ def test_short_interval_runs_again_without_resetting_user_idle_time(pet_idle):
     p.idle._on_timer()
     assert p.idle._do_move.call_count == 2
     assert p.options["age"] == 4
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_canned_lines_yield_to_heartbeat_when_it_owns_speech(pet_idle, monkeypatch, allowed):
+    """待決 1 / B：心跳負責開口時，待機只動不說；心跳不可用時恢復預寫台詞。"""
+    import doro_app.core.idle_behavior_manager as idle_module
+
+    p = pet_idle
+    p.idle._speech_allowed = lambda: allowed
+    p.options["now"] = 1000  # past the 90-second speech gap
+    offered = []
+
+    def first(options):
+        options = list(options)
+        if options and isinstance(options[0], IdleActionType):
+            offered.append(set(options))
+        return options[0]
+
+    monkeypatch.setattr(idle_module.random, "choice", first)
+    p.idle._on_timer()
+
+    assert offered, "the timer should have chosen an action"
+    speaking = {IdleActionType.SPEAK, IdleActionType.WALK_AND_SPEAK}
+    assert bool(offered[0] & speaking) is allowed

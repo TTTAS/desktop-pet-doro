@@ -41,11 +41,14 @@ class PresenceController(QtCore.QObject):
     page_received = QtCore.Signal(object)
     result_ready = QtCore.Signal(object, int, object, bool)
 
-    def __init__(self, orchestrator, settings_path: Path, busy, parent=None):
+    def __init__(self, orchestrator, settings_path: Path, busy, parent=None, *, bubble_busy=None):
         super().__init__(parent)
         self._orchestrator = orchestrator
         self._path = settings_path
         self._busy = busy
+        # A line still on screen (idle, heartbeat, an earlier reaction) only delays
+        # *speaking*; the next model request may still start meanwhile.
+        self._bubble_busy = bubble_busy or (lambda: False)
         self._bridge = None
         self._gate = EventGate()
         self._running = False
@@ -171,6 +174,8 @@ class PresenceController(QtCore.QObject):
         ):
             return
         if self._completed is not None:
+            if self._bubble_busy():
+                return  # wait for the current bubble to hide; the timer re-checks
             event, epoch, answer = self._completed
             self._completed = None
             if epoch == self._epoch and event == self.current_page:
