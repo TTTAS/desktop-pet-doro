@@ -19,7 +19,7 @@
 → 依結果完成或回報阻礙。所有操作繼續使用 Doro 自己的瀏覽器設定檔。
 
 1. 延伸嚴格的 WebStep：`select(n, text)`（精確選項文字）、`check(n, checked)`、
-   `hover(n)`、`wait(seconds)`（0–5 秒）、`new_tab(url)`、`switch_tab(tab_id)`。
+   `hover(n)`、`wait(seconds)`（大於 0、最多 5 秒）、`new_tab(url)`、`switch_tab(tab_id)`。
    元件與分頁編號為非負整數；只接受 http(s) 網址；錯誤格式重問後仍不合格就停止。
    填入文字原樣保留，不把首尾空白意外刪掉。
 2. snapshot 提供可用分頁的穩定 ID、目前分頁、label、選項、勾選/停用狀態；不提供
@@ -57,3 +57,26 @@
 
 已知邊界：網站自訂腳本副作用無法完全由 DOM 推論；已發出的單次動作無法用取消撤回。
 假網站驗收證明操作流程與限制，不等於任意真實網站或模型都能正確完成任務。
+
+## 本分支實作與驗收紀錄
+
+- 首階段已實作上述網站操作擴充，決策記錄於 ADR 0007；後續階段仍維持待辦。
+- 計畫先獨立提交；功能、測試、文件及生成地圖在下一筆提交，方便審查與回退。
+- 修改前的 web/chat/llm 基線：227 passed；新增 27 項單元案例與 12 項 Chromium 案例。
+- 最終完整驗收：**1321 passed**，包含 15 項瀏覽器案例與 3 項 AI 去背慢測試；
+  Linux、Python 3.12、PySide6 6.12、Playwright 配套 Chromium，未使用真帳號或真實 LLM。
+- Black 26.3.1（285 個 Python 檔）、Ruff 0.16.8、`repo_map.py --check` 及 `git diff --check` 均通過。
+- 雲端驗證先補齊 `.[dev,web,factory-ai]` 和配套 Chromium，使用可寫的獨立 log/config/cache。
+  系統 Chromium 的擴充 service worker 曾逾時，改用 Playwright 配套版本後原測試通過；
+  loopback 測試需執行環境允許本機連線。沒有為了通過而跳過或修改既有測試。
+
+標準驗證命令（先安裝上述套件與 Chromium）：
+
+```bash
+DORO_BROWSER_TESTS=1 QT_QPA_PLATFORM=offscreen python -m pytest tests --ignore=tests/manual -o addopts= -q
+black --check doro_app tests
+ruff check doro_app tests
+python scripts/repo_map.py --check
+```
+
+Windows 桌面跨應用操作、真實模型的任務完成率與任意網站相容性不在本次驗收範圍。

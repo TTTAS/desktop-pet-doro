@@ -91,6 +91,17 @@ python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
 
 Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
 
+### 多步網站操作
+
+啟用網站操作後，可以在聊天交代完整目標，例如「打開這個網站，選擇分類和條件，再開另一個分頁比較」。Doro 每一步都重新讀取自己的操作瀏覽器，最多執行 12 步。
+
+- 支援開網址、點擊、原樣填寫／清空、按鍵、捲動、返回，以及下拉選擇、勾選／取消勾選、懸停、短暫等候、開新分頁與切分頁。
+- 下拉選擇、勾選，以及送出等重要動作會先顯示網站和操作內容，回「好」才繼續；回「不要」停止，隨時可輸入「停」。單次等候最多 5 秒；已發出的瀏覽器動作無法撤回。
+- 元件或焦點在等待期間改變時會重新觀察，原本的確認不適用於替換後的目標。連續三次執行失敗就停止並說明原因。
+- 下拉選擇支援原生單選 `<select>`，勾選支援原生 checkbox/radio；自訂元件仍需透過其可見控制項操作。登入和驗證碼由你本人處理。
+
+規劃與後續桌面／跨工具路線見 [自動操作計畫](docs/automation-plan.md)。
+
 ### 懸浮聊天窗
 
 啟動後會直接顯示粉紅色置頂輸入列，可以立即打字，不用先點浮鈕或開選單。

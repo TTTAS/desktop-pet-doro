@@ -266,6 +266,9 @@ class WebRuntime(QtCore.QObject):
         )
         try:
             operator.run(goal)
+        except Exception:
+            logger.warning("網頁操作發生未預期錯誤，停止任務")
+            self.op_progress.emit("操作遇到未預期的錯誤，doro已停下來，請重新交代任務。")
         finally:
             self.op_finished.emit()
 
@@ -274,9 +277,11 @@ class WebRuntime(QtCore.QObject):
             return False
         self._confirm_event.clear()
         self._confirm_result = False
+        if self._cancel.is_set():
+            return False
         self.op_confirm.emit(description)
         got = self._confirm_event.wait(self._confirm_timeout_seconds)
         if not got:
             logger.info("確認逾時，當作不做")
             return False
-        return self._confirm_result
+        return self._confirm_result and not self._cancel.is_set()

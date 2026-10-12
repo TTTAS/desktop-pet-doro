@@ -34,6 +34,8 @@
   - `read`：讀完回既有聊天流程；頁面回答的結構沒有 `tool`，只允許角色表現，不再觸發其他工具。
   - `verify`：搜尋 → 開最多三個來源頁給使用者看 → 每開一頁就讀一頁 → 比對。單頁失敗不中斷；未讀正文的搜尋文字一律帶摘要標記。Tavily / ddgs 在 `search_providers.py`。
   - `operate`：`WebOperator` 的看→想→確認→做循環，每一步是嚴格驗證的 `WebStep`；受操作總開關限制。`needs_confirmation` 根據名稱、表單屬性及焦點判斷。Enter 只有明確搜尋框才免問，複合／未知按鍵、未知按鈕、表單送出會問。
+    - ADR 0007：新增 `select`／`check`（兩者均確認）、`hover`、最多 5 秒的 `wait`、`new_tab`／`switch_tab`。分頁用穩定 ID，元件使用快照時綁定的 DOM handle；執行前重查身分、屬性及焦點，過時目標不得套用先前確認。每任務最多 12 步，連續三次執行失敗停止。
+    - 空白頁可作操作起點；捲動後優先列出視窗內元件。文字抽取排除輸入框與編輯區；操作失敗不把 Playwright 的輸入內容紀錄交給模型。
   - `login`：只開站給使用者本人登入。密碼／驗證碼不讀值、不代填。
   - 取消在模型返回後及真正執行前檢查。已送到瀏覽器的單次動作不能追回。
 - **回覆與角色動作**：模型回覆都經 `core/llm` 驗證成結構（ADR 0005）。門為 `ChatOrchestrator.present_structured_reply`（純文字台詞走 `present_character_reply`）。讀頁／查證答覆與存在感的結構只有合法狀態及一個方向型 `move`，沒有 `tool`；生產環境先走再說。

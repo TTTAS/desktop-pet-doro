@@ -87,7 +87,7 @@
       "tests/core/web",
       "tests/browser"
     ],
-    "purpose": "專屬執行緒讀頁、搜尋查證與經確認的網站操作。"
+    "purpose": "專屬執行緒讀頁、搜尋查證與受控多步網站操作；表單、分頁、目標重查、確認及取消。"
   },
   {
     "id": "presence",

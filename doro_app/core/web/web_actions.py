@@ -11,6 +11,12 @@
 - ``[web:press;key=Enter]``    按某個鍵（Enter/Tab/Escape…）
 - ``[web:scroll;dir=down|up]`` 捲動
 - ``[web:back]``               上一頁
+- ``[web:select;n=編號;text=選項]`` 原生單選下拉選單（需確認）
+- ``[web:check;n=編號;checked=true]`` 設定勾選狀態（需確認）
+- ``[web:hover;n=編號]``       懸停
+- ``[web:wait;seconds=1]``     等待動態內容，最多 5 秒
+- ``[web:new_tab;url=網址]``   新分頁開啟
+- ``[web:switch_tab;tab_id=編號]`` 切換已觀察的分頁
 - ``[web:done]``               做完了，接著正式回答使用者
 
 **安全分級**（對應 grilling 決定 Q9＝甲）：只有「不可逆／送出類」動作需要先問使用
@@ -22,6 +28,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -81,7 +88,37 @@ _KV_PATTERN = re.compile(r"([a-zA-Z_]+)\s*=\s*(.*?)(?:;|$)")
 # 抓一整條 [web:...]。用非貪婪，容忍中間有分號與等號。
 _WEB_ACTION_PATTERN = re.compile(r"\[\s*web\s*[:：]\s*([^\]]+)\]", re.IGNORECASE)
 
-VALID_VERBS = {"goto", "click", "type", "press", "scroll", "back", "done"}
+VALID_VERBS = {
+    "goto",
+    "click",
+    "type",
+    "press",
+    "scroll",
+    "back",
+    "done",
+    "select",
+    "check",
+    "hover",
+    "wait",
+    "new_tab",
+    "switch_tab",
+}
+TARGET_VERBS = {"click", "type", "select", "check", "hover"}
+
+
+def valid_web_url(url: str) -> bool:
+    """Only explicit HTTP(S) destinations, without embedded credentials."""
+    try:
+        parsed = urlsplit(url.strip())
+        return bool(
+            parsed.scheme.lower() in {"http", "https"}
+            and parsed.hostname
+            and parsed.username is None
+            and parsed.password is None
+            and not any(c.isspace() for c in url.strip())
+        )
+    except ValueError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -116,6 +153,12 @@ _REQUIRED_PARAMS = {
     "type": ("n", "text"),
     "press": ("key",),
     "scroll": ("dir",),
+    "select": ("n", "text"),
+    "check": ("n", "checked"),
+    "hover": ("n",),
+    "wait": ("seconds",),
+    "new_tab": ("url",),
+    "switch_tab": ("tab_id",),
 }
 
 
@@ -128,15 +171,42 @@ class WebStep(BaseModel):
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
-    action: Literal["goto", "click", "type", "press", "scroll", "back", "done"] = Field(
+    action: Literal[
+        "goto",
+        "click",
+        "type",
+        "press",
+        "scroll",
+        "back",
+        "done",
+        "select",
+        "check",
+        "hover",
+        "wait",
+        "new_tab",
+        "switch_tab",
+    ] = Field(
         description=(
             "下一步：goto 開網址、click 點元件、type 在輸入框打字、press 按鍵、"
-            "scroll 捲動、back 上一頁、done 目標已達成或卡住而收尾"
+            "scroll 捲動、back 上一頁、select 選下拉選項、check 設定勾選狀態、"
+            "hover 懸停、wait 短暫等候、new_tab 開新分頁、switch_tab 切分頁、"
+            "done 目標已達成或卡住而收尾"
         )
     )
-    url: str | None = Field(default=None, description="goto 要開的完整網址（http 或 https）")
-    n: int | None = Field(default=None, description="click／type 的元件編號，只能用頁面列出的")
-    text: str | None = Field(default=None, description="type 要輸入的文字")
+    url: str | None = Field(default=None, description="goto／new_tab 的完整網址（http 或 https）")
+    n: int | None = Field(
+        default=None, ge=0, strict=True, description="目標元件編號，只能用頁面列出的"
+    )
+    text: str | None = Field(default=None, description="type 的原樣文字；select 的完整選項文字")
+    checked: bool | None = Field(
+        default=None, strict=True, description="check：true 勾選，false 取消勾選"
+    )
+    seconds: float | None = Field(
+        default=None, gt=0, le=5, allow_inf_nan=False, description="wait 等候秒數，最多 5 秒"
+    )
+    tab_id: int | None = Field(
+        default=None, ge=0, strict=True, description="switch_tab：分頁清單中的穩定 ID"
+    )
     key: str | None = Field(default=None, description="press 的按鍵，例如 Enter、Tab、Escape")
     dir: Literal["up", "down"] | None = Field(default=None, description="scroll 的方向")
     line: str = Field(
@@ -154,14 +224,15 @@ class WebStep(BaseModel):
         missing = [
             name
             for name in _REQUIRED_PARAMS.get(self.action, ())
-            if getattr(self, name) in (None, "")
+            if getattr(self, name) is None
+            or (getattr(self, name) == "" and not (self.action == "type" and name == "text"))
         ]
         if missing:
             raise ValueError(f"{self.action} 需要 {'、'.join(missing)}")
-        if self.action == "goto" and not self.url.strip().lower().startswith(
-            ("http://", "https://")
-        ):
-            raise ValueError("goto 的 url 必須是 http 或 https 開頭的完整網址")
+        if self.action in {"goto", "new_tab"} and not valid_web_url(self.url):
+            raise ValueError("url 必須是沒有帳密的完整 http 或 https 網址")
+        if self.action == "press" and not self.key.strip():
+            raise ValueError("press 的 key 不可空白")
         if self.action == "done" and not self.line:
             raise ValueError("done 時 line 必須說明結果")
         return self
@@ -169,9 +240,8 @@ class WebStep(BaseModel):
     def to_action(self) -> WebAction:
         """轉成既有的 :class:`WebAction`，沿用安全分級與執行路徑。"""
         params = {
-            name: str(getattr(self, name)).strip()
-            for name in ("url", "n", "text", "key", "dir")
-            if getattr(self, name) is not None
+            name: (self.text if name == "text" else str(getattr(self, name)).strip())
+            for name in _REQUIRED_PARAMS.get(self.action, ())
         }
         raw = "[web:" + ";".join([self.action, *(f"{k}={v}" for k, v in params.items())]) + "]"
         return WebAction(verb=self.action, params=params, raw=raw)
@@ -254,9 +324,14 @@ def needs_confirmation(
     - ``press``：已聚焦搜尋框且非敏感頁的普通 Enter 免問；複合／未知鍵需問。
       Tab、Escape、方向與頁面導覽鍵免問。
     - ``click``：送出關鍵字、表單提交、空名稱或未知編號都要問。
-    - ``goto`` / ``scroll`` / ``back`` / ``type`` / ``done``：不用問。
+    - ``select`` / ``check``：change handler 可能送出，一律要問。
+    - ``goto`` / ``scroll`` / ``back`` / ``type`` / ``done`` / ``hover`` /
+      ``wait`` / ``new_tab`` / ``switch_tab``：不用問；未知動作要問。
     """
     verb = action.verb
+    if verb in {"select", "check"}:
+        # A change event can save preferences, grant consent or submit a form.
+        return True
     if verb == "press":
         key = action.params.get("key", "").strip().lower()
         if key in {
@@ -293,4 +368,14 @@ def needs_confirmation(
         if element.get("is_submit"):
             return True
         return _looks_like_commit(name)
-    return False
+    return verb not in {
+        "goto",
+        "scroll",
+        "back",
+        "type",
+        "done",
+        "hover",
+        "wait",
+        "new_tab",
+        "switch_tab",
+    }
