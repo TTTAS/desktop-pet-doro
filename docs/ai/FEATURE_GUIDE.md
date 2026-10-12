@@ -51,6 +51,7 @@
 - 設定：`UIConfig.heartbeat_enabled`／`heartbeat_interval_minutes`，介面在「陪伴設定… → 心跳」；右鍵「立刻跳一次心跳」手動觸發。
 - 使用者訊息被接受（`user_message_accepted`，含分頁提問等提前返回的路徑）、按住／拖曳 Doro、切換安靜模式會 `interrupt()`；看過的分頁已改變也算過時，讓等待中的心跳結果失效；輸入列取得焦點只算忙碌（延後），不接 `_interrupt_background_companionship`，否則選單關閉後焦點回到輸入列就會把手動心跳作廢。
 - 泡泡：不自動消失（`auto_hide: False`）的只限「進行中」提示，每條路結束時都要換掉或清除；`ChatOrchestrator.bubble_clear_requested` 經 `CoreManager.chat_bubble_cleared` 接到 `BubbleController.clear_text`。待機、分頁陪伴、心跳都把畫面上的泡泡當成忙碌，泡泡卡住會讓三者一起停住。
+- 與待機分工：`HeartbeatController.owns_speech` 為真時，`IdleBehaviorManager` 經 `speech_allowed` 不抽說話類動作；心跳不可用時自動交還。
 - 地雷：不要在心跳結構加 `tool`，也不要讓心跳取代 `IdleBehaviorManager` 或 `PresenceController`。
 
 ### 🗨️ 聊天

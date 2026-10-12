@@ -79,6 +79,9 @@ class HeartbeatController(QtCore.QObject):
         self._closed = False
         self._epoch = 0
         self._pending = None  # (answer, epoch, page, deadline)
+        # Whether the last attempt reached a usable model; until a beat fails,
+        # assume it does so idle stays quiet from the moment the user opts in.
+        self._model_ok = True
         self._notice = None  # (text, epoch, quiet_when_queued, deadline)
         self.last_status = "尚未跳過心跳"
         self.result_ready.connect(self._on_result, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -104,11 +107,22 @@ class HeartbeatController(QtCore.QObject):
         return int(self._config.ui.heartbeat_interval_minutes) * 60 * 1000
 
     @property
+    def owns_speech(self) -> bool:
+        """True when Doro's own lines come from the heartbeat, not idle's canned ones.
+
+        Falls back to idle (False) when the heartbeat is off, no model server is
+        configured, or the last beat could not get a usable reply.
+        """
+        server = getattr(self._orchestrator.settings, "server_url", "")
+        return not self._closed and self.enabled and bool(server) and self._model_ok
+
+    @property
     def is_scheduled(self) -> bool:
         return self._timer.isActive()
 
     def reschedule(self) -> None:
         """Restart the cadence from now; call after the settings change."""
+        self._model_ok = True  # settings may have fixed the model; give it a fresh chance
         self._timer.stop()
         self._retry.stop()
         if self._closed or not self.enabled:
@@ -175,6 +189,7 @@ class HeartbeatController(QtCore.QObject):
             ask = self._orchestrator.make_heartbeat_request(prompt)
         except Exception as exc:
             reason = "模型設定暫時無法使用"
+            self._model_ok = False
             self.last_status = f"心跳跳過：{reason}"
             logger.warning("Heartbeat settings unavailable (%s)", type(exc).__name__)
             return reason
@@ -241,6 +256,8 @@ class HeartbeatController(QtCore.QObject):
         if self._closed:
             return
         answer, page = result
+        # Model health is known even when the result itself is stale.
+        self._model_ok = bool(ok)
         # Check staleness before anything else: no failure or "stayed silent"
         # notice either, once the user cancelled or went quiet.
         stale = self._stale_reason(epoch, page)

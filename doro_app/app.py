@@ -194,6 +194,10 @@ class DoroApp:
             pose_keys_provider=lambda: self._config_manager.ui.companion_pose_keys,
             quiet_provider=lambda: self._companion.quiet,
             effects_enabled=lambda: self._config_manager.ui.companion_effects,
+            # 待決 1 / B: canned lines only while the heartbeat cannot speak.
+            speech_allowed=lambda: not (
+                getattr(self, "_heartbeat", None) is not None and self._heartbeat.owns_speech
+            ),
             micro_effect=self.window.play_expression,
             window=self.window,
             action_dispatcher=self._action_dispatcher,

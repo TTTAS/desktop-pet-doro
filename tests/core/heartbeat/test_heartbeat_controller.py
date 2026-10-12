@@ -390,3 +390,35 @@ def test_waiting_notice_does_not_block_the_next_beat(heartbeat):
     heartbeat.world.busy = False
     heartbeat.orch.make_heartbeat_request.return_value = lambda: reply("", worth_saying=False)
     assert heartbeat.controller.beat(manual=True) is None
+
+
+# 待決 1 / B: the heartbeat owns speaking only while it can actually speak.
+
+
+def test_owns_speech_only_when_enabled_and_model_usable(heartbeat, qtbot):
+    hb = heartbeat
+    hb.orch.settings.server_url = "http://127.0.0.1:1234"
+    assert hb.controller.owns_speech
+    hb.config.ui.heartbeat_enabled = False
+    assert not hb.controller.owns_speech
+    hb.config.ui.heartbeat_enabled = True
+    hb.orch.settings.server_url = ""
+    assert not hb.controller.owns_speech  # no model configured: idle keeps talking
+    hb.orch.settings.server_url = "http://127.0.0.1:1234"
+
+    hb.orch.make_heartbeat_request.return_value = lambda: None
+    hb.controller.beat()
+    qtbot.waitUntil(lambda: not hb.controller._running)
+    assert not hb.controller.owns_speech  # model unreachable: fall back to canned lines
+
+    hb.orch.make_heartbeat_request.return_value = lambda: reply("", worth_saying=False)
+    hb.controller.beat()
+    qtbot.waitUntil(lambda: not hb.controller._running)
+    assert hb.controller.owns_speech  # recovered
+
+
+def test_settings_error_gives_speech_back_to_idle(heartbeat):
+    heartbeat.orch.settings.server_url = "http://127.0.0.1:1234"
+    heartbeat.orch.make_heartbeat_request.side_effect = RuntimeError("bad settings")
+    heartbeat.controller.beat()
+    assert not heartbeat.controller.owns_speech

@@ -3,7 +3,7 @@ background speaker sees a visible bubble as busy."""
 
 from PySide6 import QtCore
 
-from tests.ui.test_heartbeat_app import _app
+from tests.ui.test_heartbeat_app import _app, _close
 
 
 def test_clear_request_reaches_the_bubble_and_reactions_see_it(
@@ -25,5 +25,5 @@ def test_clear_request_reaches_the_bubble_and_reactions_see_it(
         assert app._bubble_controller.text == ""
         assert not app._presence._bubble_busy()
     finally:
-        app._on_about_to_quit()
+        _close(app)
         QtCore.QCoreApplication.processEvents()

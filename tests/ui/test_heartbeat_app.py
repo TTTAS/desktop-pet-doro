@@ -48,6 +48,19 @@ def _app(tmp_path, real_state_service, monkeypatch):
     return DoroApp(deps=deps)
 
 
+def _close(app):
+    """Shut the app down and stop every timer that would outlive the window.
+
+    A settings save restarts the idle timer, and a bubble left on screen keeps
+    its hide timer; either would fire into the deleted window in a later test.
+    """
+    app._on_about_to_quit()
+    app._idle_behavior._timer.stop()
+    app.window._timer.stop()
+    app._bubble_controller.clear_text()
+    app._bubble_controller._hide_timer.stop()
+
+
 def test_heartbeat_menu_settings_and_interrupts(qtbot, tmp_path, real_state_service, monkeypatch):
     structured.forget_detected_modes()
     monkeypatch.setattr(
@@ -73,9 +86,13 @@ def test_heartbeat_menu_settings_and_interrupts(qtbot, tmp_path, real_state_serv
         )
         assert "立刻跳一次心跳" in {action.text() for action in menu.actions()}
 
+        # 待決 1 / B: with the heartbeat off, idle keeps its canned lines.
+        app._chat_orchestrator.settings.set_server_url("http://127.0.0.1:9")
+        assert app._idle_behavior._speech_allowed()
         app._config_manager.update_ui(heartbeat_enabled=True, heartbeat_interval_minutes=7)
         app._on_companion_settings_changed()
         assert heartbeat.is_scheduled and heartbeat._timer.interval() == 7 * 60 * 1000
+        assert not app._idle_behavior._speech_allowed()  # the heartbeat speaks now
 
         # Focusing the chat bar delays a heartbeat; only sending a message cancels it,
         # including a shared-page question that never starts a chat request.
@@ -111,7 +128,7 @@ def test_heartbeat_menu_settings_and_interrupts(qtbot, tmp_path, real_state_serv
         qtbot.waitUntil(lambda: spoken == ["休息一下吧"], timeout=3000)
         assert load_journal(tmp_path / "heartbeat_journal.json")[0].line == "休息一下吧"
     finally:
-        app._on_about_to_quit()
+        _close(app)
         structured.forget_detected_modes()
         QtCore.QCoreApplication.processEvents()
 
@@ -157,6 +174,6 @@ def test_manual_notice_never_covers_an_idle_line(
         qtbot.waitUntil(lambda: app._bubble_controller.text.startswith("（"), timeout=3000)
     finally:
         release.set()
-        app._on_about_to_quit()
+        _close(app)
         structured.forget_detected_modes()
         QtCore.QCoreApplication.processEvents()
