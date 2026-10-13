@@ -56,6 +56,38 @@ def test_load_preview_export_and_import(qtbot, dialog):
     dialog.service.add_gif.assert_called_once_with("idle", webp)
 
 
+def test_gif_converts_to_uniform_canvas_gif_and_imports(qtbot, dialog, tmp_path):
+    source = tmp_path / "web.gif"
+    frames = [Image.new("RGBA", (30, 12), (0, 0, 0, 0)) for _ in range(3)]
+    for i, frame in enumerate(frames):
+        frame.paste((255, 0, 0, 255), (i * 5, 2, i * 5 + 5, 8))
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=80, loop=0)
+    dialog.mode.setCurrentIndex(dialog.mode.findData("none"))
+    dialog.fmt.setCurrentText("gif")
+    dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("canvas"))
+    dialog.size.setValue(64)
+    dialog._paths = [source]
+    dialog._load_video(0)
+    qtbot.waitUntil(lambda: dialog._job is None and bool(dialog._frames), timeout=15000)
+    qtbot.waitUntil(lambda: dialog._job is None and "預覽完成" in dialog.status.text())
+    dialog._export_animation()
+    qtbot.waitUntil(lambda: dialog._job is None and dialog.results.count() == 1, timeout=15000)
+    gif = Path(dialog.results.item(0).text())
+    assert gif.suffix == ".gif" and gif != source
+    with Image.open(gif) as image:
+        assert image.size == (64, 64)
+        assert image.n_frames == 3
+    dialog.target.setCurrentIndex(1)
+    dialog._import_selected()
+    dialog.service.add_gif.assert_called_once_with("idle", gif)
+
+
+def test_original_size_mode_disables_size_box(dialog):
+    dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("original"))
+    assert not dialog.size.isEnabled()
+    assert dialog._export_settings()[1:] == (None, False)
+
+
 def test_failed_load_clears_previous_source(qtbot, dialog, tmp_path):
     dialog._frames = [Image.new("RGB", (20, 20))]
     dialog._paths = [tmp_path / "missing.mp4"]

@@ -24,7 +24,7 @@ _ai_session_lock = threading.Lock()
 class MattingOptions:
     """去背設定。所有模式共用一組設定,用 mode 決定走哪條路。"""
 
-    mode: str = "ai"  # "ai" 或 "color"
+    mode: str = "ai"  # "ai"、"color" 或 "none"(不去背,保留原本透明)
 
     # AI 模式(rembg + isnet-anime)
     alpha_matting: bool = False
@@ -47,8 +47,10 @@ def remove_background(image: Image.Image, options: MattingOptions | None = None)
         rgba = _remove_ai(image, options)
     elif options.mode == "color":
         rgba = _remove_color(image, options)
+    elif options.mode == "none":
+        rgba = image.convert("RGBA")
     else:
-        raise ValueError(f"未知的去背模式:{options.mode!r}(只能是 'ai' 或 'color')")
+        raise ValueError(f"未知的去背模式:{options.mode!r}(只能是 'ai'、'color' 或 'none')")
 
     if options.erode > 0:
         rgba = _erode_alpha(rgba, options.erode)

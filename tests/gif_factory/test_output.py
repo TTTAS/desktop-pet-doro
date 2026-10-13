@@ -52,4 +52,4 @@ def test_saved_file_keeps_transparency(tmp_path, fmt):
 
 def test_unsupported_format_raises(tmp_path):
     with pytest.raises(ValueError):
-        save_animation(_make_frames(), "gif", tmp_path / "out.gif", fps=12)
+        save_animation(_make_frames(), "bmp", tmp_path / "out.bmp", fps=12)

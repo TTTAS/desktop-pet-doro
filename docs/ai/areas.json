@@ -325,6 +325,7 @@
       "素材",
       "去背",
       "DORO2",
+      "GIF 轉檔",
       "gif_factory"
     ],
     "scope": [
@@ -341,6 +342,6 @@
       "tests/gif_factory",
       "tests/ui/dialogs/test_asset_factory_dialog.py"
     ],
-    "purpose": "本機影片拆格、AI／顏色去背、批次動畫與單格 PNG 輸出；Qt 背景工作、取消及透過 StateService 匯入姿勢。"
+    "purpose": "本機影片／GIF 動圖拆格、AI／顏色去背或保留原透明、統一畫布尺寸、批次 WebP／APNG／GIF 與單格 PNG 輸出；Qt 背景工作、取消及透過 StateService 匯入姿勢。"
   }
 ]

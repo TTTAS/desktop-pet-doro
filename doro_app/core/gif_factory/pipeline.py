@@ -1,4 +1,4 @@
-"""端到端管線:把三個接縫接起來。mp4 → 去背 → 動畫檔。
+"""端到端管線:把三個接縫接起來。mp4 / GIF → 去背 → 動畫檔。
 
 視窗層只呼叫這裡(或個別接縫),不自己放處理邏輯。
 """
@@ -42,11 +42,14 @@ def process_video(
     progress: Callable[[int, int], None] | None = None,
     size: int | None = None,
     cancel: Event | None = None,
+    canvas: bool = False,
 ) -> Path:
-    """讀影片 → 逐張去背 → (可選)縮到指定尺寸 → 存成動畫檔。
+    """讀影片或動圖 → 逐張去背 → (可選)縮到指定尺寸 → 存成動畫檔。
 
     progress(done, total) 會在每張影格處理完後被呼叫,供視窗顯示進度。
     size 若給定(長邊像素),縮小發生在去背之後、存檔之前,以保住邊緣品質。
+    canvas=True 時改成統一放進 size×size 透明畫布(可放大),讓大小不一的
+    來源 GIF 輸出成同樣尺寸。動圖來源會沿用每格原本的顯示時間。
     """
     check_cancelled(cancel)
     extracted = extract_frames(video_path, cancel=cancel)
@@ -60,7 +63,15 @@ def process_video(
             progress(index, total)
 
     check_cancelled(cancel)
-    return save_animation(processed, fmt, output_path, extracted.fps, size=size)
+    return save_animation(
+        processed,
+        fmt,
+        output_path,
+        extracted.fps,
+        size=size,
+        durations=extracted.durations,
+        canvas=canvas,
+    )
 
 
 def process_videos(
@@ -71,6 +82,7 @@ def process_videos(
     size: int | None = None,
     on_progress: Callable[[int, int, int, int, str], None] | None = None,
     cancel: Event | None = None,
+    canvas: bool = False,
 ) -> list[Path]:
     """批量處理多支影片:每支各自去背、輸出成 <檔名>.<fmt> 到 output_dir。
 
@@ -105,6 +117,7 @@ def process_videos(
                 progress=frame_progress,
                 size=size,
                 cancel=cancel,
+                canvas=canvas,
             )
         )
 
