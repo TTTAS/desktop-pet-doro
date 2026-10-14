@@ -49,7 +49,7 @@ python doro.py
 
 右鍵 Doro →「素材工廠（影片去背）…」，可直接製作及匯入桌寵動畫；也能把網路上大小不一的 GIF 轉成同樣尺寸。
 
-先在 doro 的 Python 環境安裝素材套件：
+Windows 用 `run_doro.bat`／`run_doro_debug.bat` 啟動時會自動安裝素材套件。其他啟動方式請先在 doro 的 Python 環境安裝：
 
 ```bash
 python -m pip install -e ".[factory]"

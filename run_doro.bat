@@ -15,6 +15,9 @@ REM ============================================================
 
 cd /d "%~dp0"
 
+REM Optional feature sets to install. factory = asset factory - OpenCV, Pillow, numpy.
+set "DORO_EXTRAS=web,automation,a11y,factory"
+
 if /I "%~1"=="debug" set "DORO_WEB_DEBUG=1"
 if defined DORO_WEB_DEBUG echo [debug] web-operation debug output is ON
 
@@ -31,11 +34,11 @@ if errorlevel 1 goto err_venv
 REM 2) activate venv
 call ".venv\Scripts\activate.bat"
 
-REM 3) install deps on first run, OR whenever pyproject.toml changed.
-REM    The marker stores the hash of pyproject.toml. When the dependency
-REM    list changes later (e.g. a new package like websockets is added),
-REM    the hash no longer matches and we reinstall, so old venvs pick up
-REM    the new packages instead of silently missing them.
+REM 3) install deps on first run, OR whenever pyproject.toml or DORO_EXTRAS changed.
+REM    The marker stores the hash of pyproject.toml plus the extras list.
+REM    When either changes later - e.g. a new package like websockets, or a
+REM    new extra like factory - it no longer matches and we reinstall, so
+REM    old venvs pick up the new packages instead of silently missing them.
 set "PYPROJECT_HASH="
 for /f "skip=1 delims=" %%H in ('certutil -hashfile "pyproject.toml" SHA256') do if not defined PYPROJECT_HASH set "PYPROJECT_HASH=%%H"
 
@@ -43,19 +46,19 @@ set "SAVED_HASH="
 if exist ".venv\.doro_setup_done" set /p SAVED_HASH=<".venv\.doro_setup_done"
 
 if not defined PYPROJECT_HASH goto do_setup
-if /I "%SAVED_HASH%"=="%PYPROJECT_HASH%" goto run
+if /I "%SAVED_HASH%"=="%PYPROJECT_HASH% %DORO_EXTRAS%" goto run
 
 :do_setup
 echo [setup] installing dependencies, first time takes a few minutes ...
 python -m pip install --upgrade pip
-python -m pip install -e ".[web,automation,a11y]"
+python -m pip install -e ".[%DORO_EXTRAS%]"
 if errorlevel 1 goto err_pip
 
 echo [setup] downloading Playwright browser Chromium ...
 python -m playwright install chromium
 if errorlevel 1 goto err_pw
 
-echo %PYPROJECT_HASH%> ".venv\.doro_setup_done"
+echo %PYPROJECT_HASH% %DORO_EXTRAS%> ".venv\.doro_setup_done"
 echo [setup] done.
 
 :run
