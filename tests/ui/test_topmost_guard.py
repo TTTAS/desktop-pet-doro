@@ -1,4 +1,4 @@
-"""TopmostGuard restores always-on-top for windows that asked for it."""
+"""TopmostGuard keeps always-on-top windows above ordinary windows."""
 
 from PySide6 import QtCore, QtWidgets
 
@@ -16,60 +16,52 @@ def _window(qtbot, on_top: bool) -> QtWidgets.QWidget:
     return widget
 
 
-def test_restores_topmost_only_where_it_was_lost(qtbot):
+def _guard(topmost, covers, restored, logs):
+    return TopmostGuard(
+        is_topmost=lambda hwnd: hwnd in topmost,
+        make_topmost=lambda hwnd: (restored.append(hwnd), topmost.add(hwnd)),
+        covered_by=lambda hwnd: covers.get(hwnd),
+        log=logs.append,
+    )
+
+
+def test_restores_lost_topmost_flag_only_for_on_top_windows(qtbot):
     lost = _window(qtbot, on_top=True)
     kept = _window(qtbot, on_top=True)
     normal = _window(qtbot, on_top=False)
-    topmost = {int(kept.winId())}
-    restored, logs = [], []
-    guard = TopmostGuard(
-        is_topmost=lambda hwnd: hwnd in topmost,
-        make_topmost=lambda hwnd: (restored.append(hwnd), topmost.add(hwnd)),
-        foreground=lambda: 1,
-        log=logs.append,
-    )
+    topmost, restored, logs = {int(kept.winId())}, [], []
+    guard = _guard(topmost, {}, restored, logs)
 
     assert guard.check() == 1
-    assert int(lost.winId()) in restored
+    assert restored == [int(lost.winId())]
     assert int(normal.winId()) not in restored
     assert logs == ["QWidget lost always-on-top; restoring it"]
     restored.clear()
-    assert guard.check() == 0  # 前景沒變、旗標都在：什麼都不做
+    assert guard.check() == 0  # 旗標都在、沒被蓋住：什麼都不做
     assert restored == []
 
 
-def test_reasserts_topmost_when_foreground_changes(qtbot):
+def test_raises_again_while_another_apps_window_covers_it(qtbot):
     window = _window(qtbot, on_top=True)
-    foreground = [1]
-    restored, logs = [], []
-    guard = TopmostGuard(
-        is_topmost=lambda hwnd: True,  # 旗標還在，但可能被排到其他視窗後面
-        make_topmost=restored.append,
-        foreground=lambda: foreground[0],
-        log=logs.append,
-    )
-    guard.check()
-    restored.clear()
+    hwnd = int(window.winId())
+    covers, restored, logs = {hwnd: "doro (1).gif"}, [], []
+    guard = _guard({hwnd}, covers, restored, logs)
 
     guard.check()
-    assert restored == []
-    foreground[0] = 2  # 例如關掉相片 App，前景換成檔案總管
-    guard.check()
+    guard.check()  # 相片 App 動畫後又把視窗抬上來：繼續處理，但只記一次
+    assert restored == [hwnd, hwnd]
+    assert logs == ["QWidget was covered by doro (1).gif; raising it again"]
 
-    assert restored == [int(window.winId())]
-    assert logs == []  # 例行重申不記錄，避免洗版
+    del covers[hwnd]
+    guard.check()
+    assert restored == [hwnd, hwnd]
 
 
 def test_hidden_windows_are_left_alone(qtbot):
     hidden = _window(qtbot, on_top=True)
     hidden.hide()
     restored = []
-    guard = TopmostGuard(
-        is_topmost=lambda hwnd: False,
-        make_topmost=restored.append,
-        foreground=lambda: 1,
-        log=print,
-    )
+    guard = _guard(set(), {}, restored, [])
 
     guard.check()
 
