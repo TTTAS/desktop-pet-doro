@@ -46,6 +46,7 @@ class DoroWindow(QtWidgets.QWidget):
     tick_requested = QtCore.Signal(float)  # dt
     bubble_toggle_requested = QtCore.Signal(str, bool)  # state_key, checked
     context_menu_requested = QtCore.Signal(QtCore.QPoint)  # global_pos
+    closed = QtCore.Signal()  # main window accepted a close (e.g. Alt+F4)
 
     def __init__(
         self,
@@ -685,3 +686,5 @@ class DoroWindow(QtWidgets.QWidget):
             pass
 
         super().closeEvent(event)
+        if event.isAccepted():
+            self.closed.emit()

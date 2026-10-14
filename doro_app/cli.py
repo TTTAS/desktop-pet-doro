@@ -113,5 +113,20 @@ def main():
         )
         sys.exit(1)
 
+    install_quit_policy(qt_app, doro_app.window)
     doro_app.run()
     sys.exit(qt_app.exec())
+
+
+def install_quit_policy(qt_app, window) -> None:
+    """Quit only via "Exit doro" or by closing Doro's own main window.
+
+    The main window is a Qt.Tool window (kept off the taskbar), and Qt does not
+    count Tool windows as primary windows. With Qt's default
+    quitOnLastWindowClosed, closing any ordinary dialog (state manager, asset
+    factory, ...) therefore looked like "the last window closed" and quit Doro.
+    """
+    from PySide6 import QtWidgets
+
+    qt_app.setQuitOnLastWindowClosed(False)
+    window.closed.connect(QtWidgets.QApplication.quit)
