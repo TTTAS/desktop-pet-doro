@@ -11,10 +11,12 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ...core.gif_factory.config import load_config, save_config
 from ...core.gif_factory.frames import ANIMATED_IMAGE_SUFFIXES, extract_frames, is_animated_image
 from ...core.gif_factory.matting import MattingOptions, remove_background
-from ...core.gif_factory.output import DoroSpec, body_bounds, fit_to_doro, save_image
+from ...core.gif_factory.output import DoroSpec, apply_doro_layout, body_bounds, save_image
 from ...core.gif_factory.pipeline import (
     available_output_path,
     check_cancelled,
+    doro_layout_for_frame,
+    frame_layout_is_exact,
     process_video,
 )
 from ...core.gif_factory.preview import composite_on_checker, fit_within, overlay_doro_reference
@@ -80,11 +82,20 @@ class SourcePreview(QtWidgets.QLabel):
 
 
 def _load_doro_reference():
+    """回傳 (參考 Doro 第一格, 角色本體高度);讀不到時回傳 (None, None),預覽只畫腳底線。"""
     try:
         with Image.open(_DORO_REFERENCE_PATH) as image:
-            return image.convert("RGBA")
+            reference = image.convert("RGBA")
     except (OSError, ValueError):
-        return None  # 沒有參考圖時預覽只畫腳底線。
+        return None, None
+    bounds = body_bounds([reference])
+    return reference, (bounds[3] - bounds[1]) if bounds else None
+
+
+def _place_frame(frames, rgba, options, spec):
+    """預覽與單格 PNG 共用:算出變換並套到這一格,兩者結果才一致。"""
+    layout = doro_layout_for_frame(frames, rgba, options, spec)
+    return apply_doro_layout([rgba], layout, spec.canvas)[0], layout
 
 
 def _pixmap(image):
@@ -399,27 +410,34 @@ class AssetFactoryDialog(FramelessDialog):
         if not self._frames or self._job:
             return
         image, options, spec = self._frames[self.frame.value()], self._options(), self._doro_spec()
-        # 不去背時原圖透明就是成品透明，可用整支動畫的範圍；其餘以目前這格估算。
-        whole = list(self._frames) if spec is not None and options.mode == "none" else None
+        frames = list(self._frames)
         self.preview.clear()
         self.status.setText("去背預覽中；首次 AI 去背可能需要下載模型…")
 
         def operation(job):
             rgba = remove_background(image, options)
             if spec is None:
-                return rgba
-            bounds = body_bounds(whole) if whole is not None else None
-            placed = fit_to_doro([rgba], spec, bounds=bounds)[0]
-            return overlay_doro_reference(placed, _load_doro_reference(), spec.foot_y)
+                return rgba, None
+            placed, layout = _place_frame(frames, rgba, options, spec)
+            reference, reference_height = _load_doro_reference()
+            scale = spec.body_height / reference_height if reference_height else 1.0
+            preview = overlay_doro_reference(placed, reference, spec.foot_y, reference_scale=scale)
+            return preview, layout
 
-        def completed(rgba):
+        def completed(result):
+            rgba, layout = result
             small, _ = fit_within(rgba, 250)
             self.preview.setPixmap(_pixmap(composite_on_checker(small)))
             if spec is None:
                 self.status.setText("預覽完成；可調整設定或輸出。")
-            else:
-                estimate = "" if whole is not None else "（大小以目前這格估算）"
-                self.status.setText(f"預覽完成：淡色為參考 Doro、紅線為腳底{estimate}。")
+                return
+            notes = []
+            if not frame_layout_is_exact(options):
+                notes.append("大小以目前這格估算，整支輸出時會以全部影格重算")
+            elif layout is not None and layout.clipped_frames:
+                notes.append(f"有 {layout.clipped_frames} 格動作超出畫布，輸出時會被裁掉")
+            suffix = "（" + "；".join(notes) + "）" if notes else ""
+            self.status.setText(f"預覽完成：淡色為同身高的參考 Doro、紅線為腳底{suffix}。")
 
         self._start_job(operation, completed)
 
@@ -465,6 +483,12 @@ class AssetFactoryDialog(FramelessDialog):
         self.status.setText("處理檔案中…")
 
         def operation(job):
+            clipped = []
+
+            def report(layout, name):
+                if layout is not None and layout.clipped_frames:
+                    clipped.append(f"{name} {layout.clipped_frames} 格")
+
             for index, path in enumerate(paths):
                 check_cancelled(job.cancel)
                 output = available_output_path(folder / f"{path.stem}.{fmt}")
@@ -482,18 +506,30 @@ class AssetFactoryDialog(FramelessDialog):
                     options=options,
                     progress=progress,
                     cancel=job.cancel,
+                    on_layout=lambda doro_layout, name=path.name: report(doro_layout, name),
                     **layout,
                 )
                 job.exported.emit(str(result))
+            return clipped
 
-        self._start_job(operation, lambda _: self.status.setText("輸出完成，可選取動畫匯入姿勢。"))
+        def completed(clipped):
+            message = "輸出完成，可選取動畫匯入姿勢。"
+            if clipped:
+                message += "注意：動作超出畫布已裁掉（" + "、".join(clipped) + "）。"
+            self.status.setText(message)
+
+        self._start_job(operation, completed)
 
     def _export_frame(self):
         settings = self._export_settings()
         if not settings or not self._frames or self._job:
             return
         folder, layout = settings
-        image, options = self._frames[self.frame.value()], self._options()
+        image, options, frames = (
+            self._frames[self.frame.value()],
+            self._options(),
+            list(self._frames),
+        )
         output = available_output_path(
             folder / f"{self._loaded_path.stem}_frame{self.frame.value() + 1}.png"
         )
@@ -502,7 +538,10 @@ class AssetFactoryDialog(FramelessDialog):
         def operation(job):
             rgba = remove_background(image, options)
             check_cancelled(job.cancel)
-            result = save_image(rgba, output, **layout)
+            spec = layout["doro"]
+            if spec is not None:
+                rgba, _ = _place_frame(frames, rgba, options, spec)
+            result = save_image(rgba, output, size=layout["size"], canvas=layout["canvas"])
             job.exported.emit(str(result))
 
         self._start_job(operation, lambda _: self.status.setText("PNG 已儲存。"))

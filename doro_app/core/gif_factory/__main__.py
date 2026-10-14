@@ -17,11 +17,16 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from doro_app.core.gif_factory.frames import extract_frames
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
-from doro_app.core.gif_factory.output import DoroSpec, save_image
-from doro_app.core.gif_factory.pipeline import process_video, process_videos
+from doro_app.core.gif_factory.output import DoroLayout, DoroSpec, apply_doro_layout, save_image
+from doro_app.core.gif_factory.pipeline import (
+    doro_layout_for_frame,
+    process_video,
+    process_videos,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,6 +119,14 @@ def main(argv: list[str] | None = None) -> int:
     return _single(video, output, args.fmt, **sizing)
 
 
+def _warn_clipped(name: str, layout: DoroLayout | None) -> None:
+    if layout is not None and layout.clipped_frames:
+        print(
+            f"\n  注意:{name} 有 {layout.clipped_frames} 格動作超出畫布,超出部分已裁掉",
+            file=sys.stderr,
+        )
+
+
 def _single(
     video: str,
     output: str,
@@ -138,6 +151,7 @@ def _single(
             size=size,
             canvas=canvas,
             doro=doro,
+            on_layout=lambda layout: _warn_clipped(Path(video).name, layout),
         )
     except (FileNotFoundError, ValueError) as err:
         print(f"\n錯誤:{err}", file=sys.stderr)
@@ -170,6 +184,7 @@ def _batch(
             on_progress=show_progress,
             canvas=canvas,
             doro=doro,
+            on_layout=_warn_clipped,
         )
     except (FileNotFoundError, ValueError) as err:
         print(f"\n錯誤:{err}", file=sys.stderr)
@@ -200,7 +215,10 @@ def _save_single_frame(
 
     print(f"挑第 {frame_no}/{total} 格去背並存成 PNG...(第一次跑會先下載 AI 模型)")
     rgba = remove_background(extracted.frames[frame_no - 1], options)
-    out = save_image(rgba, output, size=size, canvas=canvas, doro=doro)
+    if doro is not None:
+        layout = doro_layout_for_frame(extracted.frames, rgba, options, doro)
+        rgba = apply_doro_layout([rgba], layout, doro.canvas)[0]
+    out = save_image(rgba, output, size=None if doro else size, canvas=canvas)
     print(f"完成!輸出:{out}")
     return 0
 

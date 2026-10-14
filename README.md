@@ -60,7 +60,7 @@ python -m pip install -e ".[factory-ai]"
 - 多選 MP4 或 GIF／WebP／APNG 動圖，以清單切換檔案、滑桿挑影格，對照原圖與透明棋盤格預覽。動圖保留原本透明與每格時間。
 - 支援 isnet-anime AI 去背、AI 邊緣柔化、點圖取色、顏色容差與邊緣內縮；也可選「不去背」只轉格式／尺寸（只選動圖時預設此項）。
 - 全部檔案使用同一組設定，輸出透明 WebP／APNG／GIF；也可把目前影格存成 PNG。GIF 只有全透明或不透明，半透明邊緣以 50% 為界。
-- 輸出尺寸可選「維持原尺寸」、「縮小長邊（只縮不放，預設 200 像素）」、「統一 N×N 畫布」（等比縮放後放進正方形透明畫布、水平置中貼齊底部），或 **「對齊 Doro 規格」**：裁掉整支動畫的透明留白，把角色縮放到指定身高（預設 150；Doro 站姿約 170），放進 200×200 畫布、腳踩在 y=186，和內建素材同大小、站在同一條線上。預覽會疊一隻半透明的參考 Doro 和紅色腳底線。都在原尺寸去背後才縮放；記住輸出資料夾、格式及尺寸，沿用 DORO2 的 `.gif_factory.json`。
+- 輸出尺寸可選「維持原尺寸」、「縮小長邊（只縮不放，預設 200 像素）」、「統一 N×N 畫布」（等比縮放後放進正方形透明畫布、水平置中貼齊底部），或 **「對齊 Doro 規格」**：以每格角色高度的中位數縮放到指定身高（預設 167，與內建站姿相同；待機類約 150、坐姿可再調低），最低的腳對到 200×200 畫布的 y=186，整支共用同一個縮放與位置，跳躍和位移會保留。動作範圍放不進畫布時不縮小角色，而是裁掉超出部分並在狀態列提示格數。預覽疊一隻同身高的半透明參考 Doro 和紅色腳底線；預覽、整支動畫與單格 PNG 使用同一套擺放。都在原尺寸去背後才縮放；記住輸出資料夾、格式及尺寸，沿用 DORO2 的 `.gif_factory.json`。
 - 輸出同名時自動加編號，不覆蓋之前的成品。取消批次會保留已完成的檔案；取消或關閉時需等目前影格／編碼完成。
 - 選取成品後，可匯入既有姿勢或建立新姿勢，再從 States 切換。PNG 作為單張圖片儲存，不匯入動畫姿勢。
 - 處理都在本機；第一次 AI 去背會下載模型，圖片與影片不會上傳。未裝 AI 套件仍可使用顏色去背。
@@ -73,7 +73,7 @@ python -m doro_app.core.gif_factory a.mp4 b.mp4 --out-dir output --fmt apng
 python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
 # 網路 GIF 不去背、統一成 200×200 的 GIF：
 python -m doro_app.core.gif_factory a.gif b.gif --out-dir output --fmt gif --size 200 --canvas --no-matting
-# 對齊 Doro 規格（可加 --body-height 120 給坐姿等較矮的動作）：
+# 對齊 Doro 規格（預設身高 167；坐姿等較矮的動作可加 --body-height 120）：
 python -m doro_app.core.gif_factory a.gif b.gif --out-dir output --doro --no-matting
 ```
 

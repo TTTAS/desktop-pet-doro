@@ -9,10 +9,13 @@
 from doro_app.core.gif_factory.frames import ExtractedVideo, extract_frames, is_animated_image
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
 from doro_app.core.gif_factory.output import (
+    DoroLayout,
     DoroSpec,
+    apply_doro_layout,
     body_bounds,
     fit_to_canvas,
     fit_to_doro,
+    plan_doro_layout,
     resize_to_fit,
     save_animation,
     save_image,
@@ -20,14 +23,17 @@ from doro_app.core.gif_factory.output import (
 from doro_app.core.gif_factory.pipeline import process_video, process_videos
 
 __all__ = [
+    "DoroLayout",
     "DoroSpec",
     "ExtractedVideo",
     "MattingOptions",
+    "apply_doro_layout",
     "body_bounds",
     "extract_frames",
     "fit_to_canvas",
     "fit_to_doro",
     "is_animated_image",
+    "plan_doro_layout",
     "process_video",
     "process_videos",
     "remove_background",

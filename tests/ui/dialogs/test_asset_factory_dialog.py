@@ -113,6 +113,53 @@ def test_doro_mode_previews_against_reference_and_exports_doro_layout(qtbot, dia
     assert (top, bottom) == (66, 186)
 
 
+def test_png_frame_matches_same_frame_of_doro_animation(qtbot, dialog, tmp_path):
+    source = tmp_path / "jump.gif"
+    frames = [Image.new("RGBA", (300, 300), (0, 0, 0, 0)) for _ in range(3)]
+    for frame, top in zip(frames, (150, 148, 120)):  # 最後一格跳起
+        frame.paste((255, 0, 0, 255), (100, top, 150, top + 100))
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=80, loop=0, disposal=2)
+    dialog.mode.setCurrentIndex(dialog.mode.findData("none"))
+    dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("doro"))
+    dialog._paths = [source]
+    dialog._load_video(0)
+    qtbot.waitUntil(lambda: dialog._job is None and bool(dialog._frames), timeout=15000)
+    qtbot.waitUntil(lambda: dialog._job is None and "參考 Doro" in dialog.status.text())
+    assert "估算" not in dialog.status.text()
+    dialog.frame.setValue(2)
+    qtbot.waitUntil(lambda: dialog._job is None and "參考 Doro" in dialog.status.text())
+    dialog._export_frame()
+    qtbot.waitUntil(lambda: dialog._job is None and dialog.results.count() == 1)
+    dialog.fmt.setCurrentText("webp")
+    dialog._export_animation()
+    qtbot.waitUntil(lambda: dialog._job is None and dialog.results.count() == 2, timeout=15000)
+    png = Image.open(dialog.results.item(0).text()).convert("RGBA")
+    with Image.open(dialog.results.item(1).text()) as animation:
+        animation.seek(2)
+        third = animation.convert("RGBA")
+    assert png.getchannel("A").getbbox() == third.getchannel("A").getbbox()
+    assert png.getchannel("A").getbbox()[3] < 186  # 跳起的那格沒有被拉回地面
+
+
+def test_doro_export_reports_clipped_frames(qtbot, dialog, tmp_path):
+    source = tmp_path / "travel.gif"
+    frames = [Image.new("RGBA", (600, 200), (0, 0, 0, 0)) for _ in range(2)]
+    frames[0].paste((255, 0, 0, 255), (20, 50, 80, 170))
+    frames[1].paste((255, 0, 0, 255), (500, 50, 560, 170))
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=80, loop=0)
+    dialog.mode.setCurrentIndex(dialog.mode.findData("none"))
+    dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("doro"))
+    dialog._paths = [source]
+    dialog._load_video(0)
+    qtbot.waitUntil(
+        lambda: dialog._job is None and "參考 Doro" in dialog.status.text(), timeout=15000
+    )
+    assert "超出畫布" in dialog.status.text()
+    dialog._export_animation()
+    qtbot.waitUntil(lambda: dialog._job is None and dialog.results.count() == 1, timeout=15000)
+    assert "travel.gif 2 格" in dialog.status.text()
+
+
 def test_failed_load_clears_previous_source(qtbot, dialog, tmp_path):
     dialog._frames = [Image.new("RGB", (20, 20))]
     dialog._paths = [tmp_path / "missing.mp4"]

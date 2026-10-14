@@ -6,9 +6,11 @@ GIF 只有一位元透明(全透明或不透明),半透明邊緣會以 50% 為�
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 _SUPPORTED = {"webp", "apng", "gif"}
@@ -19,18 +21,22 @@ _GIF_TRANSPARENT_INDEX = 255
 # alpha 低於這個值當成背景殘渣,不算進角色範圍(AI 去背常留下很淡的雜點)。
 _BODY_ALPHA_THRESHOLD = 32
 
+Box = tuple[int, int, int, int]
+
 
 @dataclass(frozen=True)
 class DoroSpec:
     """Doro 內建素材的版面規格(量自 doro_app/res 內建動畫)。
 
-    內建動畫都是 200×200 畫布,角色本體高約 146~173 像素、腳踩在 y≈186。
-    照這個規格擺放,外來素材在桌面上就會跟 Doro 一樣大、站在同一條線上。
+    內建動畫都是 200×200 畫布;站姿 stand.gif 的角色本體高 167 像素,
+    腳底邊界在 y=186(也就是最後一列實心像素是 y=185,和 Pillow getbbox
+    的右/下界不含該像素一致)。預設身高對齊 stand.gif,預覽疊的參考 Doro
+    才會和成品同高;待機類約 146~149、坐姿等較矮的動作可以調低。
     """
 
     canvas: int = 200
-    body_height: int = 150  # 角色本體高度(像素),坐姿/趴姿可以調低
-    foot_y: int = 186  # 腳底所在的 y(從畫布頂端算)
+    body_height: int = 167  # 角色本體高度(像素),對齊內建站姿
+    foot_y: int = 186  # 腳底邊界的 y(從畫布頂端算,不含該列)
     max_body_width: int = 190  # 橫向姿勢的寬度上限,避免被放大到超出畫布
 
     def __post_init__(self) -> None:
@@ -42,60 +48,107 @@ class DoroSpec:
             raise ValueError(f"寬度上限要在 1..{self.canvas},收到 {self.max_body_width}")
 
 
-def body_bounds(frames: list[Image.Image]) -> tuple[int, int, int, int] | None:
+@dataclass(frozen=True)
+class DoroLayout:
+    """整支動畫共用的一組變換:裁切框、縮放比例與貼上位置。
+
+    預覽、整支輸出與單格 PNG 都套用同一個 DoroLayout,三者的大小與位置才會一致。
+    """
+
+    crop: Box  # 原圖座標中要保留的範圍(所有影格角色範圍的聯集)
+    scale: float
+    origin: tuple[int, int]  # crop 縮放後左上角在畫布上的位置(可為負,超出部分被裁掉)
+    canvas: int
+    clipped_frames: int  # 有幾格的角色超出畫布、被裁切
+
+
+def _frame_box(frame: Image.Image) -> Box | None:
+    alpha = frame.convert("RGBA").getchannel("A")
+    return alpha.point(lambda a: 255 if a >= _BODY_ALPHA_THRESHOLD else 0).getbbox()
+
+
+def body_bounds(frames: list[Image.Image]) -> Box | None:
     """所有影格合起來的角色範圍(left, top, right, bottom);全透明回傳 None。
 
-    用聯集而不是逐格各算,整支動畫才會用同一個裁切與縮放,不會抖動。
+    右/下界和 Pillow getbbox 一樣不含該像素。這是動畫的「活動範圍」,
+    用來裁切與檢查是否超出畫布,不拿來決定角色大小(見 plan_doro_layout)。
     """
-    bounds = None
-    for frame in frames:
-        alpha = frame.convert("RGBA").getchannel("A")
-        box = alpha.point(lambda a: 255 if a >= _BODY_ALPHA_THRESHOLD else 0).getbbox()
-        if box is None:
-            continue
-        if bounds is None:
-            bounds = box
-        else:
-            bounds = (
-                min(bounds[0], box[0]),
-                min(bounds[1], box[1]),
-                max(bounds[2], box[2]),
-                max(bounds[3], box[3]),
-            )
-    return bounds
+    boxes = [box for box in map(_frame_box, frames) if box is not None]
+    if not boxes:
+        return None
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
 
 
-def fit_to_doro(
-    frames: list[Image.Image],
-    spec: DoroSpec | None = None,
-    bounds: tuple[int, int, int, int] | None = None,
-) -> list[Image.Image]:
-    """裁掉透明留白、縮放到 Doro 身高,再把腳對到 Doro 的腳底線。
+def plan_doro_layout(frames: list[Image.Image], spec: DoroSpec | None = None) -> DoroLayout | None:
+    """算出把角色擺成 Doro 規格的變換;全透明回傳 None。
 
-    整支動畫共用一個裁切框與縮放比例(見 body_bounds);縮放可放大也可縮小,
-    但寬度不超過 max_body_width。角色水平置中,底緣對齊 spec.foot_y。
-    bounds 可由呼叫端給定(例如預覽單格時沿用整支動畫的範圍)。
+    角色大小和動畫活動範圍分開處理:
+    - 縮放:用「每格角色高度/寬度的中位數」對齊 spec 的身高與寬度上限,
+      跳躍或位移不會把角色縮小。
+    - 位置:所有影格中最低的腳(聯集下緣)對到 spec.foot_y,活動範圍水平置中;
+      整支共用同一個變換,跳躍與位移原樣保留。
+    - 活動範圍放不進畫布時不偷偷縮小角色,而是裁掉超出部分並回報格數。
     """
     spec = spec or DoroSpec()
-    rgba_frames = [f.convert("RGBA") for f in frames]
-    empty = Image.new("RGBA", (spec.canvas, spec.canvas), (0, 0, 0, 0))
-    if bounds is None:
-        bounds = body_bounds(rgba_frames)
-    if bounds is None:
-        return [empty.copy() for _ in rgba_frames]
+    boxes = [_frame_box(f) for f in frames]
+    present = [b for b in boxes if b is not None]
+    if not present:
+        return None
 
-    width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    height = statistics.median(b[3] - b[1] for b in present)
+    width = statistics.median(b[2] - b[0] for b in present)
     scale = min(spec.body_height / height, spec.max_body_width / width)
-    new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
-    origin = ((spec.canvas - new_size[0]) // 2, spec.foot_y - new_size[1])
 
+    crop = body_bounds(frames)
+    assert crop is not None  # present 非空時必有聯集
+    crop_w = (crop[2] - crop[0]) * scale
+    crop_h = (crop[3] - crop[1]) * scale
+    origin = (round((spec.canvas - crop_w) / 2), round(spec.foot_y - crop_h))
+
+    clipped = 0
+    for box in present:
+        left = origin[0] + (box[0] - crop[0]) * scale
+        top = origin[1] + (box[1] - crop[1]) * scale
+        right = origin[0] + (box[2] - crop[0]) * scale
+        bottom = origin[1] + (box[3] - crop[1]) * scale
+        if left < -0.5 or top < -0.5 or right > spec.canvas + 0.5 or bottom > spec.canvas + 0.5:
+            clipped += 1
+    return DoroLayout(
+        crop=crop, scale=scale, origin=origin, canvas=spec.canvas, clipped_frames=clipped
+    )
+
+
+def apply_doro_layout(
+    frames: list[Image.Image], layout: DoroLayout | None, canvas: int
+) -> list[Image.Image]:
+    """把同一個變換套到每一格;layout 為 None(全透明)時回傳空白畫布。"""
+    empty = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    if layout is None:
+        return [empty.copy() for _ in frames]
+
+    crop = layout.crop
+    size = (
+        max(1, round((crop[2] - crop[0]) * layout.scale)),
+        max(1, round((crop[3] - crop[1]) * layout.scale)),
+    )
     placed = []
-    for frame in rgba_frames:
-        body = frame.crop(bounds).resize(new_size, Image.LANCZOS)
-        canvas = empty.copy()
-        canvas.paste(body, origin)
-        placed.append(canvas)
+    for frame in frames:
+        body = frame.convert("RGBA").crop(crop).resize(size, Image.LANCZOS)
+        result = empty.copy()
+        result.paste(body, layout.origin)  # 負座標或超出畫布的部分會被裁掉
+        placed.append(result)
     return placed
+
+
+def fit_to_doro(frames: list[Image.Image], spec: DoroSpec | None = None) -> list[Image.Image]:
+    """plan_doro_layout + apply_doro_layout 的捷徑:整支動畫擺成 Doro 規格。"""
+    spec = spec or DoroSpec()
+    return apply_doro_layout(frames, plan_doro_layout(frames, spec), spec.canvas)
 
 
 def resize_to_fit(image: Image.Image, max_side: int) -> Image.Image:
@@ -154,7 +207,12 @@ def _layout_frames(
 
 def _to_gif_frame(rgba: Image.Image) -> Image.Image:
     """RGBA → 調色盤圖:255 色畫面 + 一個透明索引(alpha < 128 視為透明)。"""
-    paletted = rgba.convert("RGB").quantize(colors=_GIF_TRANSPARENT_INDEX)
+    rgb = np.array(rgba.convert("RGB"))
+    visible = np.array(rgba.getchannel("A")) >= 128
+    if visible.any():
+        # 透明像素藏的 RGB(常是黑色)不該佔用調色盤,先填成畫面裡已有的顏色。
+        rgb[~visible] = rgb[visible][0]
+    paletted = Image.fromarray(rgb, "RGB").quantize(colors=_GIF_TRANSPARENT_INDEX)
     palette = (paletted.getpalette() or [])[: _GIF_TRANSPARENT_INDEX * 3]
     palette += [0] * (256 * 3 - len(palette))
     paletted.putpalette(palette)

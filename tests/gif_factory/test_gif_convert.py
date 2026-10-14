@@ -1,20 +1,25 @@
 """GIF 轉 GIF:讀網路動圖、統一畫布大小、輸出透明 GIF。"""
 
+from pathlib import Path
+
 import pytest
 from PIL import Image
 
 from doro_app.core.gif_factory import (
     DoroSpec,
     MattingOptions,
+    apply_doro_layout,
     body_bounds,
     extract_frames,
     fit_to_canvas,
     fit_to_doro,
+    plan_doro_layout,
     process_videos,
     remove_background,
     save_animation,
 )
 from doro_app.core.gif_factory.__main__ import main
+from doro_app.core.gif_factory.pipeline import doro_layout_for_frame, frame_layout_is_exact
 from doro_app.core.gif_factory.preview import overlay_doro_reference
 
 
@@ -177,11 +182,108 @@ def test_body_bounds_ignores_faint_matting_residue():
 
 
 def test_fit_to_doro_trims_padding_and_stands_on_doro_foot_line():
-    placed = fit_to_doro(_padded_frames(n=1), DoroSpec())
+    placed = fit_to_doro(_padded_frames(n=1), DoroSpec(body_height=150))
 
     assert placed[0].size == (200, 200)
-    # 60×120 → 身高 150:寬 75,水平置中、腳在 y=186。
+    # 60×120 → 身高 150:寬 75,水平置中、腳底邊界 y=186(最後實心列 185)。
     assert placed[0].getchannel("A").getbbox() == (62, 36, 137, 186)
+    assert placed[0].getpixel((100, 185))[3] == 255
+    assert placed[0].getpixel((100, 186))[3] == 0
+
+
+def test_default_body_height_matches_reference_stand_doro():
+    stand = Image.open(Path(__file__).parents[2] / "doro_app/res/state/stand.gif").convert("RGBA")
+    _, top, _, bottom = stand.getchannel("A").getbbox()
+
+    assert (bottom - top, bottom) == (DoroSpec().body_height, DoroSpec().foot_y)
+
+
+def _jump_frames():
+    """原地站兩格,再跳起 120 像素一格;角色本體始終 60×120。"""
+    return [
+        _padded_frames(n=1, canvas=(400, 400))[0],
+        _padded_frames(n=1, canvas=(400, 400))[0],
+        _shifted(_padded_frames(n=1, canvas=(400, 400))[0], dy=-20),
+    ]
+
+
+def _solid_box(image):
+    """alpha >= 128 的範圍;忽略 LANCZOS 縮放在邊緣留下的淡淡半透明。"""
+    return image.getchannel("A").point(lambda a: 255 if a >= 128 else 0).getbbox()
+
+
+def _shifted(image, dx=0, dy=0):
+    moved = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    moved.paste(image, (dx, dy))
+    return moved
+
+
+def test_jumping_does_not_shrink_the_character():
+    placed = fit_to_doro(_jump_frames(), DoroSpec(body_height=150))
+    boxes = [_solid_box(f) for f in placed]
+
+    assert {b[3] - b[1] for b in boxes} == {150}  # 每格都是完整身高
+    assert boxes[0][3] == 186  # 站著的腳踩在地面線
+    assert boxes[2][3] < 186  # 跳起的那格保留離地高度
+
+
+def test_horizontal_travel_keeps_size_and_reports_clipping():
+    frames = [_padded_frames(n=1, canvas=(600, 300))[0]]
+    frames.append(_shifted(frames[0], dx=150))
+
+    layout = plan_doro_layout(frames, DoroSpec(body_height=150))
+    placed = apply_doro_layout(frames, layout, 200)
+
+    assert [_solid_box(f)[3] - _solid_box(f)[1] for f in placed] == [150, 150]
+    assert layout.clipped_frames == 2  # 活動範圍 262 像素寬,兩端各超出 200 畫布一點
+
+
+def test_travel_wider_than_canvas_can_push_frames_fully_out_but_is_reported():
+    frames = [_padded_frames(n=1, canvas=(600, 300))[0]]
+    frames.append(_shifted(frames[0], dx=300))
+
+    layout = plan_doro_layout(frames, DoroSpec(body_height=150))
+
+    # 刻意不縮小角色;代價是這種橫越整個畫面的素材會有格數整個被裁掉,所以必須回報。
+    assert apply_doro_layout(frames, layout, 200)[0].getbbox() is None
+    assert layout.clipped_frames == 2
+
+
+def test_layout_without_overflow_reports_no_clipping():
+    layout = plan_doro_layout(_padded_frames(n=3, step=10))
+
+    assert layout.clipped_frames == 0
+
+
+def test_size_uses_median_frame_not_odd_one_out():
+    frames = _padded_frames(n=3, step=0)
+    frames.append(_padded_frames(n=1, body=(60, 240), canvas=(400, 400))[0])
+
+    layout = plan_doro_layout(frames, DoroSpec(body_height=150))
+
+    assert layout.scale == pytest.approx(150 / 120)
+
+
+def test_single_frame_uses_whole_animation_layout_when_not_matting():
+    frames = _jump_frames()
+    options = MattingOptions(mode="none")
+    spec = DoroSpec(body_height=150)
+    matted = remove_background(frames[2], options)
+
+    single = apply_doro_layout([matted], doro_layout_for_frame(frames, matted, options, spec), 200)
+
+    assert single[0].tobytes() == fit_to_doro(frames, spec)[2].tobytes()
+
+
+def test_single_frame_layout_is_an_estimate_when_matting():
+    frames = _jump_frames()
+    options = MattingOptions(mode="color", color_key=(1, 2, 3), tolerance=0)
+    matted = remove_background(frames[2], options)
+
+    layout = doro_layout_for_frame(frames, matted, options, DoroSpec())
+
+    assert not frame_layout_is_exact(options)
+    assert layout == plan_doro_layout([matted], DoroSpec())
 
 
 def test_fit_to_doro_uses_one_scale_for_whole_animation():
@@ -262,3 +364,28 @@ def test_doro_reference_overlay_draws_ghost_behind_and_foot_line():
     assert result.getpixel((5, 5)) == (0, 255, 0, 255)  # 素材在參考圖上面
     assert 0 < result.getpixel((10, 2))[3] < 255  # 參考圖半透明
     assert result.getpixel((0, 15)) == (230, 60, 60, 255)  # 腳底虛線
+
+
+def test_doro_reference_scales_around_its_feet():
+    reference = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    reference.paste((255, 255, 255, 255), (40, 20, 60, 80))  # 高 60、腳在 80
+
+    result = overlay_doro_reference(
+        Image.new("RGBA", (100, 100)), reference, foot_y=80, opacity=1.0, reference_scale=0.5
+    )
+
+    box = _solid_box(result.crop((0, 0, 100, 80)))
+    assert box == (45, 50, 55, 80)  # 縮成一半高,腳仍在 80、仍然置中
+
+
+def test_gif_palette_is_not_spent_on_hidden_transparent_colors(tmp_path):
+    frame = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    colors = [(i, 255 - i, (i * 7) % 256, 255) for i in range(1, 256)]
+    for index, color in enumerate(colors):
+        frame.putpixel((index % 16, index // 16), color)
+    # (15, 15) 保持透明,藏的顏色是黑色;不該擠掉 255 個可見色中的任何一個。
+    out = save_animation([frame, frame.copy()], "gif", tmp_path / "p.gif", fps=10)
+
+    result = extract_frames(out).frames[0]
+    assert [result.getpixel((i % 16, i // 16)) for i in range(255)] == colors
+    assert result.getpixel((15, 15))[3] == 0

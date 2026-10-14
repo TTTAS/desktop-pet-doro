@@ -50,14 +50,28 @@ def overlay_doro_reference(
     reference: Image.Image | None,
     foot_y: int,
     opacity: float = 0.35,
+    reference_scale: float = 1.0,
 ) -> Image.Image:
     """在已擺好版面的預覽上疊一層半透明的 Doro 與腳底虛線,方便比對大小。
 
     image 與 reference 都應是同一個畫布尺寸;reference 為 None 時只畫腳底線。
+    reference_scale 以腳底中點為基準縮放參考 Doro,讓它和所選身高一致
+    (例如身高 120、參考站姿 167 時傳 120/167)。
     """
     result = image.convert("RGBA").copy()
     if reference is not None:
         ghost = reference.convert("RGBA").resize(result.size, Image.NEAREST)
+        if reference_scale != 1.0:
+            width, height = result.size
+            scaled = ghost.resize(
+                (max(1, round(width * reference_scale)), max(1, round(height * reference_scale))),
+                Image.LANCZOS,
+            )
+            ghost = Image.new("RGBA", result.size, (0, 0, 0, 0))
+            ghost.paste(
+                scaled,
+                (round((width - scaled.width) / 2), round(foot_y - foot_y * reference_scale)),
+            )
         alpha = ghost.getchannel("A").point(lambda a: round(a * opacity))
         ghost.putalpha(alpha)
         result = Image.alpha_composite(ghost, result)
