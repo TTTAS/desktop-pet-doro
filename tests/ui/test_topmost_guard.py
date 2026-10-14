@@ -25,21 +25,51 @@ def test_restores_topmost_only_where_it_was_lost(qtbot):
     guard = TopmostGuard(
         is_topmost=lambda hwnd: hwnd in topmost,
         make_topmost=lambda hwnd: (restored.append(hwnd), topmost.add(hwnd)),
+        foreground=lambda: 1,
         log=logs.append,
     )
 
     assert guard.check() == 1
-    assert restored == [int(lost.winId())]
+    assert int(lost.winId()) in restored
     assert int(normal.winId()) not in restored
-    assert "lost always-on-top" in logs[0]
-    assert guard.check() == 0  # 已恢復，不重複處理
+    assert logs == ["QWidget lost always-on-top; restoring it"]
+    restored.clear()
+    assert guard.check() == 0  # 前景沒變、旗標都在：什麼都不做
+    assert restored == []
+
+
+def test_reasserts_topmost_when_foreground_changes(qtbot):
+    window = _window(qtbot, on_top=True)
+    foreground = [1]
+    restored, logs = [], []
+    guard = TopmostGuard(
+        is_topmost=lambda hwnd: True,  # 旗標還在，但可能被排到其他視窗後面
+        make_topmost=restored.append,
+        foreground=lambda: foreground[0],
+        log=logs.append,
+    )
+    guard.check()
+    restored.clear()
+
+    guard.check()
+    assert restored == []
+    foreground[0] = 2  # 例如關掉相片 App，前景換成檔案總管
+    guard.check()
+
+    assert restored == [int(window.winId())]
+    assert logs == []  # 例行重申不記錄，避免洗版
 
 
 def test_hidden_windows_are_left_alone(qtbot):
     hidden = _window(qtbot, on_top=True)
     hidden.hide()
     restored = []
-    guard = TopmostGuard(is_topmost=lambda hwnd: False, make_topmost=restored.append, log=print)
+    guard = TopmostGuard(
+        is_topmost=lambda hwnd: False,
+        make_topmost=restored.append,
+        foreground=lambda: 1,
+        log=print,
+    )
 
     guard.check()
 

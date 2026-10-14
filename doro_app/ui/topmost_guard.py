@@ -6,8 +6,13 @@ it had dropped behind other windows. Windows can clear a window's topmost
 state (WS_EX_TOPMOST) when another app's windows are torn down; Qt is not told,
 so the window stays "shown" yet hidden behind File Explorer.
 
-The guard checks once a second and restores topmost for every visible window
-that asked for Qt.WindowStaysOnTopHint, logging each time it had to.
+The guard checks once a second, for every visible window that asked for
+Qt.WindowStaysOnTopHint:
+- if Windows cleared its topmost flag, restore it and log;
+- whenever the foreground window changed, re-assert topmost anyway (no log).
+  Win+D bringing Doro back showed it was only covered; a window can keep the
+  topmost flag yet still be ordered under another app's window, so checking the
+  flag alone is not enough.
 """
 
 from __future__ import annotations
@@ -31,6 +36,12 @@ def _win_is_topmost(hwnd: int) -> bool:
     return bool(ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE) & _WS_EX_TOPMOST)
 
 
+def _win_foreground() -> int:
+    import ctypes
+
+    return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+
+
 def _win_make_topmost(hwnd: int) -> None:
     import ctypes
 
@@ -46,12 +57,15 @@ class TopmostGuard(QtCore.QObject):
         *,
         is_topmost: Callable[[int], bool] = _win_is_topmost,
         make_topmost: Callable[[int], None] = _win_make_topmost,
+        foreground: Callable[[], int] = _win_foreground,
         log: Callable[[str], None] | None = None,
         interval_ms: int = 1000,
     ) -> None:
         super().__init__(parent)
         self._is_topmost = is_topmost
         self._make_topmost = make_topmost
+        self._foreground = foreground
+        self._last_foreground: int | None = None
         self._log = log or (lambda message: print(f"[topmost] {message}", flush=True))
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(interval_ms)
@@ -64,7 +78,10 @@ class TopmostGuard(QtCore.QObject):
         self._timer.stop()
 
     def check(self) -> int:
-        """Restore topmost where it was lost; returns how many windows were fixed."""
+        """Keep windows on top; returns how many had lost the topmost flag."""
+        foreground = self._foreground()
+        foreground_changed = foreground != self._last_foreground
+        self._last_foreground = foreground
         fixed = 0
         for widget in QtWidgets.QApplication.topLevelWidgets():
             if not widget.isVisible():
@@ -72,11 +89,14 @@ class TopmostGuard(QtCore.QObject):
             if not widget.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint:
                 continue
             hwnd = int(widget.winId())
-            if not hwnd or self._is_topmost(hwnd):
+            if not hwnd:
                 continue
-            self._log(f"{type(widget).__name__} lost always-on-top; restoring it")
-            self._make_topmost(hwnd)
-            fixed += 1
+            if not self._is_topmost(hwnd):
+                self._log(f"{type(widget).__name__} lost always-on-top; restoring it")
+                self._make_topmost(hwnd)
+                fixed += 1
+            elif foreground_changed:
+                self._make_topmost(hwnd)
         return fixed
 
 
