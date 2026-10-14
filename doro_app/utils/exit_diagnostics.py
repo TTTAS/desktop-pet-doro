@@ -209,7 +209,27 @@ class ExitDiagnostics(QtCore.QObject):
         if current != self._last_foreground:
             self._last_foreground = current
             owner = "Doro" if pid.value == os.getpid() else f"pid {pid.value}"
-            self.log(f"Foreground -> {buffer.value!r} (hwnd {current[0]:#x}, {owner})")
+            self.log(
+                f"Foreground -> {buffer.value!r} (hwnd {current[0]:#x}, {owner}); "
+                f"Doro window: {self._doro_window_state()}"
+            )
+
+    def _doro_window_state(self) -> str:
+        """Visibility, topmost flag and position of Doro's main window, as Windows sees it."""
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = int(self._window.winId())
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        topmost = bool(user32.GetWindowLongW(hwnd, -20) & 0x00000008)
+        return (
+            f"visible={bool(user32.IsWindowVisible(hwnd))} "
+            f"minimized={bool(user32.IsIconic(hwnd))} topmost={topmost} "
+            f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom}) "
+            f"qt_visible={self._window.isVisible()}"
+        )
 
 
 def install(qt_app, window, log_path: Path = DEFAULT_LOG_PATH) -> ExitDiagnostics | None:

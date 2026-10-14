@@ -117,6 +117,9 @@ def main():
     from .utils import exit_diagnostics
 
     diagnostics = exit_diagnostics.install(qt_app, doro_app.window)
+    from .ui import topmost_guard
+
+    _guard = topmost_guard.install(qt_app, log=diagnostics.log if diagnostics is not None else None)
     doro_app.run()
     code = qt_app.exec()
     if diagnostics is not None:
