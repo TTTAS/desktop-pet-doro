@@ -66,3 +66,24 @@ def test_hidden_windows_are_left_alone(qtbot):
     guard.check()
 
     assert int(hidden.winId()) not in restored
+
+
+def test_window_events_trigger_an_immediate_and_a_settled_check(qtbot):
+    window = _window(qtbot, on_top=True)
+    hwnd = int(window.winId())
+    covers, restored = {hwnd: "Photos"}, []
+    guard = TopmostGuard(
+        is_topmost=lambda h: True,
+        make_topmost=restored.append,
+        covered_by=lambda h: covers.get(h),
+        log=lambda message: None,
+        interval_ms=60_000,  # 排除輪詢，只看事件
+        settle_ms=100,
+    )
+
+    guard.on_window_event()
+    guard.on_window_event()  # 一連串事件合併成一次立即檢查
+    qtbot.waitUntil(lambda: len(restored) >= 1, timeout=1000)
+    qtbot.wait(20)
+    assert restored == [hwnd]
+    qtbot.waitUntil(lambda: len(restored) == 2, timeout=1000)  # 動畫結束後再查一次
