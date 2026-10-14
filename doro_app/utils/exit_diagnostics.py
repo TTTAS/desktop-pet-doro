@@ -1,6 +1,8 @@
 """Record why Doro exits, to diagnose "Doro disappeared" reports.
 
-Everything goes to ``~/.doro/exit_diagnostics.log`` (and stderr), one line per event:
+Everything goes to ``~/.doro/exit_diagnostics.log``, one line per event; only
+events that matter (errors, quitting, Doro's main window closing or hiding, session
+end) are also printed to the console:
 
 - native crashes (``faulthandler``) and unhandled Python exceptions, any thread;
 - Qt close / quit requests: which window, whether the OS sent it, and the
@@ -9,11 +11,10 @@ Everything goes to ``~/.doro/exit_diagnostics.log`` (and stderr), one line per e
   SC_CLOSE, WM_DESTROY, WM_SHOWWINDOW hide, WM_QUERYENDSESSION, WM_ENDSESSION)
   and console control events;
 - the Doro main window being hidden, and the threads still alive (with their
-  stacks, if the process lingers) after the Qt event loop ends;
-- foreground-window changes (title + process id), to line up with the exit.
+  stacks, if the process lingers) after the Qt event loop ends.
 
-If the log shows the start line and the foreground change but **no** exit line,
-the process was terminated from outside (no Python or Qt code ran).
+If the log shows the start line but **no** exit line, the process was terminated
+from outside (no Python or Qt code ran).
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ _CONSOLE_EVENTS = {0: "CTRL_C", 1: "CTRL_BREAK", 2: "CTRL_CLOSE", 5: "LOGOFF", 6
 class ExitDiagnostics(QtCore.QObject):
     """Installed once at startup; keeps its hooks alive for the app lifetime."""
 
-    def __init__(self, qt_app, window, log_path: Path = DEFAULT_LOG_PATH, poll_ms: int = 500):
+    def __init__(self, qt_app, window, log_path: Path = DEFAULT_LOG_PATH):
         super().__init__(qt_app)
         self._app = qt_app
         self._window = window
@@ -55,9 +56,11 @@ class ExitDiagnostics(QtCore.QObject):
         self._crash_file = open(self._log_path, "a", encoding="utf-8")  # noqa: SIM115
         self._native_filter = None
         self._console_handler = None
-        self._last_foreground = None
 
-        self.log(f"=== Doro started (pid {os.getpid()}, Python {sys.version.split()[0]}) ===")
+        self.log(
+            f"=== Doro started (pid {os.getpid()}, Python {sys.version.split()[0]}) ===",
+            console=False,
+        )
         faulthandler.enable(file=self._crash_file, all_threads=True)
         self._hook_exceptions()
         qt_app.installEventFilter(self)
@@ -66,12 +69,9 @@ class ExitDiagnostics(QtCore.QObject):
         atexit.register(self._at_exit)
         if sys.platform == "win32":
             self._install_windows_hooks()
-            self._foreground_timer = QtCore.QTimer(self)
-            self._foreground_timer.timeout.connect(self._poll_foreground)
-            self._foreground_timer.start(poll_ms)
 
     # ------------------------------------------------------------------ logging
-    def log(self, message: str) -> None:
+    def log(self, message: str, *, console: bool = True) -> None:
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         line = f"{stamp} [{threading.current_thread().name}] {message}"
         with self._lock:
@@ -80,7 +80,8 @@ class ExitDiagnostics(QtCore.QObject):
                 self._crash_file.flush()
             except (OSError, ValueError):
                 pass
-        print(f"[exit-diag] {message}", file=sys.stderr, flush=True)
+        if console:
+            print(f"[exit-diag] {message}", file=sys.stderr, flush=True)
 
     def event_loop_ended(self, code: int, linger_seconds: float = 10.0) -> None:
         """Called after ``qt_app.exec()`` returns.
@@ -88,15 +89,18 @@ class ExitDiagnostics(QtCore.QObject):
         If the process is still alive ``linger_seconds`` later, faulthandler dumps
         every thread's stack: that names the thread keeping Doro from exiting.
         """
-        self.log(f"Qt event loop ended normally, exit code {code}")
+        self.log(f"Qt event loop ended normally, exit code {code}", console=False)
         alive = [f"{t.name}{' (daemon)' if t.daemon else ''}" for t in threading.enumerate()]
-        self.log(f"Threads still alive: {alive}")
-        self.log(f"If Doro does not exit within {linger_seconds:g}s, all thread stacks follow:")
+        self.log(f"Threads still alive: {alive}", console=False)
+        self.log(
+            f"If Doro does not exit within {linger_seconds:g}s, all thread stacks follow:",
+            console=False,
+        )
         faulthandler.dump_traceback_later(linger_seconds, repeat=False, file=self._crash_file)
 
     def _at_exit(self) -> None:
         faulthandler.cancel_dump_traceback_later()
-        self.log("Python interpreter exiting (atexit)")
+        self.log("Python interpreter exiting (atexit)", console=False)
 
     def _stack(self) -> str:
         return "".join(traceback.format_stack()[:-2]).rstrip()
@@ -133,7 +137,8 @@ class ExitDiagnostics(QtCore.QObject):
             main = " (Doro main window)" if obj is self._window else ""
             self.log(
                 f"Close event -> {type(obj).__name__} {obj.windowTitle()!r}{main}, "
-                f"from OS={event.spontaneous()}, visible windows={self._visible_windows()}"
+                f"from OS={event.spontaneous()}, visible windows={self._visible_windows()}",
+                console=bool(main),  # closing a dialog is routine; closing Doro is not
             )
         elif kind == QtCore.QEvent.Type.Hide and obj is self._window:
             self.log("Doro main window hidden; caller stack:\n" + self._stack())
@@ -192,43 +197,11 @@ class ExitDiagnostics(QtCore.QObject):
         else:
             return
         main = " (Doro main window)" if int(hwnd or 0) == int(self._window.winId()) else ""
-        self.log(f"Windows message {name} to hwnd {int(hwnd or 0):#x}{main}")
-
-    def _poll_foreground(self) -> None:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        hwnd = user32.GetForegroundWindow()
-        length = user32.GetWindowTextLengthW(hwnd)
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buffer, length + 1)
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        current = (int(hwnd or 0), buffer.value, pid.value)
-        if current != self._last_foreground:
-            self._last_foreground = current
-            owner = "Doro" if pid.value == os.getpid() else f"pid {pid.value}"
-            self.log(
-                f"Foreground -> {buffer.value!r} (hwnd {current[0]:#x}, {owner}); "
-                f"Doro window: {self._doro_window_state()}"
-            )
-
-    def _doro_window_state(self) -> str:
-        """Visibility, topmost flag and position of Doro's main window, as Windows sees it."""
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        hwnd = int(self._window.winId())
-        rect = wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
-        topmost = bool(user32.GetWindowLongW(hwnd, -20) & 0x00000008)
-        return (
-            f"visible={bool(user32.IsWindowVisible(hwnd))} "
-            f"minimized={bool(user32.IsIconic(hwnd))} topmost={topmost} "
-            f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom}) "
-            f"qt_visible={self._window.isVisible()}"
+        session = name in ("WM_QUERYENDSESSION", "WM_ENDSESSION")
+        closing_main = bool(main) and name in ("WM_CLOSE", "WM_SYSCOMMAND/SC_CLOSE")
+        self.log(
+            f"Windows message {name} to hwnd {int(hwnd or 0):#x}{main}",
+            console=session or closing_main,
         )
 
 

@@ -76,3 +76,17 @@ def test_logs_unhandled_thread_exception(diagnostics):
     text = log.read_text(encoding="utf-8")
     assert "Unhandled exception in thread" in text
     assert "RuntimeError: worker exploded" in text
+
+
+def test_routine_events_stay_out_of_the_console(diagnostics, capsys):
+    _, window, log = diagnostics
+    dialog = QtWidgets.QDialog()
+    dialog.show()
+    dialog.close()
+    window.show()
+    window.close()
+
+    console = capsys.readouterr().err
+    text = log.read_text(encoding="utf-8")
+    assert "QDialog" in text and "QDialog" not in console  # 關對話框是日常操作
+    assert "(Doro main window)" in console  # 關掉 Doro 本身才顯示

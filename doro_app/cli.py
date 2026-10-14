@@ -119,7 +119,9 @@ def main():
     diagnostics = exit_diagnostics.install(qt_app, doro_app.window)
     from .ui import topmost_guard
 
-    _guard = topmost_guard.install(qt_app, log=diagnostics.log if diagnostics is not None else None)
+    # Re-raising Doro is routine once the cause is known: log file only, not the console.
+    quiet_log = None if diagnostics is None else (lambda m: diagnostics.log(m, console=False))
+    _guard = topmost_guard.install(qt_app, log=quiet_log)
     doro_app.run()
     code = qt_app.exec()
     if diagnostics is not None:
