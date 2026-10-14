@@ -13,8 +13,35 @@ from ....core.action.repository import (
     PET_DRAG_ACTION_KEY,
 )
 from ....core.state import StateService, Transition
+from ....core.state.models import TRANSITION_WILDCARD
 from ...components.frameless_dialog import FramelessDialog
 from ...components.gif_player import GifPlayer
+
+ANY_STATE_LABEL = "any（任何狀態）"
+
+
+def transition_endpoint_label(value: str) -> str:
+    """How a transition endpoint is shown to the user ("*" reads as "any")."""
+    return ANY_STATE_LABEL if value == TRANSITION_WILDCARD else value
+
+
+def select_transition_state(combo: QtWidgets.QComboBox, state_key: str) -> None:
+    """Select a from/to endpoint by its stored value, adding unknown states."""
+    index = combo.findData(state_key)
+    if index < 0:
+        combo.addItem(transition_endpoint_label(state_key), state_key)
+        index = combo.count() - 1
+    combo.setCurrentIndex(index)
+
+
+def _fill_transition_states(combo: QtWidgets.QComboBox, states) -> None:
+    # "any" is stored as the "*" wildcard that TransitionCollection already matches:
+    # exact pair first, then "state -> any" / "any -> state", then "any -> any".
+    combo.addItem(ANY_STATE_LABEL, TRANSITION_WILDCARD)
+    for state_key in sorted(states):
+        combo.addItem(state_key, state_key)
+    if combo.count() > 1:
+        combo.setCurrentIndex(1)  # default to a real state, as before
 
 
 class EditMoveStateDialog(FramelessDialog):
@@ -140,15 +167,13 @@ class EditMoveStateDialog(FramelessDialog):
         self.from_state_label = QtWidgets.QLabel("From state:")
         self.from_state_label.setStyleSheet("color: #4a2040;")
         self.from_state_combo = QtWidgets.QComboBox()
-        for state_key in sorted(available_states):
-            self.from_state_combo.addItem(state_key)
+        _fill_transition_states(self.from_state_combo, available_states)
         self.from_state_row = self.form_layout.addRow(self.from_state_label, self.from_state_combo)
 
         self.to_state_label = QtWidgets.QLabel("To state:")
         self.to_state_label.setStyleSheet("color: #4a2040;")
         self.to_state_combo = QtWidgets.QComboBox()
-        for state_key in sorted(available_states):
-            self.to_state_combo.addItem(state_key)
+        _fill_transition_states(self.to_state_combo, available_states)
         self.to_state_row = self.form_layout.addRow(self.to_state_label, self.to_state_combo)
 
         main_layout.addLayout(self.form_layout)
@@ -260,6 +285,7 @@ class EditMoveStateDialog(FramelessDialog):
         else:
             self.info_label.setText(
                 "💡 Transition: Animation plays when changing from one state to another. "
+                "「any」matches every state; an exact From/To pair wins over any. "
                 "Use 'Manage GIFs...' to add multiple GIFs for random selection."
             )
         if self._settings_only:
@@ -644,8 +670,8 @@ class EditMoveStateDialog(FramelessDialog):
             )
             return
 
-        from_state = self.from_state_combo.currentText()
-        to_state = self.to_state_combo.currentText()
+        from_state = self.from_state_combo.currentData()
+        to_state = self.to_state_combo.currentData()
 
         if not from_state or not to_state:
             QtWidgets.QMessageBox.warning(
@@ -653,7 +679,7 @@ class EditMoveStateDialog(FramelessDialog):
             )
             return
 
-        if from_state == to_state:
+        if from_state == to_state and from_state != TRANSITION_WILDCARD:
             QtWidgets.QMessageBox.warning(
                 self, "Validation", "From and To states must be different."
             )
