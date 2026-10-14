@@ -114,8 +114,14 @@ def main():
         sys.exit(1)
 
     install_quit_policy(qt_app, doro_app.window)
+    from .utils import exit_diagnostics
+
+    diagnostics = exit_diagnostics.install(qt_app, doro_app.window)
     doro_app.run()
-    sys.exit(qt_app.exec())
+    code = qt_app.exec()
+    if diagnostics is not None:
+        diagnostics.event_loop_ended(code)
+    sys.exit(code)
 
 
 def install_quit_policy(qt_app, window) -> None:
