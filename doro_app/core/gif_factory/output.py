@@ -6,6 +6,7 @@ GIF 只有一位元透明(全透明或不透明),半透明邊緣會以 50% 為�
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
@@ -14,6 +15,87 @@ _SUPPORTED = {"webp", "apng", "gif"}
 
 # GIF 調色盤中保留給透明的索引;其餘 255 色給畫面。
 _GIF_TRANSPARENT_INDEX = 255
+
+# alpha 低於這個值當成背景殘渣,不算進角色範圍(AI 去背常留下很淡的雜點)。
+_BODY_ALPHA_THRESHOLD = 32
+
+
+@dataclass(frozen=True)
+class DoroSpec:
+    """Doro 內建素材的版面規格(量自 doro_app/res 內建動畫)。
+
+    內建動畫都是 200×200 畫布,角色本體高約 146~173 像素、腳踩在 y≈186。
+    照這個規格擺放,外來素材在桌面上就會跟 Doro 一樣大、站在同一條線上。
+    """
+
+    canvas: int = 200
+    body_height: int = 150  # 角色本體高度(像素),坐姿/趴姿可以調低
+    foot_y: int = 186  # 腳底所在的 y(從畫布頂端算)
+    max_body_width: int = 190  # 橫向姿勢的寬度上限,避免被放大到超出畫布
+
+    def __post_init__(self) -> None:
+        if not 0 < self.body_height <= self.foot_y <= self.canvas:
+            raise ValueError(
+                f"需要 0 < 身高({self.body_height}) <= 腳底({self.foot_y}) <= 畫布({self.canvas})"
+            )
+        if not 0 < self.max_body_width <= self.canvas:
+            raise ValueError(f"寬度上限要在 1..{self.canvas},收到 {self.max_body_width}")
+
+
+def body_bounds(frames: list[Image.Image]) -> tuple[int, int, int, int] | None:
+    """所有影格合起來的角色範圍(left, top, right, bottom);全透明回傳 None。
+
+    用聯集而不是逐格各算,整支動畫才會用同一個裁切與縮放,不會抖動。
+    """
+    bounds = None
+    for frame in frames:
+        alpha = frame.convert("RGBA").getchannel("A")
+        box = alpha.point(lambda a: 255 if a >= _BODY_ALPHA_THRESHOLD else 0).getbbox()
+        if box is None:
+            continue
+        if bounds is None:
+            bounds = box
+        else:
+            bounds = (
+                min(bounds[0], box[0]),
+                min(bounds[1], box[1]),
+                max(bounds[2], box[2]),
+                max(bounds[3], box[3]),
+            )
+    return bounds
+
+
+def fit_to_doro(
+    frames: list[Image.Image],
+    spec: DoroSpec | None = None,
+    bounds: tuple[int, int, int, int] | None = None,
+) -> list[Image.Image]:
+    """裁掉透明留白、縮放到 Doro 身高,再把腳對到 Doro 的腳底線。
+
+    整支動畫共用一個裁切框與縮放比例(見 body_bounds);縮放可放大也可縮小,
+    但寬度不超過 max_body_width。角色水平置中,底緣對齊 spec.foot_y。
+    bounds 可由呼叫端給定(例如預覽單格時沿用整支動畫的範圍)。
+    """
+    spec = spec or DoroSpec()
+    rgba_frames = [f.convert("RGBA") for f in frames]
+    empty = Image.new("RGBA", (spec.canvas, spec.canvas), (0, 0, 0, 0))
+    if bounds is None:
+        bounds = body_bounds(rgba_frames)
+    if bounds is None:
+        return [empty.copy() for _ in rgba_frames]
+
+    width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    scale = min(spec.body_height / height, spec.max_body_width / width)
+    new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    origin = ((spec.canvas - new_size[0]) // 2, spec.foot_y - new_size[1])
+
+    placed = []
+    for frame in rgba_frames:
+        body = frame.crop(bounds).resize(new_size, Image.LANCZOS)
+        canvas = empty.copy()
+        canvas.paste(body, origin)
+        placed.append(canvas)
+    return placed
 
 
 def resize_to_fit(image: Image.Image, max_side: int) -> Image.Image:
@@ -62,6 +144,14 @@ def _apply_size(image: Image.Image, size: int | None, canvas: bool) -> Image.Ima
     return fit_to_canvas(image, size) if canvas else resize_to_fit(image, size)
 
 
+def _layout_frames(
+    frames: list[Image.Image], size: int | None, canvas: bool, doro: DoroSpec | None
+) -> list[Image.Image]:
+    if doro is not None:
+        return fit_to_doro(frames, doro)
+    return [_apply_size(f.convert("RGBA"), size, canvas) for f in frames]
+
+
 def _to_gif_frame(rgba: Image.Image) -> Image.Image:
     """RGBA → 調色盤圖:255 色畫面 + 一個透明索引(alpha < 128 視為透明)。"""
     paletted = rgba.convert("RGB").quantize(colors=_GIF_TRANSPARENT_INDEX)
@@ -78,18 +168,19 @@ def save_image(
     path: str | Path,
     size: int | None = None,
     canvas: bool = False,
+    doro: DoroSpec | None = None,
 ) -> Path:
     """把單張影格存成透明 PNG(挑一格當靜態圖用),回傳實際寫出的路徑。
 
     保留透明(RGBA)。size 若給定(長邊像素),存檔前先等比縮小(只縮不放),
     和動畫輸出一樣「在大圖去背後才縮」,邊緣才乾淨。canvas=True 時改成
-    放進 size×size 的透明畫布(可放大),見 fit_to_canvas。
+    放進 size×size 的透明畫布(可放大),見 fit_to_canvas。doro 若給定,
+    改用 Doro 規格擺放(見 fit_to_doro),忽略 size/canvas。
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    rgba = image.convert("RGBA")
-    rgba = _apply_size(rgba, size, canvas)
+    rgba = _layout_frames([image], size, canvas, doro)[0]
     rgba.save(path, format="PNG")
     return path
 
@@ -102,6 +193,7 @@ def save_animation(
     size: int | None = None,
     durations: list[int] | None = None,
     canvas: bool = False,
+    doro: DoroSpec | None = None,
 ) -> Path:
     """把影格存成動畫檔,回傳實際寫出的路徑。
 
@@ -109,6 +201,7 @@ def save_animation(
     durations 若給定(每格毫秒,長度同 frames),改用逐格時間,保住 GIF 原本的節奏。
     size 若給定(長邊像素),會在存檔前把每張影格等比縮到該尺寸(只縮不放);
     canvas=True 時改成統一放進 size×size 透明畫布(可放大),見 fit_to_canvas。
+    doro 若給定,改用 Doro 規格擺放(見 fit_to_doro),忽略 size/canvas。
     """
     fmt = fmt.lower()
     if fmt not in _SUPPORTED:
@@ -124,7 +217,7 @@ def save_animation(
     if durations is not None and len(durations) != len(frames):
         raise ValueError(f"durations 數量({len(durations)})要和影格數({len(frames)})相同")
 
-    rgba_frames = [_apply_size(f.convert("RGBA"), size, canvas) for f in frames]
+    rgba_frames = _layout_frames(frames, size, canvas, doro)
     # Pillow 的動畫編碼器要的是整數毫秒,四捨五入避免被無聲截斷或報錯。
     if durations is not None:
         duration_ms: int | list[int] = [max(1, int(ms)) for ms in durations]

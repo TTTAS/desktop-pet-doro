@@ -6,6 +6,7 @@
   挑一格存圖:python -m doro_app.core.gif_factory 影片.mp4 圖片.png --frame 25 [--size 200]
   GIF 統一大小:python -m doro_app.core.gif_factory a.gif b.gif --out-dir 資料夾 --fmt gif \
                --size 200 --canvas --no-matting
+  對齊 Doro:  python -m doro_app.core.gif_factory a.gif b.gif --out-dir 資料夾 --doro [--body-height 150]
 
 輸入可以是影片,也可以是 GIF / WebP / APNG 動圖。
 去背預設用 AI 設定(isnet-anime);--no-matting 保留原圖透明、不去背。
@@ -19,7 +20,7 @@ import sys
 
 from doro_app.core.gif_factory.frames import extract_frames
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
-from doro_app.core.gif_factory.output import save_image
+from doro_app.core.gif_factory.output import DoroSpec, save_image
 from doro_app.core.gif_factory.pipeline import process_video, process_videos
 
 
@@ -64,6 +65,17 @@ def main(argv: list[str] | None = None) -> int:
         help="搭配 --size:統一放進 size×size 透明畫布(可放大、底部置中),讓輸出大小一致",
     )
     parser.add_argument(
+        "--doro",
+        action="store_true",
+        help="對齊 Doro 規格:裁掉留白、縮到 Doro 身高、腳踩在 200×200 畫布的 y=186",
+    )
+    parser.add_argument(
+        "--body-height",
+        type=int,
+        default=DoroSpec.body_height,
+        help=f"搭配 --doro:角色本體高度(預設 {DoroSpec.body_height},坐姿/趴姿可調低)",
+    )
+    parser.add_argument(
         "--no-matting",
         action="store_true",
         help="不去背,保留原圖透明(例如只想把 GIF 統一大小或換格式)",
@@ -71,8 +83,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.canvas and args.size is None:
         parser.error("--canvas 需要搭配 --size 指定畫布邊長")
+    if args.doro and (args.size is not None or args.canvas):
+        parser.error("--doro 已固定 200×200 畫布,不能再搭配 --size / --canvas")
+    doro = None
+    if args.doro:
+        try:
+            doro = DoroSpec(body_height=args.body_height)
+        except ValueError as err:
+            parser.error(str(err))
     options = MattingOptions(mode="none") if args.no_matting else None
-    sizing = {"size": args.size, "canvas": args.canvas, "options": options}
+    sizing = {"size": args.size, "canvas": args.canvas, "options": options, "doro": doro}
 
     # 模式一:批量動畫(--out-dir 一給,所有 paths 都當輸入影片)。
     if args.out_dir:
@@ -101,6 +121,7 @@ def _single(
     size: int | None,
     canvas: bool = False,
     options: MattingOptions | None = None,
+    doro: DoroSpec | None = None,
 ) -> int:
     print("讀影片並去背中...(第一次跑會先下載 AI 模型,數百 MB,請稍候)")
 
@@ -116,6 +137,7 @@ def _single(
             progress=show_progress,
             size=size,
             canvas=canvas,
+            doro=doro,
         )
     except (FileNotFoundError, ValueError) as err:
         print(f"\n錯誤:{err}", file=sys.stderr)
@@ -131,6 +153,7 @@ def _batch(
     size: int | None,
     canvas: bool = False,
     options: MattingOptions | None = None,
+    doro: DoroSpec | None = None,
 ) -> int:
     print(f"批量處理 {len(videos)} 支影片...(第一次跑會先下載 AI 模型,數百 MB)")
 
@@ -146,6 +169,7 @@ def _batch(
             size=size,
             on_progress=show_progress,
             canvas=canvas,
+            doro=doro,
         )
     except (FileNotFoundError, ValueError) as err:
         print(f"\n錯誤:{err}", file=sys.stderr)
@@ -161,6 +185,7 @@ def _save_single_frame(
     size: int | None,
     canvas: bool = False,
     options: MattingOptions | None = None,
+    doro: DoroSpec | None = None,
 ) -> int:
     try:
         extracted = extract_frames(video)
@@ -175,7 +200,7 @@ def _save_single_frame(
 
     print(f"挑第 {frame_no}/{total} 格去背並存成 PNG...(第一次跑會先下載 AI 模型)")
     rgba = remove_background(extracted.frames[frame_no - 1], options)
-    out = save_image(rgba, output, size=size, canvas=canvas)
+    out = save_image(rgba, output, size=size, canvas=canvas, doro=doro)
     print(f"完成!輸出:{out}")
     return 0
 

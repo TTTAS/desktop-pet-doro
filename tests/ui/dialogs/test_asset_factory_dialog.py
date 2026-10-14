@@ -85,7 +85,32 @@ def test_gif_converts_to_uniform_canvas_gif_and_imports(qtbot, dialog, tmp_path)
 def test_original_size_mode_disables_size_box(dialog):
     dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("original"))
     assert not dialog.size.isEnabled()
-    assert dialog._export_settings()[1:] == (None, False)
+    assert dialog._export_settings()[1] == {"size": None, "canvas": False, "doro": None}
+
+
+def test_doro_mode_previews_against_reference_and_exports_doro_layout(qtbot, dialog, tmp_path):
+    source = tmp_path / "padded.gif"
+    frames = [Image.new("RGBA", (400, 400), (0, 0, 0, 0)) for _ in range(2)]
+    for i, frame in enumerate(frames):
+        frame.paste((255, 0, 0, 255), (150 + i * 10, 100, 250 + i * 10, 300))
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=80, loop=0)
+    dialog.mode.setCurrentIndex(dialog.mode.findData("none"))
+    dialog.size_mode.setCurrentIndex(dialog.size_mode.findData("doro"))
+    assert dialog.body_height.isVisibleTo(dialog) and not dialog.size.isVisibleTo(dialog)
+    dialog.body_height.setValue(120)
+    dialog._paths = [source]
+    dialog._load_video(0)
+    qtbot.waitUntil(lambda: dialog._job is None and bool(dialog._frames), timeout=15000)
+    qtbot.waitUntil(lambda: dialog._job is None and "參考 Doro" in dialog.status.text())
+    assert "估算" not in dialog.status.text()
+    dialog._export_animation()
+    qtbot.waitUntil(lambda: dialog._job is None and dialog.results.count() == 1, timeout=15000)
+    with Image.open(dialog.results.item(0).text()) as image:
+        assert image.size == (200, 200)
+        image.seek(0)
+        first = image.convert("RGBA")
+    _, top, _, bottom = first.getchannel("A").getbbox()
+    assert (top, bottom) == (66, 186)
 
 
 def test_failed_load_clears_previous_source(qtbot, dialog, tmp_path):

@@ -11,7 +11,7 @@ from threading import Event
 
 from doro_app.core.gif_factory.frames import extract_frames
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
-from doro_app.core.gif_factory.output import save_animation
+from doro_app.core.gif_factory.output import DoroSpec, save_animation
 
 
 class ProcessingCancelled(Exception):
@@ -43,13 +43,15 @@ def process_video(
     size: int | None = None,
     cancel: Event | None = None,
     canvas: bool = False,
+    doro: DoroSpec | None = None,
 ) -> Path:
     """讀影片或動圖 → 逐張去背 → (可選)縮到指定尺寸 → 存成動畫檔。
 
     progress(done, total) 會在每張影格處理完後被呼叫,供視窗顯示進度。
     size 若給定(長邊像素),縮小發生在去背之後、存檔之前,以保住邊緣品質。
     canvas=True 時改成統一放進 size×size 透明畫布(可放大),讓大小不一的
-    來源 GIF 輸出成同樣尺寸。動圖來源會沿用每格原本的顯示時間。
+    來源 GIF 輸出成同樣尺寸。doro 若給定,改成裁掉留白、對齊 Doro 的身高與
+    腳底線(見 fit_to_doro)。動圖來源會沿用每格原本的顯示時間。
     """
     check_cancelled(cancel)
     extracted = extract_frames(video_path, cancel=cancel)
@@ -71,6 +73,7 @@ def process_video(
         size=size,
         durations=extracted.durations,
         canvas=canvas,
+        doro=doro,
     )
 
 
@@ -83,6 +86,7 @@ def process_videos(
     on_progress: Callable[[int, int, int, int, str], None] | None = None,
     cancel: Event | None = None,
     canvas: bool = False,
+    doro: DoroSpec | None = None,
 ) -> list[Path]:
     """批量處理多支影片:每支各自去背、輸出成 <檔名>.<fmt> 到 output_dir。
 
@@ -118,6 +122,7 @@ def process_videos(
                 size=size,
                 cancel=cancel,
                 canvas=canvas,
+                doro=doro,
             )
         )
 
