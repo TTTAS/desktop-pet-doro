@@ -49,7 +49,7 @@ python doro.py
 
 右鍵 Doro →「素材工廠（影片去背）…」，可直接製作及匯入桌寵動畫；也能把網路上大小不一的 GIF 轉成同樣尺寸。
 
-Windows 用 `run_doro.bat`／`run_doro_debug.bat` 啟動時會自動安裝素材套件。其他啟動方式請先在 doro 的 Python 環境安裝：
+Windows 用 `run_doro.bat`／`run_doro_debug.bat` 啟動時會自動安裝素材套件，並另外嘗試安裝 AI 去背（檔案較大；安裝失敗只會顯示警告，Doro 照常啟動、可改用顏色去背）。啟動時若偵測到素材工廠已安裝但缺少 AI 去背，會提示安裝指令。其他啟動方式請先在 doro 的 Python 環境安裝：
 
 ```bash
 python -m pip install -e ".[factory]"
