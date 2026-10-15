@@ -164,6 +164,12 @@ class AssetFactoryDialog(FramelessDialog):
         self.tolerance.setValue(30)
         self.tolerance.valueChanged.connect(self._schedule_preview)
         options.addRow("顏色容差", self.tolerance)
+        self.edge_only = QtWidgets.QCheckBox(
+            "只去除與邊緣相連的背景（保留角色身上的同色，例如白底白身體）"
+        )
+        self.edge_only.setChecked(True)
+        self.edge_only.toggled.connect(self._schedule_preview)
+        options.addRow(self.edge_only)
         self.erode = QtWidgets.QSpinBox()
         self.erode.setRange(0, 20)
         self.erode.valueChanged.connect(self._schedule_preview)
@@ -388,6 +394,7 @@ class AssetFactoryDialog(FramelessDialog):
     def _schedule_preview(self, *_):
         mode = self.mode.currentData()
         self.tolerance.setEnabled(mode == "color")
+        self.edge_only.setEnabled(mode == "color")
         self.soft.setEnabled(mode == "ai")
         if self._frames and not self._job:
             self._timer.start()
@@ -402,6 +409,7 @@ class AssetFactoryDialog(FramelessDialog):
             mode=self.mode.currentData(),
             color_key=self._color,
             tolerance=self.tolerance.value(),
+            edge_only=self.edge_only.isChecked(),
             erode=self.erode.value(),
             alpha_matting=self.soft.isChecked(),
         )

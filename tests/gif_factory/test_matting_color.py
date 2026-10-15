@@ -50,3 +50,44 @@ def test_larger_tolerance_removes_more():
 def test_color_mode_without_color_key_raises():
     with pytest.raises(ValueError):
         remove_background(_two_color_image(), MattingOptions(mode="color"))
+
+
+def _white_body_on_white():
+    """白底上一個黑色外框圍住的白色身體(中間 10..30 是身體)。"""
+    arr = np.full((40, 40, 4), 255, dtype=np.uint8)
+    arr[8:32, 8:32, :3] = 0  # 外框
+    arr[10:30, 10:30, :3] = 255  # 外框內的白色身體
+    return Image.fromarray(arr, "RGBA")
+
+
+def test_edge_only_keeps_same_color_inside_the_outline():
+    image = _white_body_on_white()
+    options = {"mode": "color", "color_key": (255, 255, 255), "tolerance": 30}
+
+    old = np.array(remove_background(image, MattingOptions(**options)))
+    edge = np.array(remove_background(image, MattingOptions(**options, edge_only=True)))
+
+    assert old[20, 20, 3] == 0  # 舊行為:身體也被挖掉
+    assert edge[20, 20, 3] == 255  # 只挖邊緣相連:身體保留
+    assert edge[2, 2, 3] == 0  # 背景照樣透明
+    assert edge[9, 9, 3] == 255  # 外框保留
+
+
+def test_edge_only_does_not_leak_through_diagonal_gaps():
+    image = _white_body_on_white()
+    arr = np.array(image)
+    arr[8, 8, :3] = 255  # 外框角落缺一格,只與內部斜向相連
+    result = remove_background(
+        Image.fromarray(arr, "RGBA"),
+        MattingOptions(mode="color", color_key=(255, 255, 255), tolerance=30, edge_only=True),
+    )
+
+    assert np.array(result)[20, 20, 3] == 255
+
+
+def test_edge_only_on_real_white_bodied_frame(frame_image):
+    options = MattingOptions(mode="color", color_key=(255, 255, 255), tolerance=30, edge_only=True)
+    result = np.array(remove_background(frame_image, options))
+
+    assert result[2, 2, 3] == 0  # 角落背景透明
+    assert result[200, 134, 3] == 255  # 白色身體中央保留
