@@ -389,3 +389,21 @@ def test_gif_palette_is_not_spent_on_hidden_transparent_colors(tmp_path):
     result = extract_frames(out).frames[0]
     assert [result.getpixel((i % 16, i // 16)) for i in range(255)] == colors
     assert result.getpixel((15, 15))[3] == 0
+
+
+@pytest.mark.parametrize("fmt", ["webp", "apng"])
+def test_short_webp_and_apng_frames_keep_their_timing(tmp_path, fmt):
+    # 60 fps 動圖每格約 16~17 毫秒,不能被當成 GIF 的「瀏覽器保底 100 毫秒」。
+    path = save_animation(
+        _moving_square_frames(n=3), fmt, tmp_path / f"fast.{fmt}", fps=60, durations=[16, 17, 17]
+    )
+
+    assert extract_frames(path).durations == [16, 17, 17]
+
+
+def test_gif_keeps_20ms_frames_but_treats_10ms_as_browser_default(tmp_path):
+    frames = [f.convert("RGB") for f in _moving_square_frames(n=2)]
+    fast = tmp_path / "fast.gif"
+    frames[0].save(fast, save_all=True, append_images=frames[1:], duration=[20, 10], loop=0)
+
+    assert extract_frames(fast).durations == [20, 100]

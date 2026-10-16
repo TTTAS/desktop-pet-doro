@@ -24,8 +24,17 @@ _FALLBACK_FPS = 12.0
 ANIMATED_IMAGE_SUFFIXES = frozenset({".gif", ".webp", ".apng", ".png"})
 
 # 瀏覽器把 0~10 毫秒的 GIF 影格一律當 100 毫秒播,這裡比照,免得動畫快到看不見。
-_MIN_FRAME_MS = 20
-_BROWSER_DEFAULT_FRAME_MS = 100
+# 只套用在 GIF;WebP / APNG 的短影格(例如 60 fps 的 16 毫秒)是真的,原樣保留,
+# 只有沒寫時間(0)時才用預設值。
+_GIF_MAX_IGNORED_MS = 10
+_DEFAULT_FRAME_MS = 100
+
+
+def _frame_duration_ms(raw, is_gif: bool) -> int:
+    ms = int(raw or 0)
+    if ms <= 0 or (is_gif and ms <= _GIF_MAX_IGNORED_MS):
+        return _DEFAULT_FRAME_MS
+    return ms
 
 
 @dataclass
@@ -95,13 +104,13 @@ def _extract_image_frames(path: Path, cancel: Event | None) -> ExtractedVideo:
 
     frames: list[Image.Image] = []
     durations: list[int] = []
+    is_gif = source.format == "GIF"
     with source:
         # Pillow 逐格 seek 時會依 disposal 合成,轉 RGBA 就是畫面上看到的那一格。
         for frame in ImageSequence.Iterator(source):
             check_cancelled(cancel)
             frames.append(frame.convert("RGBA"))
-            ms = int(frame.info.get("duration") or 0)
-            durations.append(ms if ms >= _MIN_FRAME_MS else _BROWSER_DEFAULT_FRAME_MS)
+            durations.append(_frame_duration_ms(frame.info.get("duration"), is_gif))
 
     if not frames:
         raise ValueError(f"這個檔案讀不到任何影格:{path}")
