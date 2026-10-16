@@ -16,6 +16,7 @@
 | 活潑節奏、休息 GIF 與腳底校正 | [活潑陪伴計畫與驗收](companion-liveliness-plan.md) |
 | 懸浮聊天窗與直接聊天入口 | [懸浮聊天窗計畫與驗收](floating-chat-plan.md) |
 | 素材工廠 GIF 轉檔與對齊 Doro 規格 | [素材尺寸計畫與目標](asset-factory-sizing-plan.md) |
+| 對話泡泡拆成獨立視窗（修正說話時閃現） | [泡泡視窗計畫](speech-bubble-window-plan.md) |
 | 執行測試 | [AGENTS.md 的測試命令](../AGENTS.md)、[pyproject.toml](../pyproject.toml)；[測試指南](TESTING.md) 作背景 |
 
 ## 架構決策（已採用）
