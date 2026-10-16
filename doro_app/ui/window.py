@@ -432,6 +432,12 @@ class DoroWindow(QtWidgets.QWidget):
             self._bubble_above = self._decide_bubble_above(sprite_center_screen, panel_h_hint)
 
         self._sizing_in_progress = True
+        # Resize and move are two steps. Windows may paint in between: the
+        # window has grown/shrunk around its old top-left, so the sprite shows
+        # up somewhere else for a frame and then jumps back (seen whenever the
+        # speech bubble appears or hides). Paint only once, after the move.
+        painting = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
         try:
             WindowLayoutManager.apply_window_preferred_size(
                 self,
@@ -446,6 +452,10 @@ class DoroWindow(QtWidgets.QWidget):
             self._layout_foot_offset = self.sprite_foot_offset_logical()
         finally:
             self._sizing_in_progress = False
+            if painting:
+                self.setUpdatesEnabled(True)
+                if self.isVisible():
+                    self.repaint()  # draw the final layout right away
 
     def _should_collapse_to_sprite(self) -> bool:
         """True when no bubble text is showing — window can shrink to sprite size."""

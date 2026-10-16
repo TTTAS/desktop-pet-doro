@@ -192,3 +192,31 @@ def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path,
     assert current[0] == "idle"
     assert abs(window.foot_position().x() - controller._home().x()) > 30
     window.play_landing.assert_not_called()
+
+
+def test_bubble_resize_never_paints_before_the_window_is_back_in_place(pet):
+    """Resize and move are separate steps; a paint between them showed Doro
+    "teleporting" away and back whenever the speech bubble appeared or hid."""
+    window, bubble, _ = pet
+    place(window, 600, 799)
+    painted = []
+
+    class PaintSpy(QtCore.QObject):
+        def eventFilter(self, obj, event):
+            if event.type() == QtCore.QEvent.Type.Paint:
+                painted.append(obj.geometry())
+            return False
+
+    spy = PaintSpy()
+    window.installEventFilter(spy)
+    for text in ("人～好多程式碼喔，doro看不太懂耶～" * 2, ""):
+        painted.clear()
+        before = window.geometry()
+        if text:
+            bubble.set_text(text, auto_hide=False)
+        else:
+            bubble.clear_text()
+        assert window.geometry() != before  # the window really resized and moved
+        assert painted, "the final layout is painted right away"
+        assert set(painted) == {window.geometry()}  # every paint at the final geometry
+    window.removeEventFilter(spy)
