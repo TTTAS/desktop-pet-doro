@@ -19,6 +19,12 @@ def diagnostics(qtbot, tmp_path):
     diag = ExitDiagnostics(app, window, tmp_path / "exit.log")
     yield diag, window, tmp_path / "exit.log"
     app.removeEventFilter(diag)
+    if diag._native_filter is not None:  # Windows only
+        app.removeNativeEventFilter(diag._native_filter)
+    if diag._console_handler is not None:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(diag._console_handler, False)
     app.aboutToQuit.disconnect(diag._about_to_quit)
     sys.excepthook, threading.excepthook = hooks
     atexit.unregister(diag._at_exit)

@@ -11,8 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 from doro_app.cli import install_quit_policy
 
-_SCRIPT = textwrap.dedent(
-    """
+_SCRIPT = textwrap.dedent("""
     import sys
     from PySide6 import QtCore, QtWidgets
     from doro_app.cli import install_quit_policy
@@ -35,8 +34,7 @@ _SCRIPT = textwrap.dedent(
 
     QtCore.QTimer.singleShot(0, open_dialog)
     sys.exit(app.exec())
-    """
-)
+    """)
 
 
 def _run(mode: str) -> int:
