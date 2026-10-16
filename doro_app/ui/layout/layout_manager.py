@@ -8,32 +8,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...constants import (
-    FALLBACK_SCREEN_HEIGHT,
-    FALLBACK_SCREEN_WIDTH,
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_HEIGHT,
-    PANEL_MIN_WIDTH,
-    PANEL_PADDING,
-)
-
-
-def _make_panel_font() -> QtGui.QFont:
-    font = QtGui.QFont()
-    font.setPointSizeF(12.0)
-    font.setWeight(QtGui.QFont.Weight.Bold)
-    return font
-
-
-# Module-level cached font (created once, reused)
-_PANEL_FONT: QtGui.QFont | None = None
-
-
-def _get_panel_font() -> QtGui.QFont:
-    global _PANEL_FONT
-    if _PANEL_FONT is None:
-        _PANEL_FONT = _make_panel_font()
-    return _PANEL_FONT
+from ...constants import FALLBACK_SCREEN_HEIGHT, FALLBACK_SCREEN_WIDTH
 
 
 class WindowLayoutManager:
@@ -113,128 +88,27 @@ class WindowLayoutManager:
         )
 
     @staticmethod
-    def compute_panel_size_hint(
-        sprite_size: QtCore.QSize,
-        bubble_text: str,
-    ) -> tuple[float, float]:
+    def compute_preferred_window_size(sprite_size: QtCore.QSize) -> tuple[int, int]:
+        """Window size for a sprite: the sprite itself (at least 120×120).
+
+        The speech bubble has its own window (SpeechBubbleWindow), so Doro's
+        window never reserves room for it.
         """
-        Compute suggested panel size based on sprite and text content.
-
-        Args:
-            sprite_size: Size of the sprite
-            bubble_text: Text to display in bubble (may be empty)
-
-        Returns:
-            Tuple of (panel_width, panel_height) in pixels
-        """
-        text = bubble_text.strip()
-        sprite_w = max(120.0, float(sprite_size.width()))
-        panel_width = max(PANEL_MIN_WIDTH, sprite_w)
-        available_text_width = max(PANEL_MIN_HEIGHT, panel_width - PANEL_PADDING)
-
-        # Calculate text height
-        font = _get_panel_font()
-        metrics = QtGui.QFontMetrics(font)
-
-        if text:
-            flags = int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
-            flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
-            text_rect = metrics.boundingRect(
-                QtCore.QRect(0, 0, round(available_text_width), int(PANEL_MAX_WIDTH)),
-                flags,
-                text,
-            )
-            text_height = float(text_rect.height())
-        else:
-            text_height = float(metrics.lineSpacing())
-
-        panel_height = max(PANEL_MIN_HEIGHT, text_height + PANEL_PADDING)
-        return panel_width, panel_height
+        return (
+            round(max(120.0, float(sprite_size.width()))),
+            round(max(120.0, float(sprite_size.height()))),
+        )
 
     @staticmethod
-    def compute_preferred_window_size(
-        sprite_size: QtCore.QSize,
-        panel_width_hint: float,
-        panel_height_hint: float,
-        compact: bool = False,
-    ) -> tuple[int, int]:
-        """
-        Compute preferred window size based on sprite and panel dimensions.
-
-        Args:
-            sprite_size: Current sprite size
-            panel_width_hint: Panel width hint
-            panel_height_hint: Panel height hint
-            compact: When True, return sprite-only size (no panel reserve).
-                Used while the speech bubble is hidden so the window
-                matches the visible sprite exactly — keeps Doro's visual
-                position aligned with the foot anchor / window top-left
-                for clamp arithmetic.
-
-        Returns:
-            Tuple of (desired_width, desired_height) in pixels
-        """
-        sprite_w = max(120.0, float(sprite_size.width()))
-        sprite_h = max(120.0, float(sprite_size.height()))
-
-        if compact:
-            return round(sprite_w), round(sprite_h)
-
-        desired_w = max(
-            380,
-            # Room on either side to slide the bubble inward at screen edges.
-            round(max(sprite_w + 120.0, panel_width_hint * 2.0 + 240.0)),
-        )
-        desired_h = max(
-            320,
-            round(sprite_h + panel_height_hint + 120.0),
-        )
-
-        return desired_w, desired_h
-
-    @staticmethod
-    def apply_window_preferred_size(
-        window: QtWidgets.QWidget,
-        sprite_size: QtCore.QSize,
-        panel_width_hint: float,
-        panel_height_hint: float,
-        compact: bool = False,
-    ) -> tuple[float, float]:
-        """
-        Apply preferred window size to a widget.
-
-        This method has side effects - it modifies the window's size.
-
-        Args:
-            window: Window to resize
-            sprite_size: Current sprite size
-            panel_width_hint: Panel width hint
-            panel_height_hint: Panel height hint
-            compact: Forward to :meth:`compute_preferred_window_size`.
-
-        Returns:
-            Tuple of (panel_width_hint, panel_height_hint) (same as input)
-        """
-        desired_w, desired_h = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint, panel_height_hint, compact=compact
-        )
-
-        current_size = window.size()
+    def apply_window_preferred_size(window: QtWidgets.QWidget, sprite_size: QtCore.QSize) -> None:
+        """Resize ``window`` (and its minimum size) to fit ``sprite_size``."""
+        desired_w, desired_h = WindowLayoutManager.compute_preferred_window_size(sprite_size)
         min_size = window.minimumSize()
-
-        # Allow both growth and shrink so the window can collapse back to
-        # sprite-size when the bubble hides.
-        min_changed = min_size.width() != desired_w or min_size.height() != desired_h
-        needs_resize = current_size.width() != desired_w or current_size.height() != desired_h
-
-        if min_changed or needs_resize:
-            if min_changed:
-                window.setMinimumSize(desired_w, desired_h)
-            if needs_resize:
-                window.resize(desired_w, desired_h)
+        if min_size.width() != desired_w or min_size.height() != desired_h:
+            window.setMinimumSize(desired_w, desired_h)
+        if window.width() != desired_w or window.height() != desired_h:
+            window.resize(desired_w, desired_h)
             window.update()
-
-        return panel_width_hint, panel_height_hint
 
     @staticmethod
     def move_window_safely(window: QtWidgets.QWidget, point: QtCore.QPoint):
