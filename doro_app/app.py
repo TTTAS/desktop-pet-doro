@@ -729,6 +729,10 @@ class DoroApp:
             ("web", "_chat_orchestrator", "shutdown_web"),
             ("presence", "_presence", "shutdown"),
         ]
+        try:  # GIFs of states removed while their files were still open
+            self._state_service.retry_pending_gif_deletions()
+        except Exception:  # pragma: no cover - shutdown is best-effort
+            logger.exception("state GIF cleanup raised")
         for label, attr, method in shutters:
             obj = getattr(self, attr, None)
             if obj is None:

@@ -70,6 +70,9 @@ class StateService:
         self._state_repo = state_repo
         self._move_repo = move_repo
         self._gif_repo = gif_repo
+        # States already removed whose GIF files were still open (Windows
+        # WinError 32, e.g. a preview was playing them). Retried later.
+        self._pending_gif_deletions: set[str] = set()
         self._transition_gif_repo = transition_gif_repo
         self._transition_repo = transition_repo
         self._movement_repo = movement_repo
@@ -710,6 +713,10 @@ class StateService:
             logger.warning(f"Cannot add state '{key}': already exists")
             return None
 
+        # GIFs left behind by an earlier state of the same name belong to no
+        # state; clear them so they don't reappear in the new one.
+        self._delete_state_gifs(normalize_state_key(key))
+
         # Check if movement-only
         if self._move_states.is_movement_only(key):
             logger.warning(f"Cannot add state '{key}': reserved for movement")
@@ -754,26 +761,63 @@ class StateService:
         Returns:
             True if removed, False if protected or not found
         """
-        if not self._states.remove(key):
+        key = normalize_state_key(key)
+        if self._states.get(key) is None or self._states.is_protected(key):
             logger.warning(f"Cannot remove state '{key}': protected or not found")
             return False
 
+        # Doro's own window keeps the current state's GIF open; switch away first.
+        if self.get_current_state_key() == key:
+            fallback = next(
+                (
+                    k
+                    for k in ["idle", *self.visible_state_keys()]
+                    if k != key and self._states.get(k)
+                ),
+                None,
+            )
+            if fallback is not None:
+                self.request_state(fallback, force=True)
+
+        self._states.remove(key)
         logger.info(f"Removed state '{key}'")
 
-        # Delete all associated GIFs (single file + subfolder)
-        self._gif_repo.delete_all_gifs(key)
-        logger.debug(f"Deleted GIFs for removed state '{key}'")
-
+        # Persist before touching files: a locked file must not leave the state
+        # removed in memory but still saved in the config (it came back on restart).
         self._state_repo.save_all(
             self._states.items(),
             set(self._states.protected_keys()),
         )
         self.write_state_list()
 
+        self._delete_state_gifs(key)
+
         if self.on_states_modified:
             self.on_states_modified()
 
         return True
+
+    @property
+    def pending_gif_deletions(self) -> frozenset[str]:
+        """Removed states whose GIF files could not be deleted yet (file in use)."""
+        return frozenset(self._pending_gif_deletions)
+
+    def retry_pending_gif_deletions(self) -> None:
+        """Try again to delete GIFs of removed states; call once previews are released."""
+        for key in sorted(self._pending_gif_deletions):
+            if self._states.get(key) is None:
+                self._delete_state_gifs(key)
+            else:
+                self._pending_gif_deletions.discard(key)  # re-created: its files are live
+
+    def _delete_state_gifs(self, key: str) -> None:
+        try:
+            self._gif_repo.delete_all_gifs(key)
+        except GifStorageError as exc:
+            logger.warning(f"GIFs of removed state '{key}' are still in use; will retry: {exc}")
+            self._pending_gif_deletions.add(key)
+        else:
+            self._pending_gif_deletions.discard(key)
 
     def update_state_visual(self, key: str, **visual_changes: Any) -> State | None:
         """
