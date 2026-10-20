@@ -11,6 +11,7 @@ from ...constants import (
     SPRITE_MARGIN_BOTTOM,
     SPRITE_MARGIN_X,
     SPRITE_MIN_SIZE,
+    SPRITE_WINDOW_MIN_SIDE,
 )
 from ..viewmodels.doro_viewmodel import DoroViewModel
 from .design_tokens import tokens
@@ -64,7 +65,11 @@ class RenderingEngine:
 
         sprite_w = self._view_model.sprite_size.width()
         sprite_h = self._view_model.sprite_size.height()
-        if window_size.width() <= sprite_w + 1 and window_size.height() <= sprite_h + 1:
+        # The window is fitted to the sprite, padded per axis up to the minimum
+        # side (a 200×60 lying pose gets a 200×120 window): centre it in there.
+        fitted_w = max(float(sprite_w), SPRITE_WINDOW_MIN_SIDE)
+        fitted_h = max(float(sprite_h), SPRITE_WINDOW_MIN_SIDE)
+        if window_size.width() <= fitted_w + 1 and window_size.height() <= fitted_h + 1:
             center = QtCore.QPointF(window_size.width() / 2.0, window_size.height() / 2.0)
             return center, max(0.0, center.y() - half_h)
 

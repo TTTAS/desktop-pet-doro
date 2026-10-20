@@ -232,3 +232,29 @@ def test_bubble_hides_while_chat_history_is_expanded(pet):
 def test_bubble_lets_clicks_through(pet):
     *_, speech = pet
     assert speech.windowFlags() & QtCore.Qt.WindowType.WindowTransparentForInput
+
+
+def test_short_wide_sprite_stays_inside_its_padded_window(pet):
+    """A 200×60 lying pose gets a 200×120 window; the sprite must be centred in it,
+    not pushed out by the old bubble-layout offset."""
+    window, _, _, _ = pet
+    place(window, 600, 799)
+    foot = window.foot_position()
+    window.view_model.set_sprite_size(QtCore.QSize(200, 60))
+    window.on_sprite_renderer_changed()
+
+    assert window.size() == QtCore.QSize(200, 120)
+    assert QtCore.QRect(QtCore.QPoint(), window.size()).contains(window.sprite_contact_rect())
+    assert window.foot_position() == foot
+
+
+def test_bubble_repaints_when_only_the_state_changes(pet, monkeypatch):
+    _, bubble, _, speech = pet
+    bubble.set_text("同一句話。", auto_hide=False)
+    repaints = []
+    monkeypatch.setattr(speech, "update", lambda *a: repaints.append(a))
+
+    speech._view_model.set_bubble_alpha(120)  # e.g. the new state has another alpha
+    speech.refresh()
+
+    assert repaints

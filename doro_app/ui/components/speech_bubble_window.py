@@ -144,14 +144,13 @@ class SpeechBubbleWindow(QtWidgets.QWidget):
             self._text = ""
             self.hide()
             return
-        changed = text != self._text
         self._text = text
         self.follow()
         if not self.isVisible():
             self.show()
             self.raise_()
-        elif changed:
-            self.update()
+        # Always repaint: a state change can keep the text but change bubble_alpha.
+        self.update()
 
     def follow(self) -> None:
         """Re-position next to Doro; call whenever her window moves or resizes."""

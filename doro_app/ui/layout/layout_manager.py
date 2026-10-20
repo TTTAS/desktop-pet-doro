@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ...constants import FALLBACK_SCREEN_HEIGHT, FALLBACK_SCREEN_WIDTH
+from ...constants import FALLBACK_SCREEN_HEIGHT, FALLBACK_SCREEN_WIDTH, SPRITE_WINDOW_MIN_SIDE
 
 
 class WindowLayoutManager:
@@ -95,8 +95,8 @@ class WindowLayoutManager:
         window never reserves room for it.
         """
         return (
-            round(max(120.0, float(sprite_size.width()))),
-            round(max(120.0, float(sprite_size.height()))),
+            round(max(SPRITE_WINDOW_MIN_SIDE, float(sprite_size.width()))),
+            round(max(SPRITE_WINDOW_MIN_SIDE, float(sprite_size.height()))),
         )
 
     @staticmethod
