@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtWidgets
@@ -36,7 +35,6 @@ class ContextMenuController:
         bubble_controller: BubbleController,
         core_manager: CoreManager,
         chat_ui: ChatUIHelper,
-        default_idle_gif: Path,
         companion=None,
         on_interaction=None,
         on_settings_changed=None,
@@ -48,7 +46,6 @@ class ContextMenuController:
         self._bubble_controller = bubble_controller
         self._core_manager = core_manager
         self._chat_ui = chat_ui
-        self._default_idle_gif = default_idle_gif
         self._companion = companion
         self._on_interaction = on_interaction or (lambda: None)
         self._on_settings_changed = on_settings_changed or (lambda: None)
@@ -89,7 +86,6 @@ class ContextMenuController:
             current_state_key=self._window.current_state_key,
             is_topmost=bool(self._window.windowFlags() & QtCore.Qt.WindowType.WindowStaysOnTopHint),
             bubble_visible=bool(current_state and current_state.visual.bubble_visible),
-            has_default_idle_gif=self._default_idle_gif.is_file(),
             is_chat_inflight=self._core_manager.is_chat_inflight,
             has_chat_history=self._core_manager.has_chat_history,
             quiet_companion=bool(self._companion and self._companion.quiet),
@@ -108,7 +104,6 @@ class ContextMenuController:
             show_state_manager=self._dialog_manager.show_state_manager,
             show_move_state_manager=self._dialog_manager.show_move_state_manager,
             toggle_bubble=self._window.toggle_bubble,
-            clear_state_gif=lambda: self._state_controller.clear_state_gif(current_key),
             show_rename_dialog=lambda: (
                 (self._dialog_manager.show_rename_dialog(current_key) and self._window.update())
                 if current_key

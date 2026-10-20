@@ -30,7 +30,7 @@ from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
 from .utils.logger import get_logger
-from .utils.paths import COMPANION_PROMPTS_PATH, STATE_DIR
+from .utils.paths import COMPANION_PROMPTS_PATH
 
 logger = get_logger(__name__)
 
@@ -412,7 +412,6 @@ class DoroApp:
             bubble_controller=self._bubble_controller,
             core_manager=self.core_manager,
             chat_ui=chat_ui,
-            default_idle_gif=STATE_DIR / "idle.gif",
             companion=self._companion,
             on_interaction=self._interrupt_background_companionship,
             on_settings_changed=self._idle_behavior.reset,

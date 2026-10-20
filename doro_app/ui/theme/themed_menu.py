@@ -20,7 +20,6 @@ class MenuSnapshot:
     current_state_key: str
     is_topmost: bool
     bubble_visible: bool
-    has_default_idle_gif: bool
     is_chat_inflight: bool
     has_chat_history: bool
     a11y_enabled: bool = False  # accessibility tree reading is on
@@ -38,7 +37,6 @@ class MenuCallbacks:
     show_state_manager: Callable[[], None]
     show_move_state_manager: Callable[[], None]
     toggle_bubble: Callable[[bool], None]
-    clear_state_gif: Callable[[], None]
     show_rename_dialog: Callable[[], None]
     prompt_chat: Callable[[], None]
     edit_chat_prompt: Callable[[], None]
@@ -391,10 +389,6 @@ def build_context_menu_content(
     bubble_action.setCheckable(True)
     bubble_action.setChecked(snapshot.bubble_visible)
     bubble_action.triggered.connect(callbacks.toggle_bubble)
-
-    clear_gif_action = visuals_menu.addAction("Reset GIF to default")
-    clear_gif_action.setEnabled(snapshot.has_default_idle_gif)
-    clear_gif_action.triggered.connect(callbacks.clear_state_gif)
 
     name_tag_action = visuals_menu.addAction("Rename pet")
     name_tag_action.triggered.connect(callbacks.show_rename_dialog)
