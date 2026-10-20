@@ -56,6 +56,9 @@ class ExitDiagnostics(QtCore.QObject):
         self._crash_file = open(self._log_path, "a", encoding="utf-8")  # noqa: SIM115
         self._native_filter = None
         self._console_handler = None
+        # Once Doro is quitting (e.g. "Exit doro"), the close/hide that follow
+        # are the normal shutdown: keep them in the log file, out of the console.
+        self._quitting = False
 
         self.log(
             f"=== Doro started (pid {os.getpid()}, Python {sys.version.split()[0]}) ===",
@@ -135,22 +138,31 @@ class ExitDiagnostics(QtCore.QObject):
             and obj.isWindow()
         ):
             main = " (Doro main window)" if obj is self._window else ""
+            # Closing a dialog is routine. Closing Doro is worth showing only when
+            # something other than her own exit did it (e.g. Windows itself).
+            unexpected = bool(main) and (event.spontaneous() or not self._quitting)
             self.log(
                 f"Close event -> {type(obj).__name__} {obj.windowTitle()!r}{main}, "
                 f"from OS={event.spontaneous()}, visible windows={self._visible_windows()}",
-                console=bool(main),  # closing a dialog is routine; closing Doro is not
+                console=unexpected,
             )
         elif kind == QtCore.QEvent.Type.Hide and obj is self._window:
-            self.log("Doro main window hidden; caller stack:\n" + self._stack())
+            self.log(
+                "Doro main window hidden; caller stack:\n" + self._stack(),
+                console=not self._quitting,
+            )
         elif kind == QtCore.QEvent.Type.Quit:
-            self.log("Qt Quit event received; caller stack:\n" + self._stack())
+            # A quit request ("Exit doro" or closing Doro's window) is a normal exit.
+            self._quitting = True
+            self.log("Qt Quit event received; caller stack:\n" + self._stack(), console=False)
         return False
 
     def _visible_windows(self) -> list[str]:
         return [type(w).__name__ for w in QtWidgets.QApplication.topLevelWidgets() if w.isVisible()]
 
     def _about_to_quit(self) -> None:
-        self.log("Qt aboutToQuit; caller stack:\n" + self._stack())
+        self._quitting = True
+        self.log("Qt aboutToQuit; caller stack:\n" + self._stack(), console=False)
 
     # ---------------------------------------------------------- Windows only
     def _install_windows_hooks(self) -> None:

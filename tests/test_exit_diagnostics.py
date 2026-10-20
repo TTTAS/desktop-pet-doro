@@ -96,3 +96,21 @@ def test_routine_events_stay_out_of_the_console(diagnostics, capsys):
     text = log.read_text(encoding="utf-8")
     assert "QDialog" in text and "QDialog" not in console  # 關對話框是日常操作
     assert "(Doro main window)" in console  # 關掉 Doro 本身才顯示
+
+
+def test_normal_exit_is_logged_but_keeps_the_console_quiet(diagnostics, capsys):
+    """ "Exit doro": Quit, then Qt closes and hides the main window — not an error."""
+    diag, window, log = diagnostics
+    window.show()
+    capsys.readouterr()
+
+    diag.eventFilter(QtWidgets.QApplication.instance(), QtCore.QEvent(QtCore.QEvent.Type.Quit))
+    diag._about_to_quit()
+    window.close()
+
+    assert "[exit-diag]" not in capsys.readouterr().err
+    text = log.read_text(encoding="utf-8")
+    assert "Qt Quit event received" in text
+    assert "Qt aboutToQuit" in text
+    assert "(Doro main window), from OS=False" in text
+    assert "Doro main window hidden" in text
