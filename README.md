@@ -1,197 +1,68 @@
-# Doro - Desktop Pet Companion
+# Doro — 桌面寵物
 
-A desktop pet (shimeji-style) application built with PySide6. Doro is a cute chibi companion that lives on your desktop, responds to clicks, chats with you via LLM, and acts on her own when you're away.
+住在桌面上的 Doro。會走動、換姿勢、被摸會有反應，也能接 LLM 跟你聊天。以 PySide6 製作。
 
-![Doro idle animation](doro_app/res/state/idle.gif)
+![Doro](doro_app/res/state/idle.gif)
 
-## Features
+## 功能
 
-- **Animated GIF sprites** with idle bobbing, state transitions, and walking animations
-- **LLM-powered chat** via configurable endpoint (LM Studio, OpenAI-compatible APIs, etc.)
-- **Idle behavior** - Doro speaks, moves, and changes poses autonomously when you're away
-- **State system** - multiple visual states with animated transitions between them
-- **Directional movement** - Doro can walk around your screen
-- **Always-on-top** transparent window with click-through support
-- **Speech bubble** overlay for dialogue display
-- **Preflight checks** - validates Python version, PySide6, and display server before launch
+- **聊天**：連接任何 OpenAI 相容的 API（例如 LM Studio），啟動後畫面上就有輸入列可以直接打字。
+- **自主陪伴**：沒事時會自己散步、換姿勢、說話；可切換「安靜陪伴」，並設定她休息的位置與姿勢。
+- **自訂動畫**：點擊、拖曳、移動、轉場都能換成自己的 GIF／APNG／WebP，每種可放多張隨機播放。
+- **素材工廠**：把影片或網路上的動圖去背、統一尺寸，直接匯入成 Doro 的姿勢。
+- **分頁陪伴**（選用）：搭配 Chromium 擴充，讓 Doro 看到你正在瀏覽的分頁並做出反應。
 
-## Requirements
+所有設定都在 Doro 身上按右鍵的選單裡。
 
-- Python 3.10+
-- PySide6 6.5.0+
-- A display server (X11 or Wayland on Linux)
+## 安裝與執行
 
-Optional:
-- A local OpenAI-compatible LLM server (e.g. LM Studio at `http://127.0.0.1:1234`) for chat functionality
+需要 Python 3.10 以上。
 
-## Installation
+**Windows**：雙擊 `run_doro.bat`。第一次會自動建立虛擬環境並安裝全部功能，需要幾分鐘。
+
+**其他平台／手動安裝**：
 
 ```bash
 git clone https://github.com/TTTAS/doro-exp-.git
 cd doro-exp-
-pip install -e .
-```
-
-## Usage
-
-```bash
+pip install -e .            # 基本功能
+pip install -e ".[factory]" # 選用：素材工廠
+pip install -e ".[web]"     # 選用：上網與分頁陪伴
 python doro.py
 ```
 
-### Command-line options
+| 參數 | 說明 |
+|------|------|
+| `--not-topmost` | 不要讓視窗永遠置頂 |
+| `--test-chat [訊息]` | 送一則測試聊天後結束 |
 
-| Flag | Description |
-|------|-------------|
-| `--not-topmost` | Don't keep the window always on top |
-| `--test-chat [MESSAGE]` | Send a test chat request and exit |
+## 設定聊天
 
-### 素材工廠（整合 DORO2）
+在 Doro 身上按右鍵 → 與 Doro 說話，展開聊天紀錄後即可填入伺服器網址與模型。本機跑 LM Studio 的話，預設是 `http://127.0.0.1:1234`。
 
-右鍵 Doro →「素材工廠（影片去背）…」，可直接製作及匯入桌寵動畫；也能把網路上大小不一的 GIF 轉成同樣尺寸。
+API 金鑰只存在本機的使用者設定，不會寫進專案資料夾。
 
-Windows 用 `run_doro.bat`／`run_doro_debug.bat` 啟動時會自動安裝素材套件，並另外嘗試安裝 AI 去背（檔案較大；安裝失敗只會顯示警告，Doro 照常啟動、可改用顏色去背）。啟動時若偵測到素材工廠已安裝但缺少 AI 去背，會提示安裝指令。其他啟動方式請先在 doro 的 Python 環境安裝：
+## 素材工廠
 
-```bash
-python -m pip install -e ".[factory]"
-# 需要 AI 去背時（包含上述素材套件）：
-python -m pip install -e ".[factory-ai]"
-```
-
-- 多選 MP4 或 GIF／WebP／APNG 動圖，以清單切換檔案、滑桿挑影格，對照原圖與透明棋盤格預覽。動圖保留原本透明與每格時間。
-- 支援 isnet-anime AI 去背、AI 邊緣柔化、點圖取色、顏色容差與邊緣內縮；顏色去背預設「只去除與邊緣相連的背景」，白底配白身體的角色只要有外框，身體內的白色會保留（關掉則整張圖相近顏色都挖掉）；也可選「不去背」只轉格式／尺寸（只選動圖時預設此項）。
-- 可勾選「左右翻轉」「上下翻轉」，處理素材面向另一邊的 GIF；原圖預覽、去背預覽與輸出都會一起翻轉。
-- 全部檔案使用同一組設定，輸出透明 WebP／APNG／GIF；也可把目前影格存成 PNG。GIF 只有全透明或不透明，半透明邊緣以 50% 為界。
-- 輸出尺寸可選「維持原尺寸」、「縮小長邊（只縮不放，預設 200 像素）」、「統一 N×N 畫布」（等比縮放後放進正方形透明畫布、水平置中貼齊底部），或 **「對齊 Doro 規格」**：以每格角色高度的中位數縮放到指定身高（預設 167，與內建站姿相同；待機類約 150、坐姿可再調低），最低的腳對到 200×200 畫布的 y=186，整支共用同一個縮放與位置，跳躍和位移會保留。動作範圍放不進畫布時不縮小角色，而是裁掉超出部分並在狀態列提示格數。預覽疊一隻同身高的半透明參考 Doro 和紅色腳底線；預覽、整支動畫與單格 PNG 使用同一套擺放。都在原尺寸去背後才縮放；記住輸出資料夾、格式及尺寸，沿用 DORO2 的 `.gif_factory.json`。
-- 輸出同名時自動加編號，不覆蓋之前的成品。取消批次會保留已完成的檔案；取消或關閉時需等目前影格／編碼完成。
-- 選取成品後，可匯入既有姿勢或建立新姿勢，再從 States 切換。PNG 作為單張圖片儲存，不匯入動畫姿勢。
-- 處理都在本機；第一次 AI 去背會下載模型，圖片與影片不會上傳。未裝 AI 套件仍可使用顏色去背。
-
-命令列功能也已移入 doro，不需要另外保留 DORO2 才能使用：
+右鍵 →「素材工廠（影片去背）…」。支援 AI 去背（需安裝 `.[factory-ai]`，第一次會下載模型）或顏色去背，所有處理都在本機完成。也可以用命令列：
 
 ```bash
 python -m doro_app.core.gif_factory input.mp4 output.webp --size 200
-python -m doro_app.core.gif_factory a.mp4 b.mp4 --out-dir output --fmt apng
-python -m doro_app.core.gif_factory input.mp4 frame.png --frame 40
-# 網路 GIF 不去背、統一成 200×200 的 GIF：
-python -m doro_app.core.gif_factory a.gif b.gif --out-dir output --fmt gif --size 200 --canvas --no-matting
-# 對齊 Doro 規格（預設身高 167；坐姿等較矮的動作可加 --body-height 120）：
 python -m doro_app.core.gif_factory a.gif b.gif --out-dir output --doro --no-matting
-# 角色面向另一邊時先左右翻轉：
-python -m doro_app.core.gif_factory a.gif out.webp --flip-h --no-matting
 ```
 
-命令列沿用 AI 預設去背；調色、柔化及內縮請使用素材工廠視窗。
-快速驗證：`python -m pytest tests/gif_factory tests/ui/dialogs/test_asset_factory_dialog.py -m "not slow" -o addopts= -q`。
+執行 `python -m doro_app.core.gif_factory --help` 可看所有參數。
 
-### 動作動畫素材
+## 更多文件
 
-右鍵 Doro → Actions → Edit actions，每張卡片固定提供 **GIFs／設定／刪除**：
+- [分頁陪伴設定](docs/web-presence-setup.md)
+- [懸浮聊天窗設計](docs/floating-chat-plan.md)
+- [陪伴行為設計](docs/companion-liveliness-plan.md)
+- 開發者：[AGENTS.md](AGENTS.md)、[程式碼地圖](docs/REPO_MAP.md)
 
-- **GIFs**：管理多張 GIF／APNG／WebP，可一次選取多個檔案；卡片左右箭頭可預覽整個清單。點擊、被點擊、拖曳、移動及轉場均支援多張動畫，每次觸發隨機選擇。
-- **設定**：編輯移動的方向、速度、關聯姿勢，或轉場的起訖姿勢；素材統一從 GIFs 管理。
-- **刪除**：刪除整個動作。內建動作的設定及刪除按鈕呈灰色，滑鼠移上會說明原因。
-
-圖庫按 **OK** 儲存，按 **Cancel** 放棄本次圖庫變更。`pet_click`、`pet_drag` 可清空素材並保留目前外觀；`click` 清空後使用站立動畫備援。移動動作使用關聯姿勢的共用素材，圖庫標題會顯示該姿勢。
-舊有單張動畫會保留，新增時轉為多張清單。新增動作視窗內的圖庫按 OK 也會立即儲存，外層 Cancel 不會撤銷圖庫已儲存的變更。
-
-### Chat setup
-
-Doro connects to an OpenAI-compatible chat endpoint. Configure the server URL, model, and other settings through the in-app chat settings dialog.
-
-### 懸浮聊天窗
-
-啟動後會直接顯示粉紅色置頂輸入列，可以立即打字，不用先點浮鈕或開選單。
-
-- Enter 送出，Shift+Enter 換行；中文輸入法組字中的 Enter 不送出。送出後保留輸入列，可繼續聊天。
-- ↑ 從輸入列上方向上展開聊天紀錄，↓ 收回；通常保持輸入列位置不變，上方空間不足才移入螢幕內。
-- × 真正隱藏整個聊天介面，保留草稿與本次紀錄；右鍵「與 Doro 說話…」可重新叫出。Esc 先收起紀錄，再按一次隱藏。回覆不會自動展開或搶焦點。
-- 拖曳輸入列左邊的三點把手可移動位置。
-- 訊息與 Doro 的泡泡回覆顯示在窗內，處理中的訊息顯示在狀態區。網頁操作中暫不接收普通聊天時，保留輸入且不新增送出紀錄，也不自動重送；連線失敗時，若未開始寫下一句，會恢復剛送出的內容。網頁操作中的確認／取消仍沿用原流程。
-- 操作輸入列或展開紀錄時暫停自主散步與回休息點；只把未使用的輸入列留在畫面上不會停止 Doro 的活動。聊天窗獨立於角色視窗，不影響腳底位置。
-- 顯示紀錄限最近 200 則，只保留於本次執行記憶體。Chat → Clear conversation history 同步清除模型紀錄與視窗紀錄；連線設定在展開紀錄區內。傳送失敗時 ↑ 會改成 !，滑鼠移上可看提示，點擊可查看完整狀態與實際拒收／失敗原因（例如正在操作網頁、未設定伺服器或連線錯誤）。
-
-設計與驗收見 [懸浮聊天窗計畫](docs/floating-chat-plan.md)。
-
-### 安靜陪伴與自由休息點
-
-- 右鍵「陪伴設定…」直接輸入活動間隔（1–3600 整數秒，預設 9 秒），儲存後重新計時。舊的活潑／適中／悠閒設定會轉成 9／60／120 秒。每次散步約 100–240 邏輯像素，交替可用姿勢、原地小動作與本機台詞；說話仍至少間隔 90 秒。聊天、輸入、泡泡、拖曳、選單、設定視窗、移動或轉場忙碌時延後動作；非安靜模式使用者互動後至少等 4 秒。
-- 關掉安靜陪伴後，約 4 秒先嘗試走走，不再等上一輪安靜計時。若仍忙碌，非安靜模式每 2–3 秒檢查能否恢復。安靜模式保留原節奏與 8 秒互動緩衝。
-- 點一下會有短暫摸摸愛心，仍可搭配 Actions 的點擊 GIF。拖曳不觸發愛心；小動作只改繪製，不推動視窗或腳底。設定中的「小動作與摸摸愛心」可一次關閉這些效果。
-- 「陪伴設定… → 自主姿勢」可勾選允許她自行播放的姿勢，預設僅 happy。生氣、失敗與新匯入姿勢不會自動加入；沒有可用候選時改做原地小動作，關閉小動作則略過。
-- 右鍵選「我先忙（安靜陪伴）」：暫停自主說話、漫遊與分頁主動評論。沒設定休息點時，Doro 就留在原處陪伴；仍可點她或主動聊天。取消勾選可恢復原有自主行為。
-- 安靜時每 45–90 秒嘗試一次原地伸展，沒有文字、不更換休息姿勢；忙碌時不播放。關閉小動作後則完全保留 GIF 本身的動畫。
-- 拖到喜歡的位置，右鍵選「把這裡設為休息點」。同時記住左右位置與高度，可以設在螢幕中央，不必貼底。安靜模式會回到該處；互動結束、泡泡消失並安靜 8 秒後再次返回。選「清除休息點（原地陪伴）」可取消自動返回。
-- 休息點以目前螢幕可用區域的水平／垂直比例儲存；切換螢幕或解析度時，套用到目前螢幕並遵守角色本體邊界。休息點是位置記錄，沒有床或窩的圖片。
-- 休息點靠近邊界而走路 GIF 較寬時，會停在實際可達的位置，不在最後瞬移貼齊，也不反覆原地走。
-- 在「陪伴設定…」直接選休息姿勢並預覽，也能「匯入休息 GIF…」建立新姿勢；按儲存才匯入，取消不改設定。原本「States → 用目前姿勢休息」仍可使用；素材狀態已刪除時使用 idle。
-- 安靜時儲存休息姿勢會立即在原地套用；聊天／動作忙碌時等到結束。沒設休息點也會在互動後恢復休息姿勢。手動選 States 則保留該姿勢到下次互動，方便慢慢挑選再儲存。
-- 底部互動目前停用，選單不再提供開關；即使舊設定曾開啟，也不會自動下落或輕蹲。放手只校正角色本體的螢幕邊界，保留自由擺放。
-- 泡泡與角色邊界分開計算：開關泡泡、不同尺寸 GIF 與轉場都保留腳底位置，泡泡在底部改放上方。GIF 接地点採載入時首個有效畫面的非透明範圍並固定，避免逐幀追蹤造成抖動；自帶浮空動作或不透明背景的素材仍可能看起來離地。
-- 若個別 GIF 看起來浮起，可在「陪伴設定… → 腳底校正」點預覽圖上的腳掌位置或調整百分比，儲存後只套用到該 GIF；也可還原自動估計。校正以目前 GIF 檔案路徑保存，移動／重新匯入檔案後需重新校正；若顯示的是無 GIF 的備用角色，不提供這個分頁。
-- 點擊／拖曳的暫時 GIF 沿用目前姿勢的接觸邊界與校正值；校正預覽也顯示該姿勢，不會因暫時動畫開關而跳動。
-
-模式、休息點與休息姿勢都會儲存。螢幕可用區域底部（通常為工作列上緣）只作邊界判斷，不是強制休息位置。從只有水平位置的舊版設定升級時，休息點視為尚未設定，保留原有其他設定；需要自動返回時，重新選一次「把這裡設為休息點」。
-
-本次設計與驗收項目見 [活潑陪伴計畫](docs/companion-liveliness-plan.md)。
-
-## Project Structure
-
-For AI-assisted work, start with [AGENTS.md](AGENTS.md) and the compact
-[repository map](docs/REPO_MAP.md). Retrieve only the relevant symbols with
-`python scripts/repo_map.py --focus presence` (Chinese aliases such as `分頁` also work).
-See [map usage and maintenance](docs/ai/WORKFLOW.md) for details.
-
-```
-doro_app/
-  app.py                  # Application assembly (5-phase bootstrap)
-  bootstrap.py            # Environment bootstrap and dependency injection
-  cli.py                  # CLI entry points and argument parsing
-  constants.py            # All application constants
-  preflight.py            # Pre-launch environment validation
-  core/
-    core_manager.py       # Central tick loop and coordination
-    idle_behavior_manager.py  # Autonomous idle actions
-    chat/
-      orchestrator.py     # Chat request lifecycle
-      chat.py             # HTTP request handling
-      controller.py       # UI-facing chat controller
-      validator.py        # Response validation
-    movement/
-      manager.py          # Movement state and animation
-      parser.py           # Movement instruction parsing
-      repository.py       # Movement data loading
-    state/
-      service.py          # State machine logic
-      transition_coordinator.py  # State transition orchestration
-      transition_player.py       # Transition animation player
-  ui/
-    window.py             # Main transparent overlay window
-    dialogs/
-      chat_dialog.py      # Chat conversation window
-      chat_settings_dialog.py  # Chat configuration UI
-  utils/
-    actions.py            # Action parsing (move, transition, etc.)
-    config_manager.py     # Persistent configuration
-    paths.py              # Resource path constants
-    prompts.py            # Prompt file loading
-  res/
-    state/                # State GIF sprites and config
-    ACTION/MOVE/          # Walking animation and movement data
-    ACTION/TRANSITION/    # Transition animations and config
-    companion.txt         # Idle dialogue lines
-    click.txt             # Click response lines
-```
-
-## Testing
+## 測試
 
 ```bash
+pip install -e ".[test]"
 pytest
 ```
-
-## License
-
-See [LICENSE](LICENSE) for details.
-# 分頁陪伴與上網角色動作
-
-此分支加入上網結果的表情／走路整合，以及只讀分享目前分頁的 Chromium 擴充。
-安裝與配對見 [分頁陪伴設定](docs/web-presence-setup.md)，六項修正與驗收見 [實作計畫](docs/web-presence-plan.md)。
