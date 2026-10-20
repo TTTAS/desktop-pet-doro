@@ -73,6 +73,16 @@ def preflight_check() -> tuple[list[str], list[str]]:
                 "pip install 'doro[a11y]'"
             )
 
+    # Asset factory: AI background removal is an optional, large extra. When the
+    # factory itself is installed but rembg is not, say so at startup instead of
+    # only when the user first picks AI removal.
+    import importlib.util
+
+    if importlib.util.find_spec("cv2") is not None and importlib.util.find_spec("rembg") is None:
+        warnings.append(
+            '素材工廠的 AI 去背未安裝（仍可用顏色去背）— python -m pip install -e ".[factory-ai]"'
+        )
+
     if sys.platform.startswith("linux"):
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             errors.append("找不到顯示伺服器（$DISPLAY / $WAYLAND_DISPLAY 未設定）")

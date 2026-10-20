@@ -38,7 +38,6 @@ def _snapshot(a11y_enabled=False):
         current_state_key="idle",
         is_topmost=False,
         bubble_visible=False,
-        has_default_idle_gif=False,
         is_chat_inflight=False,
         has_chat_history=False,
         a11y_enabled=a11y_enabled,
@@ -165,7 +164,6 @@ def test_toggle_a11y_persists():
         bubble_controller=Mock(),
         core_manager=core,
         chat_ui=Mock(),
-        default_idle_gif=Mock(),
     )
 
     ctrl._toggle_a11y(True)
@@ -187,7 +185,6 @@ def test_toggle_mouse_enabled_persists():
         bubble_controller=Mock(),
         core_manager=core,
         chat_ui=Mock(),
-        default_idle_gif=Mock(),
     )
 
     ctrl._toggle_mouse_enabled(True)
@@ -205,7 +202,6 @@ def _make_controller(core):
         bubble_controller=Mock(),
         core_manager=core,
         chat_ui=Mock(),
-        default_idle_gif=Mock(),
     )
 
 
@@ -238,7 +234,6 @@ def test_show_a11y_result_success(monkeypatch):
         bubble_controller=Mock(),
         core_manager=Mock(),
         chat_ui=Mock(),
-        default_idle_gif=Mock(),
     )
 
     ctrl._show_a11y_result(service)
@@ -300,7 +295,6 @@ def test_show_a11y_result_failure(monkeypatch):
         bubble_controller=Mock(),
         core_manager=Mock(),
         chat_ui=Mock(),
-        default_idle_gif=Mock(),
     )
 
     ctrl._show_a11y_result(service)

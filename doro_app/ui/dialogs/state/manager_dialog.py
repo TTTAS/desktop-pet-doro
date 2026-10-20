@@ -347,11 +347,30 @@ class StateManagerDialog(FramelessDialog):
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
         )
 
-        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            if self.service.remove_state(key):
-                self._populate()
-            else:
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+
+        # The cards stream every state's GIF via QMovie, which keeps the files
+        # open; Windows then refuses to delete them (WinError 32). Release first.
+        self._gif_player.clear()
+        try:
+            removed = self.service.remove_state(key)
+        except Exception as exc:  # keep the dialog usable whatever went wrong
+            removed = False
+            QtWidgets.QMessageBox.warning(self, "Remove state", f"Failed to remove state: {exc}")
+        else:
+            if not removed:
                 QtWidgets.QMessageBox.warning(self, "Remove state", "Failed to remove state.")
+        finally:
+            self._populate()
+
+        if removed and key in self.service.pending_gif_deletions:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Remove state",
+                f"已刪除狀態「{key}」。它的 GIF 檔案仍被其他程式使用中，"
+                "關閉這個視窗或結束 Doro 時會再自動刪除。",
+            )
 
     # ── Lifecycle ──
 
@@ -362,10 +381,17 @@ class StateManagerDialog(FramelessDialog):
 
     def closeEvent(self, event: QtGui.QCloseEvent):
         self._gif_player.clear()
+        self.service.retry_pending_gif_deletions()
         super().closeEvent(event)
 
 
 def show_state_manager(service: StateService, parent: QtWidgets.QWidget | None = None):
     """Show state manager dialog."""
     dialog = StateManagerDialog(service, parent)
-    dialog.exec()
+    try:
+        dialog.exec()
+    finally:
+        # reject() only hides the dialog, so closeEvent may never run: release
+        # the previews and finish deleting GIFs of removed states here too.
+        dialog._gif_player.clear()
+        service.retry_pending_gif_deletions()

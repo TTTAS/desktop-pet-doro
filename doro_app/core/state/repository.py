@@ -318,37 +318,39 @@ class GifRepository:
         """
         Delete all GIFs for a state (both single file and subfolder).
 
-        Used when removing a state entirely.
+        Used when removing a state entirely. Tries every file even if one is
+        locked (Windows WinError 32), then reports all failures together.
 
         Returns:
             True if any files were deleted
+
+        Raises:
+            GifStorageError: Some files could not be deleted
         """
         deleted = False
+        failures: list[str] = []
+        state_dir = self._state_dir(state_key)
+        files = [self._primary_path(state_key)]
+        if state_dir.is_dir():
+            files.extend(p for p in state_dir.iterdir() if p.is_file())
 
-        # Delete single file
-        primary = self._primary_path(state_key)
-        if primary.is_file():
+        for gif_file in files:
+            if not gif_file.is_file():
+                continue
             try:
-                primary.unlink()
+                gif_file.unlink()
                 deleted = True
             except OSError as e:
-                raise GifStorageError(f"Failed to delete primary GIF: {e}")
+                failures.append(f"{gif_file.name}: {e}")
 
-        # Delete subfolder contents
-        state_dir = self._state_dir(state_key)
         if state_dir.is_dir():
-            for gif_file in state_dir.iterdir():
-                if gif_file.is_file():
-                    try:
-                        gif_file.unlink()
-                        deleted = True
-                    except OSError as e:
-                        raise GifStorageError(f"Failed to delete GIF {gif_file.name}: {e}")
             try:
                 state_dir.rmdir()
             except OSError:
-                pass  # Not empty, leave it
+                pass  # Not empty (a locked file is still there), leave it
 
+        if failures:
+            raise GifStorageError("Failed to delete GIF(s): " + "; ".join(failures))
         return deleted
 
     # ═══════════════════════════════════════════════════════════

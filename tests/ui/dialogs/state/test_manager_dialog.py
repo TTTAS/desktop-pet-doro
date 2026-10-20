@@ -70,3 +70,92 @@ class TestStateManagerDialogEditGif:
         assert not drop.exists()
         assert keep.exists()
         service.remove_gif.assert_called_once_with("stand", "stand_2.gif")
+
+
+class TestStateManagerDialogRemoveState:
+    """Del on a state card: release previews, refresh, never leave the dialog stale."""
+
+    def _dialog(self, qtbot, tmp_path, service_setup):
+        from doro_app.ui.dialogs.state.manager_dialog import StateManagerDialog
+
+        gif = tmp_path / "xx.gif"
+        gif.write_bytes(_GIF_BYTES)
+        state = MagicMock(label="XX", gif_id=None)
+        keys = ["xx"]
+        service = MagicMock()
+        service.is_state_protected.return_value = False
+        service.visible_state_keys.side_effect = lambda: list(keys)
+        service.get_state.side_effect = lambda key: state if key in keys else None
+        service.list_gif_paths.side_effect = lambda key: [gif] if key in keys else []
+        service.pending_gif_deletions = frozenset()
+        service_setup(service, keys, gif)
+        dialog = StateManagerDialog(service)
+        qtbot.addWidget(dialog)
+        return dialog, service
+
+    def _confirm(self, monkeypatch):
+        monkeypatch.setattr(
+            QtWidgets.QMessageBox,
+            "question",
+            lambda *a, **k: QtWidgets.QMessageBox.StandardButton.Yes,
+        )
+
+    def test_remove_releases_previews_first_and_refreshes(self, qtbot, tmp_path, monkeypatch):
+        open_movies_at_removal = []
+
+        def setup(service, keys, gif):
+            def remove_state(key):
+                # The card's QMovie used to hold this file open (WinError 32).
+                open_movies_at_removal.append(dialog._gif_player.count())
+                keys.remove(key)
+                gif.unlink()
+                return True
+
+            service.remove_state.side_effect = remove_state
+
+        dialog, _ = self._dialog(qtbot, tmp_path, setup)
+        assert dialog._gif_player.count() > 0  # the card is playing the GIF
+        self._confirm(monkeypatch)
+
+        dialog._on_remove("xx")
+
+        assert open_movies_at_removal == [0]
+        assert dialog._cards == []  # refreshed: the card is gone
+
+    def test_errors_are_shown_and_the_grid_still_refreshes(self, qtbot, tmp_path, monkeypatch):
+        def setup(service, keys, gif):
+            def remove_state(key):
+                keys.remove(key)
+                raise RuntimeError("disk on fire")
+
+            service.remove_state.side_effect = remove_state
+
+        dialog, _ = self._dialog(qtbot, tmp_path, setup)
+        self._confirm(monkeypatch)
+        warnings = []
+        monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a, **k: warnings.append(a[2]))
+
+        dialog._on_remove("xx")
+
+        assert warnings == ["Failed to remove state: disk on fire"]
+        assert dialog._cards == []
+
+    def test_locked_file_is_explained(self, qtbot, tmp_path, monkeypatch):
+        def setup(service, keys, gif):
+            def remove_state(key):
+                keys.remove(key)
+                service.pending_gif_deletions = frozenset({key})
+                return True
+
+            service.remove_state.side_effect = remove_state
+
+        dialog, _ = self._dialog(qtbot, tmp_path, setup)
+        self._confirm(monkeypatch)
+        notes = []
+        monkeypatch.setattr(
+            QtWidgets.QMessageBox, "information", lambda *a, **k: notes.append(a[2])
+        )
+
+        dialog._on_remove("xx")
+
+        assert len(notes) == 1 and "仍被其他程式使用中" in notes[0]

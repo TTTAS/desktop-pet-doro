@@ -24,7 +24,7 @@ _ai_session_lock = threading.Lock()
 class MattingOptions:
     """去背設定。所有模式共用一組設定,用 mode 決定走哪條路。"""
 
-    mode: str = "ai"  # "ai" 或 "color"
+    mode: str = "ai"  # "ai"、"color" 或 "none"(不去背,保留原本透明)
 
     # AI 模式(rembg + isnet-anime)
     alpha_matting: bool = False
@@ -34,6 +34,9 @@ class MattingOptions:
     # 顏色去背模式
     color_key: tuple[int, int, int] | None = None
     tolerance: int = 30
+    # 只挖掉「跟圖片邊緣相連」的那片顏色:白底配白身體的角色,外框把身體圍起來,
+    # 身體內的白色碰不到邊緣就會保留。關掉則整張圖所有相近顏色都挖掉(舊行為)。
+    edge_only: bool = False
 
     # 兩種模式共用的最後一步:邊緣往內縮幾個像素(吃掉殘渣)
     erode: int = 0
@@ -47,8 +50,10 @@ def remove_background(image: Image.Image, options: MattingOptions | None = None)
         rgba = _remove_ai(image, options)
     elif options.mode == "color":
         rgba = _remove_color(image, options)
+    elif options.mode == "none":
+        rgba = image.convert("RGBA")
     else:
-        raise ValueError(f"未知的去背模式:{options.mode!r}(只能是 'ai' 或 'color')")
+        raise ValueError(f"未知的去背模式:{options.mode!r}(只能是 'ai'、'color' 或 'none')")
 
     if options.erode > 0:
         rgba = _erode_alpha(rgba, options.erode)
@@ -95,9 +100,21 @@ def _remove_color(image: Image.Image, options: MattingOptions) -> Image.Image:
     # 每個像素跟目標色的歐氏距離,距離在容差內的挖成透明。
     distance = np.sqrt(((rgb - target) ** 2).sum(axis=2))
     mask = distance <= options.tolerance
+    if options.edge_only:
+        mask = _connected_to_border(mask)
     rgba[mask, 3] = 0
 
     return Image.fromarray(rgba, "RGBA")
+
+
+def _connected_to_border(mask: np.ndarray) -> np.ndarray:
+    """只留下 mask 中與圖片四邊相連的區塊(4 連通,不會從對角縫隙鑽進外框)。"""
+    count, labels = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)
+    if count <= 1:
+        return np.zeros_like(mask)
+    edges = np.concatenate([labels[0, :], labels[-1, :], labels[:, 0], labels[:, -1]])
+    border_labels = np.unique(edges[edges > 0])
+    return np.isin(labels, border_labels)
 
 
 def _erode_alpha(image: Image.Image, amount: int) -> Image.Image:

@@ -222,4 +222,7 @@ def test_quiet_menu_gates_background_but_keeps_explicit_interaction(
     finally:
         app._idle_behavior._timer.stop()
         app._on_about_to_quit()
+        closed = []
+        app.window.closed.connect(lambda: closed.append(True))
         app.window.close()
+        assert closed  # cli 的關閉政策靠這個訊號結束程式

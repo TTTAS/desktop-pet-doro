@@ -5,19 +5,37 @@ from __future__ import annotations
 from pathlib import Path
 from threading import Event
 
+from PIL import Image
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...core.gif_factory.config import load_config, save_config
-from ...core.gif_factory.frames import extract_frames
+from ...core.gif_factory.frames import (
+    ANIMATED_IMAGE_SUFFIXES,
+    extract_frames,
+    flip_frames,
+    is_animated_image,
+)
 from ...core.gif_factory.matting import MattingOptions, remove_background
-from ...core.gif_factory.output import save_image
+from ...core.gif_factory.output import DoroSpec, apply_doro_layout, body_bounds, save_image
 from ...core.gif_factory.pipeline import (
     available_output_path,
     check_cancelled,
+    doro_layout_for_frame,
+    frame_layout_is_exact,
     process_video,
 )
-from ...core.gif_factory.preview import composite_on_checker, fit_within
+from ...core.gif_factory.preview import composite_on_checker, fit_within, overlay_doro_reference
+from ...utils.paths import STATE_DIR
 from ..components.frameless_dialog import FramelessDialog
+
+# 預覽「對齊 Doro 規格」時疊在後面的半透明參考 Doro。
+_DORO_REFERENCE_PATH = STATE_DIR / "stand.gif"
+
+_OPEN_FILTER = (
+    "影片或動圖 (*.mp4 "
+    + " ".join(f"*{suffix}" for suffix in sorted(ANIMATED_IMAGE_SUFFIXES))
+    + ");;MP4 影片 (*.mp4);;GIF 動圖 (*.gif);;所有檔案 (*)"
+)
 
 
 class MediaJob(QtCore.QThread):
@@ -45,7 +63,7 @@ class SourcePreview(QtWidgets.QLabel):
     color_picked = QtCore.Signal(object)
 
     def __init__(self):
-        super().__init__("選擇影片後顯示原圖；顏色模式可點圖取色")
+        super().__init__("選擇影片或 GIF 後顯示原圖；顏色模式可點圖取色")
         self.source = None
         self.scale = 1.0
         self.setFixedSize(300, 260)
@@ -68,6 +86,23 @@ class SourcePreview(QtWidgets.QLabel):
         super().mousePressEvent(event)
 
 
+def _load_doro_reference():
+    """回傳 (參考 Doro 第一格, 角色本體高度);讀不到時回傳 (None, None),預覽只畫腳底線。"""
+    try:
+        with Image.open(_DORO_REFERENCE_PATH) as image:
+            reference = image.convert("RGBA")
+    except (OSError, ValueError):
+        return None, None
+    bounds = body_bounds([reference])
+    return reference, (bounds[3] - bounds[1]) if bounds else None
+
+
+def _place_frame(frames, rgba, options, spec):
+    """預覽與單格 PNG 共用:算出變換並套到這一格,兩者結果才一致。"""
+    layout = doro_layout_for_frame(frames, rgba, options, spec)
+    return apply_doro_layout([rgba], layout, spec.canvas)[0], layout
+
+
 def _pixmap(image):
     rgba = image.convert("RGBA")
     qimage = QtGui.QImage(
@@ -80,10 +115,11 @@ class AssetFactoryDialog(FramelessDialog):
     """Serial jobs and queued Qt signals keep all widget changes on the GUI thread."""
 
     def __init__(self, state_service, parent=None):
-        super().__init__("素材工廠 · 影片去背", parent)
+        super().__init__("素材工廠 · 影片／GIF 去背", parent)
         self.service = state_service
         self._job = None
-        self._frames = []
+        self._raw_frames = []  # as read from the file
+        self._frames = []  # after the flip options; everything else uses these
         self._paths = []
         self._loaded_path = None
         self._color = (255, 255, 255)
@@ -99,7 +135,7 @@ class AssetFactoryDialog(FramelessDialog):
         self.controls = QtWidgets.QWidget()
         form = QtWidgets.QVBoxLayout(self.controls)
         form.setContentsMargins(0, 0, 0, 0)
-        choose = QtWidgets.QPushButton("選擇 MP4 影片（可多選）…")
+        choose = QtWidgets.QPushButton("選擇 MP4 影片或 GIF 動圖（可多選）…")
         choose.clicked.connect(self._choose)
         form.addWidget(choose)
         self.videos = QtWidgets.QComboBox()
@@ -124,6 +160,7 @@ class AssetFactoryDialog(FramelessDialog):
         self.mode = QtWidgets.QComboBox()
         self.mode.addItem("AI 去背（isnet-anime）", "ai")
         self.mode.addItem("顏色去背（點左圖取色）", "color")
+        self.mode.addItem("不去背（保留原圖透明）", "none")
         self.mode.currentIndexChanged.connect(self._schedule_preview)
         options.addRow("去背方式", self.mode)
         self.color_label = QtWidgets.QLabel("取色：255, 255, 255")
@@ -133,6 +170,21 @@ class AssetFactoryDialog(FramelessDialog):
         self.tolerance.setValue(30)
         self.tolerance.valueChanged.connect(self._schedule_preview)
         options.addRow("顏色容差", self.tolerance)
+        self.edge_only = QtWidgets.QCheckBox(
+            "只去除與邊緣相連的背景（保留角色身上的同色，例如白底白身體）"
+        )
+        self.edge_only.setChecked(True)
+        self.edge_only.toggled.connect(self._schedule_preview)
+        options.addRow(self.edge_only)
+        flips = QtWidgets.QHBoxLayout()
+        self.flip_h = QtWidgets.QCheckBox("左右翻轉")
+        self.flip_v = QtWidgets.QCheckBox("上下翻轉")
+        self.flip_h.setToolTip("素材裡的角色面向另一邊時使用；預覽與輸出都會翻轉")
+        for box in (self.flip_h, self.flip_v):
+            box.toggled.connect(self._apply_flips)
+            flips.addWidget(box)
+        flips.addStretch(1)
+        options.addRow("翻轉", flips)
         self.erode = QtWidgets.QSpinBox()
         self.erode.setRange(0, 20)
         self.erode.valueChanged.connect(self._schedule_preview)
@@ -142,18 +194,39 @@ class AssetFactoryDialog(FramelessDialog):
         options.addRow(self.soft)
         config = load_config()
         self.fmt = QtWidgets.QComboBox()
-        self.fmt.addItems(["webp", "apng"])
+        self.fmt.addItems(["webp", "apng", "gif"])
         self.fmt.setCurrentText(str(config.get("fmt", "webp")))
         options.addRow("動畫格式", self.fmt)
-        self.resize_output = QtWidgets.QCheckBox("縮小輸出長邊（只縮不放）")
-        self.resize_output.setChecked(bool(config.get("resize", True)))
+        self.size_mode = QtWidgets.QComboBox()
+        self.size_mode.addItem("維持原尺寸", "original")
+        self.size_mode.addItem("縮小長邊（只縮不放）", "shrink")
+        self.size_mode.addItem("統一 N×N 畫布（可放大、底部置中）", "canvas")
+        self.size_mode.addItem("對齊 Doro 規格（裁留白、腳踩同一條線）", "doro")
+        legacy_mode = "shrink" if config.get("resize", True) else "original"
+        index = self.size_mode.findData(config.get("size_mode", legacy_mode))
+        self.size_mode.setCurrentIndex(index if index >= 0 else 1)
+        self.size_mode.currentIndexChanged.connect(self._size_mode_changed)
         self.size = QtWidgets.QSpinBox()
         self.size.setRange(1, 8192)
         try:
             self.size.setValue(int(config.get("output_size", 200)))
         except (ValueError, TypeError):
             self.size.setValue(200)
-        options.addRow(self.resize_output, self.size)
+        self.body_height = QtWidgets.QSpinBox()
+        self.body_height.setRange(1, DoroSpec.foot_y)
+        self.body_height.setPrefix("身高 ")
+        self.body_height.setToolTip("角色本體高度；Doro 站姿約 170、待機約 150，坐姿或趴姿可調低")
+        try:
+            self.body_height.setValue(int(config.get("doro_body_height", DoroSpec.body_height)))
+        except (ValueError, TypeError):
+            self.body_height.setValue(DoroSpec.body_height)
+        self.body_height.valueChanged.connect(self._schedule_preview)
+        size_row = QtWidgets.QHBoxLayout()
+        size_row.addWidget(self.size_mode, 1)
+        size_row.addWidget(self.size)
+        size_row.addWidget(self.body_height)
+        options.addRow("輸出尺寸（像素）", size_row)
+        self._size_mode_changed()
         output_row = QtWidgets.QHBoxLayout()
         self.output_dir = QtWidgets.QLineEdit(str(config.get("output_dir", Path.home())))
         browse = QtWidgets.QPushButton("瀏覽…")
@@ -163,7 +236,7 @@ class AssetFactoryDialog(FramelessDialog):
         options.addRow("輸出資料夾", output_row)
         form.addLayout(options)
         buttons = QtWidgets.QHBoxLayout()
-        self.animate = QtWidgets.QPushButton("處理全部影片")
+        self.animate = QtWidgets.QPushButton("處理全部檔案")
         self.animate.clicked.connect(self._export_animation)
         self.still = QtWidgets.QPushButton("這一格存成 PNG")
         self.still.clicked.connect(self._export_frame)
@@ -277,11 +350,12 @@ class AssetFactoryDialog(FramelessDialog):
             self._job.wait()
 
     def _choose(self):
-        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "選擇影片", "", "MP4 影片 (*.mp4);;所有檔案 (*)"
-        )
+        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "選擇影片或動圖", "", _OPEN_FILTER)
         if paths:
             self._paths = [Path(p) for p in paths]
+            if all(is_animated_image(p) for p in self._paths):
+                # 網路上的 GIF 多半已經去好背，預設只轉格式／統一大小。
+                self.mode.setCurrentIndex(self.mode.findData("none"))
             self.videos.blockSignals(True)
             self.videos.clear()
             self.videos.addItems([p.name for p in self._paths])
@@ -292,6 +366,7 @@ class AssetFactoryDialog(FramelessDialog):
         if index < 0 or self._job:
             return
         path = self._paths[index]
+        self._raw_frames = []
         self._frames = []
         self._loaded_path = None
         self.source.source = None
@@ -300,7 +375,8 @@ class AssetFactoryDialog(FramelessDialog):
         self.status.setText(f"正在讀取 {path.name}…")
 
         def loaded(video):
-            self._frames = video.frames
+            self._raw_frames = video.frames
+            self._frames = self._flipped(video.frames)
             self._loaded_path = path
             self.frame.setRange(0, len(video.frames) - 1)
             self.frame.setValue(len(video.frames) // 2)
@@ -308,6 +384,18 @@ class AssetFactoryDialog(FramelessDialog):
             self._frame_changed()
 
         self._start_job(lambda job: extract_frames(path, cancel=job.cancel), loaded)
+
+    def _flipped(self, frames):
+        return flip_frames(
+            frames, horizontal=self.flip_h.isChecked(), vertical=self.flip_v.isChecked()
+        )
+
+    def _apply_flips(self, *_):
+        """Re-derive the working frames; source view, preview and export all follow."""
+        if not self._raw_frames or self._job:
+            return
+        self._frames = self._flipped(self._raw_frames)
+        self._frame_changed()
 
     def _frame_changed(self, *_):
         if not self._frames:
@@ -325,18 +413,32 @@ class AssetFactoryDialog(FramelessDialog):
             self.color_label.setText("取色：" + ", ".join(map(str, color)))
             self._schedule_preview()
 
+    def _size_mode_changed(self, *_):
+        mode = self.size_mode.currentData()
+        self.size.setVisible(mode != "doro")
+        self.size.setEnabled(mode != "original")
+        self.body_height.setVisible(mode == "doro")
+        self._schedule_preview()
+
     def _schedule_preview(self, *_):
-        color_mode = self.mode.currentData() == "color"
-        self.tolerance.setEnabled(color_mode)
-        self.soft.setEnabled(not color_mode)
+        mode = self.mode.currentData()
+        self.tolerance.setEnabled(mode == "color")
+        self.edge_only.setEnabled(mode == "color")
+        self.soft.setEnabled(mode == "ai")
         if self._frames and not self._job:
             self._timer.start()
+
+    def _doro_spec(self):
+        if self.size_mode.currentData() != "doro":
+            return None
+        return DoroSpec(body_height=self.body_height.value())
 
     def _options(self):
         return MattingOptions(
             mode=self.mode.currentData(),
             color_key=self._color,
             tolerance=self.tolerance.value(),
+            edge_only=self.edge_only.isChecked(),
             erode=self.erode.value(),
             alpha_matting=self.soft.isChecked(),
         )
@@ -344,16 +446,37 @@ class AssetFactoryDialog(FramelessDialog):
     def _preview(self):
         if not self._frames or self._job:
             return
-        image, options = self._frames[self.frame.value()], self._options()
+        image, options, spec = self._frames[self.frame.value()], self._options(), self._doro_spec()
+        frames = list(self._frames)
         self.preview.clear()
         self.status.setText("去背預覽中；首次 AI 去背可能需要下載模型…")
 
-        def completed(rgba):
+        def operation(job):
+            rgba = remove_background(image, options)
+            if spec is None:
+                return rgba, None
+            placed, layout = _place_frame(frames, rgba, options, spec)
+            reference, reference_height = _load_doro_reference()
+            scale = spec.body_height / reference_height if reference_height else 1.0
+            preview = overlay_doro_reference(placed, reference, spec.foot_y, reference_scale=scale)
+            return preview, layout
+
+        def completed(result):
+            rgba, layout = result
             small, _ = fit_within(rgba, 250)
             self.preview.setPixmap(_pixmap(composite_on_checker(small)))
-            self.status.setText("預覽完成；可調整設定或輸出。")
+            if spec is None:
+                self.status.setText("預覽完成；可調整設定或輸出。")
+                return
+            notes = []
+            if not frame_layout_is_exact(options):
+                notes.append("大小以目前這格估算，整支輸出時會以全部影格重算")
+            elif layout is not None and layout.clipped_frames:
+                notes.append(f"有 {layout.clipped_frames} 格動作超出畫布，輸出時會被裁掉")
+            suffix = "（" + "；".join(notes) + "）" if notes else ""
+            self.status.setText(f"預覽完成：淡色為同身高的參考 Doro、紅線為腳底{suffix}。")
 
-        self._start_job(lambda job: remove_background(image, options), completed)
+        self._start_job(operation, completed)
 
     def _choose_output(self):
         path = QtWidgets.QFileDialog.getExistingDirectory(
@@ -367,29 +490,43 @@ class AssetFactoryDialog(FramelessDialog):
             self.status.setText("請選擇輸出資料夾。")
             return None
         folder = Path(self.output_dir.text().strip()).expanduser()
-        size = self.size.value() if self.resize_output.isChecked() else None
+        size_mode = self.size_mode.currentData()
+        layout = {
+            "size": None if size_mode in ("original", "doro") else self.size.value(),
+            "canvas": size_mode == "canvas",
+            "doro": self._doro_spec(),
+        }
         try:
             save_config(
                 {
                     "output_dir": str(folder),
                     "fmt": self.fmt.currentText(),
-                    "resize": self.resize_output.isChecked(),
+                    "resize": size_mode != "original",  # DORO2 仍讀這個欄位
+                    "size_mode": size_mode,
                     "output_size": self.size.value(),
+                    "doro_body_height": self.body_height.value(),
                 }
             )
         except OSError:
             pass  # Export remains available when preferences cannot be written.
-        return folder, size
+        return folder, layout
 
     def _export_animation(self):
         settings = self._export_settings()
         if not settings or not self._frames or self._job:
             return
-        folder, size = settings
+        folder, layout = settings
         paths, fmt, options = list(self._paths), self.fmt.currentText(), self._options()
-        self.status.setText("處理影片中…")
+        flip_h, flip_v = self.flip_h.isChecked(), self.flip_v.isChecked()
+        self.status.setText("處理檔案中…")
 
         def operation(job):
+            clipped = []
+
+            def report(layout, name):
+                if layout is not None and layout.clipped_frames:
+                    clipped.append(f"{name} {layout.clipped_frames} 格")
+
             for index, path in enumerate(paths):
                 check_cancelled(job.cancel)
                 output = available_output_path(folder / f"{path.stem}.{fmt}")
@@ -406,19 +543,33 @@ class AssetFactoryDialog(FramelessDialog):
                     fmt=fmt,
                     options=options,
                     progress=progress,
-                    size=size,
                     cancel=job.cancel,
+                    on_layout=lambda doro_layout, name=path.name: report(doro_layout, name),
+                    flip_h=flip_h,
+                    flip_v=flip_v,
+                    **layout,
                 )
                 job.exported.emit(str(result))
+            return clipped
 
-        self._start_job(operation, lambda _: self.status.setText("輸出完成，可選取動畫匯入姿勢。"))
+        def completed(clipped):
+            message = "輸出完成，可選取動畫匯入姿勢。"
+            if clipped:
+                message += "注意：動作超出畫布已裁掉（" + "、".join(clipped) + "）。"
+            self.status.setText(message)
+
+        self._start_job(operation, completed)
 
     def _export_frame(self):
         settings = self._export_settings()
         if not settings or not self._frames or self._job:
             return
-        folder, size = settings
-        image, options = self._frames[self.frame.value()], self._options()
+        folder, layout = settings
+        image, options, frames = (
+            self._frames[self.frame.value()],
+            self._options(),
+            list(self._frames),
+        )
         output = available_output_path(
             folder / f"{self._loaded_path.stem}_frame{self.frame.value() + 1}.png"
         )
@@ -427,7 +578,10 @@ class AssetFactoryDialog(FramelessDialog):
         def operation(job):
             rgba = remove_background(image, options)
             check_cancelled(job.cancel)
-            result = save_image(rgba, output, size=size)
+            spec = layout["doro"]
+            if spec is not None:
+                rgba, _ = _place_frame(frames, rgba, options, spec)
+            result = save_image(rgba, output, size=layout["size"], canvas=layout["canvas"])
             job.exported.emit(str(result))
 
         self._start_job(operation, lambda _: self.status.setText("PNG 已儲存。"))
@@ -442,10 +596,10 @@ class AssetFactoryDialog(FramelessDialog):
         paths = [
             Path(item.text())
             for item in self.results.selectedItems()
-            if Path(item.text()).suffix.lower() in {".webp", ".apng"}
+            if Path(item.text()).suffix.lower() in {".webp", ".apng", ".gif"}
         ]
         if not paths:
-            self.status.setText("請選取已輸出的 WebP／APNG 動畫；PNG 保留為單張圖片。")
+            self.status.setText("請選取已輸出的 WebP／APNG／GIF 動畫；PNG 保留為單張圖片。")
             return
         key = self.target.currentData()
         if key is None:

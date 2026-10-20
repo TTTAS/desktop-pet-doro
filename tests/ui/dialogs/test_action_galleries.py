@@ -215,3 +215,63 @@ def test_empty_click_pool_uses_stand_without_exposing_it_in_gallery(gallery_serv
     assert action.list_action_gif_paths("click") == []
     assert action.resolve_action_gif_path("click") == state.get_gif_path("stand")
     assert state.get_gif_path("click_action") == state.get_gif_path("stand")
+
+
+def test_transition_can_use_any_state(qtbot, gallery_services, monkeypatch):
+    from doro_app.ui.dialogs.move_state.edit_dialog import ANY_STATE_LABEL
+
+    state, action, _, _ = gallery_services
+    warnings = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a: warnings.append(a[2]))
+    dialog = EditMoveStateDialog(state, None, action_service=action)
+    qtbot.addWidget(dialog)
+    dialog._on_action_type_changed("Transition")
+    assert dialog.from_state_combo.itemText(0) == ANY_STATE_LABEL
+    assert dialog.from_state_combo.currentData() != "*"  # 預設仍是具體狀態
+
+    dialog.key_edit.setText("wake_any")
+    dialog.from_state_combo.setCurrentIndex(dialog.from_state_combo.findData("*"))
+    dialog.to_state_combo.setCurrentIndex(dialog.to_state_combo.findData("rest"))
+    dialog._on_accept()
+
+    assert warnings == []
+    saved = state.get_transition("wake_any")
+    assert (saved.from_state, saved.to_state) == ("*", "rest")
+    assert state.find_transition("rest", "pose").key == "rise"  # 其他精確配對不受影響
+    assert state.find_transition("pose", "rest").key == "wake_any"
+
+    manager = MoveStateManagerDialog(state, action_service=action)
+    qtbot.addWidget(manager)
+    card = next(c for c in manager._cards if c._key == "wake_any")
+    assert any(ANY_STATE_LABEL in label.text() for label in card.findChildren(QtWidgets.QLabel))
+
+    def edit(dialog):
+        assert dialog.from_state_combo.currentData() == "*"
+        assert dialog.to_state_combo.currentData() == "rest"
+        return 0
+
+    monkeypatch.setattr(EditMoveStateDialog, "exec", edit)
+    manager._on_edit("transition", "wake_any")
+    manager.close()
+
+
+def test_any_to_any_is_allowed_but_same_state_is_not(qtbot, gallery_services, monkeypatch):
+    state, action, _, _ = gallery_services
+    warnings = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a: warnings.append(a[2]))
+    dialog = EditMoveStateDialog(state, None, action_service=action)
+    qtbot.addWidget(dialog)
+    dialog._on_action_type_changed("Transition")
+
+    dialog.key_edit.setText("same")
+    dialog.from_state_combo.setCurrentIndex(dialog.from_state_combo.findData("rest"))
+    dialog.to_state_combo.setCurrentIndex(dialog.to_state_combo.findData("rest"))
+    dialog._on_accept()
+    assert state.get_transition("same") is None
+    assert warnings == ["From and To states must be different."]
+
+    dialog.key_edit.setText("universal")
+    dialog.from_state_combo.setCurrentIndex(0)
+    dialog.to_state_combo.setCurrentIndex(0)
+    dialog._on_accept()
+    assert state.get_transition("universal").from_state == "*"

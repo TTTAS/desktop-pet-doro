@@ -403,6 +403,8 @@ class MoveStateManagerDialog(FramelessDialog):
             idx += 1
 
         # Transition actions
+        from .edit_dialog import transition_endpoint_label
+
         for key in sorted(self.service.all_transition_keys()):
             transition = self.service.get_transition(key)
             if not transition:
@@ -415,7 +417,10 @@ class MoveStateManagerDialog(FramelessDialog):
                 key,
                 gif_paths,
                 self._gif_player,
-                details=f"{transition.from_state} \u2192 {transition.to_state}",
+                details=(
+                    f"{transition_endpoint_label(transition.from_state)} \u2192 "
+                    f"{transition_endpoint_label(transition.to_state)}"
+                ),
                 parent=self._grid_container,
             )
             card.edit_clicked.connect(self._on_edit)
@@ -493,13 +498,10 @@ class MoveStateManagerDialog(FramelessDialog):
                 transition = self.service.get_transition(key)
                 dialog._on_action_type_changed("Transition")
                 dialog.key_edit.setText(key)
-                for combo, state_key in (
-                    (dialog.from_state_combo, transition.from_state),
-                    (dialog.to_state_combo, transition.to_state),
-                ):
-                    if combo.findText(state_key) < 0:
-                        combo.addItem(state_key)
-                    combo.setCurrentText(state_key)
+                from .edit_dialog import select_transition_state
+
+                select_transition_state(dialog.from_state_combo, transition.from_state)
+                select_transition_state(dialog.to_state_combo, transition.to_state)
         self._exec_editor(dialog)
 
     def _exec_editor(self, dialog):
