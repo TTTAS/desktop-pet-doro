@@ -6,7 +6,12 @@
 - save_animation  (output.py)    多張影格 → WebP / APNG / GIF 動畫檔
 """
 
-from doro_app.core.gif_factory.frames import ExtractedVideo, extract_frames, is_animated_image
+from doro_app.core.gif_factory.frames import (
+    ExtractedVideo,
+    extract_frames,
+    flip_frames,
+    is_animated_image,
+)
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
 from doro_app.core.gif_factory.output import (
     DoroLayout,
@@ -32,6 +37,7 @@ __all__ = [
     "extract_frames",
     "fit_to_canvas",
     "fit_to_doro",
+    "flip_frames",
     "is_animated_image",
     "plan_doro_layout",
     "process_video",

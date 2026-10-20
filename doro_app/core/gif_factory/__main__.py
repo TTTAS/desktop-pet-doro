@@ -10,6 +10,7 @@
 
 輸入可以是影片,也可以是 GIF / WebP / APNG 動圖。
 去背預設用 AI 設定(isnet-anime);--no-matting 保留原圖透明、不去背。
+--flip-h／--flip-v 先左右／上下翻轉(素材面向另一邊時)。
 要調參數/滴管取色請用Doro 右鍵選單的素材工廠
 """
 
@@ -19,7 +20,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from doro_app.core.gif_factory.frames import extract_frames
+from doro_app.core.gif_factory.frames import extract_frames, flip_frames
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
 from doro_app.core.gif_factory.output import DoroLayout, DoroSpec, apply_doro_layout, save_image
 from doro_app.core.gif_factory.pipeline import (
@@ -81,6 +82,16 @@ def main(argv: list[str] | None = None) -> int:
         help=f"搭配 --doro:角色本體高度(預設 {DoroSpec.body_height},坐姿/趴姿可調低)",
     )
     parser.add_argument(
+        "--flip-h",
+        action="store_true",
+        help="去背前先左右翻轉(角色面向另一邊時)",
+    )
+    parser.add_argument(
+        "--flip-v",
+        action="store_true",
+        help="去背前先上下翻轉",
+    )
+    parser.add_argument(
         "--no-matting",
         action="store_true",
         help="不去背,保留原圖透明(例如只想把 GIF 統一大小或換格式)",
@@ -97,7 +108,14 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as err:
             parser.error(str(err))
     options = MattingOptions(mode="none") if args.no_matting else None
-    sizing = {"size": args.size, "canvas": args.canvas, "options": options, "doro": doro}
+    sizing = {
+        "size": args.size,
+        "canvas": args.canvas,
+        "options": options,
+        "doro": doro,
+        "flip_h": args.flip_h,
+        "flip_v": args.flip_v,
+    }
 
     # 模式一:批量動畫(--out-dir 一給,所有 paths 都當輸入影片)。
     if args.out_dir:
@@ -135,6 +153,8 @@ def _single(
     canvas: bool = False,
     options: MattingOptions | None = None,
     doro: DoroSpec | None = None,
+    flip_h: bool = False,
+    flip_v: bool = False,
 ) -> int:
     print("讀影片並去背中...(第一次跑會先下載 AI 模型,數百 MB,請稍候)")
 
@@ -151,6 +171,8 @@ def _single(
             size=size,
             canvas=canvas,
             doro=doro,
+            flip_h=flip_h,
+            flip_v=flip_v,
             on_layout=lambda layout: _warn_clipped(Path(video).name, layout),
         )
     except (FileNotFoundError, ValueError) as err:
@@ -168,6 +190,8 @@ def _batch(
     canvas: bool = False,
     options: MattingOptions | None = None,
     doro: DoroSpec | None = None,
+    flip_h: bool = False,
+    flip_v: bool = False,
 ) -> int:
     print(f"批量處理 {len(videos)} 支影片...(第一次跑會先下載 AI 模型,數百 MB)")
 
@@ -184,6 +208,8 @@ def _batch(
             on_progress=show_progress,
             canvas=canvas,
             doro=doro,
+            flip_h=flip_h,
+            flip_v=flip_v,
             on_layout=_warn_clipped,
         )
     except (FileNotFoundError, ValueError) as err:
@@ -201,6 +227,8 @@ def _save_single_frame(
     canvas: bool = False,
     options: MattingOptions | None = None,
     doro: DoroSpec | None = None,
+    flip_h: bool = False,
+    flip_v: bool = False,
 ) -> int:
     try:
         extracted = extract_frames(video)
@@ -208,15 +236,16 @@ def _save_single_frame(
         print(f"錯誤:{err}", file=sys.stderr)
         return 1
 
-    total = len(extracted.frames)
+    frames = flip_frames(extracted.frames, horizontal=flip_h, vertical=flip_v)
+    total = len(frames)
     if not (1 <= frame_no <= total):
         print(f"錯誤:--frame 要在 1..{total} 之間,收到 {frame_no}", file=sys.stderr)
         return 1
 
     print(f"挑第 {frame_no}/{total} 格去背並存成 PNG...(第一次跑會先下載 AI 模型)")
-    rgba = remove_background(extracted.frames[frame_no - 1], options)
+    rgba = remove_background(frames[frame_no - 1], options)
     if doro is not None:
-        layout = doro_layout_for_frame(extracted.frames, rgba, options, doro)
+        layout = doro_layout_for_frame(frames, rgba, options, doro)
         rgba = apply_doro_layout([rgba], layout, doro.canvas)[0]
     out = save_image(rgba, output, size=None if doro else size, canvas=canvas)
     print(f"完成!輸出:{out}")

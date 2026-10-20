@@ -47,6 +47,22 @@ class ExtractedVideo:
     durations: list[int] | None = None
 
 
+def flip_frames(
+    frames: list[Image.Image], *, horizontal: bool = False, vertical: bool = False
+) -> list[Image.Image]:
+    """左右／上下翻轉每一格(例如網路 GIF 的角色面向另一邊)。都不翻就原樣回傳。"""
+    if not horizontal and not vertical:
+        return frames
+    flipped = []
+    for frame in frames:
+        if horizontal:
+            frame = frame.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if vertical:
+            frame = frame.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        flipped.append(frame)
+    return flipped
+
+
 def is_animated_image(path: str | Path) -> bool:
     """依副檔名判斷是不是動圖(GIF / WebP / APNG / PNG),而非影片。"""
     return Path(path).suffix.lower() in ANIMATED_IMAGE_SUFFIXES

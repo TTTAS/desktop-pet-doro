@@ -11,7 +11,7 @@ from threading import Event
 
 from PIL import Image
 
-from doro_app.core.gif_factory.frames import extract_frames
+from doro_app.core.gif_factory.frames import extract_frames, flip_frames
 from doro_app.core.gif_factory.matting import MattingOptions, remove_background
 from doro_app.core.gif_factory.output import (
     DoroLayout,
@@ -73,6 +73,8 @@ def process_video(
     canvas: bool = False,
     doro: DoroSpec | None = None,
     on_layout: Callable[[DoroLayout | None], None] | None = None,
+    flip_h: bool = False,
+    flip_v: bool = False,
 ) -> Path:
     """讀影片或動圖 → 逐張去背 → (可選)縮到指定尺寸 → 存成動畫檔。
 
@@ -82,14 +84,15 @@ def process_video(
     來源 GIF 輸出成同樣尺寸。doro 若給定,改成裁掉留白、對齊 Doro 的身高與
     腳底線(見 plan_doro_layout),並以 on_layout(layout) 回報這支用的變換
     (例如 layout.clipped_frames > 0 代表有影格超出畫布被裁切)。
-    動圖來源會沿用每格原本的顯示時間。
+    動圖來源會沿用每格原本的顯示時間。flip_h／flip_v 在去背前先左右／上下翻轉。
     """
     check_cancelled(cancel)
     extracted = extract_frames(video_path, cancel=cancel)
-    total = len(extracted.frames)
+    source = flip_frames(extracted.frames, horizontal=flip_h, vertical=flip_v)
+    total = len(source)
 
     processed = []
-    for index, frame in enumerate(extracted.frames, start=1):
+    for index, frame in enumerate(source, start=1):
         check_cancelled(cancel)
         processed.append(remove_background(frame, options))
         if progress is not None:
@@ -124,6 +127,8 @@ def process_videos(
     canvas: bool = False,
     doro: DoroSpec | None = None,
     on_layout: Callable[[str, DoroLayout | None], None] | None = None,
+    flip_h: bool = False,
+    flip_v: bool = False,
 ) -> list[Path]:
     """批量處理多支影片:每支各自去背、輸出成 <檔名>.<fmt> 到 output_dir。
 
@@ -166,6 +171,8 @@ def process_videos(
                 canvas=canvas,
                 doro=doro,
                 on_layout=layout_report,
+                flip_h=flip_h,
+                flip_v=flip_v,
             )
         )
 

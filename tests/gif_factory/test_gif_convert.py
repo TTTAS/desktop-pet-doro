@@ -13,6 +13,7 @@ from doro_app.core.gif_factory import (
     extract_frames,
     fit_to_canvas,
     fit_to_doro,
+    flip_frames,
     plan_doro_layout,
     process_videos,
     remove_background,
@@ -407,3 +408,41 @@ def test_gif_keeps_20ms_frames_but_treats_10ms_as_browser_default(tmp_path):
     frames[0].save(fast, save_all=True, append_images=frames[1:], duration=[20, 10], loop=0)
 
     assert extract_frames(fast).durations == [20, 100]
+
+
+def _marked_frame():
+    """透明底,左上角一個紅點:翻轉後紅點的位置一看就知道。"""
+    img = Image.new("RGBA", (20, 10), (0, 0, 0, 0))
+    img.putpixel((1, 1), (255, 0, 0, 255))
+    return img
+
+
+def test_flip_frames_mirrors_each_direction():
+    frame = _marked_frame()
+
+    assert flip_frames([frame]) == [frame]  # 不翻就原樣
+    assert flip_frames([frame], horizontal=True)[0].getpixel((18, 1))[3] == 255
+    assert flip_frames([frame], vertical=True)[0].getpixel((1, 8))[3] == 255
+    assert flip_frames([frame], horizontal=True, vertical=True)[0].getpixel((18, 8))[3] == 255
+
+
+def test_process_video_flips_before_saving(tmp_path):
+    source = save_animation(
+        [_marked_frame(), _shifted(_marked_frame(), dx=1)], "gif", tmp_path / "in.gif", fps=10
+    )
+
+    out = process_videos(
+        [source], tmp_path / "out", fmt="webp", options=MattingOptions(mode="none"), flip_h=True
+    )[0]
+
+    assert extract_frames(out).frames[0].getpixel((18, 1))[3] == 255
+
+
+def test_cli_flip_flags(tmp_path):
+    source = save_animation(
+        [_marked_frame(), _shifted(_marked_frame(), dx=1)], "gif", tmp_path / "in.gif", fps=10
+    )
+    out = tmp_path / "out.webp"
+
+    assert main([str(source), str(out), "--no-matting", "--flip-h", "--flip-v"]) == 0
+    assert extract_frames(out).frames[0].getpixel((18, 8))[3] == 255

@@ -9,7 +9,12 @@ from PIL import Image
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...core.gif_factory.config import load_config, save_config
-from ...core.gif_factory.frames import ANIMATED_IMAGE_SUFFIXES, extract_frames, is_animated_image
+from ...core.gif_factory.frames import (
+    ANIMATED_IMAGE_SUFFIXES,
+    extract_frames,
+    flip_frames,
+    is_animated_image,
+)
 from ...core.gif_factory.matting import MattingOptions, remove_background
 from ...core.gif_factory.output import DoroSpec, apply_doro_layout, body_bounds, save_image
 from ...core.gif_factory.pipeline import (
@@ -113,7 +118,8 @@ class AssetFactoryDialog(FramelessDialog):
         super().__init__("素材工廠 · 影片／GIF 去背", parent)
         self.service = state_service
         self._job = None
-        self._frames = []
+        self._raw_frames = []  # as read from the file
+        self._frames = []  # after the flip options; everything else uses these
         self._paths = []
         self._loaded_path = None
         self._color = (255, 255, 255)
@@ -170,6 +176,15 @@ class AssetFactoryDialog(FramelessDialog):
         self.edge_only.setChecked(True)
         self.edge_only.toggled.connect(self._schedule_preview)
         options.addRow(self.edge_only)
+        flips = QtWidgets.QHBoxLayout()
+        self.flip_h = QtWidgets.QCheckBox("左右翻轉")
+        self.flip_v = QtWidgets.QCheckBox("上下翻轉")
+        self.flip_h.setToolTip("素材裡的角色面向另一邊時使用；預覽與輸出都會翻轉")
+        for box in (self.flip_h, self.flip_v):
+            box.toggled.connect(self._apply_flips)
+            flips.addWidget(box)
+        flips.addStretch(1)
+        options.addRow("翻轉", flips)
         self.erode = QtWidgets.QSpinBox()
         self.erode.setRange(0, 20)
         self.erode.valueChanged.connect(self._schedule_preview)
@@ -351,6 +366,7 @@ class AssetFactoryDialog(FramelessDialog):
         if index < 0 or self._job:
             return
         path = self._paths[index]
+        self._raw_frames = []
         self._frames = []
         self._loaded_path = None
         self.source.source = None
@@ -359,7 +375,8 @@ class AssetFactoryDialog(FramelessDialog):
         self.status.setText(f"正在讀取 {path.name}…")
 
         def loaded(video):
-            self._frames = video.frames
+            self._raw_frames = video.frames
+            self._frames = self._flipped(video.frames)
             self._loaded_path = path
             self.frame.setRange(0, len(video.frames) - 1)
             self.frame.setValue(len(video.frames) // 2)
@@ -367,6 +384,18 @@ class AssetFactoryDialog(FramelessDialog):
             self._frame_changed()
 
         self._start_job(lambda job: extract_frames(path, cancel=job.cancel), loaded)
+
+    def _flipped(self, frames):
+        return flip_frames(
+            frames, horizontal=self.flip_h.isChecked(), vertical=self.flip_v.isChecked()
+        )
+
+    def _apply_flips(self, *_):
+        """Re-derive the working frames; source view, preview and export all follow."""
+        if not self._raw_frames or self._job:
+            return
+        self._frames = self._flipped(self._raw_frames)
+        self._frame_changed()
 
     def _frame_changed(self, *_):
         if not self._frames:
@@ -488,6 +517,7 @@ class AssetFactoryDialog(FramelessDialog):
             return
         folder, layout = settings
         paths, fmt, options = list(self._paths), self.fmt.currentText(), self._options()
+        flip_h, flip_v = self.flip_h.isChecked(), self.flip_v.isChecked()
         self.status.setText("處理檔案中…")
 
         def operation(job):
@@ -515,6 +545,8 @@ class AssetFactoryDialog(FramelessDialog):
                     progress=progress,
                     cancel=job.cancel,
                     on_layout=lambda doro_layout, name=path.name: report(doro_layout, name),
+                    flip_h=flip_h,
+                    flip_v=flip_v,
                     **layout,
                 )
                 job.exported.emit(str(result))
