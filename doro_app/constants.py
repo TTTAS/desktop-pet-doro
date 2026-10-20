@@ -67,6 +67,8 @@ BUBBLE_SHADOW_ALPHA_FACTOR = 0.4
 # ═══════════════════════════════════════════════════════════
 
 SPRITE_MARGIN_X = 12.0
+# Doro's window is the sprite size, but never smaller than this on either side.
+SPRITE_WINDOW_MIN_SIDE = 120.0
 SPRITE_MARGIN_BOTTOM = 24.0
 SPRITE_BOB_ALLOWANCE = 20.0  # Extra space for bobbing animation
 SPRITE_PANEL_RESERVE_OFFSET = 48.0
