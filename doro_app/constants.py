@@ -43,9 +43,6 @@ SPRITE_DEFAULT_HEIGHT = 200
 SPRITE_OFFSET_X = -110.0
 SPRITE_MIN_SIZE = 20.0  # Minimum half-width/height for sprite bounds
 
-PANEL_DEFAULT_WIDTH_HINT = 360.0
-PANEL_DEFAULT_HEIGHT_HINT = 110.0
-
 MOVEMENT_STEP_PX = 60  # Default movement step in pixels
 
 # ═══════════════════════════════════════════════════════════
@@ -71,7 +68,6 @@ SPRITE_MARGIN_X = 12.0
 SPRITE_WINDOW_MIN_SIDE = 120.0
 SPRITE_MARGIN_BOTTOM = 24.0
 SPRITE_BOB_ALLOWANCE = 20.0  # Extra space for bobbing animation
-SPRITE_PANEL_RESERVE_OFFSET = 48.0
 
 # ═══════════════════════════════════════════════════════════
 # Click Detection Constants
@@ -226,15 +222,6 @@ A11Y_TIMEOUT_BLACKLIST_THRESHOLD = 3
 
 BUBBLE_SCALE_MIN = 0.5  # Minimum scale factor for bubble
 BUBBLE_SCALE_MAX = 2.0  # Maximum scale factor for bubble
-
-# ═══════════════════════════════════════════════════════════
-# UI Layout Constants
-# ═══════════════════════════════════════════════════════════
-
-PANEL_MIN_WIDTH = 160.0  # Minimum width for text panel
-PANEL_MIN_HEIGHT = 80.0  # Minimum height for text panel
-PANEL_PADDING = 56.0  # Internal padding for panel content
-PANEL_MAX_WIDTH = 4000.0  # Maximum width to prevent excessive stretching
 
 # ═══════════════════════════════════════════════════════════
 # Screen and Window Positioning

@@ -47,6 +47,8 @@ class DoroWindow(QtWidgets.QWidget):
     closed = QtCore.Signal()  # main window accepted a close (e.g. Alt+F4)
     # Window moved or resized: the speech bubble (its own window) follows.
     sprite_geometry_changed = QtCore.Signal()
+    # Shown or hidden: the speech bubble (its own window) does not follow by itself.
+    shown_changed = QtCore.Signal()
 
     def __init__(
         self,
@@ -310,10 +312,6 @@ class DoroWindow(QtWidgets.QWidget):
     def seconds_since_last_activity(self) -> float:
         return time.monotonic() - self._last_user_activity
 
-    def update_bubble_side_from_offset(self):
-        """Update bubble side based on offset (called by BubbleController)."""
-        self._view_model.set_bubble_side("center")
-
     def _available_screen_geometry(self) -> QtCore.QRect:
         """Get available screen geometry. Delegates to WindowLayoutManager."""
         return WindowLayoutManager.get_available_screen_geometry(self)
@@ -455,6 +453,14 @@ class DoroWindow(QtWidgets.QWidget):
     def resizeEvent(self, event: QtGui.QResizeEvent):
         super().resizeEvent(event)
         self.sprite_geometry_changed.emit()
+
+    def showEvent(self, event: QtGui.QShowEvent):
+        super().showEvent(event)
+        self.shown_changed.emit()
+
+    def hideEvent(self, event: QtGui.QHideEvent):
+        super().hideEvent(event)
+        self.shown_changed.emit()
 
     def body_on_screen(self) -> QtCore.QRect:
         """Doro's visible character rectangle in screen coordinates."""

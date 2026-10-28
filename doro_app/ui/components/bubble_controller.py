@@ -44,7 +44,6 @@ class BubbleController(QtCore.QObject):
         offset_changed: Emitted when bubble offset changes (QPointF: offset)
         scale_changed: Emitted when bubble scale changes (float: scale)
         repaint_requested: Emitted when window needs repaint
-        update_bubble_side_requested: Emitted when bubble side needs update based on offset
     """
 
     # Signals for decoupling from Window
@@ -53,7 +52,6 @@ class BubbleController(QtCore.QObject):
     offset_changed = QtCore.Signal(QtCore.QPointF)  # offset
     scale_changed = QtCore.Signal(float)  # scale
     repaint_requested = QtCore.Signal()  # request window update
-    update_bubble_side_requested = QtCore.Signal()  # request bubble side update
     state_settings_apply_requested = QtCore.Signal(
         str
     )  # request state settings apply with state_key
@@ -114,7 +112,6 @@ class BubbleController(QtCore.QObject):
     def apply_offset(self, candidate: QtCore.QPointF, *, persist: bool = False):
         self._offset = QtCore.QPointF(candidate)
         self.offset_changed.emit(QtCore.QPointF(self._offset))
-        self.update_bubble_side_requested.emit()
         if persist:
             self.persist_preferences()
         self.repaint_requested.emit()

@@ -48,6 +48,7 @@ def pet(qtbot, tmp_path):
     bubble.text_changed.connect(lambda *_: speech.refresh())
     bubble.visibility_changed.connect(lambda *_: speech.refresh())
     window.sprite_geometry_changed.connect(speech.follow)
+    window.shown_changed.connect(speech.refresh)
     sprite.sprite_renderer_changed.connect(window.on_sprite_renderer_changed)
     window.apply_window_preferred_size()
     window.show()
@@ -226,6 +227,16 @@ def test_bubble_hides_while_chat_history_is_expanded(pet):
     speech.set_suppressed(True)
     assert not speech.isVisible()
     speech.set_suppressed(False)
+    assert speech.isVisible()
+
+
+def test_bubble_hides_and_returns_with_doro(pet):
+    window, bubble, _, speech = pet
+    bubble.set_text("我在這裡陪你。", auto_hide=False)
+    assert speech.isVisible()
+    window.hide()
+    assert not speech.isVisible()
+    window.show()
     assert speech.isVisible()
 
 

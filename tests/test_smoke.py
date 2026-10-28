@@ -465,8 +465,6 @@ class TestConstantsSmoke:
             MOVEMENT_SPEED_FAST,
             MOVEMENT_SPEED_MEDIUM,
             MOVEMENT_SPEED_SLOW,
-            # UI Layout
-            PANEL_MIN_WIDTH,
         )
 
         # If any constant is missing, this test will fail at import time
@@ -475,5 +473,4 @@ class TestConstantsSmoke:
         assert CHAT_DEFAULT_HISTORY_TURNS > 0
         assert MOVEMENT_SPEED_SLOW < MOVEMENT_SPEED_MEDIUM < MOVEMENT_SPEED_FAST
         assert BUBBLE_SCALE_MIN < BUBBLE_SCALE_MAX
-        assert PANEL_MIN_WIDTH > 0
         assert FALLBACK_SCREEN_WIDTH > 0

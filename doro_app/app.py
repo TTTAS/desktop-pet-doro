@@ -307,9 +307,7 @@ class DoroApp:
         self._bubble_controller.repaint_requested.connect(self._speech_bubble.refresh)
         self._state_controller.state_changed.connect(lambda *_: self._speech_bubble.refresh())
         self.window.sprite_geometry_changed.connect(self._speech_bubble.follow)
-        self._bubble_controller.update_bubble_side_requested.connect(
-            self.window.update_bubble_side_from_offset
-        )
+        self.window.shown_changed.connect(self._speech_bubble.refresh)
         self._bubble_controller.state_settings_apply_requested.connect(
             lambda state_key: self._state_controller.apply_state_settings(state_key)
         )
