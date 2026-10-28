@@ -164,123 +164,17 @@ class TestClampPosition:
         assert clamped == desired  # Tiny window easily fits
 
 
-class TestComputePanelSizeHint:
-    """Test panel size calculation."""
-
-    def test_empty_text_returns_minimum_height(self, mock_font_metrics):
-        """Test panel size with no text."""
-        sprite_size = QtCore.QSize(200, 200)
-        bubble_text = ""
-
-        width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, bubble_text)
-
-        # Width should be based on sprite
-        assert width >= 160.0
-        assert width >= 200.0  # At least sprite width
-
-        # Height should be minimum with just one line spacing
-        assert height >= 80.0
-        assert height < 150.0  # Not too tall for empty text
-
-    def test_short_text_increases_height(self, mock_font_metrics):
-        """Test panel size with short text."""
-        sprite_size = QtCore.QSize(200, 200)
-        short_text = "Hello"
-
-        width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, short_text)
-
-        assert width >= 160.0
-        assert height >= 80.0
-
-    def test_long_text_increases_height_more(self, mock_font_metrics):
-        """Test that longer text creates taller panels."""
-        sprite_size = QtCore.QSize(200, 200)
-        short_text = "Hi"
-        long_text = "This is a much longer text that will wrap across multiple lines and require more vertical space to display properly in the bubble."
-
-        _, short_height = WindowLayoutManager.compute_panel_size_hint(sprite_size, short_text)
-        _, long_height = WindowLayoutManager.compute_panel_size_hint(sprite_size, long_text)
-
-        # Long text should create taller panel
-        assert long_height > short_height
-
-    def test_wider_sprite_creates_wider_panel(self, mock_font_metrics):
-        """Test that sprite width affects panel width."""
-        small_sprite = QtCore.QSize(100, 100)
-        large_sprite = QtCore.QSize(400, 400)
-        text = "Same text"
-
-        small_width, _ = WindowLayoutManager.compute_panel_size_hint(small_sprite, text)
-        large_width, _ = WindowLayoutManager.compute_panel_size_hint(large_sprite, text)
-
-        # Larger sprite should create wider panel
-        assert large_width > small_width
-
-    def test_whitespace_only_text_treated_as_empty(self, mock_font_metrics):
-        """Test that whitespace-only text is treated as empty."""
-        sprite_size = QtCore.QSize(200, 200)
-        whitespace = "   \n\t  "
-
-        width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, whitespace)
-
-        # Should be same as empty text
-        empty_width, empty_height = WindowLayoutManager.compute_panel_size_hint(sprite_size, "")
-        assert width == empty_width
-        assert height == empty_height
-
-    def test_minimum_constraints_enforced(self, mock_font_metrics):
-        """Test that minimum width/height constraints are enforced."""
-        tiny_sprite = QtCore.QSize(10, 10)
-        text = ""
-
-        width, height = WindowLayoutManager.compute_panel_size_hint(tiny_sprite, text)
-
-        # Should enforce minimums even with tiny sprite
-        assert width >= 160.0
-        assert height >= 80.0
-
-    def test_multiline_text_wrapped_correctly(self, mock_font_metrics):
-        """Test that multiline text is calculated correctly."""
-        sprite_size = QtCore.QSize(200, 200)
-        # Text with explicit newlines
-        multiline = "Line 1\nLine 2\nLine 3\nLine 4"
-
-        _width, height = WindowLayoutManager.compute_panel_size_hint(sprite_size, multiline)
-
-        # Should be taller than single line
-        _single_width, single_height = WindowLayoutManager.compute_panel_size_hint(
-            sprite_size, "Single"
-        )
-        assert height > single_height
-
-
 class TestComputePreferredWindowSize:
-    """Window must grow tall enough to hold a taller bubble (grow-to-fit)."""
+    """Doro's window is the sprite itself; the bubble has its own window."""
 
-    def test_desired_height_grows_with_panel_height_hint(self):
-        sprite_size = QtCore.QSize(200, 200)
-
-        _, short_h = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint=200.0, panel_height_hint=100.0
-        )
-        _, tall_h = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint=200.0, panel_height_hint=600.0
+    def test_window_matches_the_sprite(self):
+        assert WindowLayoutManager.compute_preferred_window_size(QtCore.QSize(200, 270)) == (
+            200,
+            270,
         )
 
-        assert tall_h > short_h
-        # Window must leave room for the whole panel beneath the sprite plus
-        # the sprite itself, otherwise the bubble would be clipped.
-        assert tall_h >= sprite_size.height() + 600.0
-
-    def test_desired_width_grows_with_panel_width_hint(self):
-        sprite_size = QtCore.QSize(200, 200)
-
-        narrow_w, _ = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint=200.0, panel_height_hint=100.0
+    def test_tiny_sprites_keep_a_usable_minimum(self):
+        assert WindowLayoutManager.compute_preferred_window_size(QtCore.QSize(40, 60)) == (
+            120,
+            120,
         )
-        wide_w, _ = WindowLayoutManager.compute_preferred_window_size(
-            sprite_size, panel_width_hint=900.0, panel_height_hint=100.0
-        )
-
-        assert wide_w > narrow_w
-        assert wide_w >= 900.0

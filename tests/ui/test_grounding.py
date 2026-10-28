@@ -11,6 +11,7 @@ from doro_app.core.companion import CompanionController
 from doro_app.core.movement.manager import MovementManager
 from doro_app.core.movement.repository import MovementRepository
 from doro_app.ui.components.bubble_controller import BubbleController
+from doro_app.ui.components.speech_bubble_window import SpeechBubbleWindow
 from doro_app.ui.controllers.sprite_controller import SpriteController
 from doro_app.ui.events.mouse_event_handler import MouseEventHandler
 from doro_app.ui.window import DoroWindow
@@ -36,11 +37,22 @@ def pet(qtbot, tmp_path):
     area = QtCore.QRect(0, 0, 1200, 800)
     window._available_screen_geometry = lambda: area
     window.floor_geometry = lambda: area
-    bubble.text_changed.connect(lambda *_: window.apply_window_preferred_size())
+    speech = SpeechBubbleWindow(
+        window.view_model,
+        bubble,
+        body_on_screen=window.body_on_screen,
+        work_area=window.floor_geometry,
+        parent=window,
+    )
+    # Same wiring as DoroApp.
+    bubble.text_changed.connect(lambda *_: speech.refresh())
+    bubble.visibility_changed.connect(lambda *_: speech.refresh())
+    window.sprite_geometry_changed.connect(speech.follow)
+    window.shown_changed.connect(speech.refresh)
     sprite.sprite_renderer_changed.connect(window.on_sprite_renderer_changed)
     window.apply_window_preferred_size()
     window.show()
-    yield window, bubble, sprite
+    yield window, bubble, sprite, speech
     bubble.clear_text()
     window.close()
 
@@ -52,23 +64,23 @@ def place(window, x, y):
 
 
 @pytest.mark.parametrize("x", [110, 600, 1090])
-def test_bubble_toggle_does_not_lift_feet_or_clip_panel(pet, x):
-    window, bubble, _ = pet
+def test_talking_never_moves_or_resizes_doro_and_bubble_sits_above(pet, x):
+    window, bubble, _, speech = pet
     place(window, x, 799)
-    foot = window.foot_position()
+    geometry = window.geometry()
     for text in ("我在這裡陪你。", "先忙你的事情，我在旁邊休息一下。" * 3, "短句"):
         bubble.set_text(text, auto_hide=False)
-        assert window.foot_position() == foot
-        window.grab()  # Execute the real painter and inspect its resulting panel.
-        panel = window._panel_rect_cache.translated(window.current_position()).toAlignedRect()
-        assert window.floor_geometry().contains(panel)
-        assert panel.bottom() < window.foot_position().y()
+        assert window.geometry() == geometry  # Doro's window is untouched
+        assert speech.isVisible() and speech.above
+        assert window.floor_geometry().contains(speech.panel_geometry())
+        assert speech.panel_geometry().bottom() < window.body_on_screen().top()
         bubble.clear_text()
-        assert window.foot_position() == foot
+        assert not speech.isVisible()
+        assert window.geometry() == geometry
 
 
 def test_changing_sprite_size_keeps_the_foot_not_center(pet):
-    window, _, _ = pet
+    window, _, _, _ = pet
     place(window, 550, 799)
     foot = window.foot_position()
     for size in [(120, 300), (350, 130), (200, 200)]:
@@ -78,7 +90,7 @@ def test_changing_sprite_size_keeps_the_foot_not_center(pet):
 
 
 def test_transparent_padding_is_not_the_floor(pet):
-    window, _, sprite = pet
+    window, _, sprite, _ = pet
     pixmap = QtGui.QPixmap(200, 200)
     pixmap.fill(QtCore.Qt.GlobalColor.transparent)
     painter = QtGui.QPainter(pixmap)
@@ -93,7 +105,7 @@ def test_transparent_padding_is_not_the_floor(pet):
 
 
 def test_negative_monitor_origin_and_taskbar_work_area(pet):
-    window, bubble, _ = pet
+    window, bubble, _, _ = pet
     area = QtCore.QRect(-1920, -120, 1920, 1040)
     window._available_screen_geometry = lambda: area
     window.floor_geometry = lambda: area
@@ -103,7 +115,7 @@ def test_negative_monitor_origin_and_taskbar_work_area(pet):
 
 
 def test_walking_with_different_gif_sizes_and_bubble_keeps_target(pet):
-    window, bubble, _ = pet
+    window, bubble, _, _ = pet
     current = ["idle"]
     states = Mock()
     states.get_current_state.side_effect = lambda: SimpleNamespace(key=current[0])
@@ -140,7 +152,7 @@ def test_walking_with_different_gif_sizes_and_bubble_keeps_target(pet):
 
 @pytest.mark.parametrize("home_x", [0.0, 1.0])
 def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path, home_x):
-    window, bubble, _ = pet
+    window, bubble, _, _ = pet
     config = ConfigManager(tmp_path / "edge.ini")
     config.update_ui(companion_home_x=home_x, companion_home_y=1.0)
     current = ["idle"]
@@ -194,29 +206,66 @@ def test_quiet_return_with_wider_walk_sprite_stops_at_screen_edge(pet, tmp_path,
     window.play_landing.assert_not_called()
 
 
-def test_bubble_resize_never_paints_before_the_window_is_back_in_place(pet):
-    """Resize and move are separate steps; a paint between them showed Doro
-    "teleporting" away and back whenever the speech bubble appeared or hid."""
-    window, bubble, _ = pet
+def test_bubble_follows_doro_and_flips_below_near_the_top(pet):
+    window, bubble, _, speech = pet
     place(window, 600, 799)
-    painted = []
+    bubble.set_text("跟著我走。", auto_hide=False)
+    offset = speech.panel_geometry().center() - window.body_on_screen().center()
+    place(window, 300, 500)  # moving Doro moves the bubble with her
+    assert speech.panel_geometry().center() - window.body_on_screen().center() == offset
 
-    class PaintSpy(QtCore.QObject):
-        def eventFilter(self, obj, event):
-            if event.type() == QtCore.QEvent.Type.Paint:
-                painted.append(obj.geometry())
-            return False
+    place(window, 300, window.sprite_contact_rect().height() + 5)  # no room above
+    assert not speech.above
+    assert speech.panel_geometry().top() > window.body_on_screen().bottom()
+    assert window.floor_geometry().contains(speech.panel_geometry())
 
-    spy = PaintSpy()
-    window.installEventFilter(spy)
-    for text in ("人～好多程式碼喔，doro看不太懂耶～" * 2, ""):
-        painted.clear()
-        before = window.geometry()
-        if text:
-            bubble.set_text(text, auto_hide=False)
-        else:
-            bubble.clear_text()
-        assert window.geometry() != before  # the window really resized and moved
-        assert painted, "the final layout is painted right away"
-        assert set(painted) == {window.geometry()}  # every paint at the final geometry
-    window.removeEventFilter(spy)
+
+def test_bubble_hides_while_chat_history_is_expanded(pet):
+    _, bubble, _, speech = pet
+    bubble.set_text("聊天紀錄裡也有這句。", auto_hide=False)
+    assert speech.isVisible()
+    speech.set_suppressed(True)
+    assert not speech.isVisible()
+    speech.set_suppressed(False)
+    assert speech.isVisible()
+
+
+def test_bubble_hides_and_returns_with_doro(pet):
+    window, bubble, _, speech = pet
+    bubble.set_text("我在這裡陪你。", auto_hide=False)
+    assert speech.isVisible()
+    window.hide()
+    assert not speech.isVisible()
+    window.show()
+    assert speech.isVisible()
+
+
+def test_bubble_lets_clicks_through(pet):
+    *_, speech = pet
+    assert speech.windowFlags() & QtCore.Qt.WindowType.WindowTransparentForInput
+
+
+def test_short_wide_sprite_stays_inside_its_padded_window(pet):
+    """A 200×60 lying pose gets a 200×120 window; the sprite must be centred in it,
+    not pushed out by the old bubble-layout offset."""
+    window, _, _, _ = pet
+    place(window, 600, 799)
+    foot = window.foot_position()
+    window.view_model.set_sprite_size(QtCore.QSize(200, 60))
+    window.on_sprite_renderer_changed()
+
+    assert window.size() == QtCore.QSize(200, 120)
+    assert QtCore.QRect(QtCore.QPoint(), window.size()).contains(window.sprite_contact_rect())
+    assert window.foot_position() == foot
+
+
+def test_bubble_repaints_when_only_the_state_changes(pet, monkeypatch):
+    _, bubble, _, speech = pet
+    bubble.set_text("同一句話。", auto_hide=False)
+    repaints = []
+    monkeypatch.setattr(speech, "update", lambda *a: repaints.append(a))
+
+    speech._view_model.set_bubble_alpha(120)  # e.g. the new state has another alpha
+    speech.refresh()
+
+    assert repaints

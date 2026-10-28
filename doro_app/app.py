@@ -25,6 +25,7 @@ from .core.state import StateService
 from .core.state.transition_player import TransitionPlayer
 from .ui.components.bubble_controller import BubbleConfig, BubbleController
 from .ui.components.context_menu_controller import ContextMenuController
+from .ui.components.speech_bubble_window import SpeechBubbleWindow
 from .ui.controllers import ClickActionController, DialogManager, SpriteController, StateController
 from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
@@ -84,6 +85,16 @@ class DoroApp:
             state_service=self._state_service,
             not_topmost=not_topmost,
             config_manager=self._config_manager,
+        )
+        # The speech bubble is its own window that follows Doro, so talking
+        # never resizes Doro's window (docs/speech-bubble-window-plan.md).
+        self._speech_bubble = SpeechBubbleWindow(
+            self.window.view_model,
+            self._bubble_controller,
+            body_on_screen=self.window.body_on_screen,
+            work_area=self.window.floor_geometry,
+            parent=self.window,
+            stay_on_top=not not_topmost,
         )
 
         # ═════════════════════════════════════════════════════════════
@@ -286,21 +297,17 @@ class DoroApp:
         )
 
         # ═════════════════════════════════════════════════════════════
-        # BubbleController → Window connections (UI Layer internal)
-        # Window reads bubble state directly from BubbleController
-        # during paintEvent, so signals just trigger repaint/resize.
+        # BubbleController → SpeechBubbleWindow (UI Layer internal)
+        # The bubble window reads text/visibility from BubbleController
+        # and follows Doro's window whenever it moves or resizes.
         # ═════════════════════════════════════════════════════════════
 
-        self._bubble_controller.text_changed.connect(
-            lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
-        )
-        self._bubble_controller.visibility_changed.connect(
-            lambda *_: (self.window.apply_window_preferred_size(), self.window.update())
-        )
-        self._bubble_controller.repaint_requested.connect(self.window.update)
-        self._bubble_controller.update_bubble_side_requested.connect(
-            self.window.update_bubble_side_from_offset
-        )
+        self._bubble_controller.text_changed.connect(lambda *_: self._speech_bubble.refresh())
+        self._bubble_controller.visibility_changed.connect(lambda *_: self._speech_bubble.refresh())
+        self._bubble_controller.repaint_requested.connect(self._speech_bubble.refresh)
+        self._state_controller.state_changed.connect(lambda *_: self._speech_bubble.refresh())
+        self.window.sprite_geometry_changed.connect(self._speech_bubble.follow)
+        self.window.shown_changed.connect(self._speech_bubble.refresh)
         self._bubble_controller.state_settings_apply_requested.connect(
             lambda state_key: self._state_controller.apply_state_settings(state_key)
         )
@@ -397,6 +404,8 @@ class DoroApp:
             core_manager=self.core_manager,
             bubble_controller=self._bubble_controller,
             on_interaction=self._interrupt_background_companionship,
+            # The expanded history already shows Doro's line: hide the bubble meanwhile.
+            on_history_expanded=self._speech_bubble.set_suppressed,
         )
         self._chat_ui = chat_ui
         self._chat_controller.request_failed.connect(chat_ui.request_failed)

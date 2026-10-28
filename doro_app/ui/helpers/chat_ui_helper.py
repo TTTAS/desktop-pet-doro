@@ -43,6 +43,7 @@ class ChatUIHelper:
         core_manager: CoreManager,
         bubble_controller: BubbleController,
         on_interaction=None,
+        on_history_expanded=None,
     ) -> None:
         self.window = window
         self._core_manager = core_manager
@@ -53,6 +54,7 @@ class ChatUIHelper:
         self._chat_dialog = None
         self._bubble_controller = bubble_controller
         self._on_interaction = on_interaction or (lambda: None)
+        self._on_history_expanded = on_history_expanded or (lambda _expanded: None)
 
     @property
     def _chat(self):
@@ -74,6 +76,7 @@ class ChatUIHelper:
             )
             self._chat_dialog.interaction.connect(self._interact)
             self._chat_dialog.expanded_changed.connect(lambda _: self.window.mark_user_activity())
+            self._chat_dialog.expanded_changed.connect(self._on_history_expanded)
             self._chat_dialog.settings_requested.connect(self.open_settings_dialog)
             self._core_manager.chat_response_received.connect(self._chat_dialog.receive_reply)
             self._core_manager.chat_operation_completed.connect(self._chat_dialog.finish_processing)
