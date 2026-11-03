@@ -266,7 +266,7 @@
     "tests": [
       "tests/core/a11y"
     ],
-    "purpose": "Windows UI Automation 目標搜尋、過濾及語意點擊。"
+    "purpose": "Windows UI Automation 目標搜尋、過濾及語意點擊；元件樹以帶 id 的 JSON 給模型，點擊只回 id，由程式查回座標。"
   },
   {
     "id": "ui",

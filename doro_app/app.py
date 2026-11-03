@@ -172,6 +172,9 @@ class DoroApp:
             action_dispatcher=self._action_dispatcher,
             schedule=_dispatcher_schedule,
             config_manager=self._config_manager,
+            click_target_resolver=lambda target: (
+                self._a11y.element_center(target) if self._a11y else None
+            ),
         )
         self._click_action_controller = ClickActionController(
             actions_file=self._click_actions_path,

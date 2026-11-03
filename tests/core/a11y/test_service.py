@@ -81,7 +81,7 @@ class TestHappyPath:
         svc = _make_service(backend, audit_path=audit_file)
         out = svc.read_foreground_tree()
         assert out.startswith("[前景視窗元件樹]\n")
-        assert 'button "書籤" (1850,80 24x24)' in out
+        assert '{"id":1,"role":"button","name":"書籤","box":[1850,80,24,24]}' in out
         assert backend.read_calls == [1234]
 
     def test_successful_read_is_audited(self, audit_file):
@@ -195,7 +195,7 @@ class TestDiagnose:
         svc = _make_service(FakeA11yBackend([_button("書籤", 1850, 80)]), audit_path=audit_file)
         ok, body = svc.diagnose_foreground_tree()
         assert ok is True
-        assert 'button "書籤" (1850,80 24x24)' in body
+        assert '"name":"書籤","box":[1850,80,24,24]' in body
 
     def test_diagnose_does_not_write_audit(self, audit_file):
         svc = _make_service(FakeA11yBackend([_button()]), audit_path=audit_file)
@@ -332,3 +332,15 @@ class TestClearBlacklist:
         svc.clear_session_blacklist()
         assert svc._session_blacklist == set()
         assert svc._timeout_counts == {}
+
+
+class TestElementCenter:
+    def test_id_resolves_to_center_of_last_shown_element(self, audit_file):
+        backend = FakeA11yBackend([_button("a", 100, 200), _button("b", 1850, 80)])
+        svc = _make_service(backend, audit_path=audit_file)
+        assert svc.element_center(1) is None  # nothing shown yet
+        svc.read_foreground_tree()
+        assert svc.element_center(1) == (112, 212)
+        assert svc.element_center(2) == (1862, 92)
+        for unknown in (0, 3, -1):
+            assert svc.element_center(unknown) is None

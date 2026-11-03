@@ -20,7 +20,9 @@ from .conftest import ClockStub, ConfigManagerStub, ManualScheduler
 
 
 def click_reply(line="嘿嘿要幫人點囉～"):
-    return chat_reply_model([]).model_validate({"line": line, "tool": {"kind": "click"}})
+    return chat_reply_model([]).model_validate(
+        {"line": line, "tool": {"kind": "click", "target": 1}}
+    )
 
 
 @pytest.fixture
@@ -97,9 +99,11 @@ def test_click_tool_routes_to_automation_manager(
         stub_movement,
         stub_state_service,
         automation=automation_setup["manager"],
+        click_target_resolver={1: (640, 480)}.get,
     )
 
     orchestrator._on_request_succeeded(click_reply(), False)
+    stub_movement.handle_move_bracket.assert_called_once_with("MOVE:to;x=640;y=480", [])
 
     # Wind-up was scheduled; click hasn't fired yet.
     assert automation_setup["clicker"].invoke_calls == []
@@ -133,5 +137,31 @@ def test_click_tool_carries_no_coordinates_or_other_mouse_actions():
         {"kind": "scroll"},
     ):
         assert model.model_validate({"line": "點", "tool": tool}).tool is None
-    click = model.model_validate({"line": "點", "tool": {"kind": "click", "x": 1, "y": 1}}).tool
-    assert click.model_dump(exclude_none=True) == {"kind": "click"}
+    click = model.model_validate(
+        {"line": "點", "tool": {"kind": "click", "target": 2, "x": 1, "y": 1}}
+    ).tool
+    assert click.model_dump(exclude_none=True) == {"kind": "click", "target": 2}
+    # A click must name an element id; coordinates alone are not a click.
+    assert model.model_validate({"line": "點", "tool": {"kind": "click"}}).tool is None
+
+
+def test_unknown_target_id_is_not_clicked(
+    stub_controller, stub_movement, stub_state_service, automation_setup
+):
+    orchestrator = ChatOrchestrator(
+        stub_controller,
+        stub_movement,
+        stub_state_service,
+        automation=automation_setup["manager"],
+        click_target_resolver={1: (640, 480)}.get,
+    )
+
+    reply = chat_reply_model([]).model_validate(
+        {"line": "點", "tool": {"kind": "click", "target": 9}}
+    )
+    assert orchestrator._on_request_succeeded(reply, False) == "點"
+    automation_setup["scheduler"].flush()
+
+    assert automation_setup["clicker"].invoke_calls == []
+    stub_movement.handle_move_bracket.assert_not_called()
+    assert "id=9" in stub_movement.record_manual_report.call_args.args[0]

@@ -39,7 +39,7 @@ from ...utils.logger import get_logger
 from ..automation import window_class
 from .filters import filter_elements, is_blacklisted
 from .port import A11yBackendPort
-from .serializer import serialize
+from .serializer import listed_count, serialize
 
 logger = get_logger("doro.a11y")
 
@@ -111,9 +111,10 @@ class A11yService:
         if not body:
             return ""
 
-        # Cache for the click warning overlay's point-in-rect lookup at
-        # wind-up time (`bounds_at_physical_point`).
-        self._last_elements = filtered
+        # Cache what the model was shown: ids in the prompt index into this
+        # list (`element_center`), and the click warning overlay looks up
+        # rects in it at wind-up time (`bounds_at_physical_point`).
+        self._last_elements = filtered[: listed_count(body)]
 
         self._audit(window_cls, len(body.encode("utf-8")), blacklisted=False)
         return f"{_TREE_HEADER}\n{body}"
@@ -171,6 +172,14 @@ class A11yService:
         except Exception as exc:
             logger.debug(f"a11y backend invoke raised: {exc}")
             return False
+
+    def element_center(self, element_id: int) -> tuple[int, int] | None:
+        """Center (physical px) of element ``element_id`` from the last tree
+        shown to the model, or None when that id was not listed."""
+        if not isinstance(element_id, int) or not 1 <= element_id <= len(self._last_elements):
+            return None
+        el = self._last_elements[element_id - 1]
+        return el.x + el.width // 2, el.y + el.height // 2
 
     def bounds_at_physical_point(self, x: int, y: int) -> tuple[int, int, int, int] | None:
         """Return ``(x, y, w, h)`` of the smallest cached element containing
