@@ -7,15 +7,11 @@ from typing import TYPE_CHECKING
 from PySide6 import QtCore, QtGui
 
 from ...constants import (
-    PANEL_DEFAULT_HEIGHT_HINT,
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_HEIGHT,
-    PANEL_MIN_WIDTH,
     SPRITE_BOB_ALLOWANCE,
     SPRITE_MARGIN_BOTTOM,
     SPRITE_MARGIN_X,
     SPRITE_MIN_SIZE,
-    SPRITE_PANEL_RESERVE_OFFSET,
+    SPRITE_WINDOW_MIN_SIDE,
 )
 from ..viewmodels.doro_viewmodel import DoroViewModel
 from .design_tokens import tokens
@@ -53,74 +49,47 @@ class RenderingEngine:
         self,
         window_size: QtCore.QSize,
         sprite_anchor_top: float | None,
-        panel_height_hint: float | None = None,
-        reserve_above: bool = False,
     ) -> tuple[QtCore.QPointF, float | None]:
         """
         Calculate sprite center position within the window.
 
-        Args:
-            window_size: Current window size
-            sprite_anchor_top: Current sprite anchor top position (None for initial calculation)
-            panel_height_hint: Expected bubble height, used to reserve room for it.
-            reserve_above: When True, reserve the bubble's room ABOVE the sprite
-                (sprite sits low in the window) so the bubble renders above —
-                used when Doro is near the bottom of the screen and there is no
-                room below. When False (default), room is reserved below.
+        Doro's window is normally exactly sprite-sized (the speech bubble has its
+        own window), so the sprite fills it. A larger window — only briefly, before
+        the first layout — centres the sprite within margins.
 
         Returns:
             Tuple of (sprite_center_point, updated_sprite_anchor_top)
         """
-        base_x = window_size.width() / 2.0 + self._view_model.sprite_offset_x
         half_w = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.width() / 2.0)
         half_h = max(SPRITE_MIN_SIZE, self._view_model.sprite_size.height() / 2.0)
 
-        # Compact mode: window has been resized to match the sprite exactly
-        # (bubble hidden — see WindowLayoutManager.compute_preferred_window_size
-        # with compact=True). Skip SPRITE_OFFSET_X and the margin clamps so
-        # the sprite fills the window edge-to-edge; otherwise SPRITE_OFFSET_X
-        # would push the sprite halfway off the small window's left edge.
         sprite_w = self._view_model.sprite_size.width()
         sprite_h = self._view_model.sprite_size.height()
-        if window_size.width() <= sprite_w + 1 and window_size.height() <= sprite_h + 1:
+        # The window is fitted to the sprite, padded per axis up to the minimum
+        # side (a 200×60 lying pose gets a 200×120 window): centre it in there.
+        fitted_w = max(float(sprite_w), SPRITE_WINDOW_MIN_SIDE)
+        fitted_h = max(float(sprite_h), SPRITE_WINDOW_MIN_SIDE)
+        if window_size.width() <= fitted_w + 1 and window_size.height() <= fitted_h + 1:
             center = QtCore.QPointF(window_size.width() / 2.0, window_size.height() / 2.0)
             return center, max(0.0, center.y() - half_h)
 
-        # Horizontal constraints
-        margin_x = SPRITE_MARGIN_X
-        min_center_x = half_w + margin_x
-        max_center_x = window_size.width() - half_w - margin_x
+        base_x = window_size.width() / 2.0 + self._view_model.sprite_offset_x
+        min_center_x = half_w + SPRITE_MARGIN_X
+        max_center_x = window_size.width() - half_w - SPRITE_MARGIN_X
         if min_center_x <= max_center_x:
             base_x = max(min_center_x, min(max_center_x, base_x))
 
-        # Vertical constraints
         bob_allowance = abs(self._view_model.bob_amplitude) + SPRITE_BOB_ALLOWANCE
-        margin_bottom = SPRITE_MARGIN_BOTTOM
         min_center_y = half_h + bob_allowance
-        max_center_y = window_size.height() - half_h - margin_bottom
-        max_center_y = max(max_center_y, min_center_y)
+        max_center_y = max(window_size.height() - half_h - SPRITE_MARGIN_BOTTOM, min_center_y)
 
-        # Calculate or use existing anchor
         if sprite_anchor_top is None:
-            # Reserve room below the sprite for the bubble. Use the actual panel
-            # height hint when known so a tall (multi-line) bubble starts with
-            # enough space underneath and isn't forced to clip.
-            reserve_height = max(PANEL_DEFAULT_HEIGHT_HINT, float(panel_height_hint or 0.0))
-            panel_reserve = reserve_height + SPRITE_PANEL_RESERVE_OFFSET
-            # Reserve below (sprite higher) or above (sprite lower) so the bubble
-            # has room on the chosen side.
-            if reserve_above:
-                initial_base_y = (window_size.height() + panel_reserve) / 2.0
-            else:
-                initial_base_y = (window_size.height() - panel_reserve) / 2.0
-            initial_base_y = max(min_center_y, min(max_center_y, initial_base_y))
+            initial_base_y = max(min_center_y, min(max_center_y, window_size.height() / 2.0))
             sprite_anchor_top = max(0.0, initial_base_y - half_h)
 
         anchor_top = max(0.0, float(sprite_anchor_top or 0.0))
         base_y = anchor_top + half_h
         clamped_base_y = max(min_center_y, min(max_center_y, base_y))
-
-        # Update anchor if clamped
         if clamped_base_y != base_y:
             anchor_top = max(0.0, clamped_base_y - half_h)
             sprite_anchor_top = anchor_top
@@ -144,122 +113,32 @@ class RenderingEngine:
         """
         sprite_renderer.render(painter, sprite_center, bob, scale)
 
-    def render_text_panel(
+    @property
+    def panel_font(self) -> QtGui.QFont:
+        """Font used for speech-bubble text (measuring and drawing must agree)."""
+        return self._panel_font
+
+    def draw_bubble(
         self,
         painter: QtGui.QPainter,
+        panel_rect: QtCore.QRectF,
         bubble_text: str,
         alpha: int,
-        sprite_center: QtCore.QPointF,
-        window_size: QtCore.QSize,
-        panel_height_hint: float,
-        prefer_above: bool = False,
-        screen_rect: QtCore.QRect | None = None,
-    ) -> QtCore.QRectF | None:
-        """
-        Render the text panel (bubble).
+        *,
+        below: bool,
+    ) -> None:
+        """Draw the speech bubble (shadow, panel, sheen, text) into ``panel_rect``.
 
-        Args:
-            painter: Qt painter to render with
-            bubble_text: Text to display
-            alpha: Panel alpha (0-COLOR_ALPHA_MAX)
-            sprite_center: Center position of sprite
-            window_size: Current window size
-            panel_height_hint: Panel height hint
-            prefer_above: Prefer drawing the bubble above the sprite (set when
-                the layout reserved room above because Doro is near the bottom
-                of the screen). Still falls back to the other side if the
-                preferred one genuinely cannot fit.
-
-        Returns:
-            Panel rect if rendered, None otherwise
+        Placement is decided by the caller (the bubble now lives in its own
+        window, see SpeechBubbleWindow); ``below`` only picks the shadow side.
         """
         text = bubble_text.strip()
-        if not text or alpha <= 0:
-            return None
-
-        usable = QtCore.QRectF(0, 0, window_size.width(), window_size.height())
-        if screen_rect is not None:
-            usable = usable.intersected(QtCore.QRectF(screen_rect))
-
-        # Calculate panel dimensions
-        target_width = max(PANEL_MIN_WIDTH, float(self._view_model.sprite_size.width()))
-        panel_width = max(
-            PANEL_MIN_HEIGHT,
-            min(target_width, usable.width() - 24.0),
-        )
-
+        if not text or alpha <= 0 or panel_rect.isEmpty():
+            return
+        place_below = below
+        font = self._panel_font
         inner_padding_x = tokens.spacing.bubble_inner_x
         inner_padding_y = tokens.spacing.bubble_inner_y
-
-        font = self._panel_font
-        metrics = QtGui.QFontMetrics(font)
-
-        text_flags = int(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
-        text_flags |= int(QtCore.Qt.TextFlag.TextWordWrap)
-
-        available_text_width = max(60.0, panel_width - inner_padding_x * 2.0)
-        text_metrics = metrics.boundingRect(
-            QtCore.QRect(0, 0, round(available_text_width), int(PANEL_MAX_WIDTH)),
-            text_flags,
-            text,
-        )
-        text_height = max(float(metrics.lineSpacing()), float(text_metrics.height()))
-        panel_height = max(panel_height_hint, text_height + inner_padding_y * 2.0)
-
-        # Calculate panel position
-        sprite_half_h = float(
-            max(tokens.sprite.min_half_height, self._view_model.sprite_size.height() / 2.0)
-        )
-        gap = tokens.spacing.sprite_bubble_gap
-        margin_top = usable.top() + tokens.spacing.margin_top
-        bottom_limit = usable.bottom() - tokens.spacing.margin_bottom
-
-        below_top = sprite_center.y() + sprite_half_h + gap
-        available_below = bottom_limit - below_top
-        above_bottom = sprite_center.y() - sprite_half_h - gap
-        available_above = max(0.0, above_bottom - margin_top)
-
-        # Grow-to-fit: show the full panel height. Only the extreme case — text
-        # taller than the entire usable window — forces a clamp. Otherwise we
-        # shift the bubble to stay on-screen instead of clipping the text.
-        max_panel_height = max(0.0, bottom_limit - margin_top)
-        adjusted_panel_height = min(panel_height, max_panel_height)
-
-        # Choose the side. Normally prefer below and fall back above only when
-        # below cannot fit the full height but above has more room. When
-        # prefer_above is set (layout reserved room above), the bias flips.
-        if prefer_above:
-            place_below = (
-                available_above < adjusted_panel_height and available_below > available_above
-            )
-        else:
-            place_below = not (
-                available_below < adjusted_panel_height and available_above > available_below
-            )
-
-        if place_below:
-            top = max(margin_top, below_top)
-            # Shift up (don't shrink/clip) if it would spill past the bottom margin.
-            max_top = max(margin_top, bottom_limit - adjusted_panel_height)
-            top = min(top, max_top)
-            self._view_model.set_bubble_side("below")
-        else:
-            bottom_edge = min(above_bottom, bottom_limit)
-            top = max(margin_top, bottom_edge - adjusted_panel_height)
-            self._view_model.set_bubble_side("above")
-
-        if adjusted_panel_height <= 0.0:
-            return None
-
-        # Calculate left position
-        left = sprite_center.x() - panel_width / 2.0
-        min_left = usable.left() + tokens.spacing.margin_horizontal
-        max_left = usable.right() - panel_width - tokens.spacing.margin_horizontal
-        if max_left < min_left:
-            min_left = max_left = max(window_size.width() - panel_width, 0.0)
-        left = max(min_left, min(max_left, left))
-
-        panel_rect = QtCore.QRectF(left, top, panel_width, adjusted_panel_height)
 
         # Shadow rect
         shadow_rect = panel_rect.adjusted(
@@ -352,5 +231,3 @@ class RenderingEngine:
         painter.drawText(text_rect, text, text_option)
 
         painter.restore()
-
-        return QtCore.QRectF(panel_rect)

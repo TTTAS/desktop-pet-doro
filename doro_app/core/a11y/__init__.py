@@ -1,9 +1,9 @@
 """Phase 1d accessibility-tree reading.
 
 Reads only the *foreground* window's interactable elements (button / link /
-input / …) with their screen coordinates, so the LLM can translate "click
-the bookmark button" into a `[move:to;x=;y=]` + `[mouse:click]` instead of
-asking the user for coordinates. Gated behind `automation.a11y_enabled`
+input / …) as numbered JSON lines, so the LLM can translate "click the
+bookmark button" into ``tool: {"kind": "click", "target": <id>}``; the
+program resolves the id to the element's center and walks there. Gated behind `automation.a11y_enabled`
 (independent of mouse clicking) and a sensitive-app blacklist. See
 `/root/.claude/plans/velvet-pondering-ullman.md` for the full rationale.
 """

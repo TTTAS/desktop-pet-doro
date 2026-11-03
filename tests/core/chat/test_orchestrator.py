@@ -473,6 +473,7 @@ class TestClickAfterMove:
             automation=automation,
             action_dispatcher=dispatcher,
             schedule=schedule,
+            click_target_resolver={1: (200, 100)}.get,
         )
         return orch, dispatcher
 
@@ -488,7 +489,7 @@ class TestClickAfterMove:
             mock_state_service,
         )
         orch._on_request_succeeded(
-            reply(line="好！", move={"x": 200, "y": 100}, tool={"kind": "click"}),
+            reply(line="好！", tool={"kind": "click", "target": 1}),
             False,
         )
         kinds = [c.args[0].kind for c in dispatcher.dispatch.call_args_list]

@@ -78,7 +78,7 @@ def test_window_events_trigger_an_immediate_and_a_settled_check(qtbot):
         covered_by=lambda h: covers.get(h),
         log=lambda message: None,
         interval_ms=60_000,  # 排除輪詢，只看事件
-        settle_ms=100,
+        settle_ms=400,  # long enough that the first check is asserted before it fires
     )
 
     guard.on_window_event()

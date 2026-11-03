@@ -108,6 +108,7 @@ class ChatOrchestrator(QtCore.QObject):
         schedule: ScheduleFn | None = None,
         web_runtime: WebRuntime | None = None,
         config_manager=None,
+        click_target_resolver: Callable[[int], tuple[int, int] | None] | None = None,
     ):
         super().__init__()  # No parent
         self._controller = controller
@@ -120,6 +121,9 @@ class ChatOrchestrator(QtCore.QObject):
         # dispatcher is absent (legacy / unit-test path) movement and
         # click run synchronously through their managers as before.
         self._schedule = schedule
+        # 桌面點擊的元件 id → 中心座標（實體像素），查的是上一次給模型看的
+        # [前景視窗元件樹]；沒有元件樹（a11y 沒開）就一律查不到、不點。
+        self._click_target_resolver = click_target_resolver or (lambda _id: None)
 
         # ── 網頁能力（讀 + 操作，共用一個瀏覽器）─────────────────────
         # 讀與操作都走同一個 WebRuntime（一條專屬執行緒 + 一個共用瀏覽器），天生
@@ -819,13 +823,27 @@ class ChatOrchestrator(QtCore.QObject):
             self._begin_operation(goal)  # 會擋總開關
             return ""
 
+        # 桌面點擊：模型只給元件 id，座標由程式從元件樹查；先走到元件中心再點。
+        move_token = reply.move.movement_token() if reply.move is not None else None
+        click = False
+        if tool is not None and tool.kind == "click":
+            point = self._click_target_resolver(tool.target)
+            if point is None:
+                logger.warning(f"[automation] click target id={tool.target} 不在元件樹裡，不點")
+                self._movement.record_manual_report(
+                    f"點擊目標 id={tool.target} 不在 [前景視窗元件樹] 裡，沒有點"
+                )
+            else:
+                move_token = f"MOVE:to;x={point[0]};y={point[1]}"
+                click = True
+
         # 先走再點：點擊排在移動後面，Doro 走到才會點。
-        if reply.move is not None:
+        if move_token is not None:
             reports: list[str] = []
-            self._dispatch_move_bracket(reply.move.movement_token(), reports)
+            self._dispatch_move_bracket(move_token, reports)
             for report in reports:
                 self._movement.record_manual_report(report)
-        if tool is not None and tool.kind == "click":
+        if click:
             self._queue_desktop_click()
 
         line = self._strip_markdown(reply.line)

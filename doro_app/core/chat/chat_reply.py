@@ -8,7 +8,7 @@ another tool (ADR 0004).
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -28,6 +28,39 @@ class ChatMove(BaseModel):
     speed: Literal["slow", "med", "fast"] | None = Field(default=None, description="走路速度")
     x: int | None = Field(default=None, ge=0, description="要走到的腳底 X（實體像素）")
     y: int | None = Field(default=None, ge=0, description="要走到的腳底 Y（實體像素）")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tidy(cls, data: Any) -> Any:
+        """Forgive the extra fields a model fills in when every key is required.
+
+        A strict schema makes the model emit all five keys, so an absolute
+        move often comes back as ``x, y`` plus ``distance: 0`` or a leftover
+        ``dir``. Dropping the whole move would make a desktop click land on
+        Doro's foot instead of the target, so ``x, y`` win and their leftovers
+        are cleared; decimal or negative coordinates are rounded and clamped.
+        """
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        coords = {}
+        for key in ("x", "y"):
+            value = data.get(key)
+            if isinstance(value, str):
+                try:
+                    value = float(value.strip())
+                except ValueError:
+                    value = None
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                coords[key] = max(0, round(value))
+            data[key] = None
+        if len(coords) == 2:
+            data.update(coords, dir=None, distance=None)
+        else:
+            distance = data.get("distance")
+            if isinstance(distance, (int, float)) and distance <= 0:
+                data["distance"] = None
+        return data
 
     @model_validator(mode="after")
     def _one_shape(self):
@@ -52,8 +85,11 @@ class ChatTool(BaseModel):
         description=(
             "read 讀使用者給的網址、verify 上網搜尋（探索推薦／查資料／查證）、"
             "operate 在網站上實際辦事、login 開網站讓使用者自己登入、"
-            "click 點一下 move 走到的桌面位置"
+            "click 點一下 [前景視窗元件樹] 裡的某個元件"
         )
+    )
+    target: int | None = Field(
+        default=None, description="click 要點的元件 id，只能抄 [前景視窗元件樹] 裡的 id"
     )
     url: str | None = Field(default=None, description="read／login 的完整網址")
     query: str | None = Field(default=None, description="verify 的搜尋任務：目的、主題、限制")
@@ -65,6 +101,8 @@ class ChatTool(BaseModel):
             _HTTP
         ):
             raise ValueError(f"{self.kind} 需要 http 或 https 開頭的完整網址")
+        if self.kind == "click" and (self.target is None or self.target < 1):
+            raise ValueError("click 需要 target：[前景視窗元件樹] 裡的元件 id")
         return self
 
 
@@ -88,7 +126,7 @@ CHAT_TASK = """\
 
 【什麼時候用 tool（一次最多一個；不確定就填 null，正常聊天）】
 - read：使用者給了網址，而且要那頁的實際內容才能好好回答（「這頁在說什麼」「幫我看看」「摘要」）時用，url 照抄使用者給的完整網址，不要自己編。line 先簡短說要去看（例：「好，doro去看看～」）。只是順口提到網站就不要用。
-- 點「這台電腦畫面上」的東西（瀏覽器工具列、書籤、視窗按鈕、別的程式）是桌面點擊：move 給 x、y 走到目標中心，tool 用 click。座標只能抄提示詞裡的 [前景視窗元件樹]；沒有那棵樹就代表 doro 看不到畫面，老實說「doro 現在看不到你的螢幕，要先開啟『讓 Doro 看畫面』和『讓 Doro 幫忙點滑鼠』喔」，不要亂點。
+- 點「這台電腦畫面上」的東西（瀏覽器工具列、書籤、視窗按鈕、別的程式）是桌面點擊：tool 用 click，target 填 [前景視窗元件樹] 裡那個元件的 id，doro 會自己走過去點，move 填 null，不用算座標。清單裡沒有那個元件就老實說找不到，不要亂填 id；沒有那棵樹就代表 doro 看不到畫面，老實說「doro 現在看不到你的螢幕，要先開啟『讓 Doro 看畫面』和『讓 Doro 幫忙點滑鼠』喔」，不要亂點。
 - operate：要在「某個網站上實際執行動作」（加購物車、填寫並送出表單、下單、報名、發文、一步步完成某件事）時用，goal 用一句話描述目標。搜尋資料與推薦不用 operate。
 - login：使用者想自己登入某個網站時用，url 給該站首頁（例如蝦皮＝https://shopee.tw）。doro 只把站開著讓使用者本人登入，不會亂動。
 - verify：是唯讀搜尋入口，名稱不代表一定要查證。先分清「探索／推薦」「查資料」「查證真偽」，query 保留目的、主題與限制再寫具體搜尋方向（例：「探索推薦：尋找有趣的互動網站，挑幾個值得體驗的候選並說明特色」）。line 說「找找看／挑幾個」，不要把找東西說成「查證」。只有缺少會明顯影響結果的資訊時才問一個簡短問題；一般聊天、腦力激盪或不需即時資料的問題直接回答。

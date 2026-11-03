@@ -14,7 +14,7 @@ pytest_plugins = ["tests.ui.test_grounding"]
 
 @pytest.fixture
 def preferences(pet, real_state_service, qtbot):
-    window, _, sprite = pet
+    window, _, sprite, _ = pet
     real_state_service.initialize(STATE_DIR / "idle.gif")
     sprite.load_sprite(STATE_DIR / "idle.gif")
     place(window, 600, 500)
@@ -110,7 +110,7 @@ def test_calibration_survives_gesture_and_bubble_relayout(
     preferences, pet, tmp_path, qtbot, gesture
 ):
     dialog, window, states = preferences
-    _, bubble, sprite = pet
+    _, bubble, sprite, _ = pet
     dialog.anchor.setValue(82)
     dialog.accept()
     key = window.current_gif_key()
@@ -209,7 +209,7 @@ def test_expression_is_bounded_and_anchor_stays_fixed():
 
 @pytest.mark.parametrize("x", [110, 600, 1090])
 def test_expression_painting_keeps_foot_and_disabled_effects_clear(pet, x):
-    window, _, _ = pet
+    window, _, _, _ = pet
     place(window, x, 799)
     foot = window.foot_position()
     window.play_expression("heart")

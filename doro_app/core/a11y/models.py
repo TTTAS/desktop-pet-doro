@@ -9,8 +9,9 @@ from dataclasses import dataclass
 class A11yElement:
     """A single interactable UI element sampled from the foreground window.
 
-    Coordinates are physical screen pixels (top-left origin) so the LLM can
-    feed them straight into ``[move:to;x=;y=]``. ``role`` is normalized by
+    Coordinates are physical screen pixels (top-left origin). The model sees
+    them only as a ``box`` hint; a click names the element's id and
+    ``A11yService.element_center`` turns it back into a point. ``role`` is normalized by
     the backend to a small vocabulary (button / link / input / menuitem /
     combobox / checkbox / tab); the serializer prints it verbatim.
     """

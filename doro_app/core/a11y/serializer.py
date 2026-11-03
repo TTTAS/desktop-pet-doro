@@ -1,9 +1,13 @@
-"""Compact text serialization of a11y elements (Phase 1d).
+"""Structured serialization of a11y elements: one JSON object per line.
 
 Produces lines like::
 
-    button "書籤" (350,120 24x24)
-    input "網址列" (140,75 800x36)  value="https://example.com"
+    {"id":1,"role":"button","name":"書籤","box":[350,120,24,24]}
+    {"id":2,"role":"input","name":"網址列","box":[140,75,800,36],"value":"https://example.com"}
+
+``id`` is the element's 1-based position in the list handed to
+:func:`serialize`; a click names that id and the program resolves it back
+to coordinates, so the model never does pixel arithmetic.
 
 The output is capped at ``A11Y_MAX_SERIALIZED_BYTES``; past the cap it
 stops and appends a "還有 N 個元件未列出" marker so the prompt can't
@@ -11,6 +15,8 @@ balloon.
 """
 
 from __future__ import annotations
+
+import json
 
 from ...constants import (
     A11Y_MAX_SERIALIZED_BYTES,
@@ -46,13 +52,21 @@ def _sanitize(text: str, max_chars: int) -> str:
     return cleaned
 
 
-def _format_element(el: A11yElement) -> str:
-    name = _sanitize(el.name, A11Y_NAME_MAX_CHARS)
-    line = f'{el.role} "{name}" ({el.x},{el.y} {el.width}x{el.height})'
+def _format_element(element_id: int, el: A11yElement) -> str:
+    item: dict = {
+        "id": element_id,
+        "role": el.role,
+        "name": _sanitize(el.name, A11Y_NAME_MAX_CHARS),
+        "box": [el.x, el.y, el.width, el.height],
+    }
     if el.value:
-        value = _sanitize(el.value, A11Y_VALUE_MAX_CHARS)
-        line += f'  value="{value}"'
-    return line
+        item["value"] = _sanitize(el.value, A11Y_VALUE_MAX_CHARS)
+    return json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+
+
+def listed_count(body: str) -> int:
+    """How many elements a serialized body actually lists (ids 1..n)."""
+    return sum(1 for line in body.splitlines() if line.startswith("{"))
 
 
 def serialize(elements: list[A11yElement], max_bytes: int = A11Y_MAX_SERIALIZED_BYTES) -> str:
@@ -64,7 +78,7 @@ def serialize(elements: list[A11yElement], max_bytes: int = A11Y_MAX_SERIALIZED_
     lines: list[str] = []
     used = 0
     for index, el in enumerate(elements):
-        line = _format_element(el)
+        line = _format_element(index + 1, el)
         cost = len(line.encode("utf-8")) + 1  # +1 for the newline
         if used + cost > budget and lines:
             remaining = len(elements) - index

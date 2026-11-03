@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 from doro_app.core.a11y.models import A11yElement
-from doro_app.core.a11y.serializer import serialize
+from doro_app.core.a11y.serializer import listed_count, serialize
 
 
 def _el(role="button", name="書籤", x=350, y=120, w=24, h=24, value=None):
@@ -12,20 +14,23 @@ def _el(role="button", name="書籤", x=350, y=120, w=24, h=24, value=None):
 
 def test_basic_format():
     line = serialize([_el()])
-    assert line == 'button "書籤" (350,120 24x24)'
+    assert line == '{"id":1,"role":"button","name":"書籤","box":[350,120,24,24]}'
 
 
 def test_input_with_value():
     el = _el(role="input", name="網址列", x=140, y=75, w=800, h=36, value="https://example.com")
     line = serialize([el])
-    assert line == 'input "網址列" (140,75 800x36)  value="https://example.com"'
+    assert line == (
+        '{"id":1,"role":"input","name":"網址列","box":[140,75,800,36],'
+        '"value":"https://example.com"}'
+    )
 
 
 def test_multiple_elements_joined_by_newline():
     out = serialize([_el(name="a"), _el(name="b")])
     assert out.splitlines() == [
-        'button "a" (350,120 24x24)',
-        'button "b" (350,120 24x24)',
+        '{"id":1,"role":"button","name":"a","box":[350,120,24,24]}',
+        '{"id":2,"role":"button","name":"b","box":[350,120,24,24]}',
     ]
 
 
@@ -81,15 +86,14 @@ def test_value_with_control_chars_stripped():
     # Newlines must not appear in the value, nor in the line at all.
     assert out.count("\n") == 0
     # Control characters were replaced with spaces, payload survives.
-    assert "value=" in out
-    assert "a" in out and "d" in out
+    assert json.loads(out)["value"] == "a b  c d"
 
 
 def test_long_name_is_truncated():
     long_name = "x" * 500
     out = serialize([_el(name=long_name)])
     # Per-field cap is A11Y_NAME_MAX_CHARS=80; output line length bounded.
-    name_part = out.split('"')[1]
+    name_part = json.loads(out)["name"]
     assert len(name_part) <= 80
     assert name_part.endswith("…")
 
@@ -97,7 +101,13 @@ def test_long_name_is_truncated():
 def test_long_value_is_truncated():
     el = _el(role="input", name="x", value="v" * 500)
     out = serialize([el])
-    # value="…" portion — extract between the LAST pair of quotes.
-    value_part = out.rsplit('"', 2)[-2]
+    value_part = json.loads(out)["value"]
     assert len(value_part) <= 120
     assert value_part.endswith("…")
+
+
+def test_every_line_is_json_with_sequential_ids():
+    out = serialize([_el(name=f"item-{i}") for i in range(200)], max_bytes=600)
+    rows = [json.loads(line) for line in out.splitlines() if line.startswith("{")]
+    assert [row["id"] for row in rows] == list(range(1, len(rows) + 1))
+    assert listed_count(out) == len(rows) < 200
