@@ -8,7 +8,7 @@ another tool (ADR 0004).
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -28,6 +28,39 @@ class ChatMove(BaseModel):
     speed: Literal["slow", "med", "fast"] | None = Field(default=None, description="走路速度")
     x: int | None = Field(default=None, ge=0, description="要走到的腳底 X（實體像素）")
     y: int | None = Field(default=None, ge=0, description="要走到的腳底 Y（實體像素）")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tidy(cls, data: Any) -> Any:
+        """Forgive the extra fields a model fills in when every key is required.
+
+        A strict schema makes the model emit all five keys, so an absolute
+        move often comes back as ``x, y`` plus ``distance: 0`` or a leftover
+        ``dir``. Dropping the whole move would make a desktop click land on
+        Doro's foot instead of the target, so ``x, y`` win and their leftovers
+        are cleared; decimal or negative coordinates are rounded and clamped.
+        """
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        coords = {}
+        for key in ("x", "y"):
+            value = data.get(key)
+            if isinstance(value, str):
+                try:
+                    value = float(value.strip())
+                except ValueError:
+                    value = None
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                coords[key] = max(0, round(value))
+            data[key] = None
+        if len(coords) == 2:
+            data.update(coords, dir=None, distance=None)
+        else:
+            distance = data.get("distance")
+            if isinstance(distance, (int, float)) and distance <= 0:
+                data["distance"] = None
+        return data
 
     @model_validator(mode="after")
     def _one_shape(self):

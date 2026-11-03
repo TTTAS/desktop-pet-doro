@@ -127,9 +127,24 @@ def test_malformed_move_and_tool_are_dropped_not_fatal():
 def test_move_needs_exactly_one_shape():
     assert ChatMove(x=1, y=2).movement_token() == "MOVE:to;x=1;y=2"
     assert ChatMove(dir="left", distance=80).movement_token() == "MOVE:dir=left;distance=80"
-    for bad in ({}, {"dir": "left"}, {"dir": "left", "distance": 5, "x": 1, "y": 2}):
+    for bad in ({}, {"dir": "left"}, {"dir": "left", "distance": 0}):
         reply = chat('{"line":"嗨","move":' + str(bad).replace("'", '"') + "}")
         assert reply.move is None
+
+
+def test_click_target_survives_leftover_move_fields():
+    """A strict schema makes models fill every key; x, y must still win so a
+    desktop click lands on the target instead of Doro's foot."""
+    for move in (
+        '{"dir":null,"distance":0,"speed":null,"x":812,"y":40}',
+        '{"dir":"up","distance":100,"speed":"med","x":812,"y":40}',
+        '{"dir":null,"distance":null,"speed":null,"x":811.6,"y":"40"}',
+    ):
+        reply = chat('{"line":"點囉","move":' + move + ',"tool":{"kind":"click"}}')
+        assert reply.move.movement_token() == "MOVE:to;x=812;y=40"
+        assert reply.tool.kind == "click"
+    reply = chat('{"line":"嗨","move":{"x":-5,"y":3}}')
+    assert reply.move.movement_token() == "MOVE:to;x=0;y=3"
 
 
 def test_simulate_response_accepts_reply_json(qapp):

@@ -19,7 +19,10 @@ from pydantic import (
     model_validator,
 )
 
+from ...utils.logger import get_logger
 from .zh import to_traditional
+
+logger = get_logger(__name__)
 
 
 class DirectionalMove(BaseModel):
@@ -86,7 +89,8 @@ def character_reply_model(
                 return value
             try:
                 return model.model_validate(value)
-            except ValidationError:
+            except ValidationError as exc:
+                logger.warning(f"{model.__name__} 格式不對，丟掉：{value!r}（{exc.errors()[:1]}）")
                 return None
 
         return check
