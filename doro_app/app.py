@@ -15,6 +15,7 @@ from .constants import (
 from .core.action import ActionDispatcher
 from .core.automation.foreground_tracker import ForegroundTracker
 from .core.automation.manager import AutomationManager
+from .core.chat.chat_log import ChatLog
 from .core.chat.controller import ChatController
 from .core.chat.orchestrator import ChatOrchestrator
 from .core.companion import CompanionController
@@ -30,7 +31,7 @@ from .ui.events.mouse_event_handler import MouseEventHandler
 from .ui.helpers import ChatUIHelper
 from .ui.window import DoroWindow
 from .utils.logger import get_logger
-from .utils.paths import COMPANION_PROMPTS_PATH
+from .utils.paths import COMPANION_PROMPTS_PATH, chat_log_path
 
 logger = get_logger(__name__)
 
@@ -130,6 +131,7 @@ class DoroApp:
             config_manager=self._config_manager,
             doro_state_provider=lambda: self._build_doro_state_text(),
             a11y_tree_provider=lambda: self._a11y.read_foreground_tree() if self._a11y else "",
+            chat_log=self._open_chat_log(),
         )
         # ─── Automation (Phase 1c) ───────────────────────────────
         # Optional: only constructed if mouse_enabled is True or the env var
@@ -486,6 +488,18 @@ class DoroApp:
             self._automation.cancel_pending_click("quiet-companion")
         self._action_dispatcher.cancel_current("quiet-companion")
         self._movement.cancel_active_movement()
+
+    @staticmethod
+    def _open_chat_log() -> ChatLog | None:
+        """本機對話紀錄（LoRA 訓練資料）；開不起來就不記，聊天照常。"""
+        path = chat_log_path()
+        try:
+            chat_log = ChatLog(path)
+        except Exception as exc:
+            logger.warning(f"Chat log disabled, cannot open {path}: {exc}")
+            return None
+        logger.info(f"Chat log: {path}")
+        return chat_log
 
     def run(self):
         """Start the application by showing the main window."""

@@ -28,20 +28,25 @@
     "aliases": [
       "聊天",
       "回覆",
-      "模型"
+      "模型",
+      "LoRA",
+      "訓練資料",
+      "對話紀錄"
     ],
     "scope": [
-      "doro_app/core/chat/*.py"
+      "doro_app/core/chat/*.py",
+      "scripts/export_lora_dataset.py"
     ],
     "entries": [
       "doro_app/core/chat/orchestrator.py",
       "doro_app/core/chat/controller.py",
-      "doro_app/core/chat/chat_reply.py"
+      "doro_app/core/chat/chat_reply.py",
+      "doro_app/core/chat/chat_log.py"
     ],
     "tests": [
       "tests/core/chat"
     ],
-    "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現。"
+    "purpose": "聊天流程、歷史、設定及模型回覆；頁面回答僅允許角色表現；本機 SQLite 對話紀錄可匯出成 LoRA 訓練資料。"
   },
   {
     "id": "llm",

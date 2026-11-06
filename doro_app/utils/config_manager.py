@@ -261,6 +261,9 @@ class ConfigManager:
             "stop_tokens": kwargs.get("stop_tokens", current.stop_tokens),
             "max_stop_tokens": kwargs.get("max_stop_tokens", current.max_stop_tokens),
             "structured_mode": kwargs.get("structured_mode", current.structured_mode),
+            "training_log_enabled": kwargs.get(
+                "training_log_enabled", current.training_log_enabled
+            ),
         }
 
         # Validation happens in ChatConfig.__post_init__
@@ -418,6 +421,9 @@ class ConfigManager:
                 structured_mode=_safe_str(
                     self._settings.value("chat/structured_mode"), DEFAULT_CHAT_STRUCTURED_MODE
                 ),
+                training_log_enabled=_safe_bool(
+                    self._settings.value("chat/training_log_enabled"), True
+                ),
             )
             self._config.chat = chat_config
         except ValueError as e:
@@ -558,6 +564,7 @@ class ConfigManager:
         self._settings.setValue("chat/stop_tokens", chat.stop_tokens)
         self._settings.setValue("chat/max_stop_tokens", chat.max_stop_tokens)
         self._settings.setValue("chat/structured_mode", chat.structured_mode)
+        self._settings.setValue("chat/training_log_enabled", chat.training_log_enabled)
 
         # Save UI config
         ui = self._config.ui

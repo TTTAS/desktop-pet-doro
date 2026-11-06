@@ -77,6 +77,9 @@ class ChatConfig:
     # 結構化回覆模式（auto / json_schema / text）
     structured_mode: str = DEFAULT_CHAT_STRUCTURED_MODE
 
+    # 把成功的對話存進本機 SQLite，之後可匯出成 LoRA 訓練資料（docs/lora-training.md）
+    training_log_enabled: bool = True
+
     def __post_init__(self):
         """Validate configuration values."""
         # Validate timeout

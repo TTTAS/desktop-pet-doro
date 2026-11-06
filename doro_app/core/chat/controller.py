@@ -15,6 +15,7 @@ from ...utils.config_manager import ConfigManager
 from ...utils.logger import get_logger
 from ..llm import LlmTarget, ask_structured, compose_system
 from ..llm.transport import resolve_chat_endpoint
+from .chat_log import ChatLog
 from .chat_reply import CHAT_TASK, WEB_ANSWER_TASK, chat_reply_model, web_answer_model
 from .settings import ChatSettings
 
@@ -85,6 +86,7 @@ class ChatController(QtCore.QObject):
         config_manager: ConfigManager,
         doro_state_provider: TextProvider | None = None,
         a11y_tree_provider: TextProvider | None = None,
+        chat_log: ChatLog | None = None,
         parent: QtCore.QObject | None = None,
     ):
         super().__init__(parent)
@@ -111,6 +113,9 @@ class ChatController(QtCore.QObject):
         self._history_turns = config_manager.chat.history_turns
 
         self._history: list[dict[str, str]] = []
+        # 本機對話紀錄（LoRA 訓練資料來源）；None 或設定關閉時不寫。
+        self._chat_log = chat_log
+        self._pending_log: dict[str, str] | None = None
         self._pool = QtCore.QThreadPool.globalInstance()
         self._current_worker: ChatWorker | None = None
         self._current_request_id: str | None = None
@@ -146,6 +151,8 @@ class ChatController(QtCore.QObject):
     def clear_history(self):
         self._history.clear()
         self._last_user_message = ""
+        if self._chat_log is not None:
+            self._chat_log.new_session()
 
     def start_request(
         self,
@@ -236,13 +243,13 @@ class ChatController(QtCore.QObject):
 
         logger.info("Chat reply validated")
 
+        reply_json = json.dumps(reply.model_dump(), ensure_ascii=False)
         if self._last_user_message:
             self._history.append({"role": "user", "content": self._last_user_message})
         # 歷史存完整結構化回覆，讓模型看得到自己照格式回答（ADR 0005）。
-        self._history.append(
-            {"role": "assistant", "content": json.dumps(reply.model_dump(), ensure_ascii=False)}
-        )
+        self._history.append({"role": "assistant", "content": reply_json})
         self._trim_history()
+        self._log_turn(reply_json)
 
         was_auto = self._request_is_auto
         self._reset_worker_state()
@@ -302,6 +309,19 @@ class ChatController(QtCore.QObject):
         self._request_is_auto = False
         self._current_request_id = None
         self._current_worker = None
+        self._pending_log = None
+
+    def _log_turn(self, reply_json: str) -> None:
+        if self._chat_log is None or self._pending_log is None or not self._last_user_message:
+            return
+        if not self._config_manager.chat.training_log_enabled:
+            return
+        self._chat_log.record(
+            user=self._last_user_message,
+            reply_json=reply_json,
+            is_auto=self._request_is_auto,
+            **self._pending_log,
+        )
 
     # ------------------------------------------------------------------ Payload helpers
 
@@ -326,6 +346,12 @@ class ChatController(QtCore.QObject):
         else:
             reply_model = chat_reply_model(state_keys)
             system = self._compose_system_prompt(reply_model)
+        self._pending_log = {
+            "persona": self._settings.system_prompt or "",
+            "system": system,
+            "model": self._settings.model,
+            "kind": "web_answer" if web_answer else "chat",
+        }
 
         stop_tokens = self._settings.stop_tokens
         max_stop_tokens = self._settings.max_stop_tokens

@@ -63,3 +63,6 @@ coverage.xml
 .mypy_cache/
 .test-home/
 .browsers/
+
+# LoRA 訓練資料（scripts/export_lora_dataset.py 輸出，含私人對話）
+data/

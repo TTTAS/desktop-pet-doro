@@ -203,6 +203,42 @@ class TestRequestLifecycle:
         assert json.loads(ctrl._history[1]["content"])["line"] == "嗨"
         assert ctrl.is_inflight is False
 
+    def test_successful_reply_is_written_to_chat_log(self, controller_with_qsettings, tmp_path):
+        from doro_app.core.chat.chat_log import ChatLog
+        from doro_app.core.chat.chat_reply import chat_reply_model
+
+        ctrl = controller_with_qsettings
+        ctrl._chat_log = ChatLog(tmp_path / "log.sqlite3")
+        ctrl._config_manager.chat.training_log_enabled = True
+        reply = chat_reply_model(["idle"]).model_validate({"state": "idle", "line": "嗨"})
+        ctrl._current_request_id = "r1"
+        ctrl._inflight = True
+        ctrl._last_user_message = "早安"
+        ctrl._pending_log = {"persona": "你是Doro", "system": "S", "model": "m", "kind": "chat"}
+
+        ctrl._handle_worker_result("r1", (reply, None))
+
+        turns = list(ctrl._chat_log.iter_turns())
+        assert [(t.user, t.persona, t.system) for t in turns] == [("早安", "你是Doro", "S")]
+        assert json.loads(turns[0].reply_json)["line"] == "嗨"
+
+    def test_chat_log_respects_disabled_setting(self, controller_with_qsettings, tmp_path):
+        from doro_app.core.chat.chat_log import ChatLog
+        from doro_app.core.chat.chat_reply import chat_reply_model
+
+        ctrl = controller_with_qsettings
+        ctrl._chat_log = ChatLog(tmp_path / "log.sqlite3")
+        ctrl._config_manager.chat.training_log_enabled = False
+        reply = chat_reply_model(["idle"]).model_validate({"state": "idle", "line": "嗨"})
+        ctrl._current_request_id = "r1"
+        ctrl._inflight = True
+        ctrl._last_user_message = "早安"
+        ctrl._pending_log = {"persona": "", "system": "", "model": "", "kind": "chat"}
+
+        ctrl._handle_worker_result("r1", (reply, None))
+
+        assert list(ctrl._chat_log.iter_turns()) == []
+
     def test_unusable_reply_fails_the_request(self, controller_with_qsettings):
         ctrl = controller_with_qsettings
         failed = []
